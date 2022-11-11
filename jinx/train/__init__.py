@@ -8,29 +8,19 @@ from types import Any, List, Int
 from jinx.random import PRNGSequence
 from jinx.logging import logging_redirect_tqdm
 
-class Quantity:
-    def __init__(self, *, epochs=0, iterations=0):
-        self.epochs = epochs
-        self.iterations = iterations
-
-    @staticmethod
-    def epochs(epochs):
-        return Quantity(epochs=epochs)
-
-    @staticmethod
-    def iterations(iterations):
-        return Quantity(iterations=iterations)
-
-Quantity.ZERO = Quantity(0,0)
-
 class Vars:
-    def __init__(self, init_dataset, init_fn):
+    def __init__(self, vars):
         self.init_dataset = init_dataset
-        self.init_fn = init_fn
+        self.vars = vars
+
+class Optimizer:
+    def __init__(self, vars, opt_init, opt_update):
+        self._vars = vars
+        self._opt_init = opt_init
+        self._opt_update = opt_update
 
 class Schedule:
-    def __init__(self, duration):
-        self.duration = duration
+    def __init__(self):
         self.items = []
 
     def add(self, item):
@@ -48,8 +38,10 @@ class Schedule:
         self.items.append(test)
         return test
 
-    def run(self, state):
-        ellapsed = 0
+    def __call__(self):
+        while True:
+            for i in self.items:
+                i()
 
 class Train:
     def __init__(self, dataset, vars, optimizer, loss_fn, quantity):

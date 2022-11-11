@@ -9,19 +9,6 @@ import os
 from os import path
 from jax.tree_util import tree_map
 
-def serialize_config(config):
-    class NumpyEncoder(json.JSONEncoder):
-        def default(self, obj):
-            if isinstance(obj, np.ndarray):
-                return obj.tolist()
-            if isinstance(obj, flax.core.frozen_dict.FrozenDict):
-                return obj.unfreeze()
-            if isinstance(obj, jnp.DeviceArray):
-                return np.array(obj).tolist()
-            return json.JSONEncoder.default(self, obj)
-    config = json.dumps(config, cls=NumpyEncoder)
-    return config
-
 class DatasetWriter:
     def __init__(self, path):
         self.path = path

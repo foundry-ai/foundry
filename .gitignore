@@ -1,0 +1,9 @@
+*.tmp
+.docker_home
+.datasets
+__pycache__
+results
+wandb
+*.png
+*.pdf
+*.mp4
