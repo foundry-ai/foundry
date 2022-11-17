@@ -1,5 +1,5 @@
 from .dataset import Dataset, INFINITE
-from collections import NamedTuple
+from typing import NamedTuple
 
 import jax.random
 import jax.numpy as jnp

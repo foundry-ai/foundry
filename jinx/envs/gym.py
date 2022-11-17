@@ -32,8 +32,6 @@ class GymEnvironment(Environment):
         obs, r, istate = state
         if name == 'x':
             return obs
-        elif name == 'r':
-            return obs
         raise RuntimeError('No such observation')
 
 

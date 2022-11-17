@@ -7,3 +7,4 @@ wandb
 *.png
 *.pdf
 *.mp4
+*.pyc
