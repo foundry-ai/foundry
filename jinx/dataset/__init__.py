@@ -13,12 +13,12 @@ class Dataset:
         raise NotImplementedError(f"{self.__class__.__name__} must implement start")
 
     @property
-    def length(self):
-        raise NotImplementedError(f"{self.__class__.__name__} must implement length")
+    def remaining(self, iterator):
+        raise NotImplementedError(f"{self.__class__.__name__} must implement remaining")
 
     # Whether an iterator from this dataset has a next iterator
     def is_end(self, iterator):
-        return False
+        return self.remaining(iterator) == 0
 
     # Will return the next iterator.
     # If the iterator is at the end, the function does not need to return
@@ -47,7 +47,7 @@ class Dataset:
         return MappedDataset(self, func)
 
     def shuffle(self, key, buffer_size):
-        pass
+        return self
 
     # A shortcut for jax scanning through a dataset
     def fold(self, func, base):

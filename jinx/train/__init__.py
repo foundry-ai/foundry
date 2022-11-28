@@ -6,18 +6,48 @@ from collections import NamedTuple
 from types import Any, List, Int
 
 from jinx.random import PRNGSequence
+from jinx.dataset import INFINITE
 from jinx.logging import logging_redirect_tqdm
 
-class Vars:
-    def __init__(self, vars):
-        self.init_dataset = init_dataset
-        self.vars = vars
-
-class Optimizer:
-    def __init__(self, vars, opt_init, opt_update):
-        self._vars = vars
+class Optimization:
+    def __init__(self, fun, vars_init, opt_init, opt_update):
+        self._fun = fun
+        self._vars = vars_init
+        self._loss_fn = loss_fn
         self._opt_init = opt_init
         self._opt_update = opt_update
+
+class DataSource:
+    def __init__(self, dataset, shuffle_key, shuffle_buffer_size):
+        shuffle_rng, shuffle_key = jax.random.split(shuffle_key)
+        self._dataset = dataset
+        self._shuffle_key = shuffle_key
+
+        self._shuffle_buffer_size = shuffle_buffer_size
+        self._shuffled_dataset = dataset.shuffle(shuffle_rng, shuffle_buffer_size)
+        self._iterator = self._shuffled_dataset.start
+
+        self._samples_per_epoch = self._dataset.remaining(self._dataset.start)
+        self._current_epoch = 0
+
+    @property
+    def current_iterator(self):
+        return self._iterator
+
+    @property
+    def current_dataset(self):
+        return self._shuffled_dataset
+    
+    def update_iterator(self, new_iterator):
+        # update the iterator
+        if self.current_dataset.is_end(new_iterator):
+            # re-shuffle
+            shuffle_rng, shuffle_key = jax.random.split(shuffle_key)
+            self._shuffle_key = shuffle_key
+            self._shuffled_dataset = dataset.shuffle(shuffle_rng, self._shuffle_buffer_size)
+            self._current_epoch = self._current_epoch + 1
+        else:
+            self._current = new_iterator
 
 class Schedule:
     def __init__(self):
@@ -27,8 +57,7 @@ class Schedule:
         self.items.append(item)
         return self
     
-    def train(self, dataset, vars, optimizer, loss_fn, 
-                quantity=Quantity.epochs(1)):
+    def train(self, optimization, dataset, batch_size, epochs, steps=0):
         train = Train(dataset, vars, optimizer, loss_fn, quantity)
         self.items.append(train)
         return train
