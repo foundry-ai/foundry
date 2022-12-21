@@ -1,6 +1,8 @@
 import importlib
 import inspect
 
+import jax
+
 from jinx.random import PRNGDataset
 from jinx.dataset import MappedDataset
 
@@ -19,6 +21,25 @@ class Environment:
     def observe(self, state, name):
         pass
     
+# Helper function to do rollouts with
+def rollout(env, length, policy, key):
+    def scan_fn(comb_state, _):
+        env_state, policy_state, u = comb_state
+        new_env_state = env.step(env_state, u)
+
+        new_u, new_policy_state = policy(new_env_state, policy_state)
+        return (new_env_state, new_policy_state, new_u), (env_state, u)
+
+    # Do the first step manually to populate the policy state
+    env_state = env.reset(key)
+    u, policy_state = policy(env_state)
+    init_state = env_state, policy_state, u
+
+    _, xu = jax.lax.scan(scan_fn, init_state, None, length=length)
+    return xu
+
+# Global registry
+
 __ENV_BUILDERS = {}
 
 def create(name, *args, **kwargs):

@@ -20,9 +20,9 @@ class PendulumEnvironment(Environment):
         return state
 
     def step(self, state, action):
-        pos = state[0] - 0.05*state[1]
+        pos = state[0] + 0.05*state[1]
         # using g, l = 1
-        vel = state[1] - 0.05*jnp.sin(state[0]) + 0.1*action[0]
+        vel = state[1] - 0.05*jnp.sin(state[0]) + 0.05*action[0]
         state = jnp.stack((pos, vel))
         return state
 
