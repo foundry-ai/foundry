@@ -22,23 +22,27 @@ class Environment:
         pass
     
 # Helper function to do rollouts with
-def rollout(env, length, policy, key):
+def rollout_policy(model_fn, init_state, length, policy):
     def scan_fn(comb_state, _):
         env_state, policy_state, u = comb_state
-        new_env_state = env.step(env_state, u)
-
+        new_env_state = model_fn(env_state, u)
         new_u, new_policy_state = policy(new_env_state, policy_state)
         return (new_env_state, new_policy_state, new_u), (env_state, u)
 
     # Do the first step manually to populate the policy state
-    env_state = env.reset(key)
-    u, policy_state = policy(env_state)
-    init_state = env_state, policy_state, u
+    u, policy_state = policy(init_state)
+    state = init_state, policy_state, u
 
-    _, xu = jax.lax.scan(scan_fn, init_state, None, length=length)
+    _, xu = jax.lax.scan(scan_fn, state, None, length=length)
     return xu
 
 # Global registry
+def rollout_input(model_fn, init_state, us):
+    def scan_fn(state, u):
+        new_state = model_fn(state, u)
+        return new_state, state
+    _, xs = jax.lax.scan(scan_fn, init_state, us)
+    return xs
 
 __ENV_BUILDERS = {}
 
