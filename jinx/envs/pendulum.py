@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from typing import NamedTuple
 
 class State(NamedTuple):
-    obs: jnp.ndarray
+    x: jnp.ndarray
 
 
 class PendulumEnvironment(Environment):
@@ -24,9 +24,8 @@ class PendulumEnvironment(Environment):
         return State(x)
 
     def step(self, state, action):
-        pos = state.obs[0] + 0.05*state.obs[1]
-        # using g, l = 1
-        vel = state.obs[1] - 0.05*jnp.sin(state.obs[0]) + 0.05*action[0]
+        pos = state.x[0] + 0.05*state.x[1]
+        vel = state.x[1] - 0.05*jnp.sin(state.x[0]) + 0.05*action[0]
         x = jnp.stack((pos, vel))
         return State(x)
     

@@ -7,10 +7,6 @@ from jinx.random import PRNGDataset
 from jinx.dataset import MappedDataset
 from jinx.util import scan_unrolled, tree_append
 
-class Steps:
-    def __init__(self):
-        pass
-
 # Generic environment
 class Environment:
     @property
@@ -27,7 +23,7 @@ class Environment:
         pass
     
 # Helper function to do rollouts with
-def rollout_policy(model_fn, x0, length, policy,
+def rollout_policy(model_fn, state0, length, policy,
                     policy_state=None,
                     ret_policy_state=False):
     def scan_fn(comb_state, _):
@@ -41,23 +37,27 @@ def rollout_policy(model_fn, x0, length, policy,
         return (new_env_state, new_policy_state), (env_state, u)
 
     # Do the first step manually to populate the policy state
-    state = (x0, policy_state)
-    (xf, ef), (xs, us) = jax.lax.scan(scan_fn, state, None, length=length-1)
+    state = (state0, policy_state)
+    (state_f, ef), (states, us) = jax.lax.scan(scan_fn, state, None, length=length-1)
 
-    xs = tree_append(xs, xf)
+    states = tree_append(states, state_f)
     if ret_policy_state:
-        return xs, us, ef
+        return states, us, ef
     else:
-        return xs, us
+        return states, us
 
 # Global registry
-def rollout_input(model_fn, x0, us):
+def rollout_input(model_fn, state_0, us):
     def scan_fn(state, u):
         new_state = model_fn(state, u)
         return new_state, state
-    final_state, xs = jax.lax.scan(scan_fn, x0, us)
-    all_xs = tree_append(xs, final_state)
-    return all_xs
+    final_state, states = jax.lax.scan(scan_fn, state_0, us)
+    states = tree_append(states, final_state)
+    return states
+
+
+def rollout_with_gains(model_fn, state_0, ref_states, ref_us, gains, us):
+    pass
 
 __ENV_BUILDERS = {}
 
