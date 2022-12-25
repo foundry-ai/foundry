@@ -2,6 +2,10 @@ from jinx.envs import Environment
 
 import jax
 import jax.numpy as jnp
+from typing import NamedTuple
+
+class State(NamedTuple):
+    obs: jnp.ndarray
 
 
 class PendulumEnvironment(Environment):
@@ -16,20 +20,21 @@ class PendulumEnvironment(Environment):
         # pick random position between +/- radians from right
         pos = jax.random.uniform(key,shape=(1,), minval=-1,maxval=1)
         vel = jnp.zeros((1,))
-        state = jnp.concatenate((pos, vel))
-        return state
+        x = jnp.concatenate((pos, vel))
+        return State(x)
 
     def step(self, state, action):
-        pos = state[0] + 0.05*state[1]
+        pos = state.obs[0] + 0.05*state.obs[1]
         # using g, l = 1
-        vel = state[1] - 0.05*jnp.sin(state[0]) + 0.05*action[0]
-        state = jnp.stack((pos, vel))
-        return state
-
-    def observe(self, state, name):
-        if name == 'x':
-            return state
-        raise RuntimeError('No such observation')
+        vel = state.obs[1] - 0.05*jnp.sin(state.obs[0]) + 0.05*action[0]
+        x = jnp.stack((pos, vel))
+        return State(x)
+    
+    def cost(self, xs, us):
+        diff = xs - jnp.array([jnp.pi, 0])
+        x_cost = jnp.sum(diff**2)
+        u_cost = jnp.sum(us**2)
+        return x_cost + u_cost
 
 def builder():
     return PendulumEnvironment

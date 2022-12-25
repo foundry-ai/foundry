@@ -27,12 +27,6 @@ class GymEnvironment(Environment):
         obs, r, _, _ = self.env.step(action)
         istate = env_get_state(self.env)
         return (obs, r, istate)
-    
-    def observe(self, state, name):
-        obs, r, istate = state
-        if name == 'x':
-            return obs
-        raise RuntimeError('No such observation')
 
 
 # Helper functions to serialize/deserialize

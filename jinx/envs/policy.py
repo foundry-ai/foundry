@@ -1,132 +1,134 @@
-import jaxopt
-from jaxopt import loop
+import optax
 
 import jax
 import jax.numpy as jnp
 import jax.tree_util as tree_util
 import jinx.envs
+import jinx.util
 
 from jinx.stats import Reporter
 
 from functools import partial
+from typing import NamedTuple, Any
+
+# 
+class MPCState(NamedTuple):
+    T: jnp.array # current timestep
+    us: jnp.array
+    # The optimizer state history
+    optim_history: Any
+    est_state: Any
+
+# Internally during optimization
+class OptimStep(NamedTuple):
+    us: jnp.array
+    cost: jnp.array
+    est_state: Any
+    opt_state: Any
 
 # A simple MPC which internally uses JaxOPT
 class MPC:
     def __init__(self, u_dim, cost_fn, model_fn,
                 horizon_length,
-                receed=True, solver='gd',
+                opt_transform,
+                iterations,
+                receed=True,
                 grad_estimator=None):
         self.u_dim = u_dim
 
         self.cost_fn = cost_fn
         self.model_fn = model_fn
-
-        self.receed = receed
         self.horizon_length = horizon_length
 
+        self.opt_transform = opt_transform
+        self.iterations = iterations
+
+        self.receed = receed
         self.grad_estimator = grad_estimator
-        self.reporter = Reporter()
-
-        # the gradient injector
-        def loss_fun(us, init_state, est_state=None):
-            xs = jinx.envs.rollout_input(self.model_fn, init_state, us)
-            if self.grad_estimator is not None:
-                est_state, xs = self.grad_estimator.inject_gradient(est_state, xs, us)
-            return cost_fn(xs, us), est_state
-
-        if solver == 'gd':
-            self.solver = jaxopt.GradientDescent(fun=loss_fun, maxiter=1000, has_aux=True)
-        elif solver == 'lbfgs':
-            self.solver = jaxopt.LBFGS(fun=loss_fun, maxiter=1000, has_aux=True)
+    
+    def _loss_fn(self, est_state, x0, us):
+        xs = jinx.envs.rollout_input(self.model_fn, x0, us)
+        if self.grad_estimator:
+            est_state, obs = self.grad_estimator.inject_gradient(est_state, xs, us)
         else:
-            raise RuntimeError("Unrecognized solver")
+            obs = xs.obs
+        cost = self.cost_fn(obs, us)
+        return cost, (est_state, cost)
     
     # body_fun for the solver interation
-    def _body_fun(self, inputs):
-        (us, state), init_state = inputs
+    def _opt_scan_fn(self, x0, prev_step, _):
 
-        xs = jinx.envs.rollout_input(self.model_fn, init_state, us)
-        init_state = self.reporter.tap(init_state, 'cost', self.cost_fn(xs, us))
+        loss = partial(self._loss_fn, prev_step.est_state, x0)
+        grad, (est_state, cost) = jax.grad(loss, has_aux=True)(prev_step.us)
+        updates, opt_state = self.opt_transform.update(grad, prev_step.opt_state, prev_step.us)
+        us = optax.apply_updates(prev_step.us, updates)
 
-        # get the ge_state from the aux
-        est_state = state.aux
-        return (
-            self.solver.update(us, state,
-                    init_state=init_state, est_state=est_state),
-            init_state
+        new_step = OptimStep(
+            us=us,
+            cost=cost,
+            est_state=est_state,
+            opt_state=opt_state
         )
+        return new_step, prev_step
     
+    def init_state(self, x0):
+        us = jnp.zeros((self.horizon_length, self.u_dim))
+        est_state = self.grad_estimator.init() if self.grad_estimator is not None else None
+        final_step, history = self._solve(est_state, x0, us)
+        return MPCState(
+            T=0,
+            us=final_step.us,
+            optim_history=history,
+            est_state=final_step.est_state
+        )
+
     # A modified version of the JaxOPT base IterativeSolver
     # which propagates the estimator state
-    def _solve(self, init_us, init_state, est_state=None):
-        state = self.solver.init_state(init_us,
-                    init_state=init_state, est_state=est_state)
-        zero_step = self.solver._make_zero_step(init_us, state)
+    def _solve(self, est_state, x0, init_us):
+        init_cost, _ = self._loss_fn(est_state, x0, init_us)
+        init_step = OptimStep(
+            us=init_us,
+            cost=init_cost,
+            est_state=est_state,
+            opt_state=self.opt_transform.init(init_us),
+        )
+        scan_fn = partial(self._opt_scan_fn, x0)
+        # Do a scan with the first iteration unrolled
+        # so that the est_state can potentially be properly initialized
+        # final_step, history = jinx.util.scan_unrolled(
+        #     scan_fn, init_step, None, length=self.iterations
+        # )
+        final_step, history = jax.lax.scan(scan_fn, init_step, None, length=self.iterations)
+        history = jinx.util.tree_append(history, final_step)
+        return final_step, history
 
-        # report the first cost
-        xs = jinx.envs.rollout_input(self.model_fn, init_state, init_us)
-        state = self.reporter.tap(state, 'cost', self.cost_fn(xs, init_us))
+    def __call__(self, state, policy_state):
+        us = policy_state.us
+        est_state = policy_state.est_state
 
-        opt_step = self.solver.update(init_us, state,
-                    init_state=init_state, est_state=est_state)
-
-        init_val = (opt_step, init_state)
-        jit, unroll = self.solver._get_loop_options()
-
-        many_step = loop.while_loop(
-            cond_fun=self.solver._cond_fun, body_fun=self._body_fun,
-            init_val=init_val, maxiter=self.solver.maxiter - 1, jit=jit,
-            unroll=unroll)[0]
-
-        final_step = tree_util.tree_map(
-            partial(_where, self.solver.maxiter == 0),
-            zero_step, many_step, is_leaf=lambda x: x is None)
-            # state attributes can sometimes be None
-
-        solved_us, state = final_step
-        self.reporter.send('iters', state.iter_num)
-        return solved_us, state.aux
-    
-    def __call__(self, state, policy_state=None):
         if self.receed:
-            # If in receeding mode,
-            # resolve over the same horizon length
-            # every time
-            us = jnp.zeros((self.horizon_length, self.u_dim))
-            # if we have previously solved before
-            # use the previous solutions
-            # as an initial starting point
-            if policy_state is not None:
-                old_us, ge_state = policy_state
-                us = us.at[:-1].set(old_us)
-            else:
-                ge_state = None
-
-            solved_us, est_state = self._solve(us, init_state=state,
-                                                est_state=est_state)
+            us = us.at[:-1].set(us[1:])
             # return the remainder as the solved_us
             # as the policy state, so we don't need
             # to re-solve everything for the next iteration
-
-            new_state = solved_us[1:], ge_state
-            return solved_us[0], new_state
+            final_step, history = self._solve(est_state, state, us)
+            return final_step.us[0], MPCState(
+                T=policy_state.T + 1,
+                us=final_step.us,
+                optim_history=history,
+                est_state=final_step.est_state
+            )
         else:
-            # If in non-receeding mode, solve once
-            # and use this input for the rest
-            if policy_state is None:
-                us = jnp.zeros((self.horizon_length, self.u_dim))
-                solved_us, _ = self._solve(us, init_state=state,
-                                            est_state=None)
-                T = 0
-            else:
-                solved_us, T = policy_state
-            return solved_us[T], (solved_us, T+1)
+            return policy_state.us[policy_state.T], MPCState(
+                T=policy_state.T + 1,
+                us=policy_state.us,
+                optim_history=policy_state.optim_history,
+                est_state=policy_state.est_state
+            )
 
-
-def _where(cond, x, y):
-  if x is None: return y
-  if y is None: return x
-  return jnp.where(cond, x, y)
+class EstimatorState(NamedTuple):
+    rng: jax.random.PRNGKey
+    total_samples: jnp.array
 
 class IsingEstimator:
     def __init__(self, env, rng_key, samples, sigma):
@@ -140,12 +142,10 @@ class IsingEstimator:
             return xs
 
         def _inject_gradient_fwd(xs, us, W, x_diff):
-            gt = jax.jacrev(partial(jinx.envs.rollout_input, self.env.step, xs[0]))(us)
-            gt = jnp.transpose(gt, (2, 0, 1, 3))
-            return xs, (W, x_diff, gt)
+            return xs, (W, x_diff)
 
         def _inject_gradient_bkw(res, g):
-            W, x_diff, gt = res
+            W, x_diff = res
             trans = self.calculate_jacobians(W, x_diff)
             return (None, self.bkw(trans, g), None, None)
 
@@ -153,24 +153,34 @@ class IsingEstimator:
         
         self._inject_gradient = _inject_gradient
     
-    def inject_gradient(self, rng, xs, us):
-        if rng is None:
-            rng = self.rng_key
-        new_rng, subkey = jax.random.split(rng)
+    def init(self):
+        return EstimatorState(
+            rng=self.rng_key,
+            total_samples=jnp.array([0])
+        )
+    
+    def inject_gradient(self, est_state, xs, us):
+        new_rng, subkey = jax.random.split(est_state.rng)
         W, x_diff = self.rollout(subkey, xs, us)
-        xs = self._inject_gradient(xs, us, W, x_diff)
-        return new_rng, xs
+        obs = self._inject_gradient(xs.obs, us, W, x_diff)
+        return EstimatorState(
+            rng=new_rng,
+            total_samples=est_state.total_samples + W.shape[0]
+        ), obs
     
     # the forwards step
-    def rollout(self, rng, xs, us):
+    def rollout(self, rng, traj, us):
         rng = self.rng_key if rng is None else rng
 
         # do a bunch of rollouts
         W = self.sigma*jax.random.choice(rng, jnp.array([-1,1]), (self.samples,) + us.shape)
         # rollout all of the perturbed trajectories
-        x_hat = jax.vmap(partial(jinx.envs.rollout_input, self.env.step, xs[0]))(us + W)
+
+        # Get the first state
+        x_init = jax.tree_util.tree_map(lambda x: x[0], traj)
+        trajs = jax.vmap(partial(jinx.envs.rollout_input, self.env.step, x_init))(us + W)
         # subtract off x_bar
-        x_diff = x_hat - xs
+        x_diff = trajs.obs - traj.obs
         return W, x_diff
     
     def calculate_jacobians(self, W, x_diff):

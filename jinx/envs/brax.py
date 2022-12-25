@@ -22,11 +22,6 @@ class BraxEnvironment(Environment):
     
     def step(self, state, action):
         return self._env_step_jit(state, action)
-    
-    def observe(self, state, name):
-        if name == 'x':
-            return state
-        raise RuntimeError('No such observation')
 
 def builder():
     return BraxEnvironment
