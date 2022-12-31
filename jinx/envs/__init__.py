@@ -56,8 +56,14 @@ def rollout_input(model_fn, state_0, us):
     return states
 
 
-def rollout_with_gains(model_fn, state_0, ref_states, ref_us, gains, us):
-    pass
+def rollout_input_gains(model_fn, state_0, ref_xs, ref_gains, us):
+    def scan_fn(state, i):
+        ref_x, ref_gain, u = i
+        new_state = model_fn(state, u + ref_gain @ (state.x - ref_x))
+        return new_state, state
+    final_state, states = jax.lax.scan(scan_fn, state_0, (ref_xs[:-1], ref_gains, us))
+    states = tree_append(states, final_state)
+    return states
 
 __ENV_BUILDERS = {}
 

@@ -102,14 +102,13 @@ class MPC:
 
     
     def _loss_fn(self, est_state, state_0,
-                ref_states, ref_gains, ref_us, us):
-        rollout = partial(jinx.env.rollout_with_gains,
+                ref_states, ref_gains, us):
+        rollout = partial(jinx.envs.rollout_input_gains,
             self.model_fn, state_0, 
-            ref_states, ref_gains, ref_us)
-        
+            ref_states.x, ref_gains)
         states = rollout(us)
         if self.grad_estimator:
-            est_state, jac, xs = self.grad_estimator.inject_gradient(est_state, states, gains, us)
+            est_state, jac, xs = self.grad_estimator.inject_gradient(est_state, states, ref_gains, us)
         else:
             xs = states.x
             jac = jax.jacrev(lambda us: rollout(us).x)(us)
@@ -120,19 +119,23 @@ class MPC:
     # body_fun for the solver interation
     def _opt_scan_fn(self, state_0, prev_step, _):
         gains = prev_step.gains
-        states = jinx.envs.rollout_input(self.model_fn, state_0, us)
+        ref_states = jinx.envs.rollout_input(self.model_fn, state_0, prev_step.us)
 
         loss = partial(self._loss_fn, prev_step.est_state,
-                        state_0, states, gains, us)
+                        state_0, ref_states, gains)
 
         grad, (est_state, jac, cost) = jax.grad(loss, has_aux=True)(prev_step.us)
         updates, opt_state = self.opt_transform.update(grad, prev_step.opt_state, prev_step.us)
         us = optax.apply_updates(prev_step.us, updates)
 
         if self.use_gains:
+            # rollout new trajectory under old gains
+            states_new = jinx.envs.rollout_input_gains(self.model_fn, state_0, ref_states.x, gains, us)
+            # adjust the us to include the gain-adjustments
+            mod = gains @ jnp.expand_dims(states_new.x[:-1] - ref_states.x[:-1], -1)
+            us = us + jnp.squeeze(mod, -2)
+            # compute new gains around the adjusted trajectory
             gains = self._compute_gains(jac, gains)
-            # update for the old gains
-            states_new = jinx.env.rollout_with_gains(self.step, state_0, )
 
         new_step = OptimStep(
             us=us,
@@ -147,7 +150,8 @@ class MPC:
     # A modified version of the JaxOPT base IterativeSolver
     # which propagates the estimator state
     def _solve(self, est_state, state0, gains, init_us):
-        init_cost, _ = self._loss_fn(est_state, state0, gains, init_us)
+        ref_states = jinx.envs.rollout_input(self.model_fn, state0, init_us)
+        init_cost, _ = self._loss_fn(est_state, state0, ref_states, gains, init_us)
         init_step = OptimStep(
             us=init_us,
             gains=gains,
@@ -238,12 +242,7 @@ class IsingEstimator:
         # do a bunch of rollouts
         W = self.sigma*jax.random.choice(rng, jnp.array([-1,1]), (self.samples,) + us.shape)
         # rollout all of the perturbed trajectories
-        def model_with_gains(state, u):
-            state, T = state
-            state = self.model_fn(state, u + gains[T] @ (state.x - traj.x[T]))
-            return (state, T + 1)
-        rollout = lambda us: jinx.envs.rollout_input(model_with_gains, (state_0, 0), us)[0]
-
+        rollout = partial(jinx.envs.rollout_input_gains, self.model_fn, state_0, traj.x, gains)
         # Get the first state
         trajs = jax.vmap(rollout)(us + W)
         # subtract off x_bar
