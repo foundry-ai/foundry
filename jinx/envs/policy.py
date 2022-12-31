@@ -1,5 +1,6 @@
 import optax
 
+import sys
 import jax
 import jax.numpy as jnp
 import jax.tree_util as tree_util
@@ -91,12 +92,18 @@ class MPC:
             F = jnp.linalg.inv(R + B.T @ P_next @ B) @ (A @ P_next @ B).T
             P = A.T @ P_next @ A - (A.T @ P_next @ B) @ F + Q
             return P, F
-        _, gains_est = jax.lax.scan(gains_recurse, Q, (As_est, Bs_est))
-        # jax.experimental.host_callback.id_print(As_est[-1])
-        # jax.experimental.host_callback.id_print(As_est[-1] + Bs_est[-1] @ gains_est[-1])
-        # jax.experimental.host_callback.id_print(gains_est[0])
-        # jax.experimental.host_callback.id_print(prev_gains[-1])
-        # jax.experimental.host_callback.id_print(gains_est[-1])
+        _, gains_est = jax.lax.scan(gains_recurse, Q, (As_est, Bs_est), reverse=True)
+        gains_est = -gains_est
+
+        def print_func(arg, _):
+            As_est, Bs_est, prev_gains, gains_est = arg
+            print('---- Computing Gains ------')
+            print('A', As_est[-1])
+            print('B', Bs_est[-1])
+            print('Gains', gains_est[-1])
+            if jnp.any(jnp.isnan(As_est[-1])):
+                sys.exit(0)
+        # jax.experimental.host_callback.id_tap(print_func, (As_est, Bs_est, prev_gains, gains_est))
         new_gains = prev_gains.at[self.burn_in:].set(gains_est)
         return new_gains
 
