@@ -84,6 +84,7 @@ class MPC:
         Bs_est = jnp.transpose(jnp.diagonal(jac, 1), (2,0,1))[self.burn_in:]
         # estimate the A matrices
         As_est = C_kp @ jnp.linalg.pinv(C_k) - Bs_est @ prev_gains[self.burn_in:]
+
         # synthesize new gains
         Q = jnp.eye(jac.shape[-2])
         R = jnp.eye(self.u_dim)
@@ -96,14 +97,14 @@ class MPC:
         gains_est = -gains_est
 
         def print_func(arg, _):
-            As_est, Bs_est, prev_gains, gains_est = arg
+            jac, As_est, Bs_est, prev_gains, gains_est = arg
             print('---- Computing Gains ------')
             print('A', As_est[-1])
             print('B', Bs_est[-1])
             print('Gains', gains_est[-1])
-            if jnp.any(jnp.isnan(As_est[-1])):
+            if jnp.any(jnp.isnan(jac[-1])):
                 sys.exit(0)
-        # jax.experimental.host_callback.id_tap(print_func, (As_est, Bs_est, prev_gains, gains_est))
+        jax.experimental.host_callback.id_tap(print_func, (jac, As_est, Bs_est, prev_gains, gains_est))
         new_gains = prev_gains.at[self.burn_in:].set(gains_est)
         return new_gains
 
@@ -249,11 +250,21 @@ class IsingEstimator:
         # do a bunch of rollouts
         W = self.sigma*jax.random.choice(rng, jnp.array([-1,1]), (self.samples,) + us.shape)
         # rollout all of the perturbed trajectories
-        rollout = partial(jinx.envs.rollout_input_gains, self.model_fn, state_0, traj.x, gains)
+        #rollout = partial(jinx.envs.rollout_input_gains, self.model_fn, state_0, traj.x, gains)
+        rollout = partial(jinx.envs.rollout_input, self.model_fn, state_0)
         # Get the first state
         trajs = jax.vmap(rollout)(us + W)
         # subtract off x_bar
         x_diff = trajs.x - traj.x
+        # def print_func(arg, _):
+        #     us, x_diff = arg
+        #     print('---- Computing Traj ------')
+        #     print(x_diff.shape)
+        #     print('us', us)
+        #     print('x_diff', x_diff[0])
+        #     if jnp.any(jnp.isnan(x_diff)):
+        #         sys.exit(0)
+        # jax.experimental.host_callback.id_tap(print_func, (us, x_diff))
         return W, x_diff
     
     def calculate_jacobians(self, W, x_diff):
@@ -279,6 +290,14 @@ class IsingEstimator:
 
         # fill lower-triangle with zeros
         jac = jnp.where(tri, jnp.zeros_like(jac), jac)
+        # def print_func(arg, _):
+        #     jac, x_diff = arg
+        #     print('---- Computing Jacobian ------')
+        #     print(x_diff.shape)
+        #     print('x_diff', x_diff[0])
+        #     if jnp.any(jnp.isnan(jac)):
+        #         sys.exit(0)
+        # jax.experimental.host_callback.id_tap(print_func, (jac, x_diff))
         return jac
     
     # the backwards step

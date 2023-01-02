@@ -1,3 +1,11 @@
+import os
+import pickle
+from dataclasses import dataclass
+
+@dataclass
+class EmptyConfig:
+    pass
+
 # An acivity reports its data to an experiment
 class Activity:
     def __init__(self, name, config_dataclass=None):
@@ -12,11 +20,11 @@ class FuncActivity(Activity):
         super().__init__(name, config_dataclass)
         self._exec = exec
     
-    def run(self, config, experiment):
-        self._exec(config, experiment)
+    def run(self, config, *args, **kwargs):
+        return self._exec(config, *args, **kwargs)
 
-    def __call__(self, config, experiment, *args, **kwargs):
-        self._exec(config, experiment, *args, **kwargs)
+    def __call__(self, config, *args, **kwargs):
+        return self._exec(config, *args, **kwargs)
 
 # A decorator version for convenience
 def activity(name, config_dataclass=None):
@@ -26,8 +34,7 @@ def activity(name, config_dataclass=None):
 
 def launch_from(activities, analyses, args, root_dir, lab=None):
     import argparse
-    from jinx.experiment.config import parsable
-
+    from jinx.config import parsable
     parser = argparse.ArgumentParser(
         prog='Experiment Launcher',
     )
@@ -47,19 +54,55 @@ def launch_from(activities, analyses, args, root_dir, lab=None):
         act_map[a.name] = (a, config_class)
     
     # Add the analyses
+    anl_parser = subparsers.add_parser('anl')
+    anl_subparsers = anl_parser.add_subparsers(title='analyses')
+    anl_subparsers.dest = 'analysis'
+
+    anl_map = {}
+    for a in analyses:
+        anl_parser = anl_subparsers.add_parser(a.name)
+        anl_parser.add_argument("results", nargs="+", default=[])
+        config_class = parsable(a.config_dataclass)
+        config_class.add_to_parser(anl_parser)
+        anl_map[a.name] = (a, config_class)
+
     args = parser.parse_args(args)
 
     if args.command == 'exp':
-        if lab is None:
-            from .aim import AimLab
-            lab = AimLab(root_dir)
         if args.activity not in act_map:
             logger.error('Unrecognized acitvity')
             return
         activity, config_class = act_map[args.activity]
         config = config_class.from_args(args)
-        experiment = lab.create(args.activity)
-        activity.run(config, experiment)
-        experiment.finish()
+        result = activity.run(config)
+        if result is not None:
+            if not isinstance(result, list):
+                result = [result]
+            os.makedirs(os.path.join(root_dir, 'results'), exist_ok=True)
+            path = os.path.join(root_dir, 'results', f'{args.activity}.pkl')
+            with open(path, 'wb') as file:
+                pickle.dump(result, file)
+    elif args.command == 'anl':
+        if args.analysis not in anl_map:
+            logger.error('Unrecognized analysis')
+            return
+        data = []
+        for r in args.results:
+            path = os.path.join(root_dir, 'results', f'{r}.pkl')
+            with open(path, 'rb') as file:
+                data.extend(pickle.load(file))
+        activity, config_class = anl_map[args.analysis]
+        config = config_class.from_args(args)
+        result = activity.run(config, data)
+        if result is not None:
+            # result should contain a dictionary of figures
+            if not isinstance(result, dict):
+                result = {activity.name: result}
+            os.makedirs(os.path.join(root_dir, 'figures'), exist_ok=True)
+            for n, p in result.items():
+                html_path = os.path.join(root_dir, 'results', f'{n}.html')
+                png_path = os.path.join(root_dir, 'results', f'{n}.png')
+                p.write_html(html_path)
+                p.write_image(png_path)
     else:
         logger.error('Unrecognized command')
