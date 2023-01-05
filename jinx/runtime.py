@@ -74,7 +74,11 @@ def launch_from(activities, analyses, args, root_dir, lab=None):
             return
         activity, config_class = act_map[args.activity]
         config = config_class.from_args(args)
-        result = activity.run(config)
+
+        from jinx.experiment.aim import AimLab
+        lab = AimLab(root_dir)
+        exp = lab.create(args.activity)
+        result = activity.run(config, exp)
         if result is not None:
             if not isinstance(result, list):
                 result = [result]

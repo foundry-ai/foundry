@@ -12,7 +12,6 @@ from jinx.stats import Reporter
 from functools import partial
 from typing import NamedTuple, Any
 
-# 
 class MPCState(NamedTuple):
     T: jnp.array # current timestep
     us: jnp.array
@@ -24,19 +23,36 @@ class MPCState(NamedTuple):
 # Internally during optimization
 class OptimStep(NamedTuple):
     us: jnp.array
+    barrier_eta: jnp.array
     gains: jnp.array
+
     cost: jnp.array
     est_state: Any
     opt_state: Any
 
-# A simple MPC which internally uses JaxOPT
+    done: bool
+
+# A barrier-based MPC controller
 class MPC:
-    def __init__(self, u_dim, cost_fn, model_fn,
+    def __init__(self, u_dim,
+                cost_fn, model_fn,
                 horizon_length,
                 opt_transform,
-                iterations,
+                iterations=1000,
+                # minimize to epsilon-stationary point
+                eps=0.0001,
+
+                # barrier signed distance function
+                # can return multiple distance functions
+                # for multiple barriers
+                barrier_sdf=None,
+                # relax barrier_eta until eta < epsilon
+                barrier_eps=0.0001,
+                barrier_eta_start=1.,
+
                 use_gains=False,
                 burn_in=10,
+
                 receed=True,
                 grad_estimator=None):
         self.u_dim = u_dim
@@ -47,6 +63,11 @@ class MPC:
 
         self.opt_transform = opt_transform
         self.iterations = iterations
+        self.eps = eps
+
+        self.barrier_sdf = barrier_sdf
+        self.barrier_eps = barrier_eps
+        self.barrier_eta_start = barrier_eta_start
 
         self.use_gains = use_gains
         self.burn_in = burn_in
@@ -60,6 +81,7 @@ class MPC:
         us = jnp.zeros((self.horizon_length - 1, self.u_dim))
         gains = jnp.zeros((self.horizon_length - 1, self.u_dim, x_dim))
         est_state = self.grad_estimator.init() if self.grad_estimator is not None else None
+
         final_step, history = self._solve(est_state, state_0, gains, us)
         return MPCState(
             T=0,
@@ -95,44 +117,49 @@ class MPC:
             return P, F
         _, gains_est = jax.lax.scan(gains_recurse, Q, (As_est, Bs_est), reverse=True)
         gains_est = -gains_est
-
-        def print_func(arg, _):
-            jac, As_est, Bs_est, prev_gains, gains_est = arg
-            print('---- Computing Gains ------')
-            print('A', As_est[-1])
-            print('B', Bs_est[-1])
-            print('Gains', gains_est[-1])
-            if jnp.any(jnp.isnan(jac[-1])):
-                sys.exit(0)
-        jax.experimental.host_callback.id_tap(print_func, (jac, As_est, Bs_est, prev_gains, gains_est))
         new_gains = prev_gains.at[self.burn_in:].set(gains_est)
         return new_gains
 
     
     def _loss_fn(self, est_state, state_0,
-                ref_states, ref_gains, us):
+                ref_states, ref_gains, 
+                barrier_eta, us):
         rollout = partial(jinx.envs.rollout_input_gains,
             self.model_fn, state_0, 
             ref_states.x, ref_gains)
         states = rollout(us)
+
+        # for use with gradient estimation
         if self.grad_estimator:
             est_state, jac, xs = self.grad_estimator.inject_gradient(est_state, states, ref_gains, us)
         else:
             xs = states.x
             jac = jax.jacrev(lambda us: rollout(us).x)(us)
             jac = jnp.transpose(jac, (2, 0, 1, 3))
+
         cost = self.cost_fn(xs, us)
-        return cost, (est_state, jac, cost)
-    
-    # body_fun for the solver interation
-    def _opt_scan_fn(self, state_0, prev_step, _):
+
+        if self.barrier_sdf is not None:
+            # if we violate the constraints, ignore the cost
+            # and just take steps to find a feasible point
+            sdfs = self.barrier_sdf(xs, us)
+            zero_grad = jnp.grad(lambda xs, us: -jnp.log(-self.barrier_sdf(xs, us)))(jnp.zeros_like(xs), jnp.zeros_like(us))
+            barrier_costs = -jnp.log(-sdfs) + zero_grad[0] @ xs + zeros_grad[1] @ us
+
+            loss = cost + barrier_eta*jnp.mean(barrier_costs)
+        else:
+            loss = cost
+
+        return loss, (est_state, jac, cost)
+
+    def _inner_step(self, state_0, prev_step):
         gains = prev_step.gains
         ref_states = jinx.envs.rollout_input(self.model_fn, state_0, prev_step.us)
 
-        loss = partial(self._loss_fn, prev_step.est_state,
-                        state_0, ref_states, gains)
-
-        grad, (est_state, jac, cost) = jax.grad(loss, has_aux=True)(prev_step.us)
+        loss = partial(self._loss_fn, prev_step.est_state, state_0, ref_states, gains, prev_step.barrier_eta)
+        grad, (est_state, jac, cost) = jax.grad(loss, has_aux=True)(
+            prev_step.us
+        )
         updates, opt_state = self.opt_transform.update(grad, prev_step.opt_state, prev_step.us)
         us = optax.apply_updates(prev_step.us, updates)
 
@@ -147,27 +174,74 @@ class MPC:
 
         new_step = OptimStep(
             us=us,
+            barrier_eta=prev_step.barrier_eta,
             cost=cost,
             gains=gains,
             est_state=est_state,
-            opt_state=opt_state
+            opt_state=opt_state,
+            done=jnp.linalg.norm(grad) < self.eps
         )
+        return new_step
+    
+    # body_fun for the solver interation
+    def _opt_iteration(self, state_0, prev_step, _):
+        if self.barrier_sdf:
+            def do_barrier_step():
+                # if we have hit an epsilon-stationary point
+                # last iteration,
+                # step on the central path
+                barrier_eta = jax.lax.cond(prev_step.done,
+                    lambda: prev_step.barrier_eta/2,
+                    lambda: prev_step.barrier_eta 
+                )
+                barrier_eta = jnp.max(barrier_eta, self.barrier_eps)
+                prev_step.barrier_eta = barrier_eta
+                prev_step.done = False
+                return self._inner_step(state_0, prev_step)
+
+            new_step = jax.lax.cond(
+                prev_step.done and prev_step.barrier_eta <= self.barrier_eps,
+                lambda: prev_step,
+                do_barrier_step
+            )
+        else:
+            new_step = jax.lax.cond(
+                prev_step.done,
+                lambda: prev_step, 
+                lambda: self._inner_step(state_0, prev_step))
         return new_step, prev_step
+    
+    def _feasible_point(self, est_state, state_0, gains, init_us):
+        def loss_fn(est_state, ref_traj, gains, us):
+            pass
+        
+        def step_fn(state, _):
+            est_state, gains, us = state
+            ref_states = jinx.envs.rollout_input(self.model_fn, state_0, us)
+            loss = partial(loss_fn, est_state, ref_states, state_0, gains)
+            return (est_state, gains, us)
     
 
     # A modified version of the JaxOPT base IterativeSolver
     # which propagates the estimator state
-    def _solve(self, est_state, state0, gains, init_us):
-        ref_states = jinx.envs.rollout_input(self.model_fn, state0, init_us)
-        init_cost, _ = self._loss_fn(est_state, state0, ref_states, gains, init_us)
+    def _solve(self, est_state, state_0, gains, init_us):
+        # if we have a barrier function first find a feasible state
+        if self.barrier_sdf:
+            est_state, gains, init_us = self._feasible_point(est_state, state_0, gains, init_us)
+
+        ref_states = jinx.envs.rollout_input(self.model_fn, state_0, init_us)
+        _, (_, _, init_cost) = self._loss_fn(est_state, state_0, ref_states, gains, 1, init_us)
+
         init_step = OptimStep(
             us=init_us,
+            barrier_eta=jnp.maximum(self.barrier_eta_start, self.barrier_eps),
             gains=gains,
             cost=init_cost,
             est_state=est_state,
             opt_state=self.opt_transform.init(init_us),
+            done=False
         )
-        scan_fn = partial(self._opt_scan_fn, state0)
+        scan_fn = partial(self._opt_iteration, state_0)
         final_step, history = jax.lax.scan(scan_fn, init_step, None, length=self.iterations)
         history = jinx.util.tree_append(history, final_step)
         return final_step, history
@@ -199,113 +273,3 @@ class MPC:
                 optim_history=policy_state.optim_history,
                 est_state=policy_state.est_state
             )
-
-class EstimatorState(NamedTuple):
-    rng: jax.random.PRNGKey
-    total_samples: int
-
-class IsingEstimator:
-    def __init__(self, model_fn, rng_key, samples, sigma):
-        self.model_fn = model_fn
-        self.rng_key = rng_key
-        self.samples = samples
-        self.sigma = sigma
-
-        @jax.custom_vjp
-        def _inject_gradient(xs, us, jac):
-            return xs
-
-        def _inject_gradient_fwd(xs, us, jac):
-            return xs, jac
-
-        def _inject_gradient_bkw(res, g):
-            jac = res
-            return (None, self.bkw(jac, g), None)
-
-        _inject_gradient.defvjp(_inject_gradient_fwd, _inject_gradient_bkw)
-        
-        self._inject_gradient = _inject_gradient
-    
-    def init(self):
-        return EstimatorState(
-            rng=self.rng_key,
-            total_samples=0
-        )
-    
-    def inject_gradient(self, est_state, states, gains, us):
-        new_rng, subkey = jax.random.split(est_state.rng)
-        W, x_diff = self.rollout(subkey, states, gains, us)
-        jac = self.calculate_jacobians(W, x_diff)
-        x = self._inject_gradient(states.x, us, jac)
-        return EstimatorState(
-            rng=new_rng,
-            total_samples=est_state.total_samples + W.shape[0]
-        ), jac, x
-    
-    # the forwards step
-    def rollout(self, rng, traj, gains, us):
-        rng = self.rng_key if rng is None else rng
-        state_0 = jax.tree_util.tree_map(lambda x: x[0], traj)
-
-        # do a bunch of rollouts
-        W = self.sigma*jax.random.choice(rng, jnp.array([-1,1]), (self.samples,) + us.shape)
-        # rollout all of the perturbed trajectories
-        #rollout = partial(jinx.envs.rollout_input_gains, self.model_fn, state_0, traj.x, gains)
-        rollout = partial(jinx.envs.rollout_input, self.model_fn, state_0)
-        # Get the first state
-        trajs = jax.vmap(rollout)(us + W)
-        # subtract off x_bar
-        x_diff = trajs.x - traj.x
-        # def print_func(arg, _):
-        #     us, x_diff = arg
-        #     print('---- Computing Traj ------')
-        #     print(x_diff.shape)
-        #     print('us', us)
-        #     print('x_diff', x_diff[0])
-        #     if jnp.any(jnp.isnan(x_diff)):
-        #         sys.exit(0)
-        # jax.experimental.host_callback.id_tap(print_func, (us, x_diff))
-        return W, x_diff
-    
-    def calculate_jacobians(self, W, x_diff):
-        W = jnp.expand_dims(W, -2)
-        W = jnp.tile(W, [1, 1, x_diff.shape[1], 1])
-        # W: (samples, traj_dim-1, traj_dim, u_dim)
-        x_diff = jnp.expand_dims(x_diff, -3)
-        # x_diff: (samples, 1,  traj_dim, x_dim)
-
-        W = jnp.expand_dims(W, -2)
-        x_diff = jnp.expand_dims(x_diff, -1)
-        # W: (samples, traj_dim - 1, traj_dim, 1, u_dim)
-        # x_diff: (samples, 1, traj_dim, x_dim, 1)
-        jac = jnp.mean(x_diff @ W, axis=0)/(self.sigma*self.sigma)
-        # jac: (traj_dim-1, traj_dim, x_dim, u_dim)
-        # (u,v) entry contains the jacobian from time u to state v
-
-        # we need to zero out at and below the diagonal
-        # (there should be no correlation, but just in case)
-        tri = jax.numpy.tri(jac.shape[0], jac.shape[1], dtype=bool)
-        tri = jnp.expand_dims(jnp.expand_dims(tri, -1),-1)
-        tri = jnp.tile(tri, [1,1,jac.shape[2], jac.shape[3]])
-
-        # fill lower-triangle with zeros
-        jac = jnp.where(tri, jnp.zeros_like(jac), jac)
-        # def print_func(arg, _):
-        #     jac, x_diff = arg
-        #     print('---- Computing Jacobian ------')
-        #     print(x_diff.shape)
-        #     print('x_diff', x_diff[0])
-        #     if jnp.any(jnp.isnan(jac)):
-        #         sys.exit(0)
-        # jax.experimental.host_callback.id_tap(print_func, (jac, x_diff))
-        return jac
-    
-    # the backwards step
-    def bkw(self, jac, g):
-        jac_T = jnp.transpose(jac, (0,1,3,2))
-        # (traj_dim, traj_dim, u_dim, x_dim) @ (1, traj_dim, x_dim, 1)
-        grad = jac_T @ jnp.expand_dims(jnp.expand_dims(g, -1),0)
-        # grad: (traj_dim, traj_dim, u_dim, 1)
-        # sum over columns to combine all transitions for a given time
-        grad = jnp.sum(jnp.squeeze(grad,-1), 1)
-        return grad

@@ -36,9 +36,6 @@ class AimLab(Lab):
         second = rw.get_random_word()
         return AimExperiment(repo=self.repo, exp=name,
                             name=f'{first}-{second}')
-    
-    def get(self, hash, resume):
-        return AimExperiment(repo=self.repo, hash=hash)
 
 class AimExperiment(Experiment):
     def __init__(self, run=None,
@@ -51,7 +48,8 @@ class AimExperiment(Experiment):
             system_tracking_interval=None,
             experiment=exp
         ) if run is None else run
-        self.run.name = name
+        if name is not None:
+            self.run.name = name
         self.root = root
         self.prefix = prefix
     
@@ -65,19 +63,13 @@ class AimExperiment(Experiment):
     
     # set experiment parameter
     def __delitem__(self, val):
-        del self.run[val]
+        del self.run[f'{self.prefix}{val}']
 
     def __getitem__(self, val):
-        return self.run[val]
+        return self.run[f'{self.prefix}{val}']
 
     def __setitem__(self, name, val):
-        self.run[name] = val
-    
-    def set_params(self, val):
-        if dataclasses.is_dataclass(val):
-            val = dataclasses.asdict(val)
-        for k,v in val.items():
-            self[k] = v
+        self.run[f'{self.prefix}{name}'] = val
     
     def remove_tag(self, tag):
         self.run.remove_tag(tag)
@@ -85,10 +77,10 @@ class AimExperiment(Experiment):
     def add_tag(self, tag):
         self.run.add_tag(tag)
 
-    def sub_experiment(self, **context):
+    def sub_experiment(self, name, **context):
         return AimExperiment(root=False,
-                exp=self.run.experiment,
-                name=self.run.name)
+                run=self.run,
+                prefix=f'{name}/')
 
     def channel(self, name, type):
         if type is Scalar:
