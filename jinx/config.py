@@ -29,7 +29,7 @@ def from_args(dataclass, args, prefix=''):
         if dataclasses.is_dataclass(field.type):
             params[field.name] = from_args(field.type, args, f'{field.name}.')
         else:
-            params[field.name] = getattr(args, field.name)
+            params[field.name] = getattr(args, prefix + field.name)
     return dataclass(**params)
 
 # Will return a version of the type

@@ -1,6 +1,7 @@
 import os
 import pickle
 from dataclasses import dataclass
+from loguru import logger
 
 @dataclass
 class EmptyConfig:
@@ -75,10 +76,11 @@ def launch_from(activities, analyses, args, root_dir, lab=None):
         activity, config_class = act_map[args.activity]
         config = config_class.from_args(args)
 
-        from jinx.experiment.aim import AimLab
-        lab = AimLab(root_dir)
-        exp = lab.create(args.activity)
-        result = activity.run(config, exp)
+        from jinx.experiment.wandb import WandbRepo
+        repo = WandbRepo(entity="dpfrom")
+        exp = repo.experiment(args.activity)
+        run = exp.create_run()
+        result = activity.run(config, run)
         if result is not None:
             if not isinstance(result, list):
                 result = [result]
@@ -86,6 +88,7 @@ def launch_from(activities, analyses, args, root_dir, lab=None):
             path = os.path.join(root_dir, 'results', f'{args.activity}.pkl')
             with open(path, 'wb') as file:
                 pickle.dump(result, file)
+        logger.info(f"Done with {args.activity}")
     elif args.command == 'anl':
         if args.analysis not in anl_map:
             logger.error('Unrecognized analysis')

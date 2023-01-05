@@ -22,9 +22,12 @@ class MPCState(NamedTuple):
 
 # Internally during optimization
 class OptimStep(NamedTuple):
+    iteration: jnp.array
     us: jnp.array
     barrier_eta: jnp.array
     gains: jnp.array
+
+    grad_norm: jnp.array
 
     cost: jnp.array
     est_state: Any
@@ -38,7 +41,7 @@ class MPC:
                 cost_fn, model_fn,
                 horizon_length,
                 opt_transform,
-                iterations=1000,
+                iterations=10000,
                 # minimize to epsilon-stationary point
                 eps=0.0001,
 
@@ -118,6 +121,17 @@ class MPC:
         _, gains_est = jax.lax.scan(gains_recurse, Q, (As_est, Bs_est), reverse=True)
         gains_est = -gains_est
         new_gains = prev_gains.at[self.burn_in:].set(gains_est)
+
+        def print_fun(args, _):
+            new_gains, As_est, Bs_est = args
+            print('synth gains:', new_gains[-1])
+            print('open-loop A:', As_est[-1])
+            print('open-loop B:', Bs_est[-1])
+            print('synth closed-loop A:', As_est[-1] + Bs_est[-1] @ new_gains[-1])
+        # jax.experimental.host_callback.id_tap(print_fun, (new_gains, As_est, Bs_est))
+
+        #new_gains = prev_gains
+
         return new_gains
 
     
@@ -156,7 +170,8 @@ class MPC:
         gains = prev_step.gains
         ref_states = jinx.envs.rollout_input(self.model_fn, state_0, prev_step.us)
 
-        loss = partial(self._loss_fn, prev_step.est_state, state_0, ref_states, gains, prev_step.barrier_eta)
+        loss = partial(self._loss_fn, prev_step.est_state, state_0,
+                        ref_states, gains, prev_step.barrier_eta)
         grad, (est_state, jac, cost) = jax.grad(loss, has_aux=True)(
             prev_step.us
         )
@@ -168,9 +183,14 @@ class MPC:
             states_new = jinx.envs.rollout_input_gains(self.model_fn, state_0, ref_states.x, gains, us)
             # adjust the us to include the gain-adjustments
             mod = gains @ jnp.expand_dims(states_new.x[:-1] - ref_states.x[:-1], -1)
-            us = us + jnp.squeeze(mod, -2)
+            us = us + jnp.squeeze(mod, -1)
             # compute new gains around the adjusted trajectory
             gains = self._compute_gains(jac, gains)
+        
+        def print_fun(args, _):
+            grad, done = args
+            print('gradient:', jnp.linalg.norm(grad, 'fro'), done, self.eps)
+        # jax.experimental.host_callback.id_tap(print_fun, (grad, prev_step.done))
 
         new_step = OptimStep(
             us=us,
@@ -179,7 +199,10 @@ class MPC:
             gains=gains,
             est_state=est_state,
             opt_state=opt_state,
-            done=jnp.linalg.norm(grad) < self.eps
+
+            grad_norm=jnp.linalg.norm(grad),
+            done=jnp.linalg.norm(grad) < self.eps,
+            iteration=prev_step.iteration + 1
         )
         return new_step
     
@@ -239,6 +262,9 @@ class MPC:
             cost=init_cost,
             est_state=est_state,
             opt_state=self.opt_transform.init(init_us),
+
+            grad_norm=jnp.array(0.),
+            iteration=0,
             done=False
         )
         scan_fn = partial(self._opt_iteration, state_0)
