@@ -22,11 +22,22 @@ class WandbExperiment(Experiment):
         return WandbRun(run)
 
 class WandbRun(Run):
-    def __init__(self, run):
+    def __init__(self, run, prefix=''):
         self.run = run
+        self.prefix = prefix
+
+    def sub_run(self, prefix):
+        if self.prefix != '':
+            return WandbRun(self.run, f'{self.prefix}.{prefix}')
+        else:
+            return WandbRun(self.run, f'{prefix}')
     
     def _log(self, data):
-        wandb.log(remap(data, {
-            Figure: lambda f: f.fig,
-            Video: lambda v: wandb.Video(np.array(v.data), fps=v.fps)
-        }))
+        data = remap(data, {
+                Figure: lambda f: f.fig,
+                Video: lambda v: wandb.Video(np.array(v.data), fps=v.fps)
+            })
+        if self.prefix != '':
+            self.run.log({self.prefix: data})
+        else:
+            self.run.log(data)

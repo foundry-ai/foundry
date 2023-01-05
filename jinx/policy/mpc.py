@@ -189,7 +189,6 @@ class MPC:
         
         def print_fun(args, _):
             grad, done = args
-            print('gradient:', jnp.linalg.norm(grad, 'fro'), done, self.eps)
         # jax.experimental.host_callback.id_tap(print_fun, (grad, prev_step.done))
 
         new_step = OptimStep(

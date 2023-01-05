@@ -37,7 +37,8 @@ class PendulumEnvironment(Environment):
         diff = xs - jnp.array([jnp.pi, 0])
         x_cost = jnp.sum(diff**2)
         u_cost = jnp.sum(us**2)
-        return x_cost + 1*u_cost
+        x_f_cost = jnp.sum(diff[-1]**2)
+        return x_cost + 1*u_cost + 2*x_f_cost
     
     def render(self, state, width=256, height=256):
         return render_pendulum(width, height, state)
