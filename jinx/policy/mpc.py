@@ -7,8 +7,6 @@ import jax.tree_util as tree_util
 import jinx.envs
 import jinx.util
 
-from jinx.stats import Reporter
-
 from functools import partial
 from typing import NamedTuple, Any
 
@@ -150,6 +148,10 @@ class MPC:
             xs = states.x
             jac = jax.jacrev(lambda us: rollout(us).x)(us)
             jac = jnp.transpose(jac, (2, 0, 1, 3))
+        
+        # we need to modify the us to include the gains
+        mod = ref_gains @ jnp.expand_dims(xs[:-1] - ref_states.x[:-1], -1)
+        us = us + jnp.squeeze(mod, -1)
 
         cost = self.cost_fn(xs, us)
 
@@ -187,10 +189,6 @@ class MPC:
             # compute new gains around the adjusted trajectory
             gains = self._compute_gains(jac, gains)
         
-        def print_fun(args, _):
-            grad, done = args
-        # jax.experimental.host_callback.id_tap(print_fun, (grad, prev_step.done))
-
         new_step = OptimStep(
             us=us,
             barrier_eta=prev_step.barrier_eta,

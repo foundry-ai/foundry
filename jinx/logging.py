@@ -1,10 +1,19 @@
-from contextlib import contextmanager
-from loguru import logger
-from tqdm import tqdm
-import sys
+from loguru import logger as uru_logger
 
-@contextmanager
-def logging_redirect_tqdm():
-    logger.remove()
-    logger.add(lambda msg: tqdm.write(msg, end=""), colorize=True)
-    yield
+# A logger which can also be used
+# inside of jax functions using id_tap
+# callbacks. This wraps the loguru logger
+class JaxLogger:
+    def __init__(self, logger):
+        self.logger = logger
+    
+    def info(self, msg, *args, **kwargs):
+        pass
+
+    def warn(self, msg, *args, **kwargs):
+        pass
+
+    def error(self, msg, *args, **kwargs):
+        pass
+
+logger = JaxLogger(uru_logger)

@@ -1,13 +1,11 @@
-import optax
-
 import sys
+import optax
 import jax
 import jax.numpy as jnp
 import jax.tree_util as tree_util
+
 import jinx.envs
 import jinx.util
-
-from jinx.stats import Reporter
 
 from functools import partial
 from typing import NamedTuple, Any
