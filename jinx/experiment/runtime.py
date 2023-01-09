@@ -1,7 +1,7 @@
 import os
 import pickle
 from dataclasses import dataclass
-from loguru import logger
+from jinx.logging import logger
 
 @dataclass
 class EmptyConfig:
@@ -35,7 +35,7 @@ def activity(name, config_dataclass=None):
 
 def launch_from(activities, analyses, args, root_dir, lab=None):
     import argparse
-    from jinx.config import parsable
+    from jinx.experiment.config import parsable
     parser = argparse.ArgumentParser(
         prog='Experiment Launcher',
     )
@@ -50,6 +50,7 @@ def launch_from(activities, analyses, args, root_dir, lab=None):
     act_map = {}
     for a in activities:
         exp_parser = exp_subparsers.add_parser(a.name)
+        exp_parser.add_argument("--repo", default='wandb')
         config_class = parsable(a.config_dataclass)
         config_class.add_to_parser(exp_parser)
         act_map[a.name] = (a, config_class)
@@ -76,8 +77,8 @@ def launch_from(activities, analyses, args, root_dir, lab=None):
         activity, config_class = act_map[args.activity]
         config = config_class.from_args(args)
 
-        from jinx.experiment.wandb import WandbRepo
-        repo = WandbRepo(entity="dpfrom")
+        from jinx.experiment import Repo
+        repo = Repo.from_url(args.repo)
         exp = repo.experiment(args.activity)
         run = exp.create_run()
         result = activity.run(config, run)

@@ -13,8 +13,8 @@ def key_or_seed(key_or_seed):
         key_or_seed = jax.random.PRNGKey(key_or_seed)
 
 class PRNGSequence:
-    def __init__(self, key_or_seed):
-        self._key = jinx.random.key_or_seed(key_or_seed)
+    def __init__(self, key_or_val):
+        self._key = key_or_seed(key_or_val)
     
     def __next__(self):
         k, n = jax.random.split(self._key)

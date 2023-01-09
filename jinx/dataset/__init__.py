@@ -1,10 +1,12 @@
+import math
 import jax
 import jax.tree_util as tree_util
 import jax.numpy as jnp
 
 from jax.tree_util import register_pytree_node_class
 from functools import partial as partial
-from loguru import logger
+
+from jinx.logging import logger, pbar
 
 INFINITE = float("inf")
 
@@ -14,13 +16,8 @@ class Dataset:
     def start(self):
         raise NotImplementedError(f"{self.__class__.__name__} must implement start")
 
-    @property
     def remaining(self, iterator):
         raise NotImplementedError(f"{self.__class__.__name__} must implement remaining")
-
-    # Whether an iterator from this dataset has a next
-    def is_end(self, iterator):
-        return self.remaining(iterator) <= 0
 
     # Will return the next iterator.
     # If the iterator is at the end, the function does not need to return
@@ -34,7 +31,17 @@ class Dataset:
     def get(self, iterator):
         raise NotImplementedError(f"{self.__class__.__name__} must implement get")
 
-    # Do not override the __iter__
+
+    # NOT NECESSARY TO OVERRIDE
+
+    # Whether an iterator from this dataset has a next
+    def is_end(self, iterator):
+        return self.remaining(iterator) <= 0
+
+    @property
+    def length(self):
+        return self.remaining(self.start)
+    
     def __iter__(self):
         it = self.start
         while not self.is_end(it):
@@ -42,15 +49,50 @@ class Dataset:
             yield o
             it = self.next(it)
 
+    def __getitem__(self, i):
+        if not isinstance(i, slice):
+            raise ValueError("Can only slice datasets")
+        return self.slice(i.start, i.stop, i.step)
+
     # Transformations
+    def slice(self, start, stop, step=1):
+        return SlicedDataset(self, start, stop, step)
+
     def batch(self, n):
-        return BatchedDataset(self, n)
+        return BatchDataset(self, n)
+
+    # Flatten and batch are opposites (modulo rounding due to n)
+    def flatten(self):
+        return FlatDataset(self)
 
     def map(self, func):
         return MappedDataset(self, func)
 
-    def shuffle(self, key):
-        return self
+    # Will read the whole dataset into a PyTreeDataset
+    def read(self):
+        logger.info("dataset", "Constructing in-memory dataset...")
+        start = self.start
+        if not math.isfinite(self.remaining(start)):
+            raise ValueError("Cannot read in an infinite dataset")
+        
+        # Scan out the iterators
+        # def scan_fn(iter, _):
+        #     return self.next(iter), iter
+        # _, iters = jax.lax.scan(scan_fn, start, None, length=self.remaining(start), unroll=10)
+
+        # def fetch_fn(iter):
+        #     data = self.get(iter)
+        #     return data
+        # # in parallel fetch the iterators...
+        # data = jax.vmap(fetch_fn)(iters)
+        with pbar('dataset', total=self.remaining(start)) as pb:
+            def scan_fn(iter, _):
+                pb.inc()
+                return self.next(iter), self.get(iter)
+            _, data = jax.lax.scan(scan_fn, start, None, length=self.remaining(start), unroll=10)
+
+        logger.info("dataset", f"Dataset construction complete...")
+        return PyTreeDataset(data)
 
     # A shortcut for jax scanning through a dataset
     def fold(self, func, base, iter_limit=None):
@@ -77,11 +119,14 @@ class Dataset:
 
 @register_pytree_node_class
 class PyTreeDataset(Dataset):
-    def __init__(self, data):
+    def __init__(self, data, _num=None):
         self._data = data
+        #if _num is None:
         nums_tree = tree_util.tree_map(lambda x: jnp.shape(x)[0], self._data)
         all_nums = tree_util.tree_flatten(nums_tree)[0]
         self._num = all_nums[0]
+        # else:
+        #     self._num = _num
     
     @property
     def start(self):
@@ -100,68 +145,108 @@ class PyTreeDataset(Dataset):
     def get(self, iter):
         return tree_util.tree_map(lambda x: x[iter], self._data)
 
-    # override transformations
-    # to happen in-place
+    # override slice/batch/flatten transformations
+    # to just be reshapes for efficiency
+    def slice(self, start, stop, step=1):
+        data = jax.tree_util.tree_map(lambda x: x[start:stop:step])
+        return PyTreeDataset(data)
+
     def batch(self, n):
         def reshape(x):
-            # chop off remainder
-            x = x[:-(x.shape[0] % n)]
-            return x.reshape((-1, n) + x.shape[1:])
+            # chop off remainder if we have more than 1 batch
+            # worth of data
+            if x.shape[0] > n:
+                x = x[:-(x.shape[0] % n)]
+                bs = n
+            else:
+                bs = x.shape[0]
+            return x.reshape((-1, bs) + x.shape[1:])
         data = jax.tree_util.tree_map(reshape, self._data)
         return PyTreeDataset(data)
     
     def flatten(self):
         def reshape(x):
-            # chop off remainder
-            x = x[:-(x.shape[0] % n)]
-            return x.reshape((-1, n) + x.shape[1:])
+            return x.reshape((-1,) + x.shape[2:])
         data = jax.tree_util.tree_map(reshape, self._data)
         return PyTreeDataset(data)
 
-    def map(self, func):
-        new_data = jax.vmap(func)(self._data)
-        return PyTreeDataset(new_data)
+    # read just returns self
+    def read(self):
+        return self
+
+    # This dataset type is shuffleable
 
     def shuffle(self, key):
-        idx = jax.random.permutation(key, self._num)
-        data = jax.vmap(lambda x: x[idx], self._data)
+        idxs = jax.random.permutation(key, jnp.arange(self._num))
+        data = jax.tree_util.tree_map(lambda x: x[idxs,...], self._data)
         return PyTreeDataset(data)
 
     # jax tree methods
     def tree_flatten(self):
-        return (self._data,), None
+        return (self._data, self._num), None
 
     @classmethod
     def tree_unflatten(cls, aux_data, children):
         return cls(*children)
 
-# @register_pytree_node_class
-# class MappedDataset(Dataset):
-#     def __init__(self, dataset, fun):
-#         self._dataset = dataset
-#         self._fun = fun
+@register_pytree_node_class
+class MappedDataset(Dataset):
+    def __init__(self, dataset, fun):
+        self._dataset = dataset
+        self._fun = fun
 
-#     @property
-#     def start(self):
-#         return self._dataset.start
+    @property
+    def start(self):
+        return self._dataset.start
     
-#     def is_end(self, iterator):
-#         return self._dataset.is_end(iterator)
+    def remaining(self, iterator):
+        return self._dataset.remaining(iterator)
 
-#     @property
-#     def length(self):
-#         return self._dataset.length
+    def next(self, iterator):
+        return self._dataset.next(iterator)
 
-#     def next(self, iterator):
-#         return self._dataset.next(iterator)
+    def get(self, iterator):
+        it = self._dataset.get(iterator)
+        return self._fun(it)
 
-#     def get(self, iterator):
-#         it = self._dataset.get(iterator)
-#         return self._fun(it)
+    def tree_flatten(self):
+        return (self._dataset,), self._fun
 
-#     def tree_flatten(self):
-#         return (self._dataset,), self._fun
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        return cls(*children, aux_data)
 
-#     @classmethod
-#     def tree_unflatten(cls, aux_data, children):
-#         return cls(*children, aux_data)
+class BatchDataset(Dataset):
+    pass
+
+class FlatDataset(Dataset):
+    pass
+
+class SlicedDataset(Dataset):
+    def __init__(self, dataset, start, stop, step):
+        self._dataset = dataset
+        self._start = 0
+        self._stop = stop
+        self._step = 1
+
+        if self._stop < 0:
+            self._stop = dataset.length - self._stop
+        if self._start < 0:
+            self._start = dataset.length - self._start
+    
+    @property
+    def start(self):
+        return self._dataset.start, 0
+
+    def next(self, iter):
+        return self._dataset.next(iter[0]), iter[1] + 1
+
+    def remaining(self, iter):
+        r = self._dataset.remaining(iter[0])
+        if self._stop is not None:
+            return min(self._stop - iter[1], r)
+        else:
+            return r
+
+    def get(self, iter):
+        return self._dataset.get(iter[0])

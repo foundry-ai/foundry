@@ -9,23 +9,26 @@ from jinx.util import scan_unrolled, tree_append
 
 # Generic environment
 class Environment:
-    @property
-    def action_size(self):
-        return None
+    def sample_action(self, rng_key):
+        raise NotImplementedError("Must impelement sample_action()")
 
     def reset(self, key):
-        pass
+        raise NotImplementedError("Must impelement reset()")
 
     def step(self, state, action):
-        pass
+        raise NotImplementedError("Must impelement step()")
     
-    def cost(self, xs, us):
-        pass
+    # The following two are optional
+    def cost(self, states, actions):
+        raise NotImplementedError("Must impelement cost()")
     
 # Helper function to do rollouts with
 def rollout_policy(model_fn, state0, length, policy,
                     policy_state=None,
                     ret_policy_state=False):
+    if hasattr(policy, 'init_state'):
+        policy_state = policy.init_state
+
     def scan_fn(comb_state, _):
         env_state, policy_state = comb_state
         if policy_state is not None:
@@ -88,19 +91,4 @@ def register_lazy(name, module_name):
 register_lazy('brax', '.brax')
 register_lazy('gym', '.gym')
 register_lazy('pendulum', '.pendulum')
-
-class EnvironmentDataset(MappedDataset):
-    def __init__(self, key, env, policy, observations, trajectory_length):
-        self._env = env
-        self._policy = policy
-        self._observations = observations
-
-        dataset = PRNGDataset(key)
-        super(dataset, self._gen_trajectory)
-
-    def _gen_trajectory(self, key):
-        def do_step():
-            self._policy(self._env, state)
-            pass
-        init_state = self.env.reset(key)
-        init_policy_state = self._policy(self._env, state, None)
+register_lazy('linear', '.linear')

@@ -1,5 +1,5 @@
 import numpy as np
-from loguru import logger
+from jinx.logging import logger
 
 import jax.numpy as jnp
 
@@ -19,10 +19,18 @@ class Repo:
     def experiment(self, name):
         pass
 
+    @staticmethod
+    def from_url(repo_url):
+        if repo_url == 'dummy':
+            from jinx.experiment.dummy import DummyRepo
+            return DummyRepo()
+        elif repo_url == 'wandb':
+            from jinx.experiment.wandb import WandbRepo
+            return WandbRepo('dpfrom')
+
 class Experiment:
     def create_run(self, name=None):
         pass
-
 
 def remap(obj, type_mapping):
     if isinstance(obj, dict):

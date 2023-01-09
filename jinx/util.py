@@ -1,17 +1,21 @@
 from contextlib import contextmanager
-from loguru import logger
 import time
 import jax
+from jax import custom_vjp
 import jax.numpy as jnp
 
-@contextmanager
-def timed(name):
-    start = time.time()
-    yield
-    end = time.time()
-    elapsed = end - start
-    logger.info(f"{name} took {elapsed} seconds")
+# returns a but disables backprop of gradients through the return value
+@custom_vjp
+def zero_grad(a):
+    return a
 
+def zero_grad_fwd(a):
+    return a, None
+
+def zero_grad_bkw(res, g):
+    return None
+
+zero_grad.defvjp(zero_grad_fwd, zero_grad_bkw)
 
 # Scan with the first function call unrolled
 # so that it can do special things (like initialize state)
@@ -44,3 +48,8 @@ def tree_prepend(a, b):
         lambda a,b: jnp.concatenate((jnp.expand_dims(a,0), b)) if a is not None and b is not None else None,
         a,b
     )
+
+def ravel_dist(a,b, ord=None):
+    x, _ = jax.flatten_util.ravel_pytree(a)
+    y, _ = jax.flatten_util.ravel_pytree(b)
+    return jnp.linalg.norm(x-y, ord=ord)

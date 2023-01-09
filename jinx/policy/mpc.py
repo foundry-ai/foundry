@@ -1,6 +1,6 @@
 import optax
+import traceback
 
-import sys
 import jax
 import jax.numpy as jnp
 import jax.tree_util as tree_util
@@ -10,7 +10,130 @@ import jinx.util
 from functools import partial
 from typing import NamedTuple, Any
 
-class MPCState(NamedTuple):
+# A RHC barrier-based MPC controller
+class BarrierMPC:
+    def __init__(self, u_sample,
+                cost_fn, model_fn,
+                horizon_length,
+                solver,
+                barrier_sdf=None,
+                barrier_eps=0.01,
+                barrier_eta_start=None):
+        self.u_sample = u_sample
+
+        self.cost_fn = cost_fn
+        self.model_fn = model_fn
+        self.horizon_length = horizon_length
+
+        self.solver = solver(self._loss_fn)
+        self.feasibility_solver = solver(self._feasiblility_loss)
+
+        self.barrier_sdf = barrier_sdf
+        self.barrier_eps = barrier_eps
+        self.barrier_eta_start = barrier_eta_start
+
+    def _feasiblility_loss(self, us, x0):
+        xs = jinx.envs.rollout_input(
+                self.model_fn, x0, us
+            )
+        dist = self.barrier_sdf(xs, us)
+        return jnp.maximum(jnp.max(dist), -1)
+
+    def _loss_fn(self, us, x0, t):
+        xs = jinx.envs.rollout_input(
+                self.model_fn, x0, us
+            )
+        cost = self.cost_fn(xs, us)
+
+        if self.barrier_sdf is not None:
+            sdfs = self.barrier_sdf(xs, us)
+
+            # if we violate the constraints, ignore the cost
+            # and just take steps to find a feasible point
+            u_xs, fmt_xs = jax.flatten_util.ravel_pytree(xs)
+            u_us, fmt_us = jax.flatten_util.ravel_pytree(us)
+
+            zero_grad = jax.grad(lambda xs, us: -jnp.sum(jnp.log(-self.barrier_sdf(fmt_xs(xs), fmt_us(us)))),
+                                argnums=(0,1))(jnp.zeros_like(u_xs), jnp.zeros_like(u_us))
+            # print(zero_grad[0].shape, zero_grad[1].shape)
+            barrier_costs = -jnp.log(-sdfs) + zero_grad[0] @ u_xs + zero_grad[1] @ u_us
+
+            loss = t*cost + jnp.mean(barrier_costs)
+        else:
+            loss = cost
+        return loss
+
+    # Will solve the central path
+    def _opt_iteration(self, x0, opt_state):
+        t, us = opt_state
+
+        t = 8*t
+        res = self.solver.run(us, x0=x0, t=t)
+        us = res.params
+
+        return t, us
+    
+    # Will find a feasible point
+    def _feasible_point(self, x0, init_us):
+        res = self.feasibility_solver.run(init_us, x0=x0)
+        us = res.params
+        xs = jinx.envs.rollout_input(self.model_fn, x0, us)
+        # if we succeeded at finding a feasible point
+        succ = jnp.max(self.barrier_sdf(xs, us)) < 0
+        return us, succ
+    
+    @property
+    def init_state(self):
+        u_flat, unflatten = jax.flatten_util.ravel_pytree(self.u_sample)
+        # repeat along a new axis
+        u_flat = jnp.repeat(u_flat[jnp.newaxis, :], self.horizon_length, axis=0)
+        # unflatten
+        us = jax.vmap(unflatten)(u_flat)
+        return us
+
+    # A modified version of the JaxOPT base IterativeSolver
+    # which propagates the estimator state
+    def _solve(self, x0, init_us):
+        # if we have a barrier function first find a feasible state
+        if self.barrier_sdf:
+            init_us, succ = self._feasible_point(x0, init_us)
+            # def solve_interior():
+            #     t, us = jax.lax.while_loop(
+            #         lambda x: 1/x[0] < self.barrier_eps,
+            #         partial(self._opt_iteration, x0),
+            #         (0, init_us)
+            #     )
+            #     # we need to zero the gradients and resolve a final time
+            #     us = jinx.util.zero_grad(us)
+            #     _, us = self._opt_iteration(x0, (t,us))
+            #     return us
+            # return jax.lax.cond(
+            #     succ, solve_interior, lambda: init_us
+            # )
+            return self._opt_iteration(x0, (1/self.barrier_eps, init_us))[1]
+        else:
+            return self._opt_iteration(x0, (1, init_us))[1]
+
+        # if we are successful at finding an initial
+        # interior point, 
+
+    def __call__(self, state, policy_state=None):
+        if policy_state is None:
+            us = self.init_state
+        else:
+            us = policy_state
+
+        us = us.at[:-1].set(us[1:])
+        # return the remainder as the solved_us
+        # as the policy state, so we don't need
+        # to re-solve everything for the next iteration
+        us = self._solve(state, us)
+        if policy_state is None:
+            return us[0]
+        else:
+            return us[0], us
+
+class FbMPCState(NamedTuple):
     T: jnp.array # current timestep
     us: jnp.array
     gains: jnp.array
@@ -19,10 +142,9 @@ class MPCState(NamedTuple):
     est_state: Any
 
 # Internally during optimization
-class OptimStep(NamedTuple):
+class FbOptimStep(NamedTuple):
     iteration: jnp.array
     us: jnp.array
-    barrier_eta: jnp.array
     gains: jnp.array
 
     grad_norm: jnp.array
@@ -33,8 +155,8 @@ class OptimStep(NamedTuple):
 
     done: bool
 
-# A barrier-based MPC controller
-class MPC:
+# An MPC with feedback gains, but no barrier functions
+class FeedbackMPC:
     def __init__(self, u_dim,
                 cost_fn, model_fn,
                 horizon_length,
@@ -42,15 +164,6 @@ class MPC:
                 iterations=10000,
                 # minimize to epsilon-stationary point
                 eps=0.0001,
-
-                # barrier signed distance function
-                # can return multiple distance functions
-                # for multiple barriers
-                barrier_sdf=None,
-                # relax barrier_eta until eta < epsilon
-                barrier_eps=0.0001,
-                barrier_eta_start=1.,
-
                 use_gains=False,
                 burn_in=10,
 
@@ -66,10 +179,6 @@ class MPC:
         self.iterations = iterations
         self.eps = eps
 
-        self.barrier_sdf = barrier_sdf
-        self.barrier_eps = barrier_eps
-        self.barrier_eta_start = barrier_eta_start
-
         self.use_gains = use_gains
         self.burn_in = burn_in
 
@@ -84,7 +193,7 @@ class MPC:
         est_state = self.grad_estimator.init() if self.grad_estimator is not None else None
 
         final_step, history = self._solve(est_state, state_0, gains, us)
-        return MPCState(
+        return FbMPCState(
             T=0,
             us=final_step.us,
             gains=gains,
@@ -134,8 +243,7 @@ class MPC:
 
     
     def _loss_fn(self, est_state, state_0,
-                ref_states, ref_gains, 
-                barrier_eta, us):
+                ref_states, ref_gains, us):
         rollout = partial(jinx.envs.rollout_input_gains,
             self.model_fn, state_0, 
             ref_states.x, ref_gains)
@@ -155,18 +263,7 @@ class MPC:
 
         cost = self.cost_fn(xs, us)
 
-        if self.barrier_sdf is not None:
-            # if we violate the constraints, ignore the cost
-            # and just take steps to find a feasible point
-            sdfs = self.barrier_sdf(xs, us)
-            zero_grad = jnp.grad(lambda xs, us: -jnp.log(-self.barrier_sdf(xs, us)))(jnp.zeros_like(xs), jnp.zeros_like(us))
-            barrier_costs = -jnp.log(-sdfs) + zero_grad[0] @ xs + zeros_grad[1] @ us
-
-            loss = cost + barrier_eta*jnp.mean(barrier_costs)
-        else:
-            loss = cost
-
-        return loss, (est_state, jac, cost)
+        return cost, (est_state, jac, cost)
 
     def _inner_step(self, state_0, prev_step):
         gains = prev_step.gains
@@ -205,50 +302,16 @@ class MPC:
     
     # body_fun for the solver interation
     def _opt_iteration(self, state_0, prev_step, _):
-        if self.barrier_sdf:
-            def do_barrier_step():
-                # if we have hit an epsilon-stationary point
-                # last iteration,
-                # step on the central path
-                barrier_eta = jax.lax.cond(prev_step.done,
-                    lambda: prev_step.barrier_eta/2,
-                    lambda: prev_step.barrier_eta 
-                )
-                barrier_eta = jnp.max(barrier_eta, self.barrier_eps)
-                prev_step.barrier_eta = barrier_eta
-                prev_step.done = False
-                return self._inner_step(state_0, prev_step)
-
-            new_step = jax.lax.cond(
-                prev_step.done and prev_step.barrier_eta <= self.barrier_eps,
-                lambda: prev_step,
-                do_barrier_step
-            )
-        else:
-            new_step = jax.lax.cond(
-                prev_step.done,
-                lambda: prev_step, 
-                lambda: self._inner_step(state_0, prev_step))
+        new_step = jax.lax.cond(
+            prev_step.done,
+            lambda: prev_step, 
+            lambda: self._inner_step(state_0, prev_step))
         return new_step, prev_step
-    
-    def _feasible_point(self, est_state, state_0, gains, init_us):
-        def loss_fn(est_state, ref_traj, gains, us):
-            pass
-        
-        def step_fn(state, _):
-            est_state, gains, us = state
-            ref_states = jinx.envs.rollout_input(self.model_fn, state_0, us)
-            loss = partial(loss_fn, est_state, ref_states, state_0, gains)
-            return (est_state, gains, us)
-    
 
     # A modified version of the JaxOPT base IterativeSolver
     # which propagates the estimator state
     def _solve(self, est_state, state_0, gains, init_us):
         # if we have a barrier function first find a feasible state
-        if self.barrier_sdf:
-            est_state, gains, init_us = self._feasible_point(est_state, state_0, gains, init_us)
-
         ref_states = jinx.envs.rollout_input(self.model_fn, state_0, init_us)
         _, (_, _, init_cost) = self._loss_fn(est_state, state_0, ref_states, gains, 1, init_us)
 
@@ -281,7 +344,7 @@ class MPC:
             # as the policy state, so we don't need
             # to re-solve everything for the next iteration
             final_step, history = self._solve(est_state, state, gains, us)
-            return final_step.us[0], MPCState(
+            return final_step.us[0], FbMPCState(
                 T=policy_state.T + 1,
                 us=final_step.us,
                 gains=final_step.gains,
@@ -289,7 +352,7 @@ class MPC:
                 est_state=final_step.est_state
             )
         else:
-            return policy_state.us[policy_state.T], MPCState(
+            return policy_state.us[policy_state.T], FbMPCState(
                 T=policy_state.T + 1,
                 us=policy_state.us,
                 gains=policy_state.gains,

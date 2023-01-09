@@ -5,7 +5,7 @@ from jinx.experiment import Repo, Experiment, Run, remap, \
 
 import numpy as np
 
-class WandbRepo:
+class WandbRepo(Repo):
     def __init__(self, entity):
         self.entity = entity
     

@@ -9,32 +9,30 @@ from typing import NamedTuple
 from cairo import ImageSurface, Context, Format
 
 class State(NamedTuple):
-    x: jnp.ndarray
+    angle: jnp.ndarray
+    vel: jnp.ndarray
 
 
 class PendulumEnvironment(Environment):
     def __init__(self):
         pass
     
-    @property
-    def action_size(self):
-        return 1
+    def sample_action(self, rng_key):
+        return jax.random.uniform(rng_key, (1,), jnp.float32, -0.1, 0.1)
 
     def reset(self, key):
         # pick random position between +/- radians from right
-        pos = jax.random.uniform(key,shape=(1,), minval=-1,maxval=1)
+        angle = jax.random.uniform(key,shape=(1,), minval=-1,maxval=1)
         vel = jnp.zeros((1,))
-        x = jnp.concatenate((pos, vel))
-        return State(x)
+        return State(angle, vel)
 
     def step(self, state, action):
-        pos = state.x[0] + 0.05*state.x[1]
-        vel = state.x[1] - 0.05*jnp.sin(state.x[0]) + 0.05*action[0]
-        x = jnp.stack((pos, vel))
-        return State(x)
+        angle = state.angle + 0.05*state.vel
+        vel = state.vel - 0.05*jnp.sin(state.angle) + 0.05*action[0]
+        return State(angle, vel)
     
     def cost(self, xs, us):
-        diff = xs - jnp.array([jnp.pi, 0])
+        diff = jnp.stack((xs.angle, xs.vel)) - jnp.array([jnp.pi, 0])
         x_cost = jnp.sum(diff**2)
         u_cost = jnp.sum(us**2)
         x_f_cost = jnp.sum(diff[-1]**2)
