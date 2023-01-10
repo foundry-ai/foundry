@@ -76,20 +76,20 @@ class Dataset:
             raise ValueError("Cannot read in an infinite dataset")
         
         # Scan out the iterators
-        # def scan_fn(iter, _):
-        #     return self.next(iter), iter
-        # _, iters = jax.lax.scan(scan_fn, start, None, length=self.remaining(start), unroll=10)
+        def scan_fn(iter, _):
+            return self.next(iter), iter
+        _, iters = jax.lax.scan(scan_fn, start, None, length=self.remaining(start), unroll=10)
 
-        # def fetch_fn(iter):
-        #     data = self.get(iter)
-        #     return data
-        # # in parallel fetch the iterators...
-        # data = jax.vmap(fetch_fn)(iters)
-        with pbar('dataset', total=self.remaining(start)) as pb:
-            def scan_fn(iter, _):
-                pb.inc()
-                return self.next(iter), self.get(iter)
-            _, data = jax.lax.scan(scan_fn, start, None, length=self.remaining(start), unroll=10)
+        def fetch_fn(iter):
+            data = self.get(iter)
+            return data
+        # in parallel fetch the iterators...
+        data = jax.vmap(fetch_fn)(iters)
+        # with pbar('dataset', total=self.remaining(start)) as pb:
+        #     def scan_fn(iter, _):
+        #         pb.inc()
+        #         return self.next(iter), self.get(iter)
+        #     _, data = jax.lax.scan(scan_fn, start, None, length=self.remaining(start), unroll=10)
 
         logger.info("dataset", f"Dataset construction complete...")
         return PyTreeDataset(data)

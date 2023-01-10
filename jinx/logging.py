@@ -122,7 +122,7 @@ class ProgressBar:
         self.bar.set_description(f' {topic} | {s:6} ')
 
     def _inc(self, amt, stats):
-        postfix = ','.join([f'{k}: {v.item():8.3}' for (k,v) in stats.items()])
+        postfix = ', '.join([f'{k}: {v.item():8.3}' for (k,v) in stats.items()])
         self.bar.set_postfix_str(postfix)
         self.bar.update(amt)
 

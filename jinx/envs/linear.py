@@ -17,10 +17,12 @@ class LinearSystem(Environment):
         self.R = R
 
     def sample_action(self, rng):
-        return jnp.zeros((1,))
+        return jax.random.uniform(rng, (1,), jnp.float32, -1, 1)
+        #return jnp.zeros((1,))
     
     def reset(self, key):
         x = jax.random.uniform(key, (5,), jnp.float32, 8, 10)
+        #x = jnp.zeros((5,))
         return State(x)
     
     def step(self, state, action):
@@ -34,10 +36,12 @@ class LinearSystem(Environment):
         return jnp.sum(x_cost) + jnp.sum(u_cost)
     
     def barrier(self, xs, us):
-        constraints = [jnp.ravel(us - 10),
-                       jnp.ravel(10 - us),
+        constraints = [
+                        jnp.ravel(us - 10),
+                       jnp.ravel(-10 - us),
                        jnp.ravel(xs.x - 100),
-                       jnp.ravel(100 - xs.x)]
+                       jnp.ravel(-100 - xs.x)
+                       ]
         return jnp.concatenate(constraints)
     
     def render(self, state, width=256, height=256):

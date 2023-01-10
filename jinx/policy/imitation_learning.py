@@ -5,6 +5,7 @@ import jax.numpy as jnp
 from jinx.dataset.env import EnvDataset
 from jinx.trainer import Trainer
 from typing import NamedTuple, Any, Tuple
+from functools import partial
 
 from jinx.logging import logger
 
@@ -35,12 +36,29 @@ class ImitationLearning:
     def _loss_fn(self, fn_params, fn_state, rng_key, sample):
         x, exp_u, exp_jac = sample
         pred_u, fn_state = self.net.apply(fn_params, fn_state, rng_key, x)
-        loss = optax.safe_norm(pred_u - exp_u, 1e-5)
-        return loss, {'loss': loss}, fn_state
+
+        apply_policy = lambda x: self.net.apply(fn_params, fn_state, rng_key, x)[0]
+
+        u_loss = optax.safe_norm(pred_u - exp_u, 1e-5, ord=2)
+        loss = u_loss
+        stats = {}
+        stats['u_loss'] = u_loss
+        if self.jac_lambda > 0:
+            pred_jac = jax.jacrev(apply_policy)(x)
+
+            # ravel the trees!
+            pred_jac, _ = jax.flatten_util.ravel_pytree(pred_jac)
+            exp_jac, _ = jax.flatten_util.ravel_pytree(exp_jac)
+            jac_loss = optax.safe_norm(pred_jac - exp_jac, 1e-5, ord=2)
+
+            stats['jac_loss'] = jac_loss
+            loss = loss + self.jac_lambda * jac_loss
+        stats['loss'] = loss
+        return loss, stats, fn_state
 
     def _map_fn(self, sample):
-        xs, orig_us = sample
-        exp_us = orig_us #jax.vmap(self.policy)(xs)
+        xs, _ = sample
+        exp_us = jax.vmap(self.policy)(xs)
         if self.jac_lambda > 0:
             exp_jacs = jax.vmap(jax.jacrev(self.policy))(xs)
         else:

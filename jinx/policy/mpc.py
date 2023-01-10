@@ -1,5 +1,4 @@
 import optax
-import traceback
 
 import jax
 import jax.numpy as jnp
@@ -9,125 +8,109 @@ import jinx.util
 
 from functools import partial
 from typing import NamedTuple, Any
+from jinx.logging import logger
+from jinx.solver import NewtonSolver, RelaxingSolver, OptaxSolver
+
+def _centered_log(sdf, *args):
+    u_x, fmt = jax.flatten_util.ravel_pytree(args)
+    # calculate gradient at zero
+    grad = jax.jacrev(lambda v_x: -jnp.log(-sdf(*fmt(v_x))))(jnp.zeros_like(u_x))
+    grad_term = grad @ u_x
+    return -jnp.log(-sdf(*args)) #- grad_term
 
 # A RHC barrier-based MPC controller
 class BarrierMPC:
     def __init__(self, u_sample,
                 cost_fn, model_fn,
                 horizon_length,
-                solver,
                 barrier_sdf=None,
-                barrier_eps=0.01,
-                barrier_eta_start=None):
+                barrier_eta=0.01):
         self.u_sample = u_sample
 
         self.cost_fn = cost_fn
         self.model_fn = model_fn
         self.horizon_length = horizon_length
 
-        self.solver = solver(self._loss_fn)
-        self.feasibility_solver = solver(self._feasiblility_loss)
-
         self.barrier_sdf = barrier_sdf
-        self.barrier_eps = barrier_eps
-        self.barrier_eta_start = barrier_eta_start
+
+        # using a damping of 1 prevents jumping out
+        # of the feasible set
+        sub_solver = NewtonSolver(self._loss_fn, damping=5)
+        # using a damping of 1 prevents jumping of out of feasible
+        # set for all t
+        self.solver = RelaxingSolver(sub_solver, max_t=1/barrier_eta)
+
+        # feasibility solver uses adam to take steps
+        # until the cost is less than 0
+        self.feasbility_solver = OptaxSolver(self._feasiblility_loss, optax.adam(0.1),
+                    terminate=lambda _0, _1, c: c < 0)
+        # if we don't have a barrier, do just 1 outer loop
+        if not self.barrier_sdf:
+            self.solver.max_t = self.solver.init_t
 
     def _feasiblility_loss(self, us, x0):
         xs = jinx.envs.rollout_input(
                 self.model_fn, x0, us
             )
         dist = self.barrier_sdf(xs, us)
-        return jnp.maximum(jnp.max(dist), -1)
+        return jax.scipy.special.logsumexp(dist)
 
-    def _loss_fn(self, us, x0, t):
+    def _loss_fn(self, us, t, x0):
         xs = jinx.envs.rollout_input(
                 self.model_fn, x0, us
             )
         cost = self.cost_fn(xs, us)
 
         if self.barrier_sdf is not None:
-            sdfs = self.barrier_sdf(xs, us)
-
-            # if we violate the constraints, ignore the cost
-            # and just take steps to find a feasible point
-            u_xs, fmt_xs = jax.flatten_util.ravel_pytree(xs)
-            u_us, fmt_us = jax.flatten_util.ravel_pytree(us)
-
-            zero_grad = jax.grad(lambda xs, us: -jnp.sum(jnp.log(-self.barrier_sdf(fmt_xs(xs), fmt_us(us)))),
-                                argnums=(0,1))(jnp.zeros_like(u_xs), jnp.zeros_like(u_us))
-            # print(zero_grad[0].shape, zero_grad[1].shape)
-            barrier_costs = -jnp.log(-sdfs) + zero_grad[0] @ u_xs + zero_grad[1] @ u_us
-
+            barrier_costs = _centered_log(self.barrier_sdf, xs, us)
             loss = t*cost + jnp.mean(barrier_costs)
         else:
             loss = cost
         return loss
 
-    # Will solve the central path
-    def _opt_iteration(self, x0, opt_state):
-        t, us = opt_state
-
-        t = 8*t
-        res = self.solver.run(us, x0=x0, t=t)
-        us = res.params
-
-        return t, us
-    
-    # Will find a feasible point
-    def _feasible_point(self, x0, init_us):
-        res = self.feasibility_solver.run(init_us, x0=x0)
-        us = res.params
-        xs = jinx.envs.rollout_input(self.model_fn, x0, us)
-        # if we succeeded at finding a feasible point
-        succ = jnp.max(self.barrier_sdf(xs, us)) < 0
-        return us, succ
-    
     @property
     def init_state(self):
         u_flat, unflatten = jax.flatten_util.ravel_pytree(self.u_sample)
-        # repeat along a new axis
-        u_flat = jnp.repeat(u_flat[jnp.newaxis, :], self.horizon_length, axis=0)
-        # unflatten
+        u_flat = jnp.repeat(u_flat[jnp.newaxis, :],
+                        self.horizon_length - 1, axis=0)
         us = jax.vmap(unflatten)(u_flat)
         return us
-
-    # A modified version of the JaxOPT base IterativeSolver
-    # which propagates the estimator state
-    def _solve(self, x0, init_us):
-        # if we have a barrier function first find a feasible state
-        if self.barrier_sdf:
-            init_us, succ = self._feasible_point(x0, init_us)
-            # def solve_interior():
-            #     t, us = jax.lax.while_loop(
-            #         lambda x: 1/x[0] < self.barrier_eps,
-            #         partial(self._opt_iteration, x0),
-            #         (0, init_us)
-            #     )
-            #     # we need to zero the gradients and resolve a final time
-            #     us = jinx.util.zero_grad(us)
-            #     _, us = self._opt_iteration(x0, (t,us))
-            #     return us
-            # return jax.lax.cond(
-            #     succ, solve_interior, lambda: init_us
-            # )
-            return self._opt_iteration(x0, (1/self.barrier_eps, init_us))[1]
-        else:
-            return self._opt_iteration(x0, (1, init_us))[1]
-
-        # if we are successful at finding an initial
-        # interior point, 
 
     def __call__(self, state, policy_state=None):
         if policy_state is None:
             us = self.init_state
         else:
             us = policy_state
-
         us = us.at[:-1].set(us[1:])
-        # return the remainder as the solved_us
-        # as the policy state, so we don't need
-        # to re-solve everything for the next iteration
-        us = self._solve(state, us)
+
+        def solve_us(us):
+            res = self.solver.run(us, x0=state)
+            us = res.final_params
+            return us
+
+        if self.barrier_sdf:
+            # first solve to make sure feasible
+            # xs = jinx.envs.rollout_input(self.model_fn, state, us)
+            # feasible = jnp.max(self.barrier_sdf(xs, us)) < 0
+            # jax.debug.print("before_feasibility: {}", feasible)
+
+            res = self.feasbility_solver.run(us, x0=state)
+            us = res.final_params
+
+            xs = jinx.envs.rollout_input(self.model_fn, state, us)
+            feasible = jnp.max(self.barrier_sdf(xs, us)) < 0
+            us = jax.lax.cond(feasible, solve_us, lambda x: x, us)
+
+            # # if we have found a feasible point, return
+            # jax.debug.print("feasible: {}, finished {}", feasible, res.solved)
+
+            # xs = jinx.envs.rollout_input(self.model_fn, state, us)
+            # feasible = jnp.max(self.barrier_sdf(xs, us)) < 0
+            # # if we have found a feasible point, return
+            # jax.debug.print("after solve feasible: {}", feasible)
+        else:
+            us = solve_us(us)
+
         if policy_state is None:
             return us[0]
         else:

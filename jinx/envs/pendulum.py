@@ -32,12 +32,18 @@ class PendulumEnvironment(Environment):
         return State(angle, vel)
     
     def cost(self, xs, us):
-        diff = jnp.stack((xs.angle, xs.vel)) - jnp.array([jnp.pi, 0])
+        xs = jnp.concatenate((xs.angle, xs.vel), -1)
+        diff = xs - jnp.array([jnp.pi, 0])
         x_cost = jnp.sum(diff**2)
         u_cost = jnp.sum(us**2)
         x_f_cost = jnp.sum(diff[-1]**2)
-        return x_cost + 1*u_cost + 2*x_f_cost
-    
+        return x_cost + 0.01*u_cost + x_f_cost
+
+    def barrier(self, _, us):
+        constraints = [jnp.ravel(us - 1),
+                       jnp.ravel(-1 - us)]
+        return jnp.concatenate(constraints)
+
     def render(self, state, width=256, height=256):
         return render_pendulum(width, height, state)
         # return jax.experimental.host_callback.call(
