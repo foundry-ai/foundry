@@ -4,9 +4,7 @@ import jax.numpy as jnp
 import jax.random
 from typing import NamedTuple
 from functools import partial
-
-class State(NamedTuple):
-    x: jnp.ndarray
+import scipy
 
 class LinearSystem(Environment):
     def __init__(self, A, B, Q, R):
@@ -15,34 +13,39 @@ class LinearSystem(Environment):
 
         self.Q = Q
         self.R = R
+        self.P = jnp.array(scipy.linalg.solve_discrete_are(self.A, self.B, self.Q, self.R,
+                                              e=None, s=None, balanced=True))
 
     def sample_action(self, rng):
         return jax.random.uniform(rng, (1,), jnp.float32, -1, 1)
-        #return jnp.zeros((1,))
     
     def reset(self, key):
-        x = jax.random.uniform(key, (5,), jnp.float32, 8, 10)
-        #x = jnp.zeros((5,))
-        return State(x)
+        return jax.random.uniform(key, (5,), jnp.float32, 8, 10)
     
     def step(self, state, action):
-        x = self.A @ jnp.expand_dims(state.x, -1) + self.B @ jnp.expand_dims(action, -1)
-        return State(jnp.squeeze(x, -1))
+        x = self.A @ jnp.expand_dims(state, -1) + self.B @ jnp.expand_dims(action, -1)
+        return jnp.squeeze(x, -1)
     
-    def cost(self, xs, us):
-        x_cost = jnp.expand_dims(xs.x,-2) @ self.Q @ jnp.expand_dims(xs.x,-1)
-        u_cost = jnp.expand_dims(us,-2) @ self.R @ jnp.expand_dims(us, -1)
-        # add all the cost terms together
-        return jnp.sum(x_cost) + jnp.sum(u_cost)
+    def cost(self, x, u=None):
+        if u is not None:
+            x_cost = jnp.expand_dims(x,-2) @ self.Q @ jnp.expand_dims(x,-1)
+            u_cost = jnp.expand_dims(u,-2) @ self.R @ jnp.expand_dims(u, -1)
+            return jnp.sum(x_cost) + jnp.sum(u_cost)
+        else:
+            x_cost = jnp.expand_dims(x,-2) @ self.P @ jnp.expand_dims(x,-1)
+            return jnp.sum(x_cost)
     
-    def barrier(self, xs, us):
-        constraints = [
-                        jnp.ravel(us - 10),
-                       jnp.ravel(-10 - us),
-                       jnp.ravel(xs.x - 100),
-                       jnp.ravel(-100 - xs.x)
-                       ]
-        return jnp.concatenate(constraints)
+    # def barrier(self, xs, us):
+    #     constraints = [
+    #                    jnp.ravel(us - 10),
+    #                    jnp.ravel(-10 - us),
+    #                 #    jnp.ravel(xs.x - 100),
+    #                 #    jnp.ravel(-100 - xs.x)
+    #                 ]
+    #     return jnp.concatenate(constraints)
+
+    def barrier_feasible(self, x0, us):
+        return jnp.zeros_like(us)
     
     def render(self, state, width=256, height=256):
         return None
@@ -60,6 +63,6 @@ def builder():
             ]
         ),
         B=jnp.array([[0,0,0,0,1]]).T,
-        Q=jnp.eye(5),
+        Q=0.01*jnp.eye(5),
         R=jnp.eye(1)
     )

@@ -54,7 +54,7 @@ class ImitationLearning:
             stats['jac_loss'] = jac_loss
             loss = loss + self.jac_lambda * jac_loss
         stats['loss'] = loss
-        return loss, stats, fn_state
+        return fn_state, loss, stats
 
     def _map_fn(self, sample):
         xs, _ = sample
@@ -75,7 +75,7 @@ class ImitationLearning:
     def run(self, rng_key):
         rng_key, sk = jax.random.split(rng_key)
 
-        dataset = EnvDataset(rng_key, self.env, self.policy, self.traj_length)
+        dataset = EnvDataset(rng_key, self.env, self.traj_length, self.policy)
 
         # generate a random state to initialize
         # the network
@@ -85,9 +85,9 @@ class ImitationLearning:
         dataset = dataset[:self.trajectories]
 
         logger.info('il', "Training imitator neural network...")
-        (fn_params, fn_state, _), _ = self.trainer.train(dataset, rng_key,
+        res = self.trainer.train(dataset, rng_key,
             init_fn_params=init_fn_params,
             init_fn_state=init_fn_state
         )
-        final_policy = lambda x: self.net.apply(fn_params, fn_state, None, x)[0]
+        final_policy = lambda x: self.net.apply(res.fn_params, res.fn_state, None, x)[0]
         return final_policy

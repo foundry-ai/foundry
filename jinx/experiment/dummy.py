@@ -9,11 +9,11 @@ class DummyRepo(Repo):
         return DummyExperiment()
     
 
-class DummyExperiment:
+class DummyExperiment(Experiment):
     def create_run(self, name=None):
         return DummyRun()
 
-class DummyRun:
+class DummyRun(Run):
     def sub_run(self, prefix):
         return self
     

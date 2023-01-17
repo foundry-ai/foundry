@@ -15,8 +15,7 @@ class EstimatorState(NamedTuple):
     total_samples: int
 
 class IsingEstimator:
-    def __init__(self, model_fn, rng_key, samples, sigma):
-        self.model_fn = model_fn
+    def __init__(self, rng_key, samples, sigma):
         self.rng_key = rng_key
         self.samples = samples
         self.sigma = sigma
@@ -42,18 +41,18 @@ class IsingEstimator:
             total_samples=0
         )
     
-    def inject_gradient(self, est_state, states, gains, us):
+    def inject_gradient(self, est_state, model_fn, states, gains, us):
         new_rng, subkey = jax.random.split(est_state.rng)
-        W, x_diff = self.rollout(subkey, states, gains, us)
+        W, x_diff = self.rollout(model_fn, subkey, states, gains, us)
         jac = self.calculate_jacobians(W, x_diff)
-        x = self._inject_gradient(states.x, us, jac)
+        x = self._inject_gradient(states, us, jac)
         return EstimatorState(
             rng=new_rng,
             total_samples=est_state.total_samples + W.shape[0]
         ), jac, x
     
     # the forwards step
-    def rollout(self, rng, traj, gains, us):
+    def rollout(self, model_fn, rng, traj, gains, us):
         rng = self.rng_key if rng is None else rng
         state_0 = jax.tree_util.tree_map(lambda x: x[0], traj)
 
@@ -61,20 +60,24 @@ class IsingEstimator:
         W = self.sigma*jax.random.choice(rng, jnp.array([-1,1]), (self.samples,) + us.shape)
         # rollout all of the perturbed trajectories
         #rollout = partial(jinx.envs.rollout_input_gains, self.model_fn, state_0, traj.x, gains)
-        rollout = partial(jinx.envs.rollout_input, self.model_fn, state_0)
+        rollout = partial(jinx.envs.rollout_input, model_fn, state_0)
         # Get the first state
         trajs = jax.vmap(rollout)(us + W)
         # subtract off x_bar
-        x_diff = trajs.x - traj.x
-        # def print_func(arg, _):
-        #     us, x_diff = arg
-        #     print('---- Computing Traj ------')
-        #     print(x_diff.shape)
-        #     print('us', us)
-        #     print('x_diff', x_diff[0])
-        #     if jnp.any(jnp.isnan(x_diff)):
-        #         sys.exit(0)
-        # jax.experimental.host_callback.id_tap(print_func, (us, x_diff))
+        x_diff = trajs - traj
+        def print_func(arg, _):
+            W, us, gains, x_diff, traj, trajs = arg
+            print('---- Rolling out Trajectories ------')
+            print('W_nan', jnp.any(jnp.isnan(W)))
+            print('x_diff_nan', jnp.any(jnp.isnan(x_diff)))
+            print('us_nan', jnp.any(jnp.isnan(us)))
+            print('gains_nan', jnp.any(jnp.isnan(gains)))
+            print('traj_nan', jnp.any(jnp.isnan(traj)))
+            print('trajs_nan', jnp.any(jnp.isnan(trajs)))
+            print('us_max', jnp.max(us))
+            if jnp.any(jnp.isnan(x_diff)):
+                sys.exit(0)
+        # jax.experimental.host_callback.id_tap(print_func, (W, us, gains, x_diff, traj, trajs))
         return W, x_diff
     
     def calculate_jacobians(self, W, x_diff):
@@ -100,14 +103,17 @@ class IsingEstimator:
 
         # fill lower-triangle with zeros
         jac = jnp.where(tri, jnp.zeros_like(jac), jac)
-        # def print_func(arg, _):
-        #     jac, x_diff = arg
-        #     print('---- Computing Jacobian ------')
-        #     print(x_diff.shape)
-        #     print('x_diff', x_diff[0])
-        #     if jnp.any(jnp.isnan(jac)):
-        #         sys.exit(0)
-        # jax.experimental.host_callback.id_tap(print_func, (jac, x_diff))
+        def print_func(arg, _):
+            jac, W, x_diff = arg
+            print('---- Computing Jacobian ------')
+            print(x_diff.shape)
+            print('x_diff', x_diff[0])
+            print('W_nan', jnp.any(jnp.isnan(W)))
+            print('x_diff_nan', jnp.any(jnp.isnan(x_diff)))
+            print('jac_nan', jnp.any(jnp.isnan(jac)))
+            if jnp.any(jnp.isnan(jac)):
+                sys.exit(0)
+        # jax.experimental.host_callback.id_tap(print_func, (jac, W, x_diff))
         return jac
     
     # the backwards step

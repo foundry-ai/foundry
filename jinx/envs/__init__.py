@@ -2,10 +2,11 @@ import importlib
 import inspect
 
 import jax
+import jax.numpy as jnp
 
 from jinx.random import PRNGDataset
 from jinx.dataset import MappedDataset
-from jinx.util import scan_unrolled, tree_append
+from jinx.util import tree_append
 
 # Generic environment
 class Environment:
@@ -15,19 +16,23 @@ class Environment:
     def reset(self, key):
         raise NotImplementedError("Must impelement reset()")
 
-    def step(self, state, action):
+    def step(self, x, u):
         raise NotImplementedError("Must impelement step()")
-    
-    # The following two are optional
-    def cost(self, states, actions):
+
+    # If u is None, evaluate the terminal cost
+    def cost(self, x, u=None):
         raise NotImplementedError("Must impelement cost()")
-    
+
 # Helper function to do rollouts with
-def rollout_policy(model_fn, state0, length, policy,
+def rollout_policy(model_fn, x0, length, policy,
+                    # The initial policy state. If "None" is supplied
+                    # and policy has an 'init_state' function, that
+                    # policy.init_state(x0) will be used instead
                     policy_state=None,
+                    # Whether to return the last policy state
                     ret_policy_state=False):
-    if hasattr(policy, 'init_state'):
-        policy_state = policy.init_state
+    if hasattr(policy, 'init_state') and policy_state is None:
+        policy_state = policy.init_state(x0)
 
     def scan_fn(comb_state, _):
         env_state, policy_state = comb_state
@@ -40,12 +45,13 @@ def rollout_policy(model_fn, state0, length, policy,
         return (new_env_state, new_policy_state), (env_state, u)
 
     # Do the first step manually to populate the policy state
-    state = (state0, policy_state)
-    (state_f, ef), (states, us) = jax.lax.scan(scan_fn, state, None, length=length-1)
+    state = (x0, policy_state)
+    (state_f, p_f), (states, us) = jax.lax.scan(scan_fn, state,
+                                    None, length=length-1)
 
     states = tree_append(states, state_f)
     if ret_policy_state:
-        return states, us, ef
+        return states, us, p_f
     else:
         return states, us
 
@@ -58,15 +64,49 @@ def rollout_input(model_fn, state_0, us):
     states = tree_append(states, final_state)
     return states
 
-
 def rollout_input_gains(model_fn, state_0, ref_xs, ref_gains, us):
     def scan_fn(state, i):
         ref_x, ref_gain, u = i
-        new_state = model_fn(state, u + ref_gain @ (state.x - ref_x))
+        new_state = model_fn(state, u + ref_gain @ (state - ref_x))
         return new_state, state
     final_state, states = jax.lax.scan(scan_fn, state_0, (ref_xs[:-1], ref_gains, us))
     states = tree_append(states, final_state)
     return states
+
+# Takes a cost function and returns the cost with the trajectory
+def trajectory_cost(cost_fn):
+    def traj_cost(xs, us):
+        final_x = jax.tree_util.tree_map(lambda x: x[-1], xs)
+        seq_xs = jax.tree_util.tree_map(lambda x: x[:-1], xs)
+        seq_cost = jax.vmap(cost_fn)(seq_xs, us)
+        final_cost = cost_fn(final_x)
+        return jnp.sum(seq_cost) + final_cost
+    return traj_cost
+
+# Given a model fn and x, u samples will
+# construct a version of the dynamics that operates
+# on flattened state representations
+def flatten_model(model_fn, x_sample, u_sample):
+    _, x_unflatten = jax.flatten_util.ravel_pytree(x_sample)
+    _, u_unflatten = jax.flatten_util.ravel_pytree(u_sample)
+
+    def flattened_model(x, u):
+        x = x_unflatten(x)
+        u = u_unflatten(u)
+        x = model_fn(x, u)
+        x_vec = jax.flatten_util.ravel_pytree(x)[0]
+        return x_vec
+    return flattened_model
+
+def flatten_cost(cost_fn, x_sample, u_sample):
+    _, x_unflatten = jax.flatten_util.ravel_pytree(x_sample)
+    _, u_unflatten = jax.flatten_util.ravel_pytree(u_sample)
+    def flattened_cost(x, u=None):
+        x = x_unflatten(x)
+        if u is not None:
+            u = u_unflatten(u)
+        return cost_fn(x, u)
+    return flattened_cost
 
 __ENV_BUILDERS = {}
 

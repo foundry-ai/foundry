@@ -7,6 +7,7 @@ import math
 
 from typing import NamedTuple
 from cairo import ImageSurface, Context, Format
+from functools import partial
 
 class State(NamedTuple):
     angle: jnp.ndarray
@@ -31,29 +32,36 @@ class PendulumEnvironment(Environment):
         vel = state.vel - 0.05*jnp.sin(state.angle) + 0.05*action[0]
         return State(angle, vel)
     
-    def cost(self, xs, us):
-        xs = jnp.concatenate((xs.angle, xs.vel), -1)
-        diff = xs - jnp.array([jnp.pi, 0])
+    # If u is None, this is the terminal cost
+    def cost(self, x, u=None):
+        x = jnp.concatenate((x.angle, x.vel), -1)
+        diff = x - jnp.array([jnp.pi, 0])
         x_cost = jnp.sum(diff**2)
-        u_cost = jnp.sum(us**2)
-        x_f_cost = jnp.sum(diff[-1]**2)
-        return x_cost + 0.01*u_cost + x_f_cost
+        if u is not None:
+            u_cost = jnp.sum(u**2)
+            return x_cost + 0.01*u_cost
+        else:
+            return 2*x_cost
 
     def barrier(self, _, us):
         constraints = [jnp.ravel(us - 1),
                        jnp.ravel(-1 - us)]
         return jnp.concatenate(constraints)
 
+    def barrier_feasible(self, x0, us):
+        return jnp.zeros_like(us)
+
     def render(self, state, width=256, height=256):
-        return render_pendulum(width, height, state)
-        # return jax.experimental.host_callback.call(
-        #     render_pendulum, (width, height,state),
-        #     result_shape=jax.ShapeDtypeStruct((3, width, height), jnp.uint8))
+        return jax.pure_callback(
+            partial(render_pendulum, width=width, height=height),
+            jax.ShapeDtypeStruct((3, width, height), jnp.uint8),
+            state
+        )
 
 def builder():
     return PendulumEnvironment
 
-def render_pendulum(width, height, state):
+def render_pendulum(state, width, height):
     surface = ImageSurface(Format.ARGB32, width, height)
     ctx = Context(surface)
     ctx.rectangle(0, 0, width, height)
@@ -66,7 +74,7 @@ def render_pendulum(width, height, state):
 
     # put theta through a tanh to prevent
     # wraparound
-    theta = state.x[0]
+    theta = state.angle
 
     x = np.sin(theta)*radius + width/2
     y = np.cos(theta)*radius + height/2

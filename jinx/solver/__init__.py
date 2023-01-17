@@ -5,6 +5,7 @@ import jax.numpy as jnp
 import optax
 
 from typing import NamedTuple, Any, Callable
+from functools import partial
 from dataclasses import dataclass
 
 class SolverResults(NamedTuple):
@@ -28,39 +29,47 @@ class IterativeSolver:
     def update(self, params, state, *args, **kwargs):
         raise NotImplementedError("Must be implemented")
 
-    def _do_step(self, params, opt_state, args, kwargs):
+    def _do_step(self, state):
+        (params, opt_state, i), (args, kwargs) = state
         new_params, new_state = self.update(params, opt_state, *args, **kwargs)
-        return new_params, new_state
+        return (new_params, new_state, i + 1), (args, kwargs)
 
-    def _scan_fun(self, state, _):
-        (params, opt_state), (args, kwargs) = state
+    def _step_with_history(self, state, arg=None):
+        (_, opt_state, _), (_, _) = state
         # Only do a step if we are not done yet
-        new_params, new_state = jax.lax.cond(opt_state.solved,
-            lambda a, b, _0, _1: (a, b),
-            self._do_step, 
-            params, opt_state, args, kwargs)
+        new_state = jax.lax.cond(opt_state.solved,
+            lambda s: s,
+            self._do_step,  state)
+        return new_state, opt_state
 
-        state = (new_params, new_state), (args, kwargs)
-        return state, opt_state
-
+    def _loop_no_history(self, init_params, args, kwargs):
+        init_opt_state = self.init_state(init_params, *args, **kwargs)
+        loop_state = (init_params, init_opt_state, 0), (args, kwargs)
+        loop_state = jax.lax.while_loop(
+                lambda s: jnp.logical_and(jnp.logical_not(s[0][1].solved), s[0][2] < self.max_iterations),
+                self._do_step, loop_state)
+        (final_params, final_state, _), _ = loop_state
+        return final_params, final_state, None
 
     # Suitable for wrapping with implicit diffs
-    def _run(self, init_params, args, kwargs):
+    def _scan_with_history(self, init_params, args, kwargs):
         init_opt_state = self.init_state(init_params, *args, **kwargs)
         scan_state = (init_params, init_opt_state), (args, kwargs)
 
-        scan_state, history = \
+        # if we want the solver history,
+        # use a scan
+        scan_state, state_history = \
             jax.lax.scan(self._scan_fun, scan_state,
                         None, length=self.max_iterations)
-        (final_params, final_state), _ = scan_state
-        return final_params, final_state, history
+        (final_params, final_state, _), _ = scan_state
+        return final_params, final_state, state_history
 
     def _run_optimality_fun(self, params_state, args, kwargs):
         params, state = params_state
         return self.optimality_fun(params, state, *args, **kwargs)
 
-    def run(self, init_params, *args, **kwargs):
-        run = self._run
+    def run(self, init_params, *args, history=False, **kwargs):
+        run = self._scan_with_history if history else self._loop_no_history
         if getattr(self, "implicit_diff", True) and \
                 getattr(self, 'optimality_fun', None) is not None:
             decorator = idf.custom_root(self._run_optimality_fun, has_aux=True,
@@ -91,7 +100,7 @@ class OptaxSolver(IterativeSolver):
     def _cost_fun(self, params, *args, **kwargs):
         cost, aux = (self.fun(params, *args, **kwargs)
             if self.has_aux else
-            self.fun(params, *args, **kwargs), None
+            (self.fun(params, *args, **kwargs), None)
         )
         return cost, aux
 
@@ -110,7 +119,7 @@ class OptaxSolver(IterativeSolver):
 
         # check the distance for solution
         if self.terminate:
-            solved = self.terminate(params, new_params, cost)
+            solved = self.terminate(cost, aux)
         else:
             solved = False
 
@@ -124,6 +133,7 @@ class NewtonState(NamedTuple):
 @dataclass
 class NewtonSolver(IterativeSolver):
     fun: Callable
+    terminate: Callable = None
     has_aux: bool = False
     tol: float = 1e-3
     max_iterations: int = 500
@@ -134,7 +144,7 @@ class NewtonSolver(IterativeSolver):
     def _cost_fun(self, params, *args, **kwargs):
         cost, aux = (self.fun(params, *args, **kwargs)
             if self.has_aux else
-            self.fun(params, *args, **kwargs), None
+            (self.fun(params, *args, **kwargs), None)
         )
         return cost, aux
 
@@ -163,12 +173,19 @@ class NewtonSolver(IterativeSolver):
 
         new_param_v = param_v - f*jnp.linalg.inv(hess) @ grad
 
-        eps = jnp.linalg.norm(new_param_v - param_v, ord=2)
-        solved = eps < self.tol
 
         new_param = p_fmt(new_param_v)
         cost, aux = self._cost_fun(new_param, *args, **kwargs)
-        old_cost, _ = self._cost_fun(params, *args, **kwargs)
+
+        if self.terminate:
+            solved = self.terminate(cost, aux)
+        else:
+            eps = jnp.linalg.norm(new_param_v - param_v, ord=2)
+            solved = eps < self.tol
+
+        # old_cost, _ = self._cost_fun(params, *args, **kwargs)
+        # jax.debug.print("{} {} new: {}, old: {}, grad: {}, hess: {}, f: {}",
+        #                 cost, old_cost, new_param, params, grad, hess, f)
         return new_param, NewtonState(cost, aux, solved)
 
 # A relaxing solver can be used to implement a barrier-function-based
@@ -183,9 +200,9 @@ class RelaxingState(NamedTuple):
 class RelaxingSolver(IterativeSolver):
     sub_solver: IterativeSolver
 
-    init_t: float = 0.01
-    max_t: float = 100
-    inc_t_factor: float = 2
+    init_t: float = 1.
+    max_t: float = 100.
+    inc_t_factor: float = 1.5
 
     max_iterations: int = 500
 
@@ -193,7 +210,7 @@ class RelaxingSolver(IterativeSolver):
         return self.sub_solver.optimality_fun(params, state, *args, t=state.t, **kwargs)
 
     def init_state(self, params, *args, **kwargs):
-        t = self.init_t
+        t = float(self.init_t)
         sub_state = self.sub_solver.init_state(params, *args, t=t, **kwargs)
         solved = (sub_state.solved) and (t >= self.max_t)
         return RelaxingState(sub_state, t, solved)
