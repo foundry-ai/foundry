@@ -27,22 +27,22 @@ class LinearSystem(Environment):
         return jnp.squeeze(x, -1)
     
     def cost(self, x, u=None):
-        if u is not None:
+        if u is None:
+            x_cost = jnp.expand_dims(x,-2) @ self.P @ jnp.expand_dims(x,-1)
+            return jnp.sum(x_cost)
+        else:
             x_cost = jnp.expand_dims(x,-2) @ self.Q @ jnp.expand_dims(x,-1)
             u_cost = jnp.expand_dims(u,-2) @ self.R @ jnp.expand_dims(u, -1)
             return jnp.sum(x_cost) + jnp.sum(u_cost)
-        else:
-            x_cost = jnp.expand_dims(x,-2) @ self.P @ jnp.expand_dims(x,-1)
-            return jnp.sum(x_cost)
     
-    # def barrier(self, xs, us):
-    #     constraints = [
-    #                    jnp.ravel(us - 10),
-    #                    jnp.ravel(-10 - us),
-    #                 #    jnp.ravel(xs.x - 100),
-    #                 #    jnp.ravel(-100 - xs.x)
-    #                 ]
-    #     return jnp.concatenate(constraints)
+    def barrier(self, xs, us):
+        constraints = [
+                       jnp.ravel(us - 10),
+                       jnp.ravel(-10 - us),
+                    #    jnp.ravel(xs.x - 100),
+                    #    jnp.ravel(-100 - xs.x)
+                    ]
+        return jnp.concatenate(constraints)
 
     def barrier_feasible(self, x0, us):
         return jnp.zeros_like(us)
@@ -63,6 +63,6 @@ def builder():
             ]
         ),
         B=jnp.array([[0,0,0,0,1]]).T,
-        Q=0.01*jnp.eye(5),
-        R=jnp.eye(1)
+        Q=0.1*jnp.eye(5),
+        R=0.1*jnp.eye(1)
     )

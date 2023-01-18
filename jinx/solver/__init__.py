@@ -54,12 +54,12 @@ class IterativeSolver:
     # Suitable for wrapping with implicit diffs
     def _scan_with_history(self, init_params, args, kwargs):
         init_opt_state = self.init_state(init_params, *args, **kwargs)
-        scan_state = (init_params, init_opt_state), (args, kwargs)
+        scan_state = (init_params, init_opt_state, 0), (args, kwargs)
 
         # if we want the solver history,
         # use a scan
         scan_state, state_history = \
-            jax.lax.scan(self._scan_fun, scan_state,
+            jax.lax.scan(self._step_with_history, scan_state,
                         None, length=self.max_iterations)
         (final_params, final_state, _), _ = scan_state
         return final_params, final_state, state_history
@@ -95,7 +95,7 @@ class OptaxSolver(IterativeSolver):
     terminate: Callable = None
     has_aux: bool = False
     tol: float = 1e-3
-    max_iterations: int = 500
+    max_iterations: int = 50
 
     def _cost_fun(self, params, *args, **kwargs):
         cost, aux = (self.fun(params, *args, **kwargs)
@@ -130,15 +130,16 @@ class NewtonState(NamedTuple):
     aux: Any
     solved: bool
 
+# A newton solver with backtracking support
 @dataclass
 class NewtonSolver(IterativeSolver):
     fun: Callable
     terminate: Callable = None
     has_aux: bool = False
-    tol: float = 1e-3
+    tol: float = 1e-2
     max_iterations: int = 500
-    # for damped newton steps
-    damping: float = 0
+    # backtracking beta
+    beta: float = 0.5
 
     # Will handle both the has_aux and not-has_aux cases
     def _cost_fun(self, params, *args, **kwargs):
@@ -146,6 +147,7 @@ class NewtonSolver(IterativeSolver):
             if self.has_aux else
             (self.fun(params, *args, **kwargs), None)
         )
+        cost = jnp.nan_to_num(cost, nan=float('inf'))
         return cost, aux
 
     # when gradient is zero we are at the optimal
@@ -168,11 +170,20 @@ class NewtonSolver(IterativeSolver):
 
         hess_inv = jnp.linalg.inv(hess)
 
-        local_norm = grad.T @ hess_inv @ grad
-        f = 1/(1 + self.damping*jnp.sqrt(local_norm))
+        # do backtracking to find t
+        direction = -hess_inv @ grad
+        # reduction amount for the backtracking
+        reduction = 0.5*grad.T @ direction
+        current_cost = vec_fun(param_v)
 
-        new_param_v = param_v - f*jnp.linalg.inv(hess) @ grad
+        def backtrack_cond(t):
+            new_cost = vec_fun(param_v + t*direction)
+            exp_cost = current_cost + t*reduction
+            return new_cost > exp_cost
 
+        t = jax.lax.while_loop(backtrack_cond,
+                               lambda t: self.beta*t, 1)
+        new_param_v = param_v + t*direction
 
         new_param = p_fmt(new_param_v)
         cost, aux = self._cost_fun(new_param, *args, **kwargs)
@@ -180,12 +191,12 @@ class NewtonSolver(IterativeSolver):
         if self.terminate:
             solved = self.terminate(cost, aux)
         else:
-            eps = jnp.linalg.norm(new_param_v - param_v, ord=2)
+            eps = jnp.linalg.norm(param_v - new_param_v)
             solved = eps < self.tol
 
         # old_cost, _ = self._cost_fun(params, *args, **kwargs)
-        # jax.debug.print("{} {} new: {}, old: {}, grad: {}, hess: {}, f: {}",
-        #                 cost, old_cost, new_param, params, grad, hess, f)
+        # jax.debug.print("{} {} old: {} new: {} t: {}, reduction: {}",
+        #                 cost, old_cost, params[0], new_param[0], t, reduction)
         return new_param, NewtonState(cost, aux, solved)
 
 # A relaxing solver can be used to implement a barrier-function-based
@@ -204,7 +215,7 @@ class RelaxingSolver(IterativeSolver):
     max_t: float = 100.
     inc_t_factor: float = 1.5
 
-    max_iterations: int = 500
+    max_iterations: int = 5000
 
     def optimality_fun(self, params, state, *args, **kwargs):
         return self.sub_solver.optimality_fun(params, state, *args, t=state.t, **kwargs)
@@ -228,6 +239,6 @@ class RelaxingSolver(IterativeSolver):
         new_params, sub_state = self.sub_solver.update(params, sub_state, *args, t=t, **kwargs)
 
         # t_sufficient
-        end_of_curve = state.t >= self.max_t
+        end_of_curve = t >= self.max_t
         solved = jnp.logical_and(sub_state.solved, end_of_curve)
         return new_params, RelaxingState(sub_state, t, solved)

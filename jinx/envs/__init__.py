@@ -8,6 +8,8 @@ from jinx.random import PRNGDataset
 from jinx.dataset import MappedDataset
 from jinx.util import tree_append
 
+from functools import partial
+
 # Generic environment
 class Environment:
     def sample_action(self, rng_key):
@@ -24,36 +26,51 @@ class Environment:
         raise NotImplementedError("Must impelement cost()")
 
 # Helper function to do rollouts with
+
+@partial(jax.jit, static_argnums=(0,2, 3, 5, 6))
 def rollout_policy(model_fn, x0, length, policy,
                     # The initial policy state. If "None" is supplied
                     # and policy has an 'init_state' function, that
                     # policy.init_state(x0) will be used instead
                     policy_state=None,
                     # Whether to return the last policy state
-                    ret_policy_state=False):
+                    # or jacobians of the policy
+                    ret_policy_state=False, jacobians=False):
     if hasattr(policy, 'init_state') and policy_state is None:
         policy_state = policy.init_state(x0)
 
+    # This allows us to compute the jacobians
+    # and output at the same time
+    def policy_fun(env_state, policy_state=None):
+        if policy_state is None:
+            u = policy(env_state)
+            return u, (u, None)
+        else:
+            u, new_policy_state = policy(env_state, policy_state)
+            return u, (u, new_policy_state)
+
     def scan_fn(comb_state, _):
         env_state, policy_state = comb_state
-        if policy_state is not None:
-            u, new_policy_state = policy(env_state, policy_state)
+        if jacobians:
+            jac, (u, new_policy_state) = jax.jacrev(policy_fun, has_aux=True, argnums=(0,))(env_state, policy_state)
         else:
-            u = policy(env_state)
-            new_policy_state = None
+            _, (u, new_policy_state) = policy_fun(env_state, policy_state)
         new_env_state = model_fn(env_state, u)
-        return (new_env_state, new_policy_state), (env_state, u)
+        outputs = (env_state, u, jac) if jacobians else (env_state, u)
+        return (new_env_state, new_policy_state), outputs
 
     # Do the first step manually to populate the policy state
     state = (x0, policy_state)
-    (state_f, p_f), (states, us) = jax.lax.scan(scan_fn, state,
-                                    None, length=length-1)
 
-    states = tree_append(states, state_f)
+    # outputs is (xs, us, jacs) or (xs, us)
+    (state_f, p_f), outputs = jax.lax.scan(scan_fn, state,
+                                    None, length=length-1)
+    states = tree_append(outputs[0], state_f)
+
+    out = (states,) + outputs[1:]
     if ret_policy_state:
-        return states, us, p_f
-    else:
-        return states, us
+        out = (p_f,) + out
+    return out
 
 # Global registry
 def rollout_input(model_fn, state_0, us):
@@ -73,15 +90,14 @@ def rollout_input_gains(model_fn, state_0, ref_xs, ref_gains, us):
     states = tree_append(states, final_state)
     return states
 
-# Takes a cost function and returns the cost with the trajectory
-def trajectory_cost(cost_fn):
-    def traj_cost(xs, us):
-        final_x = jax.tree_util.tree_map(lambda x: x[-1], xs)
-        seq_xs = jax.tree_util.tree_map(lambda x: x[:-1], xs)
-        seq_cost = jax.vmap(cost_fn)(seq_xs, us)
-        final_cost = cost_fn(final_x)
-        return jnp.sum(seq_cost) + final_cost
-    return traj_cost
+# Takes a cost function and maps it over a trajectory
+# where there is one more x than u
+def trajectory_cost(cost_fn, xs, us):
+    final_x = jax.tree_util.tree_map(lambda x: x[-1], xs)
+    seq_xs = jax.tree_util.tree_map(lambda x: x[:-1], xs)
+    seq_cost = jax.vmap(cost_fn)(seq_xs, us)
+    final_cost = cost_fn(final_x)
+    return jnp.sum(seq_cost) + final_cost
 
 # Given a model fn and x, u samples will
 # construct a version of the dynamics that operates

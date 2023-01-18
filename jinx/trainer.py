@@ -79,7 +79,7 @@ class Trainer:
         batch_fn = partial(self._batch_loss_fn, state.fn_state, sk, batch)
 
         grads, (stats, fn_state) = jax.grad(batch_fn, has_aux=True)(state.fn_params)
-        updates, opt_state = self.optimizer.update(grads, state.opt_state)
+        updates, opt_state = self.optimizer.update(grads, state.opt_state, state.fn_params)
 
         fn_params = optax.apply_updates(state.fn_params, updates)
 
@@ -146,13 +146,13 @@ class Trainer:
         if not max_iterations and not epochs:
             raise ValueError("Must specify either number of epochs or iterations")
         
+        batch_dataset = dataset.batch(self.batch_size)
         if max_iterations is None:
-            max_iterations = dataset.length*epochs
+            max_iterations = batch_dataset.length*epochs
             if not jnp.isfinite(max_iterations):
                 raise ValueError("Must train for a finite number of iterations")
 
 
-        batch_dataset = dataset.batch(self.batch_size)
         state = TrainState(
             epoch=0, iteration=0,
 

@@ -9,43 +9,57 @@ from typing import NamedTuple
 from cairo import ImageSurface, Context, Format
 from functools import partial
 
+import math
+
 class State(NamedTuple):
     angle: jnp.ndarray
     vel: jnp.ndarray
 
 
 class PendulumEnvironment(Environment):
-    def __init__(self):
-        pass
-    
+    def __init__(self, sub_steps=1):
+        self.sub_steps = sub_steps
+
     def sample_action(self, rng_key):
         return jax.random.uniform(rng_key, (1,), jnp.float32, -0.1, 0.1)
 
+    # Sample state should be like reset(),
+    # but whereas reset() is meant to be a distribution
+    # over initial conditions, sample_state() should
+    # give a distribution over reasonable states
+    def sample_state(self, rng_key):
+        k1, k2 = jax.random.split(rng_key)
+        angle = jax.random.uniform(k1, shape=(1,), minval=-3.14,maxval=3.14)
+        vel = jax.random.uniform(k2, shape=(1,), minval=-3,maxval=3)
+        return State(angle, vel)
+
     def reset(self, key):
-        # pick random position between +/- radians from right
-        angle = jax.random.uniform(key,shape=(1,), minval=-1,maxval=1)
+        # pick random position between +/- radians from center
+        angle = jax.random.uniform(key,shape=(1,), minval=-1,maxval=1) + math.pi
         vel = jnp.zeros((1,))
         return State(angle, vel)
 
     def step(self, state, action):
-        angle = state.angle + 0.05*state.vel
-        vel = state.vel - 0.05*jnp.sin(state.angle) + 0.05*action[0]
-        return State(angle, vel)
+        angle = state.angle + 0.1*state.vel
+        vel = state.vel - 0.1*jnp.sin(state.angle + math.pi) + 0.1*action[0]
+        state = State(angle, vel)
+        return state
     
     # If u is None, this is the terminal cost
-    def cost(self, x, u=None):
+    def cost(self, x, u=None, t=None):
         x = jnp.concatenate((x.angle, x.vel), -1)
-        diff = x - jnp.array([jnp.pi, 0])
-        x_cost = jnp.sum(diff**2)
-        if u is not None:
-            u_cost = jnp.sum(u**2)
-            return x_cost + 0.01*u_cost
+        diff = x - jnp.array([0, 0])
+        if u is None:
+            x_cost = jnp.sum(diff**2)
+            return 10*x_cost
         else:
-            return 2*x_cost
+            x_cost = jnp.sum(diff**2)
+            u_cost = jnp.sum(u**2)
+            return x_cost + u_cost
 
     def barrier(self, _, us):
-        constraints = [jnp.ravel(us - 1),
-                       jnp.ravel(-1 - us)]
+        constraints = [jnp.ravel(us - 3),
+                       jnp.ravel(-3 - us)]
         return jnp.concatenate(constraints)
 
     def barrier_feasible(self, x0, us):
@@ -74,7 +88,7 @@ def render_pendulum(state, width, height):
 
     # put theta through a tanh to prevent
     # wraparound
-    theta = state.angle
+    theta = state.angle + math.pi
 
     x = np.sin(theta)*radius + width/2
     y = np.cos(theta)*radius + height/2

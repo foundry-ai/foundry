@@ -86,10 +86,18 @@ class Dataset:
         # in parallel fetch the iterators...
         data = jax.vmap(fetch_fn)(iters)
         # with pbar('dataset', total=self.remaining(start)) as pb:
-        #     def scan_fn(iter, _):
+        #     iter = self.start
+        #     data = []
+        #     for i in range(self.remaining(start)):
+        #         data.append(self.get(iter))
+        #         iter = self.next(iter)
         #         pb.inc()
-        #         return self.next(iter), self.get(iter)
-        #     _, data = jax.lax.scan(scan_fn, start, None, length=self.remaining(start), unroll=10)
+        #     data = jax.tree_util.tree_map(lambda *args: jnp.concatenate(args), *data)
+
+            # def scan_fn(iter, _):
+            #     pb.inc()
+            #     return self.next(iter), self.get(iter)
+            # _, data = jax.lax.scan(scan_fn, start, None, length=self.remaining(start), unroll=10)
 
         logger.info("dataset", f"Dataset construction complete...")
         return PyTreeDataset(data)
@@ -153,10 +161,9 @@ class PyTreeDataset(Dataset):
 
     def batch(self, n):
         def reshape(x):
-            # chop off remainder if we have more than 1 batch
-            # worth of data
+            # chop off remainder if we have more than 1 batch worth of data
             if x.shape[0] > n:
-                x = x[:-(x.shape[0] % n)]
+                x = x[:-(x.shape[0] % n)] if x.shape[0] % n > 0 else x
                 bs = n
             else:
                 bs = x.shape[0]
