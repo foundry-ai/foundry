@@ -18,6 +18,9 @@ class LinearSystem(Environment):
 
     def sample_action(self, rng):
         return jax.random.uniform(rng, (1,), jnp.float32, -1, 1)
+
+    def sample_state(self, key):
+        return jax.random.uniform(key, (5,), jnp.float32, -15, 15)
     
     def reset(self, key):
         return jax.random.uniform(key, (5,), jnp.float32, 8, 10)

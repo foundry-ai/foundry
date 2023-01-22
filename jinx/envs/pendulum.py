@@ -8,8 +8,10 @@ import math
 from typing import NamedTuple
 from cairo import ImageSurface, Context, Format
 from functools import partial
+from jinx.experiment import Figure, Video
 
 import math
+import plotly.express as px
 
 class State(NamedTuple):
     angle: jnp.ndarray
@@ -26,11 +28,11 @@ class PendulumEnvironment(Environment):
     # Sample state should be like reset(),
     # but whereas reset() is meant to be a distribution
     # over initial conditions, sample_state() should
-    # give a distribution over reasonable states
+    # give a distribution with support over all possible (or reasonable) states
     def sample_state(self, rng_key):
         k1, k2 = jax.random.split(rng_key)
-        angle = jax.random.uniform(k1, shape=(1,), minval=-3.14,maxval=3.14)
-        vel = jax.random.uniform(k2, shape=(1,), minval=-3,maxval=3)
+        angle = 5*jax.random.uniform(k1, shape=(1,), minval=-1, maxval=1)
+        vel = 5*jax.random.uniform(k2, shape=(1,), minval=-1, maxval=1)
         return State(angle, vel)
 
     def reset(self, key):
@@ -64,6 +66,29 @@ class PendulumEnvironment(Environment):
 
     def barrier_feasible(self, x0, us):
         return jnp.zeros_like(us)
+    
+    def visualize(self, states, actions):
+        traj = px.line(x=jnp.squeeze(states.angle, -1), y=jnp.squeeze(states.vel, -1))
+        traj.update_layout(xaxis_title="Theta", yaxis_title="Omega")
+
+        theta = px.line(x=jnp.arange(states.angle.shape[0]), y=jnp.squeeze(states.angle, -1))
+        theta.update_layout(xaxis_title="Time", yaxis_title="Theta")
+
+        omega = px.line(x=jnp.arange(states.vel.shape[0]), y=jnp.squeeze(states.vel, -1))
+        omega.update_layout(xaxis_title="Time", yaxis_title="Omega")
+
+        u = px.line(x=jnp.arange(actions.shape[0]), y=jnp.squeeze(actions, -1))
+        u.update_layout(xaxis_title="Time", yaxis_title="u")
+
+        video = jax.vmap(self.render)(states)
+
+        return {
+            'video': Video(video, fps=15),
+            'traj': Figure(traj),
+            'theta': Figure(theta),
+            'omega': Figure(omega),
+            'u': Figure(u)
+        }
 
     def render(self, state, width=256, height=256):
         return jax.pure_callback(

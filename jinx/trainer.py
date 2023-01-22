@@ -166,6 +166,10 @@ class Trainer:
         )
         with pbar('trainer', total=max_iterations) as pb:
             final_state, stat_history = jax.lax.scan(partial(self._train_scan, pb), state, None, length=max_iterations)
+            # for i in range(max_iterations):
+            #     state, _ = self._train_scan(pb, state, None)
+            # final_state = state
+            # stat_history = None
         # return the final state and stat history
         logger.info("trainer", "Training complete")
         results = TrainResults(

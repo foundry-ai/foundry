@@ -25,6 +25,9 @@ class WandbRun(Run):
     def __init__(self, run, prefix=''):
         self.run = run
         self.prefix = prefix
+    
+    def __setitem__(self, item, value):
+        self.run.config.update({item: value})
 
     def sub_run(self, prefix):
         if self.prefix != '':

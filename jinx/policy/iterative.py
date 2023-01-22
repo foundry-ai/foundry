@@ -36,9 +36,9 @@ class FeedbackMPC:
                 x_sample, u_sample,
                 cost_fn, model_fn,
                 horizon_length=20,
-                opt_transform=optax.adam(0.01),
+                optimizer=optax.adam(0.01),
                 iterations=10000,
-                eps=0.0001,
+                eps=0.00001,
                 use_gains=False,
                 # for the gains computation
                 burn_in=10,
@@ -52,7 +52,7 @@ class FeedbackMPC:
 
         self.horizon_length = horizon_length
 
-        self.opt_transform = opt_transform
+        self.optimizer = optimizer
         self.iterations = iterations
         self.eps = eps
 
@@ -107,7 +107,7 @@ class FeedbackMPC:
             F = jnp.linalg.inv(M) @ (A @ P_next @ B).T
             P = A.T @ P_next @ A - (A.T @ P_next @ B) @ F + Q
             # rescale P
-            P_scale = 1/(1 + jnp.linalg.norm(P, ord='fro')/100)
+            P_scale = 1/(1 + jnp.linalg.norm(P, ord='fro')/1000)
             P = P * P_scale
             return P, (F, P)
 
@@ -167,8 +167,7 @@ class FeedbackMPC:
         # we need to modify the us to include the gains
         mod = ref_gains @ jnp.expand_dims(xs[:-1] - ref_xs[:-1], -1)
         us = us + jnp.squeeze(mod, -1)
-        xs = xs[:-1]
-        cost = jnp.sum(jax.vmap(self.cost_fn)(xs, us))
+        cost = jinx.envs.trajectory_cost(self.cost_fn, xs, us)
         return cost, (est_state, jac, cost)
 
     def _inner_step(self, x0, prev_step):
@@ -181,7 +180,7 @@ class FeedbackMPC:
         grad, (est_state, jac, cost) = jax.grad(loss, has_aux=True)(
             prev_step.us
         )
-        updates, opt_state = self.opt_transform.update(grad, prev_step.opt_state, prev_step.us)
+        updates, opt_state = self.optimizer.update(grad, prev_step.opt_state, prev_step.us)
         us = optax.apply_updates(prev_step.us, updates)
 
         if self.use_gains:
@@ -192,11 +191,10 @@ class FeedbackMPC:
             us = us + jnp.squeeze(mod, -1)
             # compute new gains around the adjusted trajectory
             gains = self._compute_gains(jac, gains)
-        
 
         # clamp the us
-        us_norm = jax.vmap(lambda u: jnp.maximum(jnp.linalg.norm(u)/10, jnp.array(1.)))(us)
-        us = us / jnp.expand_dims(us_norm, -1)
+        # us_norm = jax.vmap(lambda u: jnp.maximum(jnp.linalg.norm(u)/10, jnp.array(1.)))(us)
+        # us = us / jnp.expand_dims(us_norm, -1)
         
         new_step = OptimStep(
             us=us,
@@ -206,7 +204,7 @@ class FeedbackMPC:
             opt_state=opt_state,
 
             grad_norm=jnp.linalg.norm(grad),
-            done=jnp.linalg.norm(grad) < self.eps,
+            done=False,
             iteration=prev_step.iteration + 1
         )
         return new_step
@@ -231,7 +229,7 @@ class FeedbackMPC:
             gains=gains,
             cost=init_cost,
             est_state=est_state,
-            opt_state=self.opt_transform.init(init_us),
+            opt_state=self.optimizer.init(init_us),
 
             grad_norm=jnp.array(0.),
             iteration=0,

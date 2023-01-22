@@ -24,6 +24,10 @@ class Environment:
     # If u is None, evaluate the terminal cost
     def cost(self, x, u=None):
         raise NotImplementedError("Must impelement cost()")
+    
+    def visualize(self, xs, us):
+        raise NotImplementedError("Must impelement visualize()")
+
 
 # Helper function to do rollouts with
 
@@ -117,11 +121,11 @@ def flatten_model(model_fn, x_sample, u_sample):
 def flatten_cost(cost_fn, x_sample, u_sample):
     _, x_unflatten = jax.flatten_util.ravel_pytree(x_sample)
     _, u_unflatten = jax.flatten_util.ravel_pytree(u_sample)
-    def flattened_cost(x, u=None):
+    def flattened_cost(x, u=None, t=None):
         x = x_unflatten(x)
         if u is not None:
             u = u_unflatten(u)
-        return cost_fn(x, u)
+        return cost_fn(x, u, t)
     return flattened_cost
 
 __ENV_BUILDERS = {}
