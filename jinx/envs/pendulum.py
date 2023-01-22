@@ -69,13 +69,13 @@ class PendulumEnvironment(Environment):
     
     def visualize(self, states, actions):
         traj = px.line(x=jnp.squeeze(states.angle, -1), y=jnp.squeeze(states.vel, -1))
-        traj.update_layout(xaxis_title="Theta", yaxis_title="Omega")
+        traj.update_layout(xaxis_title="Theta", yaxis_title="Omega", title="State Trajectory")
 
         theta = px.line(x=jnp.arange(states.angle.shape[0]), y=jnp.squeeze(states.angle, -1))
-        theta.update_layout(xaxis_title="Time", yaxis_title="Theta")
+        theta.update_layout(xaxis_title="Time", yaxis_title="Theta", title="Angle")
 
         omega = px.line(x=jnp.arange(states.vel.shape[0]), y=jnp.squeeze(states.vel, -1))
-        omega.update_layout(xaxis_title="Time", yaxis_title="Omega")
+        omega.update_layout(xaxis_title="Time", yaxis_title="Omega", title="Angular Velocity")
 
         u = px.line(x=jnp.arange(actions.shape[0]), y=jnp.squeeze(actions, -1))
         u.update_layout(xaxis_title="Time", yaxis_title="u")

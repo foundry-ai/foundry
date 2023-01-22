@@ -107,7 +107,7 @@ class FeedbackMPC:
             F = jnp.linalg.inv(M) @ (A @ P_next @ B).T
             P = A.T @ P_next @ A - (A.T @ P_next @ B) @ F + Q
             # rescale P
-            P_scale = 1/(1 + jnp.linalg.norm(P, ord='fro')/1000)
+            P_scale = 1/(1 + jnp.linalg.norm(P, ord='fro')/10)
             P = P * P_scale
             return P, (F, P)
 
