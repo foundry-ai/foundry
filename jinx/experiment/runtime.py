@@ -83,8 +83,6 @@ def launch_from(activities, analyses, args, root_dir, lab=None):
         run = exp.create_run()
         result = activity.run(config, run)
         if result is not None:
-            if not isinstance(result, list):
-                result = [result]
             os.makedirs(os.path.join(root_dir, 'results'), exist_ok=True)
             path = os.path.join(root_dir, 'results', f'{args.activity}.pkl')
             with open(path, 'wb') as file:
@@ -98,7 +96,7 @@ def launch_from(activities, analyses, args, root_dir, lab=None):
         for r in args.results:
             path = os.path.join(root_dir, 'results', f'{r}.pkl')
             with open(path, 'rb') as file:
-                data.extend(pickle.load(file))
+                data.append(pickle.load(file))
         activity, config_class = anl_map[args.analysis]
         config = config_class.from_args(args)
         result = activity.run(config, data)

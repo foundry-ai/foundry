@@ -98,8 +98,8 @@ class FeedbackMPC:
         As_est = C_kp @ jnp.linalg.pinv(C_k) - Bs_est @ prev_gains[self.burn_in:]
 
         # synthesize new gains
-        Q = jnp.eye(jac.shape[-2])
-        R = jnp.eye(jac.shape[-1])
+        Q = 3*jnp.eye(jac.shape[-2])
+        R = 2*jnp.eye(jac.shape[-1])
         def gains_recurse(P_next, AB):
             A, B = AB
 
@@ -107,7 +107,7 @@ class FeedbackMPC:
             F = jnp.linalg.inv(M) @ (A @ P_next @ B).T
             P = A.T @ P_next @ A - (A.T @ P_next @ B) @ F + Q
             # rescale P
-            P_scale = 1/(1 + jnp.linalg.norm(P, ord='fro')/10)
+            P_scale = 1/(1 + jnp.linalg.norm(P, ord='fro')/50)
             P = P * P_scale
             return P, (F, P)
 
@@ -193,8 +193,8 @@ class FeedbackMPC:
             gains = self._compute_gains(jac, gains)
 
         # clamp the us
-        # us_norm = jax.vmap(lambda u: jnp.maximum(jnp.linalg.norm(u)/10, jnp.array(1.)))(us)
-        # us = us / jnp.expand_dims(us_norm, -1)
+        us_norm = jax.vmap(lambda u: jnp.maximum(jnp.linalg.norm(u)/50, jnp.array(1.)))(us)
+        us = us / jnp.expand_dims(us_norm, -1)
         
         new_step = OptimStep(
             us=us,

@@ -42,8 +42,8 @@ class PendulumEnvironment(Environment):
         return State(angle, vel)
 
     def step(self, state, action):
-        angle = state.angle + 0.1*state.vel
-        vel = state.vel - 0.1*jnp.sin(state.angle + math.pi) + 0.1*action[0]
+        angle = state.angle + 0.05*state.vel
+        vel = state.vel - 0.05*jnp.sin(state.angle + math.pi) + 0.05*action[0]
         state = State(angle, vel)
         return state
     
