@@ -24,10 +24,10 @@ class Repo:
         if repo_url == 'dummy':
             from jinx.experiment.dummy import DummyRepo
             return DummyRepo()
-        elif repo_url == 'wandb':
+        elif startswith(repo_url, 'wandb/'):
+            entity = repo_url[7:]
             from jinx.experiment.wandb import WandbRepo
-            # return WandbRepo('dpfrommer-projects')
-            return WandbRepo('stephentu')
+            return WandbRepo(entity)
 
 class Experiment:
     def create_run(self, name=None):
