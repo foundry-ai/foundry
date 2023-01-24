@@ -5,9 +5,12 @@ import jax.numpy as jnp
 import trajax.optimizers
 import jinx.envs
 
+from jinx.logging import logger
+
 class ILQR:
     def __init__(self, x_sample, u_sample,
-                cost_fn, model_fn, horizon_length=20, receed=True):
+                cost_fn, model_fn, horizon_length=20, receed=True,
+                verbose=False):
         self.u_sample = u_sample
         self.x_sample = x_sample
 
@@ -15,16 +18,21 @@ class ILQR:
         self.cost_fn = jinx.envs.flatten_cost(cost_fn, x_sample, u_sample)
         self.horizon_length = horizon_length
         self.receed = receed
+        self.verbose = verbose
     
     def _solve(self, x0, init_us):
         x_vec, _ = jax.flatten_util.ravel_pytree(x0)
-        _, us, _, _, _, _, _ = trajax.optimizers.ilqr(
+        _, us, _, grad, _, _, iters = trajax.optimizers.ilqr(
             lambda x,u,t: jax.lax.cond(t == self.horizon_length,
                 lambda: self.cost_fn(x, None),
                 lambda: self.cost_fn(x, u)),
             lambda x,u,t: self.model_fn(x, u), 
             x_vec, init_us
         )
+        if self.verbose:
+            logger.info('ilqr grad norm {}, iters {}',
+                        jnp.linalg.norm(jax.flatten_util.ravel_pytree(grad)[0]),
+                        iters)
         return us
 
     def init_state(self, x0):
