@@ -9,19 +9,22 @@ def str_to_bool(value):
         return True
     raise ValueError(f'{value} is not a valid boolean value')
 
+
 def add_to_parser(dataclass, parser, prefix=''):
     for field in dataclasses.fields(dataclass):
         if dataclasses.is_dataclass(field.type):
             add_to_parser(field.type, parser, f'{field.name}.')
         else:
+            default = field.default if field.default is not dataclasses.MISSING else \
+                field.default_factory() if field.default_factory is not dataclasses.MISSING else None
             if field.type == bool:
                 parser.add_argument(f'--{prefix}{field.name}', type=str_to_bool,
-                    default=field.default if field.default is not dataclasses.MISSING else
-                            field.default_factory() if field.default_factory is not dataclasses.MISSING else None)
+                    default=default,
+                    required=False)
             else:
                 parser.add_argument(f'--{prefix}{field.name}', type=field.type,
-                    default=field.default if field.default is not dataclasses.MISSING else
-                            field.default_factory() if field.default_factory is not dataclasses.MISSING else None) 
+                    default=default,
+                    required=False) 
 
 def from_args(dataclass, args, prefix=''):
     params = {}

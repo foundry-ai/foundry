@@ -50,7 +50,7 @@ def launch_from(activities, analyses, args, root_dir, lab=None):
     act_map = {}
     for a in activities:
         exp_parser = exp_subparsers.add_parser(a.name)
-        exp_parser.add_argument("--repo", default='wandb')
+        exp_parser.add_argument("--repo", default='dummy')
         config_class = parsable(a.config_dataclass)
         config_class.add_to_parser(exp_parser)
         act_map[a.name] = (a, config_class)
@@ -63,7 +63,7 @@ def launch_from(activities, analyses, args, root_dir, lab=None):
     anl_map = {}
     for a in analyses:
         anl_parser = anl_subparsers.add_parser(a.name)
-        anl_parser.add_argument("results", nargs="+", default=[])
+        #anl_parser.add_argument("results", nargs="+", default=[], required=False)
         config_class = parsable(a.config_dataclass)
         config_class.add_to_parser(anl_parser)
         anl_map[a.name] = (a, config_class)
@@ -93,7 +93,7 @@ def launch_from(activities, analyses, args, root_dir, lab=None):
             logger.error('Unrecognized analysis')
             return
         data = []
-        for r in args.results:
+        for r in []:
             path = os.path.join(root_dir, 'results', f'{r}.pkl')
             with open(path, 'rb') as file:
                 data.append(pickle.load(file))
