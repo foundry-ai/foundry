@@ -30,6 +30,8 @@ class OptimStep(NamedTuple):
 
     done: bool
 
+DEBUG = False
+
 # An MPC with feedback gains, but no barrier functions
 class FeedbackMPC:
     def __init__(self,
@@ -38,10 +40,12 @@ class FeedbackMPC:
                 horizon_length=20,
                 optimizer=optax.adam(0.01),
                 iterations=10000,
-                eps=0.00001,
                 use_gains=False,
                 # for the gains computation
                 burn_in=10,
+                Q_coef=1,
+                R_coef=1,
+
                 receed=True,
                 grad_estimator=None):
         self.x_sample = x_sample
@@ -54,10 +58,11 @@ class FeedbackMPC:
 
         self.optimizer = optimizer
         self.iterations = iterations
-        self.eps = eps
 
         self.use_gains = use_gains
         self.burn_in = burn_in
+        self.Q_coef = Q_coef
+        self.R_coef = R_coef
 
         self.receed = receed
         self.grad_estimator = grad_estimator
@@ -98,15 +103,18 @@ class FeedbackMPC:
         As_est = C_kp @ jnp.linalg.pinv(C_k) - Bs_est @ prev_gains[self.burn_in:]
 
         # synthesize new gains
-        Q = 3*jnp.eye(jac.shape[-2])
-        R = 2*jnp.eye(jac.shape[-1])
+        # Q = 0.001*jnp.eye(jac.shape[-2])
+        # R = 100*jnp.eye(jac.shape[-1])
+        Q = self.Q_coef*jnp.eye(jac.shape[-2])
+        R = self.R_coef*jnp.eye(jac.shape[-1])
         def gains_recurse(P_next, AB):
             A, B = AB
-
             M = R + B.T @ P_next @ B
-            F = jnp.linalg.inv(M) @ (A @ P_next @ B).T
-            P = A.T @ P_next @ A - (A.T @ P_next @ B) @ F + Q
-            # rescale P
+
+            N = A.T @ P_next @ B
+            F = jnp.linalg.inv(M) @ N.T
+            P = A.T @ P_next @ A - N @ F + Q
+
             P_scale = 1/(1 + jnp.linalg.norm(P, ord='fro')/50)
             P = P * P_scale
             return P, (F, P)
@@ -116,22 +124,32 @@ class FeedbackMPC:
         new_gains = prev_gains.at[self.burn_in:].set(gains_est)
 
         def print_fun(args, _):
-            prev_gains, new_gains, As_est, Bs_est, C_k, Ps, jac = args
-            if jnp.any(jnp.isnan(new_gains)) or not jnp.all(jnp.isfinite(new_gains)):
+            prev_gains, new_gains, As_cl, As_est, Bs_est, C_k, Ps, jac = args
+            # if jnp.any(jnp.isnan(new_gains)) \
+            #         or not jnp.all(jnp.isfinite(new_gains)):
+            if True:
                 s = jnp.linalg.svd(C_k, compute_uv=False)
-                min_sv = lambda s: jnp.max(jnp.linalg.svd(s, compute_uv=False))
-                print('gain_sv', jax.vmap(min_sv)(new_gains))
-                print('As_sv', jax.vmap(min_sv)(As_est))
-                print('Ps_sv', jax.vmap(min_sv)(Ps))
-                print('prev gains:', jnp.any(jnp.isnan(prev_gains)), jnp.all(jnp.isfinite(prev_gains)))
-                print('synth gains:', jnp.any(jnp.isnan(new_gains)), jnp.all(jnp.isfinite(new_gains)))
-                print('As:', jnp.any(jnp.isnan(As_est)), jnp.all(jnp.isfinite(As_est)))
-                print('Bs:', jnp.any(jnp.isnan(Bs_est)), jnp.all(jnp.isfinite(Bs_est)))
-                print('jac_nan:', jnp.any(jnp.isnan(jac)), jnp.all(jnp.isfinite(jac)))
-                print()
-                print()
-                sys.exit(0)
-        # jax.experimental.host_callback.id_tap(print_fun, (prev_gains, new_gains, As_est, Bs_est, C_k, Ps, jac))
+                sv = lambda s: jnp.max(jnp.linalg.svd(s, compute_uv=False))
+                eig = lambda s: jnp.max(jnp.linalg.eig(s)[0])
+
+                As_cl_sv = jnp.linalg.svd(As_cl, compute_uv=False)
+                As_sv = jnp.linalg.svd(As_est, compute_uv=False)
+
+                max_eig = jnp.mean(jax.vmap(eig)(As_cl))
+                # if max_eig > 1:
+                if True:
+                    print('gain_sv', jax.vmap(sv)(new_gains))
+                    print('As_cl_eig', jax.vmap(eig)(As_cl))
+                    print('As_eig', jax.vmap(eig)(As_est))
+                    print('As_cl_sv', jax.vmap(sv)(As_cl))
+                    print('As_sv', jax.vmap(sv)(As_est))
+                    print('Ps_sv', jax.vmap(sv)(Ps))
+                    print('s_diff_full', As_cl_sv - As_sv)
+                    # sys.exit(0)
+        if DEBUG:
+            As_cl = As_est + Bs_est @ gains_est
+            jax.experimental.host_callback.id_tap(print_fun, (prev_gains, new_gains, \
+                As_cl, As_est, Bs_est, C_k, Ps, jac))
 
         #new_gains = prev_gains
 
@@ -142,10 +160,11 @@ class FeedbackMPC:
                 ref_xs, ref_gains, us):
         rollout = partial(jinx.envs.rollout_input_gains, self.model_fn, x0, ref_xs, ref_gains)
         xs = rollout(us)
+
         def print_func(arg, _):
             x0, xs, us, gains = arg
             print('---- Rolling out Trajectories ------')
-            if jnp.any(jnp.isnan(xs)):
+            if jnp.any(jnp.isnan(us)) or not jnp.all(jnp.isfinite(us)):
                 print('gains', gains)
                 print('xs', xs)
                 print('us', us)
@@ -154,7 +173,9 @@ class FeedbackMPC:
                 print('us_nan', jnp.any(jnp.isnan(us)))
                 print('gains_nan', jnp.any(jnp.isnan(gains)))
                 sys.exit(0)
-        # jax.experimental.host_callback.id_tap(print_func, (x0, xs, us, ref_gains))
+        if DEBUG:
+            jax.experimental.host_callback.id_tap(print_func, (x0, xs, us, ref_gains))
+
         # for use with gradient estimation
         if self.grad_estimator:
             est_state, jac, xs = self.grad_estimator.inject_gradient(
@@ -168,6 +189,20 @@ class FeedbackMPC:
         mod = ref_gains @ jnp.expand_dims(xs[:-1] - ref_xs[:-1], -1)
         us = us + jnp.squeeze(mod, -1)
         cost = jinx.envs.trajectory_cost(self.cost_fn, xs, us)
+
+        def print_func(arg, _):
+            x0, cost, xs, us, gains = arg
+            print('---- Post-loss ------')
+            print('cost', cost)
+            if jnp.any(jnp.isnan(us)) or not jnp.all(jnp.isfinite(us)) \
+                    or jnp.any(jnp.isnan(cost)) or not jnp.all(jnp.isfinite(cost)):
+                print('x0_nan', jnp.any(jnp.isnan(x0)))
+                print('xs_nan', jnp.any(jnp.isnan(xs)))
+                print('us_nan', jnp.any(jnp.isnan(us)))
+                print('gains_nan', jnp.any(jnp.isnan(gains)))
+                sys.exit(0)
+        if DEBUG:
+            jax.experimental.host_callback.id_tap(print_func, (x0, cost, xs, us, ref_gains))
         return cost, (est_state, jac, cost)
 
     def _inner_step(self, x0, prev_step):
@@ -177,11 +212,40 @@ class FeedbackMPC:
         loss = partial(self._loss_fn, prev_step.est_state, x0,
                         ref_states, gains)
 
+        def print_func(arg, _):
+            x0, xs, us, gains = arg
+            print('----  Pre-Loss ------')
+            if jnp.any(jnp.isnan(xs)):
+                print('x0_nan', jnp.any(jnp.isnan(x0)))
+                print('xs_nan', jnp.any(jnp.isnan(xs)))
+                print('us_nan', jnp.any(jnp.isnan(us)))
+                print('gains_nan', jnp.any(jnp.isnan(gains)))
+                sys.exit(0)
+        if DEBUG:
+            jax.experimental.host_callback.id_tap(print_func, (x0, ref_states, prev_step.us, gains))
+
         grad, (est_state, jac, cost) = jax.grad(loss, has_aux=True)(
             prev_step.us
         )
         updates, opt_state = self.optimizer.update(grad, prev_step.opt_state, prev_step.us)
         us = optax.apply_updates(prev_step.us, updates)
+
+        def print_func(arg, _):
+            x0, grad, xs, us, gains = arg
+            print('---- Applied Updates ------')
+            if jnp.any(jnp.isnan(us)):
+                print('grad_nan', jnp.any(jnp.isnan(grad)))
+                print('x0_nan', jnp.any(jnp.isnan(x0)))
+                print('xs_nan', jnp.any(jnp.isnan(xs)))
+                print('us_nan', jnp.any(jnp.isnan(us)))
+                print('gains_nan', jnp.any(jnp.isnan(gains)), jnp.all(jnp.isfinite(gains)))
+                sys.exit(0)
+        if DEBUG:
+            jax.experimental.host_callback.id_tap(print_func, (x0, grad, ref_states, us, gains))
+
+        # TODO: Help! I have put this in for now
+        # but hopefully there is a better way?
+        us = jax.lax.cond(jnp.any(jnp.isnan(us)), lambda: prev_step.us, lambda: us)
 
         if self.use_gains:
             # rollout new trajectory under old gains
@@ -195,6 +259,18 @@ class FeedbackMPC:
         # clamp the us
         us_norm = jax.vmap(lambda u: jnp.maximum(jnp.linalg.norm(u)/50, jnp.array(1.)))(us)
         us = us / jnp.expand_dims(us_norm, -1)
+
+        def print_func(arg, _):
+            x0, xs, us, gains = arg
+            print('---- Clipped ------')
+            if jnp.any(jnp.isnan(us)):
+                print('x0_nan', jnp.any(jnp.isnan(x0)))
+                print('xs_nan', jnp.any(jnp.isnan(xs)))
+                print('us_nan', jnp.any(jnp.isnan(us)))
+                print('gains_nan', jnp.any(jnp.isnan(gains)))
+                sys.exit(0)
+        if DEBUG:
+            jax.experimental.host_callback.id_tap(print_func, (x0, ref_states, us, gains))
         
         new_step = OptimStep(
             us=us,
@@ -210,11 +286,34 @@ class FeedbackMPC:
         return new_step
     
     # body_fun for the solver interation
-    def _opt_iteration(self, state_0, prev_step, _):
+    def _opt_iteration(self, x0, prev_step, _):
+        def print_func(arg, _):
+            x0, us, gains = arg
+            print('---- pre_opt_iteration ------')
+            if jnp.any(jnp.isnan(us)):
+                print('x0_nan', jnp.any(jnp.isnan(x0)))
+                print('us_nan', jnp.any(jnp.isnan(us)))
+                print('gains_nan', jnp.any(jnp.isnan(gains)))
+                sys.exit(0)
+        if DEBUG:
+            jax.experimental.host_callback.id_tap(print_func, (x0, prev_step.us, prev_step.gains))
+
         new_step = jax.lax.cond(
             prev_step.done,
             lambda: prev_step, 
-            lambda: self._inner_step(state_0, prev_step))
+            lambda: self._inner_step(x0, prev_step))
+
+        def print_func(arg, _):
+            x0, done, us, gains = arg
+            print('---- post_opt_iteration ------')
+            if jnp.any(jnp.isnan(us)):
+                print('done', done)
+                print('x0_nan', jnp.any(jnp.isnan(x0)))
+                print('us_nan', jnp.any(jnp.isnan(us)))
+                print('gains_nan', jnp.any(jnp.isnan(gains)))
+                sys.exit(0)
+        if DEBUG:
+            jax.experimental.host_callback.id_tap(print_func, (x0, prev_step.done, new_step.us, new_step.gains))
         return new_step, prev_step
 
     # A modified version of the JaxOPT base IterativeSolver
@@ -236,7 +335,31 @@ class FeedbackMPC:
             done=False
         )
         scan_fn = partial(self._opt_iteration, x0)
+
+        def print_func(arg, _):
+            x0, us, gains = arg
+            print('---- starting_iteration ------')
+            if jnp.any(jnp.isnan(us)):
+                print('x0_nan', jnp.any(jnp.isnan(x0)))
+                print('us_nan', jnp.any(jnp.isnan(us)))
+                print('gains_nan', jnp.any(jnp.isnan(gains)))
+                sys.exit(0)
+        if DEBUG:
+            jax.experimental.host_callback.id_tap(print_func, (x0, init_step.us, init_step.gains))
+
         final_step, history = jax.lax.scan(scan_fn, init_step, None, length=self.iterations)
+
+        def print_func(arg, _):
+            x0, us, gains = arg
+            print('---- starting_iteration ------')
+            if jnp.any(jnp.isnan(us)):
+                print('x0_nan', jnp.any(jnp.isnan(x0)))
+                print('us_nan', jnp.any(jnp.isnan(us)))
+                print('gains_nan', jnp.any(jnp.isnan(gains)))
+                sys.exit(0)
+        if DEBUG:
+            jax.experimental.host_callback.id_tap(print_func, (x0, final_step.us, final_step.gains))
+
         history = jinx.util.tree_append(history, final_step)
         return final_step, history
 

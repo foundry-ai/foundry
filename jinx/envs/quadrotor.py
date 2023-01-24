@@ -16,11 +16,12 @@ class State(NamedTuple):
 
 class QuadrotorEnvironment(Environment):
     def __init__(self):
-        self.g = 9.81
-        self.m = 0.18
+        self.g = 0.1 # we made the gravity less terrible
+                    # so that the cost for open loop
+                    # would be less disastrous
+        self.m = 0.8
         self.L = 0.086
-        self.Ixx = 0.0005
-        #self.Ixx = 0.05
+        self.Ixx = 0.5
         self.dt = 0.05
     
     def sample_action(self, rng):
@@ -42,8 +43,8 @@ class QuadrotorEnvironment(Environment):
         x_key, z_key, phi_key, xd_key, \
             zd_key, phid_key = jax.random.split(rng_key, 6)
         return State(
-            x=jax.random.uniform(x_key, (), jnp.float32, -1., 1.),
-            z=jax.random.uniform(z_key, (), jnp.float32, -1., 1.),
+            x=jax.random.uniform(x_key, (), jnp.float32, -0.5, 0.5),
+            z=jax.random.uniform(z_key, (), jnp.float32, -0.5, 0.5),
             phi=jnp.zeros(()),
             x_dot=jnp.zeros(()),
             z_dot=jnp.zeros(()),
@@ -51,12 +52,15 @@ class QuadrotorEnvironment(Environment):
         )
     
     def step(self, state, action):
+        thrust = action[0]
+        torque = action[1]
+
         x_dot = state.x_dot
         z_dot = state.z_dot
         phi_dot = state.phi_dot
-        x_ddot = -action[0]*jnp.sin(state.phi)/self.m
-        z_ddot = action[0]*jnp.cos(state.phi)/self.m - self.g
-        phi_ddot = action[1]/self.Ixx
+        x_ddot = -thrust*jnp.sin(state.phi)/self.m
+        z_ddot = thrust*jnp.cos(state.phi)/self.m - self.g
+        phi_ddot = torque/self.Ixx
 
         dt = self.dt
         return State(
@@ -75,7 +79,7 @@ class QuadrotorEnvironment(Environment):
                 state.phi_dot**2)
         cost = x_cost
         if action is not None:
-            u_cost = 0.01*jnp.sum(action**2)
+            u_cost = 0.1*jnp.sum(action**2)
             cost = cost + u_cost
         else:
             cost = 3*cost
