@@ -26,7 +26,8 @@ class Repo:
             return DummyRepo()
         elif repo_url == 'wandb':
             from jinx.experiment.wandb import WandbRepo
-            return WandbRepo('dpfrommer-projects')
+            # return WandbRepo('dpfrommer-projects')
+            return WandbRepo('stephentu')
 
 class Experiment:
     def create_run(self, name=None):

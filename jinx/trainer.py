@@ -146,6 +146,9 @@ class Trainer:
         if not max_iterations and not epochs:
             raise ValueError("Must specify either number of epochs or iterations")
         
+        rng_key, sub_key = jax.random.split(rng_key)
+        dataset = dataset.shuffle(sub_key)
+
         batch_dataset = dataset.batch(self.batch_size)
         if max_iterations is None:
             max_iterations = batch_dataset.length*epochs

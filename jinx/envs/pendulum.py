@@ -23,7 +23,8 @@ class PendulumEnvironment(Environment):
         self.sub_steps = sub_steps
 
     def sample_action(self, rng_key):
-        return jax.random.uniform(rng_key, (1,), jnp.float32, -0.1, 0.1)
+        return jax.random.uniform(
+            rng_key, shape=(1,), minval=-1.0, maxval=1.0)
 
     # Sample state should be like reset(),
     # but whereas reset() is meant to be a distribution
