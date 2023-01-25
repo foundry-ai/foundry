@@ -130,7 +130,7 @@ class Trainer:
     def train(self, dataset, rng_key,
                 init_fn_params, init_fn_state=NO_STATE,
                 init_opt_state=None,
-                epochs=None, max_iterations=None, show_pbar=False):
+                epochs=None, max_iterations=None, show_pbar=True):
         
         # epochs and max_iterations can come from either
         # the trainer parameters or the train parameters
