@@ -24,8 +24,8 @@ class Repo:
         if repo_url == 'dummy':
             from jinx.experiment.dummy import DummyRepo
             return DummyRepo()
-        elif startswith(repo_url, 'wandb/'):
-            entity = repo_url[7:]
+        elif repo_url.startswith('wandb/'):
+            entity = repo_url[6:]
             from jinx.experiment.wandb import WandbRepo
             return WandbRepo(entity)
 

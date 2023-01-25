@@ -73,11 +73,12 @@ class JaxLogger:
             self.init()
         # Short-circuit at compile time!
         if self._allow(level, topic):
-            if isinstance(jax.numpy.array(0), jax.core.Tracer):
-                self._log(level, topic, msg, (args, kwargs), tracing=True)
-            jax.debug.callback(
-                        partial(self._log, level, topic, msg), 
-                        (args, kwargs), ordered=True)
+            # if isinstance(jax.numpy.array(0), jax.core.Tracer):
+            #    self._log(level, topic, msg, (args, kwargs), tracing=True)
+            self._log(level, topic, msg, (args, kwargs), tracing=False)
+            # jax.debug.callback(
+            #             partial(self._log, level, topic, msg), 
+            #             (args, kwargs), ordered=True)
 
     def trace(self, *args, **kwargs):
         return self.log(TRACE, *args, **kwargs)
@@ -103,17 +104,19 @@ import tqdm
 class ProgressBar:
     def __init__(self, topic, total):
         self.topic = topic
-        jax.debug.callback(self._create, total, ordered=True)
+        #jax.debug.callback(self._create, total, ordered=True)
 
     def inc(self, amt=1, stats={}):
         # TODO: We need to get the debug callback's vmap-transform
         # unrolling
-        jax.debug.callback(self._inc, amt, stats, ordered=True)
+        #jax.debug.callback(self._inc, amt, stats, ordered=True)
+        pass
 
     # TODO: Figure out what to do about close()
     # getting optimized out...
     def close(self):
-        jax.debug.callback(self._close, ordered=True)
+        pass
+        #jax.debug.callback(self._close, ordered=True)
 
     def _create(self, total):
         self.bar = tqdm.tqdm(total=total)

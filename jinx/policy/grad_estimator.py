@@ -81,6 +81,8 @@ class IsingEstimator:
         return W, x_diff
     
     def calculate_jacobians(self, W, x_diff):
+        # W: (samples, traj_dim-1, u_dim)
+        # x_diff: (samples, traj_dim, x_dim)
         W = jnp.expand_dims(W, -2)
         W = jnp.tile(W, [1, 1, x_diff.shape[1], 1])
         # W: (samples, traj_dim-1, traj_dim, u_dim)
