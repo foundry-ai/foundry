@@ -25,7 +25,7 @@ class QuadrotorEnvironment(Environment):
         self.dt = 0.05
     
     def sample_action(self, rng):
-        return jax.random.uniform(rng, (2,), jnp.float32, -0.1, 0.1)
+        return jax.random.uniform(rng, (2,), jnp.float32, -1.5, 1.5)
 
     def sample_state(self, rng_key):
         x_key, z_key, phi_key, xd_key, \

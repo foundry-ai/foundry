@@ -123,14 +123,15 @@ class Trainer:
         state = jax.lax.cond(new_epoch,
             self._adv_epoch, lambda x: x,  state)
         state, stats = self._train_step(state)
-        pb.inc(1, stats)
+        if pb is not None:
+            pb.inc(1, stats)
         return state, stats
     
     # If epochs > 0, the dataset must be shuffleable
     def train(self, dataset, rng_key,
                 init_fn_params, init_fn_state=NO_STATE,
                 init_opt_state=None,
-                epochs=None, max_iterations=None):
+                epochs=None, max_iterations=None, show_pbar=True):
         
         # epochs and max_iterations can come from either
         # the trainer parameters or the train parameters
@@ -167,8 +168,11 @@ class Trainer:
             fn_state=init_fn_state,
             opt_state=init_opt_state
         )
-        with pbar('trainer', total=max_iterations) as pb:
-            final_state, stat_history = jax.lax.scan(partial(self._train_scan, pb), state, None, length=max_iterations)
+        if show_pbar:
+            with pbar('trainer', total=max_iterations) as pb:
+                final_state, stat_history = jax.lax.scan(partial(self._train_scan, pb), state, None, length=max_iterations)
+        else:
+            final_state, stat_history = jax.lax.scan(partial(self._train_scan, None), state, None, length=max_iterations)
             # for i in range(max_iterations):
             #     state, _ = self._train_scan(pb, state, None)
             # final_state = state
