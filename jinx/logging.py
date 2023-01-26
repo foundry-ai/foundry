@@ -104,19 +104,17 @@ import tqdm
 class ProgressBar:
     def __init__(self, topic, total):
         self.topic = topic
-        #jax.debug.callback(self._create, total, ordered=True)
+        jax.debug.callback(self._create, total, ordered=True)
 
     def inc(self, amt=1, stats={}):
         # TODO: We need to get the debug callback's vmap-transform
         # unrolling
-        #jax.debug.callback(self._inc, amt, stats, ordered=True)
-        pass
+        jax.debug.callback(self._inc, amt, stats, ordered=True)
 
     # TODO: Figure out what to do about close()
     # getting optimized out...
     def close(self):
-        pass
-        #jax.debug.callback(self._close, ordered=True)
+        jax.debug.callback(self._close, ordered=True)
 
     def _create(self, total):
         self.bar = tqdm.tqdm(total=total)

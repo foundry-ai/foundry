@@ -31,12 +31,12 @@ class QuadrotorEnvironment(Environment):
         x_key, z_key, phi_key, xd_key, \
             zd_key, phid_key = jax.random.split(rng_key, 6)
         return State(
-            x=3*jax.random.normal(x_key, ()),
-            z=3*jax.random.normal(z_key, ()),
-            phi=3*jax.random.normal(phi_key, ()),
-            x_dot=3*jax.random.normal(xd_key, ()),
-            z_dot=3*jax.random.normal(zd_key, ()),
-            phi_dot=3*jax.random.uniform(phid_key, ())
+            x=jax.random.uniform(x_key, (), minval=-3, maxval=3),
+            z=jax.random.uniform(z_key, (), minval=-3, maxval=3),
+            phi=jax.random.uniform(phi_key, (), minval=-3, maxval=3),
+            x_dot=jax.random.uniform(xd_key, (), minval=-3, maxval=3),
+            z_dot=jax.random.uniform(zd_key, (), minval=-3, maxval=3),
+            phi_dot=jax.random.uniform(phid_key, (), minval=-3, maxval=3)
         )
     
     def reset(self, rng_key):
