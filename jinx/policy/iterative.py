@@ -177,9 +177,11 @@ class FeedbackMPC:
             jax.experimental.host_callback.id_tap(print_func, (x0, xs, us, ref_gains))
 
         # for use with gradient estimation
+        true_jac = jax.jacrev(rollout)(us)
+        true_jac = jnp.transpose(true_jac, (2, 0, 1, 3))
         if self.grad_estimator:
             est_state, jac, xs = self.grad_estimator.inject_gradient(
-                est_state, self.model_fn, xs, ref_gains, us
+                est_state, self.model_fn, xs, ref_gains, us, true_jac
             )
         else:
             jac = jax.jacrev(rollout)(us)

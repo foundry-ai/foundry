@@ -3,6 +3,7 @@ import optax
 import jax
 import jax.numpy as jnp
 import jax.tree_util as tree_util
+import jax.scipy as jsp
 
 import jinx.envs
 import jinx.util
@@ -13,6 +14,9 @@ from typing import NamedTuple, Any
 class EstimatorState(NamedTuple):
     rng: jax.random.PRNGKey
     total_samples: int
+
+
+USE_LEAST_SQUARES = True
 
 class IsingEstimator:
     def __init__(self, rng_key, samples, sigma):
@@ -41,10 +45,10 @@ class IsingEstimator:
             total_samples=0
         )
     
-    def inject_gradient(self, est_state, model_fn, states, gains, us):
+    def inject_gradient(self, est_state, model_fn, states, gains, us, true_jac):
         new_rng, subkey = jax.random.split(est_state.rng)
         W, x_diff = self.rollout(model_fn, subkey, states, gains, us)
-        jac = self.calculate_jacobians(W, x_diff)
+        jac = self.calculate_jacobians(W, x_diff, true_jac)
         x = self._inject_gradient(states, us, jac)
         return EstimatorState(
             rng=new_rng,
@@ -80,43 +84,99 @@ class IsingEstimator:
         # jax.experimental.host_callback.id_tap(print_func, (W, us, gains, x_diff, traj, trajs))
         return W, x_diff
     
-    def calculate_jacobians(self, W, x_diff):
+    def calculate_jacobians(self, W, x_diff, true_jac):
         # W: (samples, traj_dim-1, u_dim)
         # x_diff: (samples, traj_dim, x_dim)
-        W = jnp.expand_dims(W, -2)
-        W = jnp.tile(W, [1, 1, x_diff.shape[1], 1])
-        # W: (samples, traj_dim-1, traj_dim, u_dim)
-        x_diff = jnp.expand_dims(x_diff, -3)
-        # x_diff: (samples, 1,  traj_dim, x_dim)
 
-        W = jnp.expand_dims(W, -2)
-        x_diff = jnp.expand_dims(x_diff, -1)
-        # W: (samples, traj_dim - 1, traj_dim, 1, u_dim)
-        # x_diff: (samples, 1, traj_dim, x_dim, 1)
-        jac = jnp.mean(x_diff @ W, axis=0)/(self.sigma*self.sigma)
-        # jac: (traj_dim-1, traj_dim, x_dim, u_dim)
-        # (u,v) entry contains the jacobian from time u to state v
+        if USE_LEAST_SQUARES:
+            T = W.shape[1] + 1
+            x_dim = x_diff.shape[-1]
+            u_dim = W.shape[2]
+            # W: (samples, traj_dim-1, u_dim)
+            W = jnp.reshape(W, (W.shape[0], -1))
+            # W: (samples, traj_dim-1 * u_dim)
+            W = jnp.expand_dims(W, -1)
+            # W: (samples, traj_dim-1 * u_dim, 1)
+            W_T = jnp.transpose(W, (0, 2, 1))
+            # W_T: (samples, 1, traj_dim-1 * u_dim)
 
-        # we need to zero out at and below the diagonal
-        # (there should be no correlation, but just in case)
-        tri = jax.numpy.tri(jac.shape[0], jac.shape[1], dtype=bool)
-        tri = jnp.expand_dims(jnp.expand_dims(tri, -1),-1)
-        tri = jnp.tile(tri, [1,1,jac.shape[2], jac.shape[3]])
+            W_W = W @ W_T
+            # W_W: (samples, traj_dim-1 * u_dim, traj_dim-1 * u_dim)
+            W_W = jnp.sum(W_W, 0)
+            # W_W: (traj_dim-1 * u_dim, traj_dim-1 * u_dim)
+            x_diff = jnp.expand_dims(x_diff, -1)
+            # x_diff (samples, traj_dim, x_dim, 1)
 
-        # fill lower-triangle with zeros
-        jac = jnp.where(tri, jnp.zeros_like(jac), jac)
-        def print_func(arg, _):
-            jac, W, x_diff = arg
-            print('---- Computing Jacobian ------')
-            print(x_diff.shape)
-            print('x_diff', x_diff[0])
-            print('W_nan', jnp.any(jnp.isnan(W)))
-            print('x_diff_nan', jnp.any(jnp.isnan(x_diff)))
-            print('jac_nan', jnp.any(jnp.isnan(jac)))
-            if jnp.any(jnp.isnan(jac)):
-                sys.exit(0)
-        # jax.experimental.host_callback.id_tap(print_func, (jac, W, x_diff))
-        return jac
+            jac = jnp.zeros((T-1, T, x_dim, u_dim))
+            for t in range(1, T):
+                M = W_W[:t*u_dim,:t*u_dim]
+                # M (t*u_dim, t*u_dim)
+                B = x_diff[:, t, ...] @ W_T[:, :, :t*u_dim]
+                B = jnp.sum(B, 0).T
+                # B (t*u_dim, x_dim)
+                X = jsp.linalg.solve(M + 0.00001*jnp.eye(M.shape[0]), B, assume_a='pos')
+                # X (t*u_dim, x_dim)
+                X = X.reshape((t, u_dim, x_dim))
+                X = jnp.transpose(X, (0, 2, 1))
+                jac = jac.at[:t,t,...].set(X)
+
+                def print_func(arg, _):
+                    X, B, M, t = arg
+                    if jnp.any(jnp.isnan(X)) or jnp.any(jnp.isnan(B)) or jnp.any(jnp.isnan(M)):
+                        print('t', t)
+                        print('X', X)
+                        print('B', B)
+                        print('M', M)
+                        print('s', jnp.linalg.cond(M))
+                        import pdb
+                        pdb.set_trace()
+                        sys.exit(0)
+                # jax.experimental.host_callback.id_tap(print_func, (X, B, M,t))
+            def print_func(arg, _):
+                jac, true_jac, W, x_diff = arg
+                if jnp.any(jnp.isnan(jac)):
+                    print('---- Computing Jacobian ------')
+                    print(jac[1,9,...])
+                    print(true_jac[1,9,...])
+                    print(jnp.max(jnp.abs(jac - true_jac)))
+                    sys.exit(0)
+            # jax.experimental.host_callback.id_tap(print_func, (jac, true_jac, W, x_diff))
+            return jac
+        else:
+            W = jnp.expand_dims(W, -2)
+            W = jnp.tile(W, [1, 1, x_diff.shape[1], 1])
+            # W: (samples, traj_dim-1, traj_dim, u_dim)
+            x_diff = jnp.expand_dims(x_diff, -3)
+            # x_diff: (samples, 1,  traj_dim, x_dim)
+
+            W = jnp.expand_dims(W, -2)
+            x_diff = jnp.expand_dims(x_diff, -1)
+            # W: (samples, traj_dim - 1, traj_dim, 1, u_dim)
+            # x_diff: (samples, 1, traj_dim, x_dim, 1)
+            jac = jnp.mean(x_diff @ W, axis=0)/(self.sigma*self.sigma)
+            # jac: (traj_dim-1, traj_dim, x_dim, u_dim)
+            # (u,v) entry contains the jacobian from time u to state v
+
+            # we need to zero out at and below the diagonal
+            # (there should be no correlation, but just in case)
+            tri = jax.numpy.tri(jac.shape[0], jac.shape[1], dtype=bool)
+            tri = jnp.expand_dims(jnp.expand_dims(tri, -1),-1)
+            tri = jnp.tile(tri, [1,1,jac.shape[2], jac.shape[3]])
+
+            # fill lower-triangle with zeros
+            jac = jnp.where(tri, jnp.zeros_like(jac), jac)
+            def print_func(arg, _):
+                jac, W, x_diff = arg
+                print('---- Computing Jacobian ------')
+                print(x_diff.shape)
+                print('x_diff', x_diff[0])
+                print('W_nan', jnp.any(jnp.isnan(W)))
+                print('x_diff_nan', jnp.any(jnp.isnan(x_diff)))
+                print('jac_nan', jnp.any(jnp.isnan(jac)))
+                if jnp.any(jnp.isnan(jac)):
+                    sys.exit(0)
+            # jax.experimental.host_callback.id_tap(print_func, (jac, W, x_diff))
+            return jac
     
     # the backwards step
     def bkw(self, jac, g):
