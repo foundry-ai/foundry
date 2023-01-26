@@ -21,6 +21,7 @@ class State(NamedTuple):
 class PendulumEnvironment(Environment):
     def __init__(self, sub_steps=1):
         self.sub_steps = sub_steps
+        self.dt = 0.1
 
     def sample_action(self, rng_key):
         return jax.random.uniform(
@@ -43,8 +44,8 @@ class PendulumEnvironment(Environment):
         return State(angle, vel)
 
     def step(self, state, action):
-        angle = state.angle + 0.05*state.vel
-        vel = state.vel - 0.05*jnp.sin(state.angle + math.pi) + 0.05*action[0]
+        angle = state.angle + self.dt*state.vel
+        vel = state.vel - self.dt*jnp.sin(state.angle + math.pi) + self.dt*action[0]
         state = State(angle, vel)
         return state
     
@@ -54,11 +55,11 @@ class PendulumEnvironment(Environment):
         diff = x - jnp.array([0, 0])
         if u is None:
             x_cost = jnp.sum(diff**2)
-            return 10*x_cost
+            return 20*x_cost
         else:
             x_cost = jnp.sum(diff**2)
             u_cost = jnp.sum(u**2)
-            return x_cost + u_cost
+            return 2*x_cost + u_cost
 
     def barrier(self, _, us):
         constraints = [jnp.ravel(us - 3),

@@ -22,7 +22,7 @@ class QuadrotorEnvironment(Environment):
         self.m = 0.8
         self.L = 0.086
         self.Ixx = 0.5
-        self.dt = 0.05
+        self.dt = 0.1
     
     def sample_action(self, rng):
         return jax.random.uniform(rng, (2,), jnp.float32, -1.5, 1.5)
@@ -82,7 +82,7 @@ class QuadrotorEnvironment(Environment):
             u_cost = 0.1*jnp.sum(action**2)
             cost = cost + u_cost
         else:
-            cost = 3*cost
+            cost = 10*cost
         return cost
     
     def visualize(self, states, actions):
