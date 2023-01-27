@@ -1,4 +1,4 @@
-from ode.experiment import Repo, Experiment, Run, remap, \
+fromstanza.experiment import Repo, Experiment, Run, remap, \
                             Video, Figure
 
 from attrdict import AttrDict

@@ -1,4 +1,4 @@
-from ode.envs import Environment
+fromstanza.envs import Environment
 
 import jax
 import jax.numpy as jnp
@@ -8,7 +8,7 @@ import math
 from typing import NamedTuple
 from cairo import ImageSurface, Context, Format
 from functools import partial
-from ode.experiment import Figure, Video
+fromstanza.experiment import Figure, Video
 
 import math
 import plotly.express as px

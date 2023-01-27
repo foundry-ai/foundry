@@ -2,11 +2,11 @@ import jax
 import optax
 import jax.numpy as jnp
 
-from ode.dataset.env import EnvDataset
-from ode.trainer import Trainer
+fromstanza.dataset.env import EnvDataset
+fromstanza.trainer import Trainer
 from typing import NamedTuple, Any, Tuple
 
-from ode.logging import logger
+fromstanza.logging import logger
 
 class ILSample(NamedTuple):
     x: jnp.array

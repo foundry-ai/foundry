@@ -5,8 +5,8 @@ import jax.numpy as jnp
 import jax.tree_util as tree_util
 import jax.scipy as jsp
 
-import ode.envs
-import ode.util
+importstanza.envs
+importstanza.util
 
 from functools import partial
 from typing import NamedTuple, Any

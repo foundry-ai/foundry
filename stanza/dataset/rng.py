@@ -1,4 +1,4 @@
-from ode.dataset import Dataset, INFINITE
+fromstanza.dataset import Dataset, INFINITE
 
 import jax.random
 

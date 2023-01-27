@@ -3,14 +3,14 @@ import optax
 import jax
 import jax.numpy as jnp
 import jax.tree_util as tree_util
-import ode.envs
-import ode.util
+importstanza.envs
+importstanza.util
 
 from functools import partial
 from typing import NamedTuple, Any
-from ode.logging import logger
-from ode.solver import NewtonSolver, RelaxingSolver, OptaxSolver
-from ode.solver.jaxopt import JaxOptSolver, BFGS, LBFGS, GradientDescent
+fromstanza.logging import logger
+fromstanza.solver import NewtonSolver, RelaxingSolver, OptaxSolver
+fromstanza.solver.jaxopt import JaxOptSolver, BFGS, LBFGS, GradientDescent
 
 def _centered_log(sdf, *args):
     u_x, fmt = jax.flatten_util.ravel_pytree(args)
@@ -54,7 +54,7 @@ class BarrierMPC:
             self.solver.init_t = 1.
 
     def _loss_fn(self, us, x0, t=1):
-        xs = ode.envs.rollout_input(
+        xs =stanza.envs.rollout_input(
                 self.model_fn, x0, us
             )
         cost = self.cost_fn(xs, us)
@@ -87,7 +87,7 @@ class BarrierMPC:
             # so u = 0 is always feasible
             us = jnp.zeros_like(us)
 
-            xs = ode.envs.rollout_input(self.model_fn, state, us)
+            xs =stanza.envs.rollout_input(self.model_fn, state, us)
             feasible = jnp.max(self.barrier_sdf(xs, us))
 
             us = jax.lax.cond(feasible < 0, solve_us,

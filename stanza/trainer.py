@@ -10,7 +10,7 @@ from typing import NamedTuple, List, Any
 from collections import namedtuple
 from dataclasses import dataclass
 
-from ode.logging import logger, pbar
+fromstanza.logging import logger, pbar
 
 class TrainState(NamedTuple):
     epoch: int
