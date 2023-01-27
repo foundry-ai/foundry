@@ -3,14 +3,14 @@ import optax
 import jax
 import jax.numpy as jnp
 import jax.tree_util as tree_util
-import jinx.envs
-import jinx.util
+import ode.envs
+import ode.util
 
 from functools import partial
 from typing import NamedTuple, Any
-from jinx.logging import logger
-from jinx.solver import NewtonSolver, RelaxingSolver, OptaxSolver
-from jinx.solver.jaxopt import JaxOptSolver, BFGS, LBFGS, GradientDescent
+from ode.logging import logger
+from ode.solver import NewtonSolver, RelaxingSolver, OptaxSolver
+from ode.solver.jaxopt import JaxOptSolver, BFGS, LBFGS, GradientDescent
 
 def _centered_log(sdf, *args):
     u_x, fmt = jax.flatten_util.ravel_pytree(args)
@@ -31,7 +31,7 @@ class BarrierMPC:
 
         # turn the per-timestep cost function
         # into a trajectory-based cost function
-        self.cost_fn = partial(jinx.envs.trajectory_cost, cost_fn)
+        self.cost_fn = partial(ode.envs.trajectory_cost, cost_fn)
         self.model_fn = model_fn
         self.horizon_length = horizon_length
 
@@ -54,7 +54,7 @@ class BarrierMPC:
             self.solver.init_t = 1.
 
     def _loss_fn(self, us, x0, t=1):
-        xs = jinx.envs.rollout_input(
+        xs = ode.envs.rollout_input(
                 self.model_fn, x0, us
             )
         cost = self.cost_fn(xs, us)
@@ -87,7 +87,7 @@ class BarrierMPC:
             # so u = 0 is always feasible
             us = jnp.zeros_like(us)
 
-            xs = jinx.envs.rollout_input(self.model_fn, state, us)
+            xs = ode.envs.rollout_input(self.model_fn, state, us)
             feasible = jnp.max(self.barrier_sdf(xs, us))
 
             us = jax.lax.cond(feasible < 0, solve_us,

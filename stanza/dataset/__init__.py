@@ -6,7 +6,7 @@ import jax.numpy as jnp
 from jax.tree_util import register_pytree_node_class
 from functools import partial as partial
 
-from jinx.logging import logger, pbar
+from ode.logging import logger, pbar
 
 INFINITE = float("inf")
 

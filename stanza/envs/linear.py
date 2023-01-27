@@ -1,4 +1,4 @@
-from jinx.envs import Environment
+from ode.envs import Environment
 
 import jax.numpy as jnp
 import jax.random

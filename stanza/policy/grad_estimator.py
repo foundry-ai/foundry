@@ -5,8 +5,8 @@ import jax.numpy as jnp
 import jax.tree_util as tree_util
 import jax.scipy as jsp
 
-import jinx.envs
-import jinx.util
+import ode.envs
+import ode.util
 
 from functools import partial
 from typing import NamedTuple, Any
@@ -63,8 +63,8 @@ class IsingEstimator:
         # do a bunch of rollouts
         W = self.sigma*jax.random.choice(rng, jnp.array([-1,1]), (self.samples,) + us.shape)
         # rollout all of the perturbed trajectories
-        #rollout = partial(jinx.envs.rollout_input_gains, self.model_fn, state_0, traj.x, gains)
-        rollout = partial(jinx.envs.rollout_input, model_fn, state_0)
+        #rollout = partial(ode.envs.rollout_input_gains, self.model_fn, state_0, traj.x, gains)
+        rollout = partial(ode.envs.rollout_input, model_fn, state_0)
         # Get the first state
         trajs = jax.vmap(rollout)(us + W)
         # subtract off x_bar

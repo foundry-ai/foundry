@@ -1,4 +1,4 @@
-from jinx.dataset import Dataset
+from ode.dataset import Dataset
 import jax.numpy as jnp
 
 # def test_simple():

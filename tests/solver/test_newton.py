@@ -1,4 +1,4 @@
-from jinx.solver import NewtonSolver, RelaxingSolver
+from ode.solver import NewtonSolver, RelaxingSolver
 from functools import partial
 
 import jax

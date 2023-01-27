@@ -1,4 +1,4 @@
-from jinx.envs import Environment
+from ode.envs import Environment
 
 import jax
 import jax.numpy as jnp
@@ -8,7 +8,7 @@ import math
 from typing import NamedTuple
 from cairo import ImageSurface, Context, Format
 from functools import partial
-from jinx.experiment import Figure, Video
+from ode.experiment import Figure, Video
 
 import math
 import plotly.express as px

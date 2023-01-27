@@ -1,7 +1,7 @@
 import os
 import pickle
 from dataclasses import dataclass
-from jinx.logging import logger
+from ode.logging import logger
 
 @dataclass
 class EmptyConfig:
@@ -35,7 +35,7 @@ def activity(name, config_dataclass=None):
 
 def launch_from(activities, analyses, args, root_dir, lab=None):
     import argparse
-    from jinx.experiment.config import parsable
+    from ode.experiment.config import parsable
     parser = argparse.ArgumentParser(
         prog='Experiment Launcher',
     )
@@ -77,7 +77,7 @@ def launch_from(activities, analyses, args, root_dir, lab=None):
         activity, config_class = act_map[args.activity]
         config = config_class.from_args(args)
 
-        from jinx.experiment import Repo
+        from ode.experiment import Repo
         repo = Repo.from_url(args.repo)
         exp = repo.experiment(args.activity)
         run = exp.create_run()

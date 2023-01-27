@@ -1,4 +1,4 @@
-from jinx.experiment import Repo, Experiment, Run, remap, \
+from ode.experiment import Repo, Experiment, Run, remap, \
                             Video, Figure
 
 from attrdict import AttrDict

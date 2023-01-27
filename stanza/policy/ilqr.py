@@ -3,9 +3,9 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 import trajax.optimizers
-import jinx.envs
+import ode.envs
 
-from jinx.logging import logger
+from ode.logging import logger
 
 class ILQR:
     def __init__(self, x_sample, u_sample,
@@ -14,8 +14,8 @@ class ILQR:
         self.u_sample = u_sample
         self.x_sample = x_sample
 
-        self.model_fn = jinx.envs.flatten_model(model_fn, x_sample, u_sample)
-        self.cost_fn = jinx.envs.flatten_cost(cost_fn, x_sample, u_sample)
+        self.model_fn = ode.envs.flatten_model(model_fn, x_sample, u_sample)
+        self.cost_fn = ode.envs.flatten_cost(cost_fn, x_sample, u_sample)
         self.horizon_length = horizon_length
         self.receed = receed
         self.verbose = verbose

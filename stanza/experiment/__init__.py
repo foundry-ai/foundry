@@ -1,5 +1,5 @@
 import numpy as np
-from jinx.logging import logger
+from ode.logging import logger
 
 import jax.numpy as jnp
 
@@ -22,11 +22,11 @@ class Repo:
     @staticmethod
     def from_url(repo_url):
         if repo_url == 'dummy':
-            from jinx.experiment.dummy import DummyRepo
+            from ode.experiment.dummy import DummyRepo
             return DummyRepo()
         elif repo_url.startswith('wandb/'):
             entity = repo_url[6:]
-            from jinx.experiment.wandb import WandbRepo
+            from ode.experiment.wandb import WandbRepo
             return WandbRepo(entity)
 
 class Experiment:

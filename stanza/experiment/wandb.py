@@ -1,6 +1,6 @@
 import wandb
 
-from jinx.experiment import Repo, Experiment, Run, remap, \
+from ode.experiment import Repo, Experiment, Run, remap, \
                             Video, Figure
 
 import numpy as np

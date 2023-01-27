@@ -4,9 +4,9 @@ import inspect
 import jax
 import jax.numpy as jnp
 
-from jinx.random import PRNGDataset
-from jinx.dataset import MappedDataset
-from jinx.util import tree_append
+from ode.random import PRNGDataset
+from ode.dataset import MappedDataset
+from ode.util import tree_append
 
 from functools import partial
 

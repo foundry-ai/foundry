@@ -1,4 +1,4 @@
-from jinx.dataset import Dataset, INFINITE
+from ode.dataset import Dataset, INFINITE
 
 import jax.random
 

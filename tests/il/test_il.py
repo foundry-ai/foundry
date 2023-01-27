@@ -3,8 +3,8 @@ import jax
 import jax.numpy as jnp
 from jax.random import PRNGKey
 
-from jinx.dataset import PyTreeDataset
-from jinx.policy.imitation_learning import ImitationLearning
+from ode.dataset import PyTreeDataset
+from ode.policy.imitation_learning import ImitationLearning
 
 import optax
 import haiku as hk

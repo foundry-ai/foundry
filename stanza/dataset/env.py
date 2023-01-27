@@ -1,8 +1,8 @@
 from .rng import RNGDataset
 
-from jinx.policy import SampleRandom
+from ode.policy import SampleRandom
 
-import jinx.envs
+import ode.envs
 import jax
 
 class EnvDataset(RNGDataset):
@@ -21,7 +21,7 @@ class EnvDataset(RNGDataset):
     def get(self, iterator):
         rng = super().get(iterator)
 
-        traj = jinx.envs.rollout_policy(self.env.step,
+        traj = ode.envs.rollout_policy(self.env.step,
             self.env.reset(rng),
             self.traj_length, self.policy, jacobians=self.jacobians)
         return traj

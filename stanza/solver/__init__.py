@@ -1,5 +1,6 @@
 import jax
 import jax.flatten_util
+import minnelied as ml
 import jax.numpy as jnp
 
 import optax
@@ -14,13 +15,10 @@ class SolverResults(NamedTuple):
     final_state: Any
     history: Any
 
-import jinx.solver.implicit_diff as idf
-
 class IterativeSolver:
     # Must have 'max_iterations' attribute
     #
     # The solver state must have a "solved" boolean
-
 
     # To be overridden by the iterative solver
     def init_state(self, params, *args, **kwargs):
@@ -70,11 +68,6 @@ class IterativeSolver:
 
     def run(self, init_params, *args, history=False, **kwargs):
         run = self._scan_with_history if history else self._loop_no_history
-        if getattr(self, "implicit_diff", True) and \
-                getattr(self, 'optimality_fun', None) is not None:
-            decorator = idf.custom_root(self._run_optimality_fun, has_aux=True,
-                                        solve=None)
-            run = decorator(run)
         final_params, final_state, history = run(init_params, args, kwargs)
         return SolverResults(solved=final_state.solved,
             final_params=final_params,
