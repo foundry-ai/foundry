@@ -1,5 +1,5 @@
 import numpy as np
-fromstanza.logging import logger
+from stanza.logging import logger
 
 import jax.numpy as jnp
 
@@ -22,11 +22,11 @@ class Repo:
     @staticmethod
     def from_url(repo_url):
         if repo_url == 'dummy':
-            fromstanza.experiment.dummy import DummyRepo
+            from stanza.experiment.dummy import DummyRepo
             return DummyRepo()
         elif repo_url.startswith('wandb/'):
             entity = repo_url[6:]
-            fromstanza.experiment.wandb import WandbRepo
+            from stanza.experiment.wandb import WandbRepo
             return WandbRepo(entity)
 
 class Experiment:

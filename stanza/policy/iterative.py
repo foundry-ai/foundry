@@ -3,7 +3,7 @@ import optax
 import jax
 import sys
 
-importstanza.envs
+import stanza.envs
 
 from typing import NamedTuple, Any
 from functools import partial
@@ -51,8 +51,8 @@ class FeedbackMPC:
         self.x_sample = x_sample
         self.u_sample = u_sample
 
-        self.model_fn =stanza.envs.flatten_model(model_fn, x_sample, u_sample)
-        self.cost_fn =stanza.envs.flatten_cost(cost_fn, x_sample, u_sample)
+        self.model_fn = stanza.envs.flatten_model(model_fn, x_sample, u_sample)
+        self.cost_fn = stanza.envs.flatten_cost(cost_fn, x_sample, u_sample)
 
         self.horizon_length = horizon_length
 
@@ -190,7 +190,7 @@ class FeedbackMPC:
         # we need to modify the us to include the gains
         mod = ref_gains @ jnp.expand_dims(xs[:-1] - ref_xs[:-1], -1)
         us = us + jnp.squeeze(mod, -1)
-        cost =stanza.envs.trajectory_cost(self.cost_fn, xs, us)
+        cost = stanza.envs.trajectory_cost(self.cost_fn, xs, us)
 
         def print_func(arg, _):
             x0, cost, xs, us, gains = arg
@@ -209,7 +209,7 @@ class FeedbackMPC:
 
     def _inner_step(self, x0, prev_step):
         gains = prev_step.gains
-        ref_states =stanza.envs.rollout_input(self.model_fn, x0, prev_step.us)
+        ref_states = stanza.envs.rollout_input(self.model_fn, x0, prev_step.us)
 
         loss = partial(self._loss_fn, prev_step.est_state, x0,
                         ref_states, gains)
@@ -251,7 +251,7 @@ class FeedbackMPC:
 
         if self.use_gains:
             # rollout new trajectory under old gains
-            states_new =stanza.envs.rollout_input_gains(self.model_fn, x0, ref_states, gains, us)
+            states_new = stanza.envs.rollout_input_gains(self.model_fn, x0, ref_states, gains, us)
             # adjust the us to include the gain-adjustments
             mod = gains @ jnp.expand_dims(states_new[:-1] - ref_states[:-1], -1)
             us = us + jnp.squeeze(mod, -1)
@@ -322,7 +322,7 @@ class FeedbackMPC:
     # which propagates the estimator state
     def _solve(self, est_state, x0, gains, init_us):
         # if we have a barrier function first find a feasible state
-        ref_states =stanza.envs.rollout_input(self.model_fn, x0, init_us)
+        ref_states = stanza.envs.rollout_input(self.model_fn, x0, init_us)
         _, (_, _, init_cost) = self._loss_fn(est_state, x0, ref_states, gains, init_us)
 
         init_step = OptimStep(
@@ -362,7 +362,7 @@ class FeedbackMPC:
         if DEBUG:
             jax.experimental.host_callback.id_tap(print_func, (x0, final_step.us, final_step.gains))
 
-        history =stanza.util.tree_append(history, final_step)
+        history = stanza.util.tree_append(history, final_step)
         return final_step, history
 
     @partial(jax.jit, static_argnums=(0,))

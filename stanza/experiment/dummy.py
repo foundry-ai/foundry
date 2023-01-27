@@ -1,4 +1,4 @@
-fromstanza.experiment import Repo, Experiment, Run, remap, \
+from stanza.experiment import Repo, Experiment, Run, remap, \
                             Video, Figure
 
 from attrdict import AttrDict

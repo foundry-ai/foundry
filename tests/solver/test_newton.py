@@ -1,4 +1,4 @@
-fromstanza.solver import NewtonSolver, RelaxingSolver
+from stanza.solver import NewtonSolver, RelaxingSolver
 from functools import partial
 
 import jax

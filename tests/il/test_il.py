@@ -3,8 +3,8 @@ import jax
 import jax.numpy as jnp
 from jax.random import PRNGKey
 
-fromstanza.dataset import PyTreeDataset
-fromstanza.policy.imitation_learning import ImitationLearning
+from stanza.dataset import PyTreeDataset
+from stanza.policy.imitation_learning import ImitationLearning
 
 import optax
 import haiku as hk

@@ -1,6 +1,6 @@
 import wandb
 
-fromstanza.experiment import Repo, Experiment, Run, remap, \
+from stanza.experiment import Repo, Experiment, Run, remap, \
                             Video, Figure
 
 import numpy as np

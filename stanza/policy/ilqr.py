@@ -3,9 +3,9 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 import trajax.optimizers
-importstanza.envs
+import stanza.envs
 
-fromstanza.logging import logger
+from stanza.logging import logger
 
 class ILQR:
     def __init__(self, x_sample, u_sample,
@@ -14,8 +14,8 @@ class ILQR:
         self.u_sample = u_sample
         self.x_sample = x_sample
 
-        self.model_fn =stanza.envs.flatten_model(model_fn, x_sample, u_sample)
-        self.cost_fn =stanza.envs.flatten_cost(cost_fn, x_sample, u_sample)
+        self.model_fn = stanza.envs.flatten_model(model_fn, x_sample, u_sample)
+        self.cost_fn = stanza.envs.flatten_cost(cost_fn, x_sample, u_sample)
         self.horizon_length = horizon_length
         self.receed = receed
         self.verbose = verbose

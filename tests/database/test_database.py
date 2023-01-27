@@ -1,4 +1,4 @@
-fromstanza.dataset import Dataset
+from stanza.dataset import Dataset
 import jax.numpy as jnp
 
 # def test_simple():

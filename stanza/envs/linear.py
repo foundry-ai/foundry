@@ -1,4 +1,4 @@
-fromstanza.envs import Environment
+from stanza.envs import Environment
 
 import jax.numpy as jnp
 import jax.random
