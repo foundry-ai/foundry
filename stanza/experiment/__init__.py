@@ -1,5 +1,6 @@
 import numpy as np
 from stanza.logging import logger
+from dataclasses import dataclass
 
 import jax.numpy as jnp
 
@@ -79,3 +80,83 @@ class Run:
 
     def _log(self, data):
         raise RuntimeError("Not implemented!")
+
+
+# Distribute run tools
+from .host import Context, WorkerManager
+import cloudpickle
+import itertools
+import queue
+import rpyc
+
+@dataclass
+class PoolInfo:
+    workers: int
+    hostname: str = None # if none, a worker_spawner will be launched
+    port: int = 18860
+
+# Specify the connections to connect to 
+# and the number of workers to spin up per connection
+class WorkerPool:
+    def __init__(self, context, *conn_infos):
+        self.context = context
+        # connect to each machine specified
+        # if the hostname is None, use a local spawner
+        self.conns = []
+        self.local_server = None
+        for c in conn_infos:
+            if c.hostname is None:
+                self.local_server = self.local_server or \
+                    WorkerManager(18860).start()
+
+                self.conns.append((self.local_server, c.workers))
+            else:
+                conn = rpyc.connect(c.hostname, c.port)
+                self.conns.append((conn.root, c.workers))
+
+        # spawn all of the workers
+        self.workers = []
+        for (spawner, workers) in self.conns:
+            workers.extend(spawner.spawn_workers(self.context, workers))
+
+    def map(func, iterable):
+        # shove the specified function
+        # over the network to all of the workers
+        # one time, they return a netref of the
+        # deserialized function from the other side
+        executors = queue.Queue()
+        for w in self.workers:
+            executors.put(w.create_executor(cloudpickle.dumps(func)))
+
+        results = []
+        pending = []
+        for i in itertools.count():
+            e = executors.poll()
+            try:
+                v = next(iterable)
+            except StopIteration:
+                break
+            res = async_(e)(v)
+            def cb(res):
+                results.append((i, res))
+                executors.put(e)
+            res.add_callback(cb)
+            pending.add(res)
+        # Wait for all results to finish
+        for p in pending:
+            p.wait()
+        # sort by i
+        results.sort(key=lambda x: x[0])
+        # get rid of the index
+        results = [v for (_, v) in results]
+        # return the results
+        return results
+
+    def close(self):
+        pass
+
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, type, value, traceback):
+        self.close()

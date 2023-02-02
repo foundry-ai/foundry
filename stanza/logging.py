@@ -1,14 +1,11 @@
 import jax
-from termcolor import colored
 
 from functools import partial
 
 import jax.experimental.host_callback
+import rich
 
 # Topic management
-
-
-
 
 # ---------------- Logging ---------------
 
@@ -31,54 +28,29 @@ LEVEL_COLORS = {
 # if the selected "topic" have not been enabled
 class JaxLogger:
     def __init__(self):
-        self._initialized = False
-        self._allowed = []
-
-    def init(self):
-        self._initialized = True
-
-    def _allow(self, level, topic):
-        return True
+        pass
 
     # Host-side logging
-    def _log(self, level, topic, msg, jax_args, tracing=False):
+    def _log(self, level, msg, jax_args, tracing=False):
         args, kwargs = jax_args
         msg = msg.format(*args, **kwargs)
 
-        topic = colored(f'{topic:8}', 'blue')
-        level = colored(f'{level:6}', LEVEL_COLORS.get(level, 'white'))
-        msg = colored(msg, 'white')
+        level_color = LEVEL_COLORS.get(level, 'white')
         if tracing:
-            msg = colored('<Tracing> ', 'yellow') + msg
-        print(f' {topic} | {level} - {msg}')
+            msg = '[yellow]<Tracing>[/yellow] ' + msg
+        rich.print(f'----| [{level_color}]{level:6}[/{level_color}] - {msg}')
 
-    def log(self, level, *args, **kwargs):
-        if len(args) == 0:
-            topic = kwargs.get('topic', '')
-            msg = kwargs.get('msg', '')
+    def log(self, level, msg, *args, **kwargs):
+        # self._log(level, topic, msg, (args, kwargs), tracing=False)
 
-        # allow for logging with just message + args (without topic)
-        if len(args) == 1 or not isinstance(args[1], str):
-            msg = args[0]
-            topic = kwargs.get('topic', '')
-            args = args[1:]
-        else:
-            topic, msg = args[:2]
-            args = args[2:]
-
-        if not self._initialized:
-            self._log(WARN, 'logger', 
-                'Logger not yet initialized, using default initialization',
-                ([], {}))
-            self.init()
-        # Short-circuit at compile time!
-        if self._allow(level, topic):
-            # if isinstance(jax.numpy.array(0), jax.core.Tracer):
-            #    self._log(level, topic, msg, (args, kwargs), tracing=True)
-            self._log(level, topic, msg, (args, kwargs), tracing=False)
-            # jax.debug.callback(
-            #             partial(self._log, level, topic, msg), 
-            #             (args, kwargs), ordered=True)
+        # if we are tracing, still do the print, but
+        # note that the function is being traced
+        if isinstance(jax.numpy.array(0), jax.core.Tracer):
+            self._log(level, msg, (args, kwargs), tracing=True)
+        jax.debug.callback(
+                    partial(self._log, level, msg), 
+                    (args, kwargs),
+        ordered=True)
 
     def trace(self, *args, **kwargs):
         return self.log(TRACE, *args, **kwargs)
@@ -99,7 +71,6 @@ class JaxLogger:
 logger = JaxLogger()
 
 # ---------------- ProgressBars ---------------
-import tqdm
 
 class ProgressBar:
     def __init__(self, topic, total):
@@ -119,7 +90,6 @@ class ProgressBar:
     def _create(self, total):
         self.bar = tqdm.tqdm(total=total)
         s = ''
-        topic = colored(f'{self.topic:8}', 'blue')
         self.bar.set_description(f' {topic} | {s:6} ')
 
     def _inc(self, amt, stats):

@@ -1,7 +1,8 @@
 *.tmp
-.docker_home
+.venv
 .datasets
 __pycache__
+.pytest_cache
 results
 wandb
 *.png
