@@ -1,6 +1,6 @@
 from stanza.logging import logger
 
-from .host import WorkerManager
+from .worker import WorkerManager
 
 def run():
     logger.info("Starting worker manager!")

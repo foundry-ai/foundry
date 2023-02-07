@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+# This is just a wrapper for running launch.py
+# from within the poetry virtual environment
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd && echo x)"
+DIR="${DIR%x}"
+cd $DIR
+poetry run python launch.py "$@"

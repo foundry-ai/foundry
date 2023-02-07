@@ -31,7 +31,7 @@ class JaxLogger:
         pass
 
     # Host-side logging
-    def _log(self, level, msg, jax_args, tracing=False):
+    def _log(self, level, topic, msg, jax_args, tracing=False):
         args, kwargs = jax_args
         msg = msg.format(*args, **kwargs)
 
@@ -41,14 +41,18 @@ class JaxLogger:
         rich.print(f'----| [{level_color}]{level:6}[/{level_color}] - {msg}')
 
     def log(self, level, msg, *args, **kwargs):
-        # self._log(level, topic, msg, (args, kwargs), tracing=False)
+        if len(args) > 0 and isinstance(args[0], str):
+            topic = msg
+            msg = args[0]
+        else:
+            topic = ''
 
         # if we are tracing, still do the print, but
         # note that the function is being traced
         if isinstance(jax.numpy.array(0), jax.core.Tracer):
-            self._log(level, msg, (args, kwargs), tracing=True)
+            self._log(level, topic, msg, (args, kwargs), tracing=True)
         jax.debug.callback(
-                    partial(self._log, level, msg), 
+                    partial(self._log, level, topic, msg), 
                     (args, kwargs),
         ordered=True)
 
