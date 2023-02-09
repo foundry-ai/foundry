@@ -14,4 +14,4 @@ WORKDIR /code
 RUN poetry install
 
 COPY . /code
-CMD ["poetry", "run"]
+CMD ["poetry", "shell"]

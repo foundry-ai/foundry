@@ -88,7 +88,8 @@ class Dataset:
 
     # Flatten and batch are opposites (modulo rounding due to n)
     def flatten(self):
-        return FlatDataset(self)
+        #return FlatDataset(self)
+        raise NotImplementedError("Dataset does not implement flatten()")
 
     def map(self, fun):
         return MappedDataset(self, fun)
@@ -150,29 +151,6 @@ class PyTreeDataset(Dataset):
         return PyTreeDataset(data)
 
 @chex.dataclass(frozen=True, init=False)
-class MappedDataset(Dataset):
-    dataset: Dataset
-    fun: Callable
-
-    def __init__(self, dataset, fun):
-        self.dataset = dataset
-        # Make the function jax-compatible!
-        self.fun = stanza.fun(fun)
-
-    @property
-    def start(self):
-        return self.dataset.start
-    
-    def remaining(self, iterator):
-        return self.dataset.remaining(iterator)
-
-    def next(self, iterator):
-        return self.dataset.next(iterator)
-
-    def get(self, iterator):
-        it = self.dataset.get(iterator)
-        return self.fun(it)
-
 @chex.dataclass(frozen=True, init=False)
 class MappedDataset(Dataset):
     dataset: Dataset
