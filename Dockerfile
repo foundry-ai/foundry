@@ -14,4 +14,4 @@ WORKDIR /code
 RUN poetry install
 
 COPY . /code
-CMD ["poetry", "shell"]
+CMD ["poetry", "run", "python", "-m", "stanza.pool:worker"]

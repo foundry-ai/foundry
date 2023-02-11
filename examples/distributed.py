@@ -1,13 +1,26 @@
-from stanza.experiment.worker import Context, WorkerPool, PoolInfo
-from stanza.logging import logger
+import os
+os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
+
 import sys
+from stanza.util.pool import Pool, worker_id
+from stanza.logging import logger
+import asyncio
+import argparse
+import stanza.util.pool
 
-data = range(20)
+def func(x):
+    logger.info(f"Worker {worker_id()}: got {x}")
 
-host = sys.argv[1] if len(sys.argv) > 1 else None
+async def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("target", default="poetry://localhost?n=5")
+    args = parser.parse_args()
 
+    data = range(20)
+    async with Pool(args.target) as p:
+        await p.run(func, data)
 
-with WorkerPool(Context.default(), PoolInfo(5, host)) as p:
-    res = p.map(lambda x: x*x, data)
-
-logger.info(f"{res}")
+if __name__=="__main__":
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(main())
+    loop.close()

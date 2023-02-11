@@ -503,6 +503,26 @@ dev = ["pre-commit", "tox"]
 testing = ["pytest", "pytest-benchmark"]
 
 [[package]]
+name = "plumbum"
+version = "1.8.1"
+description = "Plumbum: shell combinators library"
+category = "main"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "plumbum-1.8.1-py3-none-any.whl", hash = "sha256:07cf5f50bf739e91fb83ce304fc66b41dbd12db4d4546ff5266087dd9d148314"},
+    {file = "plumbum-1.8.1.tar.gz", hash = "sha256:88a40fc69247d0cd585e21ca169b3820f46c484535102e16455d2202727bb37b"},
+]
+
+[package.dependencies]
+pywin32 = {version = "*", markers = "platform_system == \"Windows\" and platform_python_implementation != \"PyPy\""}
+
+[package.extras]
+dev = ["paramiko", "psutil", "pytest (>=6.0)", "pytest-cov", "pytest-mock", "pytest-timeout"]
+docs = ["sphinx (>=4.0.0)", "sphinx-rtd-theme (>=1.0.0)"]
+ssh = ["paramiko"]
+
+[[package]]
 name = "pygments"
 version = "2.14.0"
 description = "Pygments is a syntax highlighting package written in Python."
@@ -605,6 +625,21 @@ pygments = ">=2.14.0,<3.0.0"
 
 [package.extras]
 jupyter = ["ipywidgets (>=7.5.1,<9)"]
+
+[[package]]
+name = "rpyc"
+version = "5.3.0"
+description = "Remote Python Call (RPyC) is a transparent and symmetric distributed computing library"
+category = "main"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "rpyc-5.3.0-py3-none-any.whl", hash = "sha256:019dc1cd3de0de5e4cf35216a87b24505eda945a2a26e99a6228a707f5a40196"},
+    {file = "rpyc-5.3.0.tar.gz", hash = "sha256:cde4bd871c9008d16312ce7f432d4d50a38ddc300115045f1bbd78ba14651404"},
+]
+
+[package.dependencies]
+plumbum = "*"
 
 [[package]]
 name = "scipy"
@@ -730,4 +765,4 @@ test = ["websockets"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "2df283550b29e8e7e76e2daf72650bf9cb518c8a7ef03a4ee4719cf2d69d583b"
+content-hash = "9a7fab174732f880c9d9241d9accf302de03787c5dfcdd20208f5d6e0671954a"
