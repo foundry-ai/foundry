@@ -108,7 +108,7 @@ class Pool:
             img = await self.target.engine.ingest(self.image)
             logger.info("pool", "Spawning containers")
             self.containers = await self.target.launch(img,
-                                    "python", ["-m", "stanza.util.launch_worker"], 
+                                    ["python", "-m", "stanza.util.launch_worker"], 
                                     env={'RPC_HOST': socket.gethostname(),
                                         'RPC_PORT': self.server.port})
             # wait for all workers to have connected
@@ -118,7 +118,8 @@ class Pool:
     
     async def close(self):
         # kill all the containers
-        await asyncio.gather(*[c.stop() for c in self.containers])
+        #await asyncio.gather(*[c.stop() for c in self.containers])
+        pass
 
     async def run(self, func, iterable):
         executors = asyncio.Queue()

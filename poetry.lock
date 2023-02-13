@@ -312,43 +312,43 @@ files = [
 
 [[package]]
 name = "jax"
-version = "0.4.2"
+version = "0.4.3"
 description = "Differentiate, compile, and transform Numpy code."
 category = "main"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "jax-0.4.2.tar.gz", hash = "sha256:d561d431f1662a3888eae73818a53c280fba405c13442a32ac8238dc7e5dcca4"},
+    {file = "jax-0.4.3.tar.gz", hash = "sha256:d43f08f940aa30eb339965cfb3d6bee2296537b0dc2f0c65ccae3009279529ae"},
 ]
 
 [package.dependencies]
-jaxlib = {version = "0.4.2+cuda11.cudnn86", optional = true, markers = "extra == \"cuda\""}
+jaxlib = {version = "0.4.3+cuda11.cudnn86", optional = true, markers = "extra == \"cuda\""}
 numpy = ">=1.20"
 opt_einsum = "*"
 scipy = ">=1.5"
 
 [package.extras]
 australis = ["protobuf (>=3.13,<4)"]
-ci = ["jaxlib (==0.4.1)"]
-cpu = ["jaxlib (==0.4.2)"]
-cuda = ["jaxlib (==0.4.2+cuda11.cudnn86)"]
-cuda11-cudnn82 = ["jaxlib (==0.4.2+cuda11.cudnn82)"]
-cuda11-cudnn86 = ["jaxlib (==0.4.2+cuda11.cudnn86)"]
-minimum-jaxlib = ["jaxlib (==0.4.1)"]
-tpu = ["jaxlib (==0.4.2)", "libtpu-nightly (==0.1.dev20230124)", "requests"]
+ci = ["jaxlib (==0.4.2)"]
+cpu = ["jaxlib (==0.4.3)"]
+cuda = ["jaxlib (==0.4.3+cuda11.cudnn86)"]
+cuda11-cudnn82 = ["jaxlib (==0.4.3+cuda11.cudnn82)"]
+cuda11-cudnn86 = ["jaxlib (==0.4.3+cuda11.cudnn86)"]
+minimum-jaxlib = ["jaxlib (==0.4.2)"]
+tpu = ["jaxlib (==0.4.3)", "libtpu-nightly (==0.1.dev20230207)", "requests"]
 
 [[package]]
 name = "jaxlib"
-version = "0.4.2+cuda11.cudnn86"
+version = "0.4.3+cuda11.cudnn86"
 description = "XLA library for JAX"
 category = "main"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "jaxlib-0.4.2+cuda11.cudnn86-cp310-cp310-manylinux2014_x86_64.whl", hash = "sha256:c559d43aa86d6c48731f350a16e71340da93f4d8be8084d2bc4fb1aa99f5f05b"},
-    {file = "jaxlib-0.4.2+cuda11.cudnn86-cp311-cp311-manylinux2014_x86_64.whl", hash = "sha256:d1e8f6f3291b4ee0e6ab3e2a1115ef1332dc676c4d1dbc2d0af22190c89d1bfb"},
-    {file = "jaxlib-0.4.2+cuda11.cudnn86-cp38-cp38-manylinux2014_x86_64.whl", hash = "sha256:06cbe40667d44ac6cb00aff17059b61269564b920eab5f5ee71da7eb6e7c67d1"},
-    {file = "jaxlib-0.4.2+cuda11.cudnn86-cp39-cp39-manylinux2014_x86_64.whl", hash = "sha256:fd06c9f95d15dea69b83933a3c6f232fdcbbc274e436a71a37111a26fe15cc5a"},
+    {file = "jaxlib-0.4.3+cuda11.cudnn86-cp310-cp310-manylinux2014_x86_64.whl", hash = "sha256:9d46ade41393e9b125e75bb3a8ac9574487377095557bfc85ec547ceb61ee213"},
+    {file = "jaxlib-0.4.3+cuda11.cudnn86-cp311-cp311-manylinux2014_x86_64.whl", hash = "sha256:9d590e219791c314cef5d2a1e2ef251c68102fb4e70788abac9835d9b6b58cf5"},
+    {file = "jaxlib-0.4.3+cuda11.cudnn86-cp38-cp38-manylinux2014_x86_64.whl", hash = "sha256:cbfde1e410940ff2cf69c6c095b103441d8e7c6c7f3334a1731a2db7a9ab8a74"},
+    {file = "jaxlib-0.4.3+cuda11.cudnn86-cp39-cp39-manylinux2014_x86_64.whl", hash = "sha256:cbd9edf1a97c57615a8de2b0d101ea7ea558847b040b89164b4bd27168c5f044"},
 ]
 
 [package.dependencies]

@@ -102,7 +102,7 @@ class PoetryProcess(Container):
         await self.proc.wait()
     
     @staticmethod
-    async def launch(replica, image, prog, args, env):
+    async def launch(replica, image, args, env):
         if not isinstance(image, PoetryProject):
             raise RuntimeError("Can only launch PoetryProjects")
         env = dict(env)
@@ -110,7 +110,6 @@ class PoetryProcess(Container):
         # forward the path so it can find poetry
         env['PATH'] = os.environ.get('PATH', '')
         env = {k:str(v) for k,v in env.items()}
-        args = ["poetry", "run", prog] + list(args)
         cmd = " ".join(args)
         #logger.trace("poetry", f"Running [yellow]{escape(cmd)}[/yellow] in [yellow]{image.project_dir}[/yellow]")
         proc = await asyncio.create_subprocess_exec(
@@ -124,13 +123,12 @@ class PoetryLocal(Target):
     def __init__(self, n):
         self.engine = PoetryEngine()
         self.num_replicas = n
-
-    async def launch(self, image, prog, args, env={}):
+        
+    async def launch(self, image, args, env={}):
         if not isinstance(image, PoetryProject):
             raise RuntimeError("Can only launch PoetryProjects")
-        return await asyncio.gather(*[
-            PoetryProcess.launch(i, image, prog, args, env) for i in range(self.num_replicas)
-        ])
+        args = ["poetry", "run"] + list(args)
+        return await asyncio.gather(*[PoetryProcess.launch(i, image, args, env) for i in range(self.num_replicas)])
 
 class PoetryEngine(Engine):
     async def ingest(self, src_image):
@@ -144,9 +142,13 @@ class PoetryEngine(Engine):
 
         query = urllib.parse.parse_qs(parsed.query)
         n = int(query.get('n', ['1'])[0])
+        nodes = int(query.get('nodes', ['1'])[0])
 
         if parsed.netloc == 'localhost':
             return PoetryLocal(n)
+        else:
+            print(parsed)
+            return PoetrySlurm(n)
         else:
             raise RuntimeError("Unrecognzied target")
 
