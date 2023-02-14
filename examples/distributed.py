@@ -2,14 +2,15 @@ import os
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 
 import sys
-from stanza.util.pool import Pool, worker_id
+from stanza.util.pool import Pool, replica_id
 from stanza.logging import logger
 import asyncio
 import argparse
 import stanza.util.pool
+import time
 
 def func(x):
-    logger.info(f"Worker {worker_id()}: got {x}")
+    logger.info(f"Worker {replica_id()}: got {x}")
 
 async def main():
     parser = argparse.ArgumentParser()

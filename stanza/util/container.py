@@ -7,9 +7,11 @@ from stanza.logging import logger
 from pathlib import Path
 import urllib
 import asyncio
+import threading
+import functools
 
 class Container:
-    # should have stdout, stderr, attributes
+    # should have stdout, stderr, replica_id, attributes
     # which should be of type asyncio.StreamReader
 
     # Wait for the container to finish
@@ -59,10 +61,10 @@ class Target:
         pass
 
     @staticmethod
-    def from_url(url):
+    async def from_url(url):
         parsed = urllib.parse.urlparse(url)
         engine = Engine.from_name(parsed.scheme)
-        return engine.target(url)
+        return await engine.target(url)
 
 ENGINES = {}
 
@@ -87,19 +89,23 @@ class Engine:
 
 class PoetryProject(Image):
     def __init__(self, project_dir):
-        self.project_dir = project_dir
+        self.project_dir = os.path.abspath(project_dir)
+        self.project_name = os.path.basename(self.project_dir)
         self.engine = PoetryEngine()
 
 class PoetryProcess(Container):
-    def __init__(self, proc):
-        self.proc = proc
+    def __init__(self, proc, replica_id):
+        self._proc = proc
+        self.replica_id = replica_id
+        self.stdout = proc.stdout
+        self.stderr = proc.stderr
     
     async def wait(self):
-        await self.proc.wait()
+        await self._proc.wait()
     
     async def stop(self):
-        self.proc.terminate()
-        await self.proc.wait()
+        self._proc.terminate()
+        await self._proc.wait()
     
     @staticmethod
     async def launch(replica, image, args, env):
@@ -115,9 +121,11 @@ class PoetryProcess(Container):
         proc = await asyncio.create_subprocess_exec(
             *args,
             cwd=image.project_dir,
+            # stdout=asyncio.subprocess.PIPE,
+            # stderr=asyncio.subprocess.PIPE,
             env=env
         )
-        return PoetryProcess(proc)
+        return PoetryProcess(proc, replica)
 
 class PoetryLocal(Target):
     def __init__(self, n):
@@ -137,18 +145,14 @@ class PoetryEngine(Engine):
         else:
             raise RuntimeError("Can't ingest other image types into PoetryEngine")
 
-    def target(self, url):
+    async def target(self, url):
         parsed = urllib.parse.urlparse(url)
-
         query = urllib.parse.parse_qs(parsed.query)
         n = int(query.get('n', ['1'])[0])
         nodes = int(query.get('nodes', ['1'])[0])
 
         if parsed.netloc == 'localhost':
             return PoetryLocal(n)
-        else:
-            print(parsed)
-            return PoetrySlurm(n)
         else:
             raise RuntimeError("Unrecognzied target")
 
@@ -159,47 +163,63 @@ register_engine("poetry", PoetryEngine)
 import docker
 
 class DockerImage(Image):
-    def __init__(self, engine, unique_ref):
-        self.unique_ref = unique_ref
+    def __init__(self, engine, image_id):
+        self.image_id = image_id
         self.engine = engine
+
+class DockerContainer(Container):
+    def __init__(self, engine, container_id, replica_id):
+        self.engine = engine
+        self.replica_id = replica_id
+        self.container_id = container_id
+        self.ouput_thread = None
+    
+    def _forward_output(self):
+        for o in self.engine.client.attach(self.container_id,
+                        stdout=True, stderr=True,
+                        logs=True, stream=True):
+            line = o.decode('utf-8')
+            print(line, end='')
+    
+    async def start(self):
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, lambda: self.engine.client.start(self.container_id))
+        self.output_thread = threading.Thread(target=self._forward_output)
+        self.output_thread.start()
+    
+    async def stop(self):
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, lambda: self.engine.client.stop(self.container_id))
 
 class DockerLocal(Target):
-    def __init__(self, engine):
+    def __init__(self, engine, n):
         self.engine = engine
-        self.num_replicas = 1
+        self.num_replicas = n
+    
+    async def _launch(self, replica, image, args, env):
+        container = await self.engine._create_local(replica, image, args, env)
+        await container.start()
+        return container
 
-    async def launch(self, image, cmd, env={}, socket=False):
-        cmd_str = " ".join(cmd)
-        cmd = ["poetry", "run"] + args
+    # Launch all containers in parallel
+    async def launch(self, image, args, env):
+        containers = [self._launch(i, image, args, env) for i in range(self.num_replicas)]
+        return await asyncio.gather(*containers)
 
-        # make a copy so we don't modify original
-        env = dict(env)
-        env["DOCKER_IMAGE"] = self.image.unqiue_ref
-        container = self.engine.client.create_container(
-            self.image.unique_ref, args, tty=True, stdin_open=True,
-            host_config=self.client.create_host_config(
-                auto_remove=True,
-                binds={
-                    "/var/run/docker.sock": {
-                        "bind": "/var/run/docker.sock",
-                        "mode": "rw"
-                    }
-                }
-            ),
-            environment=env
-        )
-        if not "Id" in container:
-            raise RuntimeError("Failed to create container.", container)
-        container_id = container["Id"]
-        # get container info
-        info = self.engine.client.inspect_container(container_id)
-        self.engine.client.start(container_id)
+class DockerService(Target):
+    def __init__(self, engine, name, n=None):
+        self.engine = engine
+        self.name = name
+        self.n = n
+
+    async def launch(self, image, args, env):
+        print('launching service', self.name, self.n)
+        pass
 
 class DockerEngine(Engine):
     def __init__(self, registry=None):
         self.client = docker.APIClient(base_url="unix:///var/run/docker.sock")
-        self.registry = registry or os.environ.get("DOCKER_REGISTRY", None)
-    
+
     def _build(self, name, root_dir):
         logger.info(f"[yellow]Creating {name} image [/yellow]")
 
@@ -232,9 +252,9 @@ class DockerEngine(Engine):
                 print(l)
             raise RuntimeError("Unable to build container!")
         logger.info(f"Built ID: [blue]{escape(image_hash)}[/blue]")
-        return image_hash, name
+        return image_hash
 
-    def _register_image(self, image_tag):
+    def _register_image(self, registry, image_tag):
         # Tag appropriately for the push
         tag = f"{registry}/{image_tag}"
 
@@ -260,24 +280,82 @@ class DockerEngine(Engine):
                     m = r["errorDetail"]["message"]
                     rich.print(f" [red]{m}[/red]")
                     raise RuntimeError("Unable to upload container!")
+            # If we never got a layer push event
+            # just show a full progressbar anyways
+            if not tasks:
+                task = prog.add_task(" Pushed ")
+                prog.update(task, total=1, completed=1)
 
         res = self.client.inspect_image(tag)
         image_digest = res["RepoDigests"][0] if res["RepoDigests"] else image_id
 
-        rich.print(f" Pushed image [green]{image_tag}[/green] to {tag}")
+        logger.info("docker", f"Pushed image [green]{image_tag}[/green] to {tag}")
         return image_digest
-    
-    def build(self, image_name, ctx_dir):
-        image_id, image_tag = self._build(image_name, ctx_dir)
-        if self.registry:
-            image_digest = self._register_image(image_tag)
-        else:
-            image_digest = image_id
-        return DockerImage(self.client, image_digest)
 
-    def target(self, url):
+    def _create_local_blocking(self, replica, image, args, env={}):
+        if not isinstance(image, DockerImage):
+            raise RuntimeError("Can only launch docker images on docker target")
+        args = ["poetry", "run"] + list(args)
+        env = dict(env)
+        env['DOCKER_IMAGE'] = image.image_id
+        env['REPLICA'] = str(replica)
+        if 'DOCKER_REGISTRY' in os.environ and not 'DOCKER_REGISTRY' in env:
+            env['DOCKER_REGISTRY'] = os.environ['DOCKER_REGISTRY']
+        if 'DOCKER_RUNTIME' in os.environ and not 'DOCKER_RUNTIME' in env:
+            env['DOCKER_RUNTIME'] = os.environ['DOCKER_RUNTIME']
+        runtime = os.environ.get("DOCKER_RUNTIME", "nvidia")
+        container = self.client.create_container(
+            image.image_id, args, tty=True, stdin_open=True,
+            host_config=self.client.create_host_config(
+                auto_remove=True,
+                binds={
+                    "/var/run/docker.sock": {
+                        "bind": "/var/run/docker.sock",
+                        "mode": "rw"
+                    }
+                },
+                runtime=runtime
+            ),
+            runtime=runtime,
+            environment=env
+        )
+        if not "Id" in container:
+            raise RuntimeError("Failed to create container.", container)
+        container_id = container["Id"]
+        # get container info
+        info = self.client.inspect_container(container_id)
+        container = DockerContainer(self, container_id, replica)
+        return container
+    
+    async def _create_local(self, replica, image, args, env={}):
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, lambda: self._create_local_blocking(replica, image, args, env))
+    
+    async def ingest(self, image):
+        if isinstance(image, DockerImage):
+            return image
+        elif isinstance(image, PoetryProject):
+            image_id = self._build(image.project_name, image.project_dir)
+            if 'DOCKER_REGISTRY' in os.environ:
+                registry = os.environ['DOCKER_REGISTRY']
+                image_id = self._register_image(registry, image.project_name)
+            return DockerImage(self.client, image_id)
+
+    async def target(self, url):
         parsed = urllib.parse.urlparse(url)
-        if parsed.netloc == 'localhost':
-            return DockerLocal()
+        query = urllib.parse.parse_qs(parsed.query)
+        if parsed.netloc != 'localhost':
+            raise RuntimeError("Unrecognzied target")
+
+        if parsed.path == '' or parsed.path == '/':
+            n = int(query.get('n', ['1'])[0])
+            return DockerLocal(self, n)
+        elif parsed.path.startswith('/service/'):
+            name = parsed.path[9:]
+            n = int(query['n'][0]) if 'n' in query else None
+            return DockerService(self, name, n)
         else:
             raise RuntimeError("Unrecognzied target")
+
+
+register_engine("docker", DockerEngine)

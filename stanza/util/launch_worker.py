@@ -5,9 +5,15 @@ from stanza.logging import logger
 from stanza.util.pool import WorkerRemote
 import argparse
 import asyncio
+import time
+
+# Change sigterm to give keyboardinterrupt
+import signal
+def handle_sigterm(*args):
+    raise KeyboardInterrupt()
+signal.signal(signal.SIGTERM, handle_sigterm)
 
 import rpyc
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -20,13 +26,19 @@ def main():
     if args.verbose:
         logger.trace("worker", f"Worker {args.id} connecting to {args.host}:{args.port}")
 
-    conn = rpyc.connect(args.host, args.port)
+    try:
+        conn = rpyc.connect(args.host, args.port)
+    except:
+        print('Error connecting to server...')
+        while True:
+            time.sleep(120)
+
     worker = WorkerRemote(args.id, asyncio.new_event_loop())
     conn.root.register_worker(worker)
     try:
         conn.serve_all()
     except KeyboardInterrupt:
-        logger.info("worker", f"Worker {args.id} shutting down...")
+        pass #logger.info("worker", f"Worker {args.id} shutting down...")
 
 if __name__=="__main__":
     main()

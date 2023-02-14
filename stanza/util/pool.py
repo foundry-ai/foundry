@@ -12,7 +12,7 @@ from stanza.logging import logger
 from .container import Image, Target
 from rpyc.utils.server import ThreadedServer
 
-def worker_id():
+def replica_id():
     return int(os.environ['REPLICA']) if 'REPLICA' in os.environ else None
 
 # The remote worker object
@@ -81,23 +81,26 @@ class Pool:
         self.server_thread = threading.Thread(target=self.server.start, daemon=True)
 
         self.containers = None
-        self.workers = []
-        self.expected_workers = self.target.num_replicas
 
         self._init_loop = None
-        self._workers_initialized = asyncio.Event()
+
+        self.workers_lock = asyncio.Condition()
+        self.workers = []
     
+    async def _register_callback(self, worker):
+        async with self.workers_lock:
+            self.workers.append(worker)
+            self.workers_lock.notify_all()
+
     # callback from the pool service
     def register_worker(self, worker):
-        #logger.trace("pool", f"Registering remote worker {worker.id}")
-        self.workers.append(worker)
-        # check if we should signal all workers online
-        if len(self.workers) >= self.expected_workers:
-            # happens in a different thread
-            self._init_loop.call_soon_threadsafe(self._workers_initialized.set)
+        self._init_loop.call_soon_threadsafe(
+            lambda: self._init_loop.create_task(self._register_callback(worker))
+        )
     
     async def init(self):
         if not self.containers:
+            self.target = await self.target
             self._init_loop = asyncio.get_event_loop()
 
             logger.info(f"Starting RPC server on {self.server.host}:{self.server.port}")
@@ -111,34 +114,39 @@ class Pool:
                                     ["python", "-m", "stanza.util.launch_worker"], 
                                     env={'RPC_HOST': socket.gethostname(),
                                         'RPC_PORT': self.server.port})
-            # wait for all workers to have connected
-            logger.info("pool", "Waiting for workers")
-            await self._workers_initialized.wait()
-            logger.info("pool", "All workers connected")
     
     async def close(self):
         # kill all the containers
-        #await asyncio.gather(*[c.stop() for c in self.containers])
-        pass
+        await asyncio.gather(*[c.stop() for c in self.containers])
 
     async def run(self, func, iterable):
         executors = asyncio.Queue()
-        for w in self.workers:
-            executors.put_nowait(w.create_executor(func))
-
-        tasks = set()
-        for i in iterable:
-            e = await executors.get()
-            task = asyncio.create_task(e(i))
-            # add the executor back to the executors
-            def done(e, _):
-                executors.put_nowait(e)
-            task.add_done_callback(functools.partial(done, e))
-            tasks.add(task)
-        # wait for all launched tasks to finish
-        # TODO: Remove a task form tasks when done
-        # right now a task remains in tasks even if done
-        await asyncio.gather(*tasks)
+        async def populate_executors():
+            async with self.workers_lock:
+                num_executors = 0
+                while True:
+                    for w in self.workers[num_executors:]:
+                        executors.put_nowait(w.create_executor(func))
+                        num_executors = num_executors + 1
+                    await self.workers_lock.wait()
+        async def run_tasks():
+            tasks = set()
+            for i in iterable:
+                e = await executors.get()
+                task = asyncio.create_task(e(i))
+                # add the executor back to the executors
+                def done(e, _):
+                    executors.put_nowait(e)
+                task.add_done_callback(functools.partial(done, e))
+                tasks.add(task)
+            await asyncio.gather(*tasks)
+        # run populate_executors and run_tasks simulatenously
+        # until run_tasks is done, at which point cancel populate_executors
+        try:
+            populate_task = asyncio.create_task(populate_executors())
+            await run_tasks()
+        finally:
+            populate_task.cancel()
 
     async def __aenter__(self):
         await self.init()

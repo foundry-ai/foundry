@@ -7,9 +7,9 @@ license = "MIT"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.10"
-jax = { extras = ["cuda"], version = "^0.4.2" }
-jaxlib = { extras = ["cuda11.cudnn86"], version = "^0.4.2" }
+python = "^3.8"
+jax = { extras = ["cuda"], version = "^0.4.1" }
+jaxlib = { extras = ["cuda11.cudnn86"], version = "^0.4.1" }
 optax = "^0.1.4"
 rich = "^13.3.1"
 cloudpickle = "^2.2.1"
