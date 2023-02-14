@@ -6,9 +6,15 @@ authors = ["Daniel Pfrommer <dan.pfrommer@gmail.com>"]
 license = "MIT"
 readme = "README.md"
 packages = [
-    { include = "stanza" }
-    { include = "iterative_control" }
+    { include = "stanza" },
+    { include = "iterative_control", from="projects" },
+    { include = "learning_mpc", from="projects" }
 ]
+
+[tool.poetry.scripts]
+learning_mpc = "learning_mpc.main:run_learning"
+learning_mpc_sweep = "learning_mpc.main:run_sweep"
+learning_mpc_vis_controller = "learning_mpc.main:run_vis_controller"
 
 [tool.poetry.dependencies]
 python = "^3.8"
@@ -23,9 +29,6 @@ rpyc = "^5.3.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.1"
-
-[tool.poetry.scripts]
-worker_manager = "stanza.experiment.launch_manager:run"
 
 [build-system]
 requires = ["poetry-core"]
