@@ -5,6 +5,10 @@ description = "A batteries-included ML toolkit"
 authors = ["Daniel Pfrommer <dan.pfrommer@gmail.com>"]
 license = "MIT"
 readme = "README.md"
+packages = [
+    { include = "stanza" }
+    { include = "iterative_control" }
+]
 
 [tool.poetry.dependencies]
 python = "^3.8"

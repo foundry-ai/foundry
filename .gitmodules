@@ -1,0 +1,3 @@
+[submodule "projects/iterative_control"]
+	path = projects/iterative_control
+	url = git@github.com:pfrommerd/iterative_learning_control.git
