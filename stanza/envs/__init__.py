@@ -1,14 +1,17 @@
 import importlib
 import inspect
 
+import stanza
 import jax
+import jax.tree_util
 import jax.numpy as jnp
 
 from stanza.random import PRNGDataset
 from stanza.dataset import MappedDataset
-from stanza.util import tree_append
-
+from stanza.dataclasses import dataclass
 from functools import partial
+
+from typing import Any
 
 # Generic environment
 class Environment:
@@ -28,71 +31,151 @@ class Environment:
     def visualize(self, xs, us):
         raise NotImplementedError("Must impelement visualize()")
 
+__ENV_BUILDERS = {}
 
-# Helper function to do rollouts with
+def create(env_type, *args, **kwargs):
+    env_path = env_type.split("/")
+    # register buildres if empty
+    builder = __ENV_BUILDERS[env_path[0]]()
+    return builder(env_type, *args, **kwargs)
 
-@partial(jax.jit, static_argnums=(0,2, 3, 5, 6))
-def rollout_policy(model_fn, x0, length, policy,
-                    # The initial policy state. If "None" is supplied
-                    # and policy has an 'init_state' function, that
-                    # policy.init_state(x0) will be used instead
-                    policy_state=None,
-                    # Whether to return the last policy state
-                    # or jacobians of the policy
-                    ret_policy_state=False, jacobians=False):
-    if hasattr(policy, 'init_state') and policy_state is None:
-        policy_state = policy.init_state(x0)
+# Register them lazily so we don't
+# import dependencies we don't actually use
+# i.e the appropriate submodule will be imported
+# for the first time during create()
+def register_lazy(name, module_name):
+    frm = inspect.stack()[1]
+    pkg = inspect.getmodule(frm[0]).__name__
+    def make_env_constructor():
+        mod = importlib.import_module(module_name, package=pkg)
+        return mod.builder
+    __ENV_BUILDERS[name] = make_env_constructor
 
-    # This allows us to compute the jacobians
-    # and output at the same time
-    def policy_fun(env_state, policy_state=None):
-        if policy_state is None:
-            u = policy(env_state)
-            return u, (u, None)
+register_lazy('brax', '.brax')
+register_lazy('gym', '.gym')
+register_lazy('pendulum', '.pendulum')
+register_lazy('linear', '.linear')
+register_lazy('quadrotor', '.quadrotor')
+
+
+# ------------------- Policy Definitions -------------------------
+
+# A policy is a function from x --> u or
+# x --> PolicyOutput
+# optionally (x, policy_state) --> PolicyOutput
+@dataclass(frozen=True)
+class PolicyOutput:
+    action: Any
+    # The policy state
+    policy_state: Any = None
+    # Aux output of the policy
+    # this can be anything!
+    aux: Any = None
+
+@dataclass(frozen=True)
+class Trajectory:
+    states: Any
+    actions: Any = None
+
+@dataclass(frozen=True)
+class Rollout(Trajectory):
+    aux: Any = None
+    final_policy_state: Any = None
+
+def sanitize_policy(policy_fn, takes_policy_state=False):
+    def sanitized_policy(state, policy_state):
+        if takes_policy_state:
+            output = policy_fn(state, policy_state)
         else:
-            u, new_policy_state = policy(env_state, policy_state)
-            return u, (u, new_policy_state)
+            output = policy_fn(state)
+            if not isinstance(output, PolicyOutput):
+                output = PolicyOutput(u=output)
+        return output
+    return sanitized_policy
+
+# stanza.jit can handle function arguments
+# and intelligently makes them static and allows
+# for vectorizing over functins.
+@partial(stanza.jit, static_argnums=(4,))
+def rollout(model, state0,
+            # policy is optional. If policy is not supplied
+            # it is assumed that model_fn is for an
+            # autonomous system
+            policy=None,
+            # The initial policy state. If "None" is supplied
+            # and policy has an 'init_state' function, that
+            # policy.init_state(x0) will be used instead
+            policy_init_state=None,
+            # either length is an integer or  policy.rollout_length
+            # or model.rollout_length is not None
+            length=None):
+    if hasattr(policy, 'init_state') and policy_init_state is None:
+        policy_init_state = policy.init_state(state0)
+
+    if hasattr(policy, 'rollout_length') and length is None:
+        length = policy.rollout_length
+    if hasattr(model, 'rollout_length') and length is None:
+        length = model.rollout_length
+
+    if length is None:
+        raise ValueError("Rollout length must be specified")
+
+    # policy is standardized to always output a PolicyOutput
+    # and take (x, policy_state) as input
+    policy_fn = sanitize_policy(policy,
+                    takes_policy_state=policy_init_state is not None) \
+            if policy is not None else None
 
     def scan_fn(comb_state, _):
         env_state, policy_state = comb_state
-        if jacobians:
-            jac, (u, new_policy_state) = jax.jacrev(policy_fun, has_aux=True, argnums=(0,))(env_state, policy_state)
+        if policy_fn is not None:
+            policy_output = policy_fn(env_state, policy_state)
+            action = policy_output.action
+            aux = policy_output.aux
+
+            new_policy_state = policy_output.policy_state
+            new_env_state = model(env_state, action)
         else:
-            _, (u, new_policy_state) = policy_fun(env_state, policy_state)
-        new_env_state = model_fn(env_state, u)
-        outputs = (env_state, u, jac) if jacobians else (env_state, u)
-        return (new_env_state, new_policy_state), outputs
+            action = None
+            aux = None
+            new_env_state = model(env_state)
+            new_policy_state = policy_state
+        return (new_env_state, new_policy_state), (env_state, action, aux)
 
     # Do the first step manually to populate the policy state
-    state = (x0, policy_state)
+    state = (state0, policy_init_state)
 
     # outputs is (xs, us, jacs) or (xs, us)
-    (state_f, p_f), outputs = jax.lax.scan(scan_fn, state,
+    (state_f, policy_state_f), outputs = jax.lax.scan(scan_fn, state,
                                     None, length=length-1)
-    states = tree_append(outputs[0], state_f)
+    states, us, auxs = outputs
+    # append the last state
+    states = jax.tree_util.tree_map(
+        lambda a, b: jnp.concatenate((a, jnp.expand_dims(b, 0))),
+        states, state_f)
+    return Rollout(states=states, actions=us, 
+        aux=auxs, final_policy_state=policy_state_f)
 
-    out = (states,) + outputs[1:]
-    if ret_policy_state:
-        out = (p_f,) + out
-    return out
+# An "Inputs" policy can be used to replay
+# inputs from a history buffer
+@dataclass
+class Actions:
+    actions: Any
 
-# Global registry
-def rollout_input(model_fn, state_0, us):
-    def scan_fn(state, u):
-        new_state = model_fn(state, u)
-        return new_state, state
-    final_state, states = jax.lax.scan(scan_fn, state_0, us)
-    states = tree_append(states, final_state)
-    return states
+    @property
+    def rollout_length(self):
+        lengths, _ = jax.tree_util.tree_flatten(
+            jax.tree_util.tree_map(lambda x: x.shape[0], self.actions)
+        )
+        return lengths[0]
 
-def rollout_input_gains(model_fn, state_0, ref_xs, ref_gains, us):
-    def scan_fn(state, i):
-        ref_x, ref_gain, u = i
-        new_state = model_fn(state, u + ref_gain @ (state - ref_x))
-        return new_state, state
-    final_state, states = jax.lax.scan(scan_fn, state_0, (ref_xs[:-1], ref_gains, us))
-    states = tree_append(states, final_state)
-    return states
+    def init_state(self, x0):
+        return 0
+
+    @jax.jit
+    def __call__(self, x0, T):
+        action = jax.tree_util.tree_map(lambda x: x[T], self.actions)
+        return PolicyOutput(action=action, policy_state=T + 1)
 
 # Takes a cost function and maps it over a trajectory
 # where there is one more x than u
@@ -127,29 +210,3 @@ def flatten_cost(cost_fn, x_sample, u_sample):
             u = u_unflatten(u)
         return cost_fn(x, u, t)
     return flattened_cost
-
-__ENV_BUILDERS = {}
-
-def create(type, *args, **kwargs):
-    # register buildres if empty
-    builder = __ENV_BUILDERS[type]()
-    return builder(*args, **kwargs)
-
-# Register them lazily so we don't
-# import dependencies we don't actually use
-# i.e the appropriate submodule will be imported
-# for the first time during create()
-def register_lazy(name, module_name):
-    frm = inspect.stack()[1]
-    pkg = inspect.getmodule(frm[0]).__name__
-    def make_env_constructor():
-        mod = importlib.import_module(module_name, package=pkg)
-        builder = mod.builder()
-        return builder
-    __ENV_BUILDERS[name] = make_env_constructor
-
-register_lazy('brax', '.brax')
-register_lazy('gym', '.gym')
-register_lazy('pendulum', '.pendulum')
-register_lazy('linear', '.linear')
-register_lazy('quadrotor', '.quadrotor')

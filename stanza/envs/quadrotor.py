@@ -113,5 +113,5 @@ class QuadrotorEnvironment(Environment):
         }
 
 
-def builder():
-    return QuadrotorEnvironment
+def builder(name):
+    return QuadrotorEnvironment()

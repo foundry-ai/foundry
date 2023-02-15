@@ -34,10 +34,3 @@ def from_args(dataclass, args, prefix=''):
         else:
             params[field.name] = getattr(args, prefix + field.name)
     return dataclass(**params)
-
-# Will return a version of the type
-# that has add_to_parser and from_parsed
-def parsable(dataclass):
-    dataclass.add_to_parser = partial(add_to_parser, dataclass)
-    dataclass.from_args = partial(from_args, dataclass)
-    return dataclass

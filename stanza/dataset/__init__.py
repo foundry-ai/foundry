@@ -9,7 +9,9 @@ from jax.tree_util import register_pytree_node_class
 
 import stanza
 from functools import partial
+
 from stanza.logging import logger, pbar
+from stanza.dataclasses import dataclass
 
 from typing import Callable
 
@@ -101,8 +103,7 @@ class Dataset:
     def from_pytree(data):
         return PyTreeDataset(data)
 
-
-@chex.dataclass(frozen=True)
+@dataclass
 class PyTreeDataset(Dataset):
     data: jnp.array = None
 
@@ -150,8 +151,7 @@ class PyTreeDataset(Dataset):
         data = jax.tree_util.tree_map(lambda x: x[idxs,...], self._data)
         return PyTreeDataset(data)
 
-@chex.dataclass(frozen=True, init=False)
-@chex.dataclass(frozen=True, init=False)
+@dataclass(init=False)
 class MappedDataset(Dataset):
     dataset: Dataset
     fun: Callable
@@ -229,9 +229,7 @@ class BatchDataset(Dataset):
     def tree_unflatten(cls, aux_data, children):
         return cls(*children, aux_data)
 
-
-
-@chex.dataset(frozen=True, init=False)
+@dataclass(init=False)
 class ShufflingDataset(Dataset):
     dataset: Dataset
     buffer_size: int

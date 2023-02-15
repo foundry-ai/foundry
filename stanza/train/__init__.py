@@ -7,7 +7,7 @@ import chex
 import optax
 import stanza
 
-@chex.dataclass
+@dataclass
 class TrainState:
     epoch: int
     iteration: int
@@ -22,7 +22,7 @@ class TrainState:
     opt_state: Any
 
 
-@chex.dataclass
+@dataclass
 class TrainResults:
     fn_params: Any
     fn_state: Any
@@ -34,7 +34,7 @@ class TrainResults:
 NO_STATE_TYPE=namedtuple('NoState',[])
 NO_STATE=NO_STATE_TYPE()
 
-@chex.dataclass(frozen=True, init=False)
+@dataclass(init=False)
 class Trainer:
     loss_fn: Callable
     optimizer: optax.GradientTransformation = optax.adam(0.001)
