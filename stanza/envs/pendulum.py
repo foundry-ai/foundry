@@ -7,7 +7,7 @@ import math
 
 from typing import NamedTuple
 from functools import partial
-from stanza.experiment import Figure, Video
+from stanza.runtime.database import Figure, Video
 
 import math
 import plotly.express as px

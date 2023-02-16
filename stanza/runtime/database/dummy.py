@@ -1,9 +1,7 @@
-from stanza.experiment import Repo, Experiment, Run, remap, \
-                            Video, Figure
+from stanza.runtime.database import Database, Experiment, Run, remap, \
+                                    Video, Figure
 
-from attrdict import AttrDict
-
-class DummyRepo(Repo):
+class DummyDatabase(Database):
     def __init__(self):
         pass
 
@@ -17,8 +15,9 @@ class DummyExperiment(Experiment):
 
 class DummyRun(Run):
     def __init__(self):
-        self.config = AttrDict()
-        self.summary = AttrDict()
+        pass
+        # self.config = AttrDict()
+        # self.summary = AttrDict()
 
     def sub_run(self, prefix):
         return self

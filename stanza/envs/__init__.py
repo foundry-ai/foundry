@@ -6,9 +6,9 @@ import jax
 import jax.tree_util
 import jax.numpy as jnp
 
-from stanza.random import PRNGDataset
 from stanza.dataset import MappedDataset
-from stanza.dataclasses import dataclass
+from stanza.util.random import PRNGDataset
+from stanza.util.dataclasses import dataclass
 from functools import partial
 
 from typing import Any

@@ -2,11 +2,10 @@ import os
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 
 import sys
-from stanza.util.pool import Pool, replica_id
-from stanza.logging import logger
+from stanza.runtime.pool import Pool, replica_id
+from stanza.util.logging import logger
 import asyncio
 import argparse
-import stanza.util.pool
 import time
 
 def func(x):

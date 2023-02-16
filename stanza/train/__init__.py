@@ -1,5 +1,5 @@
 from typing import List, Any
-from stanza.logging import logger, pbar
+from stanza.util.logging import logger, pbar
 from stanza import Partial
 from functools import partial
 

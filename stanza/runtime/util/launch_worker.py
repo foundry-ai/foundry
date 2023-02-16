@@ -1,13 +1,16 @@
 import os
+import sys
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
+sys.path.append(os.path.abspath(os.path.join(__file__, "..","..","..", "..", "projects")))
 
-from stanza.logging import logger
-from stanza.util.pool import WorkerRemote
+from stanza.util.logging import logger
+from stanza.runtime.pool import WorkerRemote
 import argparse
 import asyncio
 import time
 
 # Change sigterm to give keyboardinterrupt
+# so that docker can exit cleanly
 import signal
 def handle_sigterm(*args):
     raise KeyboardInterrupt()

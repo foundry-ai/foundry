@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import trajax.optimizers
 import stanza.envs
 
-from stanza.logging import logger
+from stanza.util.logging import logger
 
 class ILQR:
     def __init__(self, x_sample, u_sample,

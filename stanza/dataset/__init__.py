@@ -10,8 +10,8 @@ from jax.tree_util import register_pytree_node_class
 import stanza
 from functools import partial
 
-from stanza.logging import logger, pbar
-from stanza.dataclasses import dataclass
+from stanza.util.logging import logger, pbar
+from stanza.util.dataclasses import dataclass
 
 from typing import Callable
 

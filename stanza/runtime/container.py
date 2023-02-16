@@ -3,7 +3,7 @@ import rich
 from rich.progress import Progress
 from rich.markup import escape
 
-from stanza.logging import logger
+from stanza.util.logging import logger
 from pathlib import Path
 import urllib
 import asyncio
@@ -47,7 +47,6 @@ class Image:
                     if parent == root_dir:
                         raise ValueError("No project root found!")
                     root_dir = parent
-            logger.trace("container", f"Using project root directory {root_dir}")
             return PoetryProject(str(root_dir))
 
 # Images can be run ontop of targets.
@@ -289,7 +288,7 @@ class DockerEngine(Engine):
         res = self.client.inspect_image(tag)
         image_digest = res["RepoDigests"][0] if res["RepoDigests"] else image_id
 
-        logger.info("docker", f"Pushed image [green]{image_tag}[/green] to {tag}")
+        logger.info(f"Pushed image [green]{image_tag}[/green] to {tag}")
         return image_digest
 
     def _create_local_blocking(self, replica, image, args, env={}):

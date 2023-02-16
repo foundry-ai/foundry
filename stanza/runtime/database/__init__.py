@@ -1,12 +1,9 @@
 import numpy as np
-from stanza.logging import logger
+from stanza.util.logging import logger
 from dataclasses import dataclass
 
 import jax.numpy as jnp
 
-# TODO: No idea what this API should look like yet
-
-# Type hint annotations
 class Figure:
     def __init__(self, fig):
         self.fig = fig
@@ -16,7 +13,7 @@ class Video:
         self.data = data
         self.fps = fps
 
-class Repo:
+class Database:
     def experiment(self, name):
         pass
 

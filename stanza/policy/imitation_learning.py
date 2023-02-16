@@ -6,7 +6,7 @@ from stanza.dataset.env import EnvDataset
 from stanza.trainer import Trainer
 from typing import NamedTuple, Any, Tuple
 
-from stanza.logging import logger
+from stanza.util.logging import logger
 
 class ILSample(NamedTuple):
     x: jnp.array

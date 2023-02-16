@@ -1,9 +1,11 @@
 import jax
+import stanza
 
 from functools import partial
 
 import jax.experimental.host_callback
-import rich
+import rich.console
+from rich.markup import escape
 
 # Topic management
 
@@ -23,6 +25,10 @@ LEVEL_COLORS = {
     ERROR: 'red'
 }
 
+console = rich.console.Console()
+
+JAX_PLACEHODLER = object()
+
 # A jax-compatible logger
 # This will bypass logging at compile time
 # if the selected "topic" have not been enabled
@@ -31,30 +37,58 @@ class JaxLogger:
         pass
 
     # Host-side logging
-    def _log(self, level, topic, msg, jax_args, tracing=False):
-        args, kwargs = jax_args
-        msg = msg.format(*args, **kwargs)
+    def _log_callback(self, level, msg, reg_comp, jax_comp,
+                        tracing=False, stack_offset=3):
+        reg_args, reg_kwargs = reg_comp
+        jax_args, jax_kwargs = jax_comp
 
+        # reassemble args, kwargs
+        args = []
+        jax_iter = iter(jax_args)
+        for a in reg_args:
+            if a is JAX_PLACEHODLER:
+                args.append(next(jax_iter))
+            else:
+                args.append(a)
+        kwargs = dict(reg_kwargs)
+        kwargs.update(jax_kwargs)
+
+        msg = msg.format(*args, **kwargs)
         level_color = LEVEL_COLORS.get(level, 'white')
         if tracing:
             msg = '[yellow]<Tracing>[/yellow] ' + msg
-        rich.print(f'----| [{level_color}]{level:6}[/{level_color}] - {msg}')
+
+        # a version of console.log() which handles the stack frame correctly
+        console.log(f'[{level_color}]{level:6}[/{level_color}] - {msg}', 
+            highlight=True, _stack_offset=stack_offset)
 
     def log(self, level, msg, *args, **kwargs):
-        if len(args) > 0 and isinstance(args[0], str):
-            topic = msg
-            msg = args[0]
-        else:
-            topic = ''
+        # split the arguments and kwargs
+        # based on whether they are jax-compatible types or not
+        reg_args = []
+        jax_args = []
+        for a in args:
+            if stanza.is_jaxtype(a):
+                jax_args.append(a)
+                reg_args.append(JAX_PLACEHODLER)
+            else:
+                reg_args.append(a)
+        reg_kwargs = {}
+        jax_kwargs = {}
+        for (k,v) in kwargs.items():
+            if stanza.is_jaxtype(v):
+                jax_kwargs[k] = v
+            else:
+                reg_kwargs[k] = v
+        tracing = isinstance(jax.numpy.array(0), jax.core.Tracer)
+        if tracing:
+            self._log_callback(level, msg, (reg_args, reg_kwargs), (jax_args, jax_kwargs), 
+                            tracing=True, stack_offset=3)
 
-        # if we are tracing, still do the print, but
-        # note that the function is being traced
-        if isinstance(jax.numpy.array(0), jax.core.Tracer):
-            self._log(level, topic, msg, (args, kwargs), tracing=True)
-        jax.debug.callback(
-                    partial(self._log, level, topic, msg), 
-                    (args, kwargs),
-        ordered=True)
+        jax.debug.callback(partial(self._log_callback, level, msg,
+                                   (reg_args, reg_kwargs), stack_offset=10),  
+                                   (args, kwargs),
+                                    ordered=True)
 
     def trace(self, *args, **kwargs):
         return self.log(TRACE, *args, **kwargs)

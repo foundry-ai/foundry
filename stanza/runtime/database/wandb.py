@@ -1,6 +1,6 @@
 import wandb
 
-from stanza.experiment import Repo, Experiment, Run, remap, \
+from stanza.runtime.database import Database, Experiment, Run, remap, \
                             Video, Figure
 
 import numpy as np

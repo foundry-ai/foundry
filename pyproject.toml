@@ -5,16 +5,9 @@ description = "A batteries-included ML toolkit"
 authors = ["Daniel Pfrommer <dan.pfrommer@gmail.com>"]
 license = "MIT"
 readme = "README.md"
-packages = [
-    { include = "stanza" },
-    { include = "iterative_control", from="projects" },
-    { include = "learning_mpc", from="projects" }
-]
 
 [tool.poetry.scripts]
-learning_mpc = "learning_mpc.main:run_learning"
-learning_mpc_sweep = "learning_mpc.main:run_sweep"
-learning_mpc_vis_controller = "learning_mpc.main:run_vis_controller"
+activity = "stanza.runtime:launch_activity"
 
 [tool.poetry.dependencies]
 python = "^3.8"

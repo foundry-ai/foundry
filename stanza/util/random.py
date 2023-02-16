@@ -1,4 +1,4 @@
-from .dataset import Dataset, INFINITE
+from stanza.dataset import Dataset, INFINITE
 from typing import NamedTuple
 
 import jax.random

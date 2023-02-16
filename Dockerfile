@@ -28,7 +28,8 @@ COPY poetry.lock /code/poetry.lock
 COPY pyproject.toml /code/pyproject.toml
 
 WORKDIR /code
-RUN poetry install
+RUN poetry config installer.max-workers 10
+RUN poetry install --no-interaction --no-ansi -vvv
 
 # Setup entrypoint
 RUN echo "#!/usr/bin/env bash\nexec poetry run \"\$@\"" > /entrypoint.sh

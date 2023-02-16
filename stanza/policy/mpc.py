@@ -8,7 +8,7 @@ import stanza.util
 
 from functools import partial
 from typing import NamedTuple, Any
-from stanza.logging import logger
+from stanza.util.logging import logger
 from stanza.solver import NewtonSolver, RelaxingSolver, OptaxSolver
 from stanza.solver.jaxopt import JaxOptSolver, BFGS, LBFGS, GradientDescent
 

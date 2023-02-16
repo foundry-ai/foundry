@@ -7,8 +7,9 @@ import cloudpickle
 import rpyc
 import threading
 import functools
+import inspect
 
-from stanza.logging import logger
+from stanza.util.logging import logger
 from .container import Image, Target
 from rpyc.utils.server import ThreadedServer
 
@@ -99,19 +100,18 @@ class Pool:
         )
     
     async def init(self):
-        if not self.containers:
+        if inspect.isawaitable(self.target):
             self.target = await self.target
+        if not self.containers:
             self._init_loop = asyncio.get_event_loop()
 
             logger.info(f"Starting RPC server on {self.server.host}:{self.server.port}")
             self.server_thread.start()
 
             # load the image into the target engine
-            logger.info("pool", "Ingesting image into target engine.")
             img = await self.target.engine.ingest(self.image)
-            logger.info("pool", "Spawning containers")
             self.containers = await self.target.launch(img,
-                                    ["python", "-m", "stanza.util.launch_worker"], 
+                                    ["python", "-m", "stanza.runtime.util.launch_worker"], 
                                     env={'RPC_HOST': socket.gethostname(),
                                         'RPC_PORT': self.server.port})
     
@@ -126,8 +126,9 @@ class Pool:
                 num_executors = 0
                 while True:
                     for w in self.workers[num_executors:]:
-                        executors.put_nowait(w.create_executor(func))
-                        num_executors = num_executors + 1
+                        e = w.create_executor(func)
+                        executors.put_nowait(e)
+                    num_executors = len(self.workers)
                     await self.workers_lock.wait()
         async def run_tasks():
             tasks = set()
@@ -140,8 +141,6 @@ class Pool:
                 task.add_done_callback(functools.partial(done, e))
                 tasks.add(task)
             await asyncio.gather(*tasks)
-        # run populate_executors and run_tasks simulatenously
-        # until run_tasks is done, at which point cancel populate_executors
         try:
             populate_task = asyncio.create_task(populate_executors())
             await run_tasks()
@@ -154,6 +153,12 @@ class Pool:
     
     async def __aexit__(self, exc_type, exc, tb):
         await self.close()
+    
+    def __enter__(self):
+        raise RuntimeError("Use 'async with' for Pool()")
+
+    def __exit__(self, exc_type, exc, tb):
+        raise RuntimeError("Use 'async with' for Pool()")
 
 class ProcPool:
     def __init__(self):
