@@ -8,7 +8,8 @@ def _sanitize_arg(node):
 
 """
     A version of jax.jit which
-       - Can automatically make function-based arguments static by wrapping them using Partial()
+       - Can automatically make function-based arguments
+         static by wrapping them using Partial()
 """
 def jit(fun, *args, **kwargs):
     fun = jax.jit(fun, *args, **kwargs)
