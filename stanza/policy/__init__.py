@@ -1,10 +1,13 @@
 import jax
 import jax.numpy as jnp
+from jax.random import PRNGKey
+from typing import Callable
+from stanza.util.dataclasses import dataclass
 
 # A policy is a function from x --> u or
 # x --> PolicyOutput
 # optionally (x, policy_state) --> PolicyOutput
-@dataclass(frozen=True)
+@dataclass
 class PolicyOutput:
     action: Any
     # The policy state
@@ -13,16 +16,20 @@ class PolicyOutput:
     # this can be anything!
     aux: Any = None
 
-@dataclass(frozen=True)
+@dataclass
 class Trajectory:
     states: Any
     actions: Any = None
 
-@dataclass(frozen=True)
+@dataclass
 class Rollout(Trajectory):
     aux: Any = None
     final_policy_state: Any = None
 
+# Takes a policy function (which may or may not return
+# an instance of PolicyOutput and may or may not take in a
+# policy_state) and returns a function of the form
+# (input, policy_state) --> PolicyOutput
 def sanitize_policy(policy_fn, takes_policy_state=False):
     def sanitized_policy(state, policy_state):
         if takes_policy_state:
@@ -118,11 +125,11 @@ class Actions:
         action = jax.tree_util.tree_map(lambda x: x[T], self.actions)
         return PolicyOutput(action=action, policy_state=T + 1)
 
+@dataclass
 class NoisyPolicy:
-    def __init__(self, rng_key, sigma, base_policy):
-        self.rng_key = rng_key
-        self.sigma = sigma
-        self.base_policy = base_policy
+    rng_key: PRNGKey
+    sigma: float
+    base_policy: Callable
     
     def init_state(self, x0):
         return (self.rng_key, self.base_policy.init_state(x0))
@@ -141,10 +148,10 @@ class NoisyPolicy:
 
         return u, (rng_key, base_policy_state)
 
+@dataclass
 class RandomPolicy:
-    def __init__(self, rng_key, sample_fn):
-        self.rng_key = rng_key
-        self.sample_fn = sample_fn
+    rng_key: PRNGKey
+    sample_fn: Callable
 
     def init_state(self, x0):
         return self.rng_key
