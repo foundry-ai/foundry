@@ -38,7 +38,7 @@ class JaxLogger:
 
     # Host-side logging
     def _log_callback(self, level, msg, reg_comp, jax_comp,
-                        tracing=False, stack_offset=3):
+                        tracing=False, highlight=True, stack_offset=3):
         reg_args, reg_kwargs = reg_comp
         jax_args, jax_kwargs = jax_comp
 
@@ -60,9 +60,9 @@ class JaxLogger:
 
         # a version of console.log() which handles the stack frame correctly
         console.log(f'[{level_color}]{level:6}[/{level_color}] - {msg}', 
-            highlight=True, _stack_offset=stack_offset)
+            highlight=highlight, _stack_offset=stack_offset)
 
-    def log(self, level, msg, *args, **kwargs):
+    def log(self, level, msg, *args, highlight=True, **kwargs):
         # split the arguments and kwargs
         # based on whether they are jax-compatible types or not
         reg_args = []
@@ -86,7 +86,8 @@ class JaxLogger:
                             tracing=True, stack_offset=3)
 
         jax.debug.callback(partial(self._log_callback, level, msg,
-                                   (reg_args, reg_kwargs), stack_offset=10),  
+                                   (reg_args, reg_kwargs),
+                                   highlight=highlight, stack_offset=10),  
                                    (args, kwargs),
                                     ordered=True)
 

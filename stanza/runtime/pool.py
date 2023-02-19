@@ -81,7 +81,7 @@ class Pool:
         self.server = ThreadedServer(PoolService(self), port=0)
         self.server_thread = threading.Thread(target=self.server.start, daemon=True)
 
-        self.containers = None
+        self.service = None
 
         self._init_loop = None
 
@@ -102,7 +102,8 @@ class Pool:
     async def init(self):
         if inspect.isawaitable(self.target):
             self.target = await self.target
-        if not self.containers:
+
+        if not self.service:
             self._init_loop = asyncio.get_event_loop()
 
             logger.info(f"Starting RPC server on {self.server.host}:{self.server.port}")
@@ -110,14 +111,14 @@ class Pool:
 
             # load the image into the target engine
             img = await self.target.engine.ingest(self.image)
-            self.containers = await self.target.launch(img,
-                                    ["python", "-m", "stanza.runtime.util.launch_worker"], 
-                                    env={'RPC_HOST': socket.gethostname(),
-                                        'RPC_PORT': self.server.port})
-    
+            self.service = await self.target.launch(img,
+                ["python", "-m", "stanza.runtime.util.launch_worker"], 
+                env={'RPC_PORT': self.server.port})
+
     async def close(self):
         # kill all the containers
-        await asyncio.gather(*[c.stop() for c in self.containers])
+        if self.service:
+            await self.service.stop()
 
     async def run(self, func, iterable):
         executors = asyncio.Queue()

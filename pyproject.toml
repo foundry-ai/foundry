@@ -11,8 +11,8 @@ activity = "stanza.runtime:launch_activity"
 
 [tool.poetry.dependencies]
 python = "^3.8"
-jax = { extras = ["cuda"], version = "^0.4.1" }
-jaxlib = { extras = ["cuda11.cudnn86"], version = "^0.4.1" }
+jax = { version = "^0.4.1" }
+jaxlib = { version = "^0.4.1" }
 optax = "^0.1.4"
 rich = "^13.3.1"
 cloudpickle = "^2.2.1"
@@ -29,6 +29,6 @@ pytest = "^7.2.1"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-[[tool.poetry.source]]
-name = "private"
-url = "https://storage.googleapis.com/jax-releases/jax_cuda_releases.html"
+#[[tool.poetry.source]]
+#name = "private"
+#url = "https://storage.googleapis.com/jax-releases/jax_cuda_releases.html"

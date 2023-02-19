@@ -1,7 +1,8 @@
 import dataclasses
-from dataclasses import replace, dataclass as _dataclass
+from dataclasses import dataclass as _dataclass, is_dataclass, fields, replace
 from jax.tree_util import register_pytree_node
 from functools import partial
+from typing import Any
 
 import jax
 
@@ -10,17 +11,20 @@ import jax
     automatically register a dataclass with jax. Unlike
     chex dataclasses, does not require a kwargs only constructor.
 """
-def dataclass(cls=None, *, init=True, frozen=True):
+def dataclass(cls=None, **kwargs):
     if cls is None:
-        return partial(dataclass,
-            init=init, frozen=frozen)
-    dcls = _dataclass(cls, init=init, frozen=frozen)
+        return partial(make_dataclass, **kwargs)
+    return make_dataclass(cls, **kwargs)
+
+def make_dataclass(cls=None, *, jax=True):
+    dcls = _dataclass(cls, frozen=True)
     # register the dcls type in jax
-    register_pytree_node(
-        dcls,
-        partial(_dataclass_flatten, dcls),
-        partial(_dataclass_unflatten, dcls)
-    )
+    if jax:
+        register_pytree_node(
+            dcls,
+            partial(_dataclass_flatten, dcls),
+            partial(_dataclass_unflatten, dcls)
+        )
     return dcls
 
 def _dataclass_flatten(dcls, do):
@@ -37,15 +41,45 @@ def _dataclass_unflatten(dcls, keys, values):
             object.__setattr__(do, field.name, attrs[field.name])
     return do
 
+# Takes in a dataclass type or instance
+# and lets you set arguments on the builder object
+# then call build() to get the changed object
+class Builder:
+    def __init__(self, dataclass):
+        self._dataclass = dataclass
+        self._fields = fields(dataclass)
+        self._args = {}
+    
+    # Will fork the builder
+    def fork(self):
+        pass
 
-def parse_overrides(args):
-    pass
+    def __setattr__(self, name: str, value: Any):
+        self[name] = value
 
-# Dataclass-based argparsing. Note that overrides
-# may contain strings as values, which are parsed based
-# on the dataclass field type
-def from_overrides(dataclass, overrides):
-    params = {}
-    for field in dataclasses.fields(dataclass):
-        params[field.name] = getattr(args, prefix + field.name)
-    return dataclass(**params)
+    def __getattr__(self, name):
+        return self[name]
+
+    def __setitem__(self, name: str, value: Any):
+        # Validate according to dataclass type information
+        self._args[name] = value
+    
+    def __getitem__(self, name: str):
+        if name in self._args:
+            return self._args[name]
+        field = self._fields[name]
+        if is_dataclass(field.type):
+            builder = Builder(field.type)
+            self._args[name] = builder
+            return builder
+
+    def build(self):
+        # transform the args
+        args = { k: v.build() if isinstance(v, Builder) else v \
+                    for (k, v) in self._args.items() }
+        # If we already have an instance,
+        # of the dataclass, call replace()
+        if isinstance(self._dataclass, type):
+            return self._dataclass(**args)
+        else:
+            return replace(self._dataclass, **args)

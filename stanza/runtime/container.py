@@ -10,15 +10,13 @@ import asyncio
 import threading
 import functools
 
-class Container:
-    # should have stdout, stderr, replica_id, attributes
-    # which should be of type asyncio.StreamReader
-
-    # Wait for the container to finish
+class Service:
+    # Wait for all containers in the
+    # service to finish
     async def wait():
         pass
 
-    # Interrupt the container and wait until done
+    # Stop the service
     async def stop():
         pass
 
@@ -92,22 +90,25 @@ class PoetryProject(Image):
         self.project_name = os.path.basename(self.project_dir)
         self.engine = PoetryEngine()
 
-class PoetryProcess(Container):
-    def __init__(self, proc, replica_id):
-        self._proc = proc
-        self.replica_id = replica_id
-        self.stdout = proc.stdout
-        self.stderr = proc.stderr
+class PoetryProcessSet(Service):
+    def __init__(self, procs):
+        self._procs = procs
     
     async def wait(self):
-        await self._proc.wait()
+        await asyncio.gather(*[p.wait() for p in self._procs])
     
     async def stop(self):
-        self._proc.terminate()
-        await self._proc.wait()
+        for proc in self._procs:
+            proc.terminate()
+        await self.wait()
     
-    @staticmethod
-    async def launch(replica, image, args, env):
+
+class PoetryLocal(Target):
+    def __init__(self, n):
+        self.engine = PoetryEngine()
+        self.num_replicas = n
+
+    async def _launch_proc(self, replica, image, args, env):
         if not isinstance(image, PoetryProject):
             raise RuntimeError("Can only launch PoetryProjects")
         env = dict(env)
@@ -115,27 +116,23 @@ class PoetryProcess(Container):
         # forward the path so it can find poetry
         env['PATH'] = os.environ.get('PATH', '')
         env = {k:str(v) for k,v in env.items()}
-        cmd = " ".join(args)
+        #cmd = " ".join(args)
         #logger.trace("poetry", f"Running [yellow]{escape(cmd)}[/yellow] in [yellow]{image.project_dir}[/yellow]")
-        proc = await asyncio.create_subprocess_exec(
+        return await asyncio.create_subprocess_exec(
             *args,
             cwd=image.project_dir,
             # stdout=asyncio.subprocess.PIPE,
             # stderr=asyncio.subprocess.PIPE,
             env=env
         )
-        return PoetryProcess(proc, replica)
 
-class PoetryLocal(Target):
-    def __init__(self, n):
-        self.engine = PoetryEngine()
-        self.num_replicas = n
-        
     async def launch(self, image, args, env={}):
         if not isinstance(image, PoetryProject):
             raise RuntimeError("Can only launch PoetryProjects")
         args = ["poetry", "run"] + list(args)
-        return await asyncio.gather(*[PoetryProcess.launch(i, image, args, env) for i in range(self.num_replicas)])
+        return PoetryProcessSet(await asyncio.gather(*[
+            self._launch_proc(i, image, args, env) \
+                for i in range(self.num_replicas)]))
 
 class PoetryEngine(Engine):
     async def ingest(self, src_image):
@@ -166,11 +163,10 @@ class DockerImage(Image):
         self.image_id = image_id
         self.engine = engine
 
-class DockerContainer(Container):
-    def __init__(self, engine, container_id, replica_id):
+class DockerContainers(Service):
+    def __init__(self, engine, container_ids):
         self.engine = engine
-        self.replica_id = replica_id
-        self.container_id = container_id
+        self.container_ids = container_ids
         self.ouput_thread = None
     
     def _forward_output(self):
