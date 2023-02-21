@@ -49,13 +49,12 @@ class Builder:
         self._dataclass = dataclass
         self._fields = fields(dataclass)
         self._args = {}
-    
-    # Will fork the builder
-    def fork(self):
-        pass
 
     def __setattr__(self, name: str, value: Any):
-        self[name] = value
+        if not name.startswith('_'):
+            self._args[name] = value
+        else:
+            super().__setattr__(name, value)
 
     def __getattr__(self, name):
         return self[name]

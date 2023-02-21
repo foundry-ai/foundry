@@ -9,6 +9,7 @@ import asyncio
 
 from stanza.util.logging import logger
 from stanza.util.dataclasses import dataclass
+from stanza.runtime.config import RuntimeParser
 from stanza.runtime.database import Database
 from stanza.runtime.container import Target
 from stanza.runtime.pool import Pool
@@ -52,39 +53,17 @@ def activity(config_dataclass=None, f=None):
         return functools.wraps(f)(a)
     return decorator
 
-def load_entrypoint(entrypoint_string):
-    parts = entrypoint_string.split(":")
-    if len(parts) != 2:
-        raise ValueError("Entrypoint must include module and activity")
-    module, attr = parts
-    module = importlib.import_module(module)
-    return getattr(module, attr)
-
 async def launch_activity_main():
     import sys
     import os
     # Add projects to python path
     sys.path.append(os.path.abspath(os.path.join(__file__, "..","..","..", "projects")))
 
-    parser = argparse.ArgumentParser(add_help=False)
-    # If None, will run in current process
-    parser.add_argument("--target", default="poetry://localhost", required=False)
-    # TODO: use database
-    parser.add_argument("--database", default="wandb://", required=False)
-    parser.add_argument("entrypoint")
-    # add the parse arguments from the activity in question
-    args, unknown = parser.parse_known_args()
-    # Load the entrypoint
-    entrypoint = load_entrypoint(args.entrypoint)
-    if not isinstance(entrypoint, Activity):
-        print("Entrypoint must be an activity!")
-        return
-    target = await Target.from_url(args.target)
-    # TODO: Load configs
-    configs = [None]
-
-    async with Pool(target) as p:
-        await p.run(entrypoint, configs)
+    parser = RuntimeParser()
+    runtime_cfg = parser.parse_args(sys.argv[1:]).build()
+    print(runtime_cfg)
+    # async with Pool(target) as p:
+    #     await p.run(entrypoint, configs)
 
 
 # Entrypoint for launching activities, sweeps
