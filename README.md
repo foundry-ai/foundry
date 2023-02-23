@@ -35,7 +35,20 @@ Activities are functions which take (config, run) as arguments and have the @act
 ```bash
 	poetry run activity --target docker://localhost module.submodule:activity_name
 ```
+You can also use this to launch a sweep. For instance to launch a sweep across several seed values you can use
+```bash
+	poetry run activity --target docker://localhost?n=2 module.submodule:activity_name --seed 42 43 44 45
+```
+By default the sweep is run across the cartesian product of all parameter options specified. For instance
+```bash
+	poetry run activity --target docker://localhost?n=2 module.submodule:activity_name --seed 42 43 --model foo bar
+```
+will run a sweep over all of the following combiantions: [(seed=42, model=foo), (seed=43, model=foo), (seed=42, model=bar), (seed=43, model=bar)]
+
+## Reading parameters from config files (NOTE: Not yet implemented)
+
 The activity launch script can also be used to load json, yaml or python-code-as-config based configurations. For instance
+
 ```bash
 	poetry run activity module.submodule:activity_name --json path_to_json_file.json
 	poetry run activity module.submodule:activity_name --yaml path_to_yaml_file.yaml

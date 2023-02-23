@@ -60,7 +60,7 @@ async def launch_activity_main():
     sys.path.append(os.path.abspath(os.path.join(__file__, "..","..","..", "projects")))
 
     parser = RuntimeParser()
-    runtime_cfg = parser.parse_args(sys.argv[1:]).build()
+    runtime_cfg = parser.parse_args(sys.argv[1:])
     print(runtime_cfg)
     # async with Pool(target) as p:
     #     await p.run(entrypoint, configs)

@@ -1,17 +1,13 @@
 from stanza.util.attrdict import AttrDict
-from stanza.util.dataclasses import dataclass, fields, Builder
+from stanza.util.dataclasses import dataclass, field, fields, Parameters
 from stanza.util.itertools import put_back, make_put_backable
 from typing import List, Any
 from enum import Enum
 from functools import partial
+import itertools
 import re
 import importlib
 
-def try_next(iter):
-    try:
-        return next(iter)
-    except StopIteration:
-        return None
     
 # -------------- A lightweight argparse alternative ------------
 # This exposes an extensible set of argument parser utilities
@@ -50,11 +46,13 @@ class ArgTokenizer:
         self.after_opt = False
         self.partial = None
 
+        self.consumed = 0
         self.back_buffer = []
     
     def put_back(self, *tokens):
         tokens = list(tokens)
         tokens.reverse()
+        self.consumed = self.consumed - len(tokens)
         self.back_buffer.extend(tokens)
     
     def __iter__(self):
@@ -62,9 +60,11 @@ class ArgTokenizer:
 
     def __next__(self):
         if self.back_buffer:
+            self.consumed = self.consumed + 1
             return self.back_buffer.pop()
         if not self.partial:
             self.partial = next(self.arg_iter)
+        self.consumed = self.consumed + 1
         # If after an option in the same token
         # spaces, newlines, or = signs that follow
         # and then turn the remaining token as an argument
@@ -111,6 +111,32 @@ class ArgTokenizer:
                 return Token(TokenType.RBRAKET)
             return Token(TokenType.ARG, arg)
 
+# --- Iterator utiltiies -----
+def try_next(iter):
+    try:
+        return next(iter)
+    except StopIteration:
+        return None
+
+def peek(iter):
+    try:
+        n = next(iter)
+        put_back(iter, n)
+        return n
+    except StopIteration:
+        return None
+
+# Consume all tokens of particular types
+def consume_tokens(iter, *types):
+    for t in iter:
+        if t.type in types:
+            yield t
+        else:
+            # put back the token and 
+            # return
+            put_back(iter, t)
+            break
+
 class ArgParser:
     def default_context(self):
         raise NotImplementedError("default_context() not implemented")
@@ -119,81 +145,78 @@ class ArgParser:
         if ctx is None:
             ctx = self.default_context()
         tokens = ArgTokenizer(args)
-        self.parse_tokens(tokens, ctx)
+        self.parse_tokens(ctx, tokens)
         token = try_next(tokens)
         if token:
             raise ArgParseError(f"Unexpected {token}")
         return ctx
 
-def _setter(attr, obj, value):
-    setattr(obj, attr, value)
-
 class OptionParser(ArgParser):
-    def __init__(self, long, short=None, type=None, populate=None, required=False):
-        self.populate = populate or partial(_setter, long)
+    def __init__(self, long, callback, short=None, nargs=0):
+        self.callback = callback
         if long.startswith('--'):
             long = long[2:]
         if short and short.startswith('-'):
             short = short[1:]
-        self.required = required
         self.long = long
         self.short = short
-        self.type = type
-        self.expected = [Token(TokenType.OPTIONAL_LONG, long)]
-        if self.short:
-            self.expected.append(Token(TokenType.OPTIONAL_SHORT, short))
+        self.nargs = nargs
    
-    def parse_tokens(self, tokens, ctx):
+    def parse_tokens(self, ctx, tokens):
         opt = try_next(tokens)
         # No tokens for us to consume
         if not opt:
-            return False
+            return
         if not ((opt.type == TokenType.OPTIONAL_LONG and opt.value == self.long) or \
                 (self.short and opt.type == TokenType.OPTIONAL_SHORT and opt.value == self.short)):
             # This wasn't for us, put back the token and return False (no tokens consumed)
             put_back(opt, tokens)
-            return False
+            return
         # If we have a type, consume the next argument
-        if self.type is not None:
-            next_token = try_next(tokens)
-            if not next_token or (next_token.type != TokenType.ARG and next_token.type != TokenType.VALUE):
-                raise ArgParseError("Expected value after f{opt}")
-            value = self.type(next_token.value)
+        if self.nargs != 0:
+            if self.nargs == '+':
+                arg_tokens = [t for t in consume_tokens(tokens, 
+                                TokenType.ARG, TokenType.VALUE)]
+            else:
+                arg_tokens = list(itertools.islice(tokens, self.nargs))
+                for t in arg_tokens:
+                    if t.type != TokenType.ARG and t.type != TokenType.VALUE:
+                        raise ArgParseError("Expected more option arguments")
+            self.callback(ctx, *[t.value for t in arg_tokens])
         else:
-            value = True
-        self.populate(ctx, value)
-        return True
-    
+            self.callback(ctx)
+
 class PositionalParser(ArgParser):
-    def __init__(self, populate, type=str, required=True):
-        self.populate = populate
-        self.required = required
-    
-    def parse_tokens(self, tokens, ctx):
-        arg = try_next(tokens)
-        if not arg: # If we are at the end
-            return False
-        if arg.type != TokenType.ARG:
-            put_back(arg)
-            return False
-        self.populate(ctx, arg.value)
-        return True
+    def __init__(self, callback, nargs=1):
+        assert nargs > 0 or nargs == '+'
+        self.nargs = nargs
+        self.callback = callback
+
+    def parse_tokens(self, ctx, tokens):
+        if self.nargs == '+':
+            arg_tokens = [t for t in consume_tokens(tokens, 
+                            TokenType.ARG, TokenType.VALUE)]
+        else:
+            arg_tokens = list(itertools.islice(tokens, self.nargs))
+            for t in arg_tokens:
+                if t.type != TokenType.ARG and t.type != TokenType.VALUE:
+                    raise ArgParseError("Expected more option arguments")
+        args = [t.value for t in arg_tokens]
+        self.callback(ctx, *args)
 
 class MultiParser(ArgParser):
     def __init__(self, *parsers):
         self.parsers = parsers
 
-    def parse_tokens(self, tokens, ctx):
-        a = False
-        done = False
-        while not done:
-            done = True
+    def parse_tokens(self, ctx, tokens):
+        while True:
+            pos = tokens.consumed
             for p in self.parsers:
-                adv = p.parse_tokens(tokens, ctx)
-                done = done and not adv
-                a = a or adv
-        return a
-
+                p.parse_tokens(ctx, tokens)
+            # If we weren't able to consume
+            # any more tokens, just break
+            if tokens.consumed == pos:
+                break
 
 # A SimpleParser handles options and positionals in the standard manner
 class SimpleParser(ArgParser):
@@ -207,51 +230,67 @@ class SimpleParser(ArgParser):
             o.short: o for o in options if o.short
         }
     
-    def parse_tokens(self, tokens, ctx):
-        consumed = False
+    def parse_tokens(self, ctx, tokens):
         remaining_positional = list(self.positionals)
         remaining_positional.reverse()
         for t in tokens:
             put_back(tokens, t)
+            pos = tokens.consumed
             if t.type  == TokenType.OPTIONAL_LONG:
                 if not t.value in self.long_options:
                     break
-                if not self.long_options[t.value].parse_tokens(tokens, ctx):
-                    break
+                self.long_options[t.value].parse_tokens(ctx, tokens)
             elif t.type == TokenType.OPTIONAL_SHORT:
                 if not t.value in self.short_options:
                     break
-                if not self.short_options[t.value].parse_tokens(tokens, ctx):
-                    break
+                self.short_options[t.value].parse_tokens(ctx, tokens)
             elif t.type == TokenType.ARG:
+                if not remaining_positional:
+                    raise ArgParseError("Unexpected positional argument")
                 p = remaining_positional.pop()
-                if not p.parse_tokens(tokens, ctx):
-                    break
-            else:
+                p.parse_tokens(ctx, tokens)
+            # We are no longer able to consume tokens
+            if tokens.consumed == pos:
                 break
-            consumed = True
-        if remaining_positional and remaining_positional[0].required:
-            raise ArgParseError("Required positional argument not specified")
-        return consumed
 
-class DataclassParser(SimpleParser):
-    def __init__(self, dataclass):
+# Allows for parsing sets of parameters (see Parameters from stanza.util.dataclasses module)
+class ParametersParser(SimpleParser):
+    def __init__(self, dataclass, multi_parser=False):
         self.dataclass = dataclass
-        super().__init__([OptionParser(long=f.name, type=f.type) for f in fields(dataclass)])
-    
-    def default_context(self):
-        return Builder(self.dataclass)
+        self.multi_parser = multi_parser
+        if multi_parser:
+            super().__init__([ParametersParser.make_field_multi_option(f) \
+                        for f in fields(dataclass)])
+        else:
+            super().__init__([ParametersParser.make_field_option(f) \
+                        for f in fields(dataclass)])
 
-# Allows for an option to be specified multiple times
-class MultiOption(ArgParser):
-    def __init__(self, dataclass):
-        self.dataclass = dataclass
-    
-class MultiDataclassParser(SimpleParser):
-    def __init__(self, dataclass):
-        self.dataclass = dataclass
-        super()._init__([DataclassParser.option])
+    # def default_context(self):
+    #     return {Builder(self.dataclass)} if self.multi_parser else Builder(self.dataclass)
 
+    @staticmethod
+    def make_field_option(field):
+        def setter(builder, arg):
+            v = field.type(arg)
+            builder[field.name] = v
+        return OptionParser(field.name, setter, nargs=1)
+
+    @staticmethod
+    def make_field_multi_option(field):
+        def make_ps(val):
+            p = Parameters.for_dataclass(self.dataclass)
+            p = p.set(field.name, val)
+            return p
+        def setter(curr_parameters, *args):
+            if len(args) == 0:
+                raise ArgParseError("Expected at least one argument")
+            vs = [field.type(a) for a in args]
+            parameters = {make_ps(v) for v in vs}
+            new_parameters = Parameters.cartesian_product(curr_parameters, parameters)
+            # replace curr_parameters with new_parameters
+            curr_parameters.clear()
+            curr_parameters.update(new_parameters)
+        return OptionParser(field.name, setter, nargs='+')
 
 def load_entrypoint(entrypoint_string):
     parts = entrypoint_string.split(":")
@@ -264,30 +303,34 @@ def load_entrypoint(entrypoint_string):
 # -------- Utilities for parsing config options ----------
 @dataclass
 class RuntimeConfig:
-    activity: Any # The activity entrypoint
-    target: str
-    database: str
+    activity: Any = None # The activity entrypoint
+    target: str = None
+    database: str = None
     # TODO: Add dataset support
-    configs: List[Any] # The config dataclasses
+    configs: List[Any] = field(default_factory=list)
 
 class RuntimeParser(ArgParser):
     def __init__(self):
         pass
 
     def default_context(self):
-        return Builder(RuntimeConfig)
+        return RuntimeConfig()
     
-    def parse_tokens(self, tokens, cfg=None):
+    def parse_tokens(self, cfg, tokens):
         opts = AttrDict()
         # Parse the generic tokens
-        parser = SimpleParser([OptionParser("target", type=str),
-                               OptionParser("database", type=str)],
-                              [PositionalParser(partial(_setter, "entrypoint"))])
-        parser.parse_tokens(tokens, opts)
+        def setter(param, opts, val):
+            opts[param] = val
+        parser = SimpleParser([OptionParser("target", partial(setter, "target"), nargs=1),
+                               OptionParser("database", partial(setter, "database"), nargs=1)],
+                              [PositionalParser(partial(setter, "entrypoint"))])
+        parser.parse_tokens(opts, tokens)
         # Set defaults
         opts.target = opts.get("target", None) or "poetry://localhost"
         opts.database = opts.get("database", None) or None
         opts.entrypoint = opts.get("entrypoint", None) or None
+        if opts.entrypoint is None:
+            raise ArgParseError("Must specify entrypoint")
 
         activity = load_entrypoint(opts.entrypoint)
 
@@ -295,9 +338,9 @@ class RuntimeParser(ArgParser):
         cfg.target = opts.target
         cfg.database = opts.database
 
-        dc_parser = DataclassParser(activity.config_dataclass)
-        dc_builder = Builder(activity.config_dataclass)
-        dc_parser.parse_tokens(tokens, dc_builder)
-
-        cfg.configs = [dc_builder.build()]
+        #dc_parser = DataclassParser(activity.config_dataclass, multi_parser=True)
+        #dc_builders = {activity.config_dataclass()}
+        #dc_parser.parse_tokens(dc_builders, tokens)
+        #cfg.configs = [b for b in dc_builders]
+        cfg.configs = [activity.config_dataclass()]
         return cfg
