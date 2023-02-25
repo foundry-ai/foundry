@@ -4,13 +4,15 @@ import jax
 import jax.numpy as jnp
 import jax.tree_util as tree_util
 import stanza.envs
+import stanza.policy
 import stanza.util
 
 from functools import partial
 from typing import NamedTuple, Any
+
 from stanza.util.logging import logger
 from stanza.solver import NewtonSolver, RelaxingSolver, OptaxSolver
-from stanza.solver.jaxopt import JaxOptSolver, BFGS, LBFGS, GradientDescent
+from stanza.policy import Actions
 
 def _centered_log(sdf, *args):
     u_x, fmt = jax.flatten_util.ravel_pytree(args)
@@ -22,7 +24,7 @@ def _centered_log(sdf, *args):
 
 # A RHC barrier-based MPC controller
 class BarrierMPC:
-    def __init__(self, u_sample,
+    def __init__(self, x_sample, u_sample,
                 cost_fn, model_fn,
                 horizon_length,
                 barrier_sdf=None,
@@ -31,8 +33,9 @@ class BarrierMPC:
 
         # turn the per-timestep cost function
         # into a trajectory-based cost function
-        self.cost_fn = partial(ode.envs.trajectory_cost, cost_fn)
-        self.model_fn = model_fn
+        self.model_fn = stanza.envs.flatten_model(model_fn, x_sample, u_sample)
+        self.cost_fn = stanza.envs.flatten_cost(cost_fn, x_sample, u_sample)
+        self.cost_fn = partial(stanza.envs.trajectory_cost, self.cost_fn)
         self.horizon_length = horizon_length
 
         self.barrier_sdf = barrier_sdf
@@ -54,8 +57,8 @@ class BarrierMPC:
             self.solver.init_t = 1.
 
     def _loss_fn(self, us, x0, t=1):
-        xs = stanza.envs.rollout_input(
-                self.model_fn, x0, us
+        xs = stanza.policy.rollout(
+                self.model_fn, x0, policy=Actions(us)
             )
         cost = self.cost_fn(xs, us)
 
@@ -67,17 +70,19 @@ class BarrierMPC:
         loss = jnp.nan_to_num(loss, nan=float('inf'))
         return loss
 
-    def init_state(self, x0):
+    def init_state(self, _):
         u_flat, _ = jax.flatten_util.ravel_pytree(self.u_sample)
         u_flat = jnp.zeros((self.horizon_length - 1, u_flat.shape[0]))
         return u_flat
 
     def __call__(self, state, policy_state=None):
         us = self.init_state(state) if policy_state is None else policy_state
+        # shift the us by 1
         us = us.at[:-1].set(us[1:])
+        state_flat, _ = jax.flatten_util.ravel_pytree(state)
 
         def solve_us(us):
-            res = self.solver.run(us, x0=state)
+            res = self.solver.run(us, x0=state_flat)
             us = res.final_params
             us = jax.lax.cond(res.solved, lambda: us, lambda: float("nan")*us)
             return us
@@ -86,8 +91,7 @@ class BarrierMPC:
             # for now we have no state constraints
             # so u = 0 is always feasible
             us = jnp.zeros_like(us)
-
-            xs = stanza.envs.rollout_input(self.model_fn, state, us)
+            xs = stanza.policy.rollout(self.model_fn, state_flat, policy=Actions(us))
             feasible = jnp.max(self.barrier_sdf(xs, us))
 
             us = jax.lax.cond(feasible < 0, solve_us,

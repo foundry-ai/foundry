@@ -145,7 +145,7 @@ class ArgParser:
         if ctx is None:
             ctx = self.default_context()
         tokens = ArgTokenizer(args)
-        self.parse_tokens(ctx, tokens)
+        ctx = self.parse_tokens(ctx, tokens)
         token = try_next(tokens)
         if token:
             raise ArgParseError(f"Unexpected {token}")
@@ -171,7 +171,7 @@ class OptionParser(ArgParser):
                 (self.short and opt.type == TokenType.OPTIONAL_SHORT and opt.value == self.short)):
             # This wasn't for us, put back the token and return False (no tokens consumed)
             put_back(opt, tokens)
-            return
+            return ctx
         # If we have a type, consume the next argument
         if self.nargs != 0:
             if self.nargs == '+':
@@ -182,9 +182,12 @@ class OptionParser(ArgParser):
                 for t in arg_tokens:
                     if t.type != TokenType.ARG and t.type != TokenType.VALUE:
                         raise ArgParseError("Expected more option arguments")
-            self.callback(ctx, *[t.value for t in arg_tokens])
+            r = self.callback(ctx, *[t.value for t in arg_tokens])
+            ctx = r if r is not None else ctx
         else:
-            self.callback(ctx)
+            r = self.callback(ctx)
+            ctx = r if r is not None else ctx
+        return ctx
 
 class PositionalParser(ArgParser):
     def __init__(self, callback, nargs=1):
@@ -202,7 +205,9 @@ class PositionalParser(ArgParser):
                 if t.type != TokenType.ARG and t.type != TokenType.VALUE:
                     raise ArgParseError("Expected more option arguments")
         args = [t.value for t in arg_tokens]
-        self.callback(ctx, *args)
+        r = self.callback(ctx, *args)
+        ctx = r if r is not None else ctx
+        return ctx
 
 class MultiParser(ArgParser):
     def __init__(self, *parsers):
@@ -212,11 +217,12 @@ class MultiParser(ArgParser):
         while True:
             pos = tokens.consumed
             for p in self.parsers:
-                p.parse_tokens(ctx, tokens)
+                ctx = p.parse_tokens(ctx, tokens)
             # If we weren't able to consume
             # any more tokens, just break
             if tokens.consumed == pos:
                 break
+        return ctx
 
 # A SimpleParser handles options and positionals in the standard manner
 class SimpleParser(ArgParser):
@@ -239,19 +245,20 @@ class SimpleParser(ArgParser):
             if t.type  == TokenType.OPTIONAL_LONG:
                 if not t.value in self.long_options:
                     break
-                self.long_options[t.value].parse_tokens(ctx, tokens)
+                ctx = self.long_options[t.value].parse_tokens(ctx, tokens)
             elif t.type == TokenType.OPTIONAL_SHORT:
                 if not t.value in self.short_options:
                     break
-                self.short_options[t.value].parse_tokens(ctx, tokens)
+                ctx = self.short_options[t.value].parse_tokens(ctx, tokens)
             elif t.type == TokenType.ARG:
                 if not remaining_positional:
                     raise ArgParseError("Unexpected positional argument")
                 p = remaining_positional.pop()
-                p.parse_tokens(ctx, tokens)
+                ctx = p.parse_tokens(ctx, tokens)
             # We are no longer able to consume tokens
             if tokens.consumed == pos:
                 break
+        return ctx
 
 # Allows for parsing sets of parameters (see Parameters from stanza.util.dataclasses module)
 class ParametersParser(SimpleParser):
@@ -259,37 +266,32 @@ class ParametersParser(SimpleParser):
         self.dataclass = dataclass
         self.multi_parser = multi_parser
         if multi_parser:
-            super().__init__([ParametersParser.make_field_multi_option(f) \
+            super().__init__([ParametersParser.make_field_multi_option(dataclass, f) \
                         for f in fields(dataclass)])
         else:
-            super().__init__([ParametersParser.make_field_option(f) \
+            super().__init__([ParametersParser.make_field_option(dataclass, f) \
                         for f in fields(dataclass)])
 
     # def default_context(self):
     #     return {Builder(self.dataclass)} if self.multi_parser else Builder(self.dataclass)
 
     @staticmethod
-    def make_field_option(field):
-        def setter(builder, arg):
+    def make_field_option(dc, field):
+        def setter(cfg, arg):
             v = field.type(arg)
-            builder[field.name] = v
+            return cfg.set(field.name, v)
         return OptionParser(field.name, setter, nargs=1)
 
     @staticmethod
-    def make_field_multi_option(field):
-        def make_ps(val):
-            p = Parameters.for_dataclass(self.dataclass)
-            p = p.set(field.name, val)
-            return p
+    def make_field_multi_option(dc, field):
         def setter(curr_parameters, *args):
             if len(args) == 0:
                 raise ArgParseError("Expected at least one argument")
             vs = [field.type(a) for a in args]
-            parameters = {make_ps(v) for v in vs}
+            parameters = {Parameters(**{field.name: v}) for v in vs}
             new_parameters = Parameters.cartesian_product(curr_parameters, parameters)
             # replace curr_parameters with new_parameters
-            curr_parameters.clear()
-            curr_parameters.update(new_parameters)
+            return new_parameters
         return OptionParser(field.name, setter, nargs='+')
 
 def load_entrypoint(entrypoint_string):
@@ -338,9 +340,10 @@ class RuntimeParser(ArgParser):
         cfg.target = opts.target
         cfg.database = opts.database
 
-        #dc_parser = DataclassParser(activity.config_dataclass, multi_parser=True)
-        #dc_builders = {activity.config_dataclass()}
-        #dc_parser.parse_tokens(dc_builders, tokens)
-        #cfg.configs = [b for b in dc_builders]
-        cfg.configs = [activity.config_dataclass()]
+        dc_parser = ParametersParser(activity.config_dataclass, multi_parser=True)
+        dc_builders = {Parameters()}
+        dc_builders = dc_parser.parse_tokens(dc_builders, tokens)
+        cfg.configs = [b(activity.config_dataclass) for b in dc_builders]
+
+        # cfg.configs = [activity.config_dataclass()]
         return cfg

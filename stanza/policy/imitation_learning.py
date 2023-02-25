@@ -3,7 +3,7 @@ import optax
 import jax.numpy as jnp
 
 from stanza.dataset.env import EnvDataset
-from stanza.trainer import Trainer
+from stanza.train import Trainer
 from typing import NamedTuple, Any, Tuple
 
 from stanza.util.logging import logger

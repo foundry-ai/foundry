@@ -61,9 +61,9 @@ async def launch_activity_main():
 
     parser = RuntimeParser()
     runtime_cfg = parser.parse_args(sys.argv[1:])
-    print(runtime_cfg)
-    # async with Pool(target) as p:
-    #     await p.run(entrypoint, configs)
+    target = await Target.from_url(runtime_cfg.target)
+    async with Pool(target) as p:
+        await p.run(runtime_cfg.activity, runtime_cfg.configs)
 
 
 # Entrypoint for launching activities, sweeps

@@ -33,11 +33,11 @@ class Environment:
 
 __ENV_BUILDERS = {}
 
-def create(env_type, *args, **kwargs):
-    env_path = env_type.split("/")
+def create(env_name, *args, **kwargs):
+    env_path = env_name.split("/")
     # register buildres if empty
     builder = __ENV_BUILDERS[env_path[0]]()
-    return builder(env_type, *args, **kwargs)
+    return builder(env_name, *args, **kwargs)
 
 # Register them lazily so we don't
 # import dependencies we don't actually use

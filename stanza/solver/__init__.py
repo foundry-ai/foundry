@@ -1,13 +1,12 @@
 import jax
 import jax.flatten_util
-import minnelied as ml
 import jax.numpy as jnp
 
 import optax
 
 from typing import NamedTuple, Any, Callable
 from functools import partial
-from dataclasses import dataclass
+from stanza.util.dataclasses import dataclass
 
 class SolverResults(NamedTuple):
     solved: bool

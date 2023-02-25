@@ -46,10 +46,8 @@ import inspect
 
 # An immutable set of arguments
 class Parameters:
-    def __init__(self, constructor, arg_types, args=None):
-        self.__args = args or {}
-        self.__arg_types = arg_types
-        self.__constructor = constructor
+    def __init__(self, **args):
+        self.__args = args
 
     # Will return a copy of the argument set,
     # can handle argument paths as well (i.e foo.bar)
@@ -59,7 +57,7 @@ class Parameters:
         if len(path) == 1:
             args = dict(self.__args)
             args[name] = value
-            return Parameters(self.__constructor, args)
+            return Parameters(**args)
         else:
             raise ValueError("Path parameters not yet supported")
 
@@ -70,18 +68,32 @@ class Parameters:
         return self.__args[name]
 
     # Use () on Parameters to construct the object
-    def __call__(self):
+    def __call__(self, constructor, arg_types=None):
+        if arg_types is None and is_dataclass(constructor):
+            arg_types = { f.name: f.type for f in fields(constructor)}
         # construct any sub-parameters
         args = { k: (v() if isinstance(v, Parameters) else v) \
                             for (k,v) in self.__args.items() }
-        return self.__constructor(**args)
+        return constructor(**args)
     
     @staticmethod
-    def for_dataclass(dataclass):
-        return Parameters(dataclass, fields(dataclass))
+    def update(a, b):
+        args = dict(a.__args)
+        args.update(b.__args)
+        return Parameters(**args)
     
     # Takes the cartesian product of two sets of Parameters
     # and returns the cartesian product of Parameters
     @staticmethod
     def cartesian_product(setA, setB):
-        return setA
+        s = set()
+        for a in setA:
+            for b in setB:
+                s.add(Parameters.update(a, b))
+        return s
+    
+    def __hash__(self):
+        return hash(frozenset(self.__args.items()))
+    
+    def __repr__(self):
+        return self.__args.__repr__()

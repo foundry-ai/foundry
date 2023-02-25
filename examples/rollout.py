@@ -5,7 +5,7 @@ import jax.numpy as jnp
 
 import stanza.envs as envs
 import stanza.policy as policy
-from stanza.envs import Actions
+from stanza.policy import Actions
 from stanza.util.logging import logger
 
 # create an environment

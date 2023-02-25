@@ -1,27 +1,26 @@
 from .rng import RNGDataset
 
-from stanza.policy import SampleRandom
+from stanza.policy import RandomPolicy
 
-import stanza.envs
+import stanza.policy
 import jax
 
 class EnvDataset(RNGDataset):
-    def __init__(self, rng_key, env, traj_length, policy=None, jacobians=False):
+    def __init__(self, rng_key, env, traj_length, policy=None):
         rng_key, sk = jax.random.split(rng_key)
         super().__init__(rng_key)
         self.env = env
         # If policy is not specified, sample random
         # actions from the environment
         if policy is None:
-            policy = SampleRandom(sk, env.sample_action)
+            policy = RandomPolicy(sk, env.sample_action)
         self.policy = policy
         self.traj_length = traj_length
-        self.jacobians = jacobians
 
     def get(self, iterator):
         rng = super().get(iterator)
 
-        traj = stanza.envs.rollout_policy(self.env.step,
+        traj = stanza.policy.rollout(self.env.step,
             self.env.reset(rng),
-            self.traj_length, self.policy, jacobians=self.jacobians)
+            length=self.traj_length, policy=self.policy)
         return traj

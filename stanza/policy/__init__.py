@@ -1,13 +1,15 @@
 import jax
 import jax.numpy as jnp
 from jax.random import PRNGKey
-from typing import Callable
+from typing import Callable, Any
+import stanza
 from stanza.util.dataclasses import dataclass
+from functools import partial
 
 # A policy is a function from x --> u or
 # x --> PolicyOutput
 # optionally (x, policy_state) --> PolicyOutput
-@dataclass
+@dataclass(jax=True)
 class PolicyOutput:
     action: Any
     # The policy state
@@ -16,12 +18,12 @@ class PolicyOutput:
     # this can be anything!
     aux: Any = None
 
-@dataclass
+@dataclass(jax=True)
 class Trajectory:
     states: Any
     actions: Any = None
 
-@dataclass
+@dataclass(jax=True)
 class Rollout(Trajectory):
     aux: Any = None
     final_policy_state: Any = None
@@ -106,7 +108,7 @@ def rollout(model, state0,
 
 # An "Inputs" policy can be used to replay
 # inputs from a history buffer
-@dataclass
+@dataclass(jax=True)
 class Actions:
     actions: Any
 
@@ -125,7 +127,7 @@ class Actions:
         action = jax.tree_util.tree_map(lambda x: x[T], self.actions)
         return PolicyOutput(action=action, policy_state=T + 1)
 
-@dataclass
+@dataclass(jax=True)
 class NoisyPolicy:
     rng_key: PRNGKey
     sigma: float
@@ -148,7 +150,7 @@ class NoisyPolicy:
 
         return u, (rng_key, base_policy_state)
 
-@dataclass
+@dataclass(jax=True)
 class RandomPolicy:
     rng_key: PRNGKey
     sample_fn: Callable

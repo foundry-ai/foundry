@@ -2,7 +2,7 @@ from stanza.runtime import activity
 from stanza.util.dataclasses import dataclass
 from stanza.util.logging import logger
 
-@dataclass
+@dataclass(frozen=True)
 class Config:
     seed: int = 42
     name: str = "foo"

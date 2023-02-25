@@ -187,6 +187,27 @@ files = [
 ]
 
 [[package]]
+name = "dm-haiku"
+version = "0.0.9"
+description = "Haiku is a library for building neural networks in JAX."
+category = "main"
+optional = false
+python-versions = "*"
+files = [
+    {file = "dm-haiku-0.0.9.tar.gz", hash = "sha256:97752b32cdbe5a3e2d1c60ea884d33eb4b36e7d410000f0d61b571417c925435"},
+    {file = "dm_haiku-0.0.9-py3-none-any.whl", hash = "sha256:f057ee8af4ef08499d0381e8f0733525ace1d099f24c5adb700fdcfaab7b03ca"},
+]
+
+[package.dependencies]
+absl-py = ">=0.7.1"
+jmp = ">=0.0.2"
+numpy = ">=1.18.0"
+tabulate = ">=0.8.9"
+
+[package.extras]
+jax = ["jax (==0.3.16)", "jaxlib (==0.3.15)"]
+
+[[package]]
 name = "dm-tree"
 version = "0.1.8"
 description = "Tree is a library for working with nested data structures."
@@ -361,6 +382,24 @@ files = [
 [package.dependencies]
 numpy = ">=1.20"
 scipy = ">=1.5"
+
+[[package]]
+name = "jmp"
+version = "0.0.4"
+description = "JMP is a Mixed Precision library for JAX."
+category = "main"
+optional = false
+python-versions = "*"
+files = [
+    {file = "jmp-0.0.4-py3-none-any.whl", hash = "sha256:6aa7adbddf2bd574b28c7faf6e81a735eb11f53386447896909c6968dc36807d"},
+    {file = "jmp-0.0.4.tar.gz", hash = "sha256:5dfeb0fd7c7a9f72a70fff0aab9d0cbfae32a809c02f4037ff3485ceb33e1730"},
+]
+
+[package.dependencies]
+numpy = ">=1.19.5"
+
+[package.extras]
+jax = ["jax (>=0.2.20)", "jaxlib (>=0.1.71)"]
 
 [[package]]
 name = "markdown-it-py"
@@ -787,6 +826,21 @@ files = [
 ]
 
 [[package]]
+name = "tabulate"
+version = "0.9.0"
+description = "Pretty-print tabular data"
+category = "main"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "tabulate-0.9.0-py3-none-any.whl", hash = "sha256:024ca478df22e9340661486f85298cff5f6dcdba14f3813e8830015b9ed1948f"},
+    {file = "tabulate-0.9.0.tar.gz", hash = "sha256:0095b12bf5966de529c0feb1fa08671671b3368eec77d7ef7ab114be2c068b3c"},
+]
+
+[package.extras]
+widechars = ["wcwidth"]
+
+[[package]]
 name = "tenacity"
 version = "8.2.1"
 description = "Retry code until it succeeds"
@@ -874,4 +928,4 @@ test = ["websockets"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "58c91775d90304e09208ac33644e82810166caf814a8873378ca73dd2f12a839"
+content-hash = "6c7cb83b1a659efeee431bfca1a5963b857c1338a5575d34dc43d683388f5c35"

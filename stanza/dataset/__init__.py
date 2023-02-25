@@ -103,7 +103,7 @@ class Dataset:
     def from_pytree(data):
         return PyTreeDataset(data)
 
-@dataclass
+@dataclass(jax=True)
 class PyTreeDataset(Dataset):
     data: jnp.array = None
 
@@ -150,15 +150,24 @@ class PyTreeDataset(Dataset):
         idxs = jax.random.permutation(key, jnp.arange(self._num))
         data = jax.tree_util.tree_map(lambda x: x[idxs,...], self._data)
         return PyTreeDataset(data)
+    
+    @staticmethod
+    def from_dataset(dataset, start=None):
+        start = start or dataset.start
+        if not math.isfinite(dataset.remaining(start)):
+            raise ValueError("Cannot read in an infinite dataset")
+        # Scan out the iterators
+        def scan_fn(iter, _):
+            return dataset.next(iter), iter
+        _, iters = jax.lax.scan(scan_fn, start, None, length=dataset.remaining(start), unroll=10)
+        # in parallel fetch the iterators...
+        data = jax.vmap(dataset.get)(iters)
+        return PyTreeDataset(data)
 
-@dataclass(init=False)
+@dataclass(jax=True)
 class MappedDataset(Dataset):
     dataset: Dataset
     fun: Callable
-
-    def __init__(self, dataset, fun):
-        self.dataset = dataset
-        self.fun = stanza.fun(fun)
 
     @property
     def start(self):
@@ -189,6 +198,8 @@ class MappedDataset(Dataset):
     def shuffle(self, rng_key):
         return MappedDataset(self.dataset.shuffle(rng_key), self.fun)
 
+# n should not be part
+# of the jax tree
 @register_pytree_node_class
 class BatchDataset(Dataset):
     def __init__(self, dataset, start_iter, n):
@@ -229,14 +240,10 @@ class BatchDataset(Dataset):
     def tree_unflatten(cls, aux_data, children):
         return cls(*children, aux_data)
 
-@dataclass(init=False)
+@dataclass(jax=True)
 class ShufflingDataset(Dataset):
     dataset: Dataset
     buffer_size: int
-
-    def __init__(self, dataset, rng_key):
-        self.dataset = dataset
-        self.rng_key = rng_key
 
     @property
     def start(self):

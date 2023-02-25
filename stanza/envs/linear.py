@@ -54,8 +54,8 @@ class LinearSystem(Environment):
         return None
 
 
-def builder():
-    return partial(LinearSystem, 
+def builder(name):
+    return LinearSystem( 
         A=jnp.array(
             [
                 [1.1, 0.860757747,  0.4110535,  0.17953273, -0.305308],

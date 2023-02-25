@@ -1,13 +1,17 @@
-from typing import List, Any
+from typing import Callable, Any
 from stanza.util.logging import logger, pbar
+from stanza.util.dataclasses import dataclass
+from jax.random import PRNGKey
 from stanza import Partial
 from functools import partial
 
-import chex
-import optax
-import stanza
+from collections import namedtuple
 
-@dataclass
+import optax
+import jax
+import jax.numpy as jnp
+
+@dataclass(jax=True)
 class TrainState:
     epoch: int
     iteration: int
@@ -22,7 +26,7 @@ class TrainState:
     opt_state: Any
 
 
-@dataclass
+@dataclass(jax=True)
 class TrainResults:
     fn_params: Any
     fn_state: Any
@@ -34,7 +38,7 @@ class TrainResults:
 NO_STATE_TYPE=namedtuple('NoState',[])
 NO_STATE=NO_STATE_TYPE()
 
-@dataclass(init=False)
+@dataclass(jax=True)
 class Trainer:
     loss_fn: Callable
     optimizer: optax.GradientTransformation = optax.adam(0.001)
@@ -42,17 +46,6 @@ class Trainer:
     preprocess_fn = None
     epochs = None
     max_iterations = None
-
-    def __init__(self, loss_fn, optimizer=optax.adam(0.001),
-                 batch_size=32, preprocess_fn=None,
-                 epochs=None, max_iterations=None):
-        # wrap to make sure loss_fn is jax-compatible
-        self.loss_fn = stanza.fun(loss_fn)
-        self.optimizer = optimizer
-        self.batch_size = batch_size
-        self.preprocess_fn = preprocess_fn
-        self.epochs = epochs
-        self.max_iterations = max_iterations
 
     @jax.jit
     def _batch_loss_fn(self, fn_state, rng_key, batch, fn_params):
