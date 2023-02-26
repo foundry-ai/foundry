@@ -6,6 +6,7 @@ from stanza.dataset.env import EnvDataset
 from stanza.train import Trainer
 from typing import NamedTuple, Any, Tuple
 
+from stanza.util.dataclasses import dataclass
 from stanza.util.logging import logger
 
 class ILSample(NamedTuple):
@@ -15,15 +16,17 @@ class ILSample(NamedTuple):
 class ImitationLearning:
     # Either specify net and pass in a dataset
     # at train time, or pass in env, policy, traj_length, trajectories
-    def __init__(self, net,
+    def __init__(self, net, policy, env, traj_length,
                  jac_lambda=0, **kwargs):
         # Dataset parameters
         self.net = net
-        self.jac_lambda = jac_lambda
+        self.policy = policy
+        self.env = env
+        self.traj_length = traj_length
 
+        self.jac_lambda = jac_lambda
         self.trainer = Trainer(
             self._loss_fn,
-            preprocess=self.preprocess_data,
             **kwargs
         )
 
@@ -52,33 +55,24 @@ class ImitationLearning:
         stats['loss'] = loss
         return fn_state, loss, stats
 
-    def _map_fn(self, sample):
-        xs, us, jacs = (sample  + (None,)) if len(sample) == 2 else sample
-        # remove last state for the xs
-        xs = jax.tree_util.tree_map(lambda x: x[:-1], xs)
-        return xs, us, jacs
-
-    def preprocess_data(self, dataset):
-        dataset = dataset.map(self._map_fn)
-        dataset = dataset.read()
-        dataset = dataset.flatten()
-        return dataset
-    
     # Will return the trained policy
-    def run(self, rng_key, dataset):
+    def run(self, rng_key):
         rng_key, sk = jax.random.split(rng_key)
-
-        x0 = jax.tree_util.tree_map(lambda x: x[0], dataset.get(dataset.start)[0])
-
+        dataset = EnvDataset(sk, self.env, self.traj_length, self.policy, last_state=False)
+        # Turn into
+        dataset = dataset.flatten()
+        # Get a single state from the dataset
+        # for initializing the network
+        sample = dataset.get(dataset.start)
         # generate a random state to initialize
         # the network
-        init_fn_params, init_fn_state = self.net.init(sk, x0)
-
-
-        logger.info('il', "Training imitator neural network...")
+        init_fn_params, init_fn_state = self.net.init(sk, sample.x, sample_action=sample.action)
+        logger.info("Training imitator neural network...")
+        dataset = dataset.flatten()
         res = self.trainer.train(dataset, rng_key,
             init_fn_params=init_fn_params,
             init_fn_state=init_fn_state
         )
-        final_policy = lambda x: self.net.apply(res.fn_params, res.fn_state, None, x)[0]
+        final_policy = lambda state: self.net.apply(res.fn_params, res.fn_state,
+                                        None, state, sample_action=sample.action)[0]
         return final_policy

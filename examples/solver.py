@@ -1,4 +1,4 @@
-from stanza.solver import NewtonSolver
+from stanza.solver.newton import NewtonSolver
 
 import jax.numpy as jnp
 
@@ -10,7 +10,14 @@ def cost(x):
     return jnp.dot(y, v)
 
 solver = NewtonSolver(cost)
-result = solver.run(jnp.array([1., 1.]))
+result = solver.run(init_params=jnp.array([1., 1.]))
 print('Solved', result.solved)
-print('Final Params', result.final_params)
-print('Final Solver State', result.final_state)
+print('Final Params', result.params)
+print('Final State', result.state)
+print('Final Solver State', result.solver_state)
+
+# NewtonSolver with linear constraint
+solver = NewtonSolver(cost, lambda x: x[0] - 2)
+result = solver.run(init_params=jnp.array([1., 1.]))
+print('Solved', result.solved)
+print('Final Params', result.params)

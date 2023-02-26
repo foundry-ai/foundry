@@ -46,7 +46,7 @@ def sanitize_policy(policy_fn, takes_policy_state=False):
 # stanza.jit can handle function arguments
 # and intelligently makes them static and allows
 # for vectorizing over functins.
-@partial(stanza.jit, static_argnums=(4,))
+@partial(stanza.jit, static_argnums=(4,5))
 def rollout(model, state0,
             # policy is optional. If policy is not supplied
             # it is assumed that model_fn is for an
@@ -58,7 +58,7 @@ def rollout(model, state0,
             policy_init_state=None,
             # either length is an integer or  policy.rollout_length
             # or model.rollout_length is not None
-            length=None):
+            length=None, last_state=True):
     if hasattr(policy, 'init_state') and policy_init_state is None:
         policy_init_state = policy.init_state(state0)
 
@@ -100,9 +100,10 @@ def rollout(model, state0,
                                     None, length=length-1)
     states, us, auxs = outputs
     # append the last state
-    states = jax.tree_util.tree_map(
-        lambda a, b: jnp.concatenate((a, jnp.expand_dims(b, 0))),
-        states, state_f)
+    if last_state:
+        states = jax.tree_util.tree_map(
+            lambda a, b: jnp.concatenate((a, jnp.expand_dims(b, 0))),
+            states, state_f)
     return Rollout(states=states, actions=us, 
         aux=auxs, final_policy_state=policy_state_f)
 
