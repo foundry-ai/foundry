@@ -1,23 +1,23 @@
-from stanza.util.dataclasses import dataclass
+from stanza.util.dataclasses import dataclass, field
 from stanza.solver import IterativeSolver, sanitize_cost
 from typing import Any, Callable
 
 import jax
 import jax.numpy as jnp
 
+
 # A newton solver with backtracking support
 @dataclass(jax=True)
 class NewtonSolver(IterativeSolver):
-    fun: Callable
+    fun: Callable = None
     # If specified, performs infeasible-start update
     aff_constraint: Callable = None
     terminate: Callable = None
-    has_aux: bool = False
+    has_aux: bool = field(default=False, jax_static=True)
     tol: float = 1e-2
     max_iterations: int = 500
     # backtracking beta
     beta: float = 0.5
-    
 
     def update(self, fun_state, fun_params, dual_state):
         if self.aff_constraint is not None and dual_state is None:
@@ -56,6 +56,7 @@ class NewtonSolver(IterativeSolver):
             t = jax.lax.while_loop(backtrack_cond,
                                 lambda t: self.beta*t, 1)
             new_param_v = param_v + t*direction
+            dual_state = dual_state + t*dual_direction
             eps = jnp.linalg.norm(param_v - new_param_v)
         else:
             direction = -jnp.linalg.solve(hess,grad)
@@ -77,7 +78,7 @@ class NewtonSolver(IterativeSolver):
         new_state, old_cost, _ = cost_fun(fun_state, fun_params)
         new_param = p_fmt(new_param_v)
         _, cost, aux = cost_fun(new_state, new_param)
-        jax.debug.print("old_cost {} new_cost {}", old_cost, cost)
+        #jax.debug.print("old_cost {} new_cost {}", old_cost, cost)
 
         if self.terminate is not None:
             solved = self.terminate(cost, aux)

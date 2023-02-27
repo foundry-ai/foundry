@@ -16,7 +16,6 @@ class State(NamedTuple):
     angle: jnp.ndarray
     vel: jnp.ndarray
 
-
 class PendulumEnvironment(Environment):
     def __init__(self, sub_steps=1):
         self.sub_steps = sub_steps
@@ -49,12 +48,12 @@ class PendulumEnvironment(Environment):
         return state
     
     # If u is None, this is the terminal cost
-    def cost(self, x, u=None, t=None):
-        x = jnp.concatenate((x.angle, x.vel), -1)
+    def cost(self, x, u=None):
+        x = jnp.stack((x.angle, x.vel), -1)
         diff = x - jnp.array([0, 0])
         if u is None:
             x_cost = jnp.sum(diff**2)
-            return 20*x_cost
+            return x_cost
         else:
             x_cost = jnp.sum(diff**2)
             u_cost = jnp.sum(u**2)

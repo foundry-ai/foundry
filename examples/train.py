@@ -1,5 +1,4 @@
 from stanza.policy.imitation_learning import ImitationLearning
-from stanza.policy.ilqr import ILQR
 from stanza.dataset.env import EnvDataset
 
 from jax.random import PRNGKey
@@ -14,10 +13,7 @@ def net(x, sample_action):
 
 env = envs.create("pendulum")
 
-ilqr = iLQR(env.reset(PRNGKey(0)), env.sample_action(PRNGKey(0)),
-            env.cost, env.step, horizon_length=20, receed=True)
-
-dataset = EnvDataset(PRNGKey(42), env, 100, policy=iLQR)
+#dataset = EnvDataset(PRNGKey(42), env, 100, policy=iLQR)
 # Train by hand using Trainer()
 
 # A convenience wrapper for the above

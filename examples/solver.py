@@ -17,7 +17,7 @@ print('Final State', result.state)
 print('Final Solver State', result.solver_state)
 
 # NewtonSolver with linear constraint
-solver = NewtonSolver(cost, lambda x: x[0] - 2)
-result = solver.run(init_params=jnp.array([1., 1.]))
+solver = NewtonSolver(cost, lambda x: x[0] + x[1] - 5)
+result = solver.run(init_params=jnp.array([1.5, 1.]))
 print('Solved', result.solved)
 print('Final Params', result.params)

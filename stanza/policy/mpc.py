@@ -1,18 +1,18 @@
-import optax
-
 import jax
 import jax.numpy as jnp
-import jax.tree_util as tree_util
-import stanza.envs
-import stanza.policy
-import stanza.util
 
-from functools import partial
-from typing import NamedTuple, Any
+import stanza.policy
+
+from typing import Any
+
+from stanza import Partial
 
 from stanza.util.logging import logger
-from stanza.solver import NewtonSolver, RelaxingSolver, OptaxSolver
-from stanza.policy import Actions
+from stanza.util.dataclasses import dataclass, replace, field
+
+from stanza.solver import Solver
+from stanza.solver.newton import NewtonSolver
+from stanza.policy import Actions, PolicyOutput
 
 def _centered_log(sdf, *args):
     u_x, fmt = jax.flatten_util.ravel_pytree(args)
@@ -22,81 +22,45 @@ def _centered_log(sdf, *args):
     barrier = -jnp.log(-sdf(*args)) - grad_term
     return barrier - grad_term
 
-# A RHC barrier-based MPC controller
-class BarrierMPC:
-    def __init__(self, x_sample, u_sample,
-                cost_fn, model_fn,
-                horizon_length,
-                barrier_sdf=None,
-                barrier_eta=0.01, barrier_zero=0):
-        self.u_sample = u_sample
+# A vanilla MPC controller
+@dataclass(jax=True)
+class MPC:
+    action_sample: Any
+    cost_fn : Any
+    model_fn : Any
 
-        # turn the per-timestep cost function
-        # into a trajectory-based cost function
-        self.model_fn = stanza.envs.flatten_model(model_fn, x_sample, u_sample)
-        self.cost_fn = stanza.envs.flatten_cost(cost_fn, x_sample, u_sample)
-        self.cost_fn = partial(stanza.envs.trajectory_cost, self.cost_fn)
-        self.horizon_length = horizon_length
+    # Horizon is part of the static jax type
+    horizon_length : int = field(default=20, jax_static=True)
+    # Solver must be a dataclass with a "fun" argument
+    solver : Solver = NewtonSolver()
 
-        self.barrier_sdf = barrier_sdf
-        self.barrier_eta = barrier_eta
+    # TODO: Make these actually do things
+    # If the horizon should receed or stay static
+    receed : bool = field(default=True, jax_static=True)
+    # If the controller should replan at every iteration
+    replan : bool = field(default=True, jax_static=True)
 
-        # using a damping of 1 prevents jumping out
-        # of the feasible set
-        sub_solver = NewtonSolver(self._loss_fn)
-        # # using a damping of 1 prevents jumping of out of feasible
-        # # set for all t
-        self.solver = RelaxingSolver(sub_solver, init_t=1, max_t=1/barrier_eta)
-        # self.solver = NewtonSolver(self._loss_fn)
-        # self.solver = JaxOptSolver(self._loss_fn, LBFGS,
-        #                             stop_if_linesearch_fails=True)
-
-        # if we don't have a barrier, do just 1 outer loop
-        if not self.barrier_sdf:
-            self.solver.max_t = 1.
-            self.solver.init_t = 1.
-
-    def _loss_fn(self, us, x0, t=1):
-        xs = stanza.policy.rollout(
-                self.model_fn, x0, policy=Actions(us)
+    def _loss_fn(self, state0, actions):
+        r = stanza.policy.rollout(
+                self.model_fn, state0, policy=Actions(actions)
             )
-        cost = self.cost_fn(xs, us)
-
-        if self.barrier_sdf is not None:
-            barrier_costs = _centered_log(self.barrier_sdf, xs, us)
-            loss = cost + jnp.sum(barrier_costs)/t
-        else:
-            loss = cost
-        loss = jnp.nan_to_num(loss, nan=float('inf'))
-        return loss
-
-    def init_state(self, _):
-        u_flat, _ = jax.flatten_util.ravel_pytree(self.u_sample)
-        u_flat = jnp.zeros((self.horizon_length - 1, u_flat.shape[0]))
-        return u_flat
+        return self.cost_fn(r.states, r.actions)
 
     def __call__(self, state, policy_state=None):
-        us = self.init_state(state) if policy_state is None else policy_state
-        # shift the us by 1
-        us = us.at[:-1].set(us[1:])
-        state_flat, _ = jax.flatten_util.ravel_pytree(state)
-
-        def solve_us(us):
-            res = self.solver.run(us, x0=state_flat)
-            us = res.final_params
-            us = jax.lax.cond(res.solved, lambda: us, lambda: float("nan")*us)
-            return us
-
-        if self.barrier_sdf:
-            # for now we have no state constraints
-            # so u = 0 is always feasible
-            us = jnp.zeros_like(us)
-            xs = stanza.policy.rollout(self.model_fn, state_flat, policy=Actions(us))
-            feasible = jnp.max(self.barrier_sdf(xs, us))
-
-            us = jax.lax.cond(feasible < 0, solve_us,
-                    lambda x: x, us)
+        if policy_state is None:
+            actions_flat, _ = jax.flatten_util.ravel_pytree(self.action_sample)
+            actions_flat = jnp.zeros((self.horizon_length - 1, actions_flat.shape[0]))
         else:
-            us = solve_us(us)
+            actions_flat = policy_state
 
-        return us[0] if policy_state is None else (us[0], us)
+        # shift the us by 1
+        actions_flat = actions_flat.at[:-1].set(actions_flat[1:])
+        _, unflatten = jax.flatten_util.ravel_pytree(self.action_sample)
+        actions = jax.vmap(unflatten)(actions_flat)
+
+        # update the solver target function
+        solver = replace(self.solver, fun=Partial(self._loss_fn, state))
+        res = solver.run(init_params=actions)
+        actions = res.params
+        action0 = jax.tree_util.tree_map(lambda x: x[0], actions)
+        return PolicyOutput(action0)

@@ -23,25 +23,12 @@ class Trajectory:
     states: Any
     actions: Any = None
 
+# Rollout contains the trajectory + aux data,
+# final policy state
 @dataclass(jax=True)
 class Rollout(Trajectory):
     aux: Any = None
     final_policy_state: Any = None
-
-# Takes a policy function (which may or may not return
-# an instance of PolicyOutput and may or may not take in a
-# policy_state) and returns a function of the form
-# (input, policy_state) --> PolicyOutput
-def sanitize_policy(policy_fn, takes_policy_state=False):
-    def sanitized_policy(state, policy_state):
-        if takes_policy_state:
-            output = policy_fn(state, policy_state)
-        else:
-            output = policy_fn(state)
-            if not isinstance(output, PolicyOutput):
-                output = PolicyOutput(u=output)
-        return output
-    return sanitized_policy
 
 # stanza.jit can handle function arguments
 # and intelligently makes them static and allows
@@ -59,27 +46,20 @@ def rollout(model, state0,
             # either length is an integer or  policy.rollout_length
             # or model.rollout_length is not None
             length=None, last_state=True):
-    if hasattr(policy, 'init_state') and policy_init_state is None:
-        policy_init_state = policy.init_state(state0)
-
-    if hasattr(policy, 'rollout_length') and length is None:
+    # Look for a fallback to the rollout length
+    # in the policy. This is useful mainly for the Actions policy
+    if length is None and hasattr(policy, 'rollout_length'):
         length = policy.rollout_length
-    if hasattr(model, 'rollout_length') and length is None:
-        length = model.rollout_length
-
     if length is None:
         raise ValueError("Rollout length must be specified")
-
-    # policy is standardized to always output a PolicyOutput
-    # and take (x, policy_state) as input
-    policy_fn = sanitize_policy(policy,
-                    takes_policy_state=policy_init_state is not None) \
-            if policy is not None else None
+    if length == 0:
+        raise ValueError("Rollout length must be > 0")
 
     def scan_fn(comb_state, _):
         env_state, policy_state = comb_state
-        if policy_fn is not None:
-            policy_output = policy_fn(env_state, policy_state)
+        if policy is not None:
+            policy_output = policy(env_state, policy_state) \
+                    if policy_state is not None else policy(env_state)
             action = policy_output.action
             aux = policy_output.aux
 
@@ -93,13 +73,16 @@ def rollout(model, state0,
         return (new_env_state, new_policy_state), (env_state, action, aux)
 
     # Do the first step manually to populate the policy state
-    state = (state0, policy_init_state)
-
+    state = (state0, None)
+    new_state, first_output = scan_fn(state, None)
     # outputs is (xs, us, jacs) or (xs, us)
-    (state_f, policy_state_f), outputs = jax.lax.scan(scan_fn, state,
-                                    None, length=length-1)
+    (state_f, policy_state_f), outputs = jax.lax.scan(scan_fn, new_state,
+                                    None, length=length-2)
+    outputs = jax.tree_util.tree_map(
+        lambda a, b: jnp.concatenate((jnp.expand_dims(a,0), b)),
+        first_output, outputs)
+
     states, us, auxs = outputs
-    # append the last state
     if last_state:
         states = jax.tree_util.tree_map(
             lambda a, b: jnp.concatenate((a, jnp.expand_dims(b, 0))),
@@ -107,8 +90,8 @@ def rollout(model, state0,
     return Rollout(states=states, actions=us, 
         aux=auxs, final_policy_state=policy_state_f)
 
-# An "Inputs" policy can be used to replay
-# inputs from a history buffer
+# An "Actions" policy can be used to replay
+# actions from a history buffer
 @dataclass(jax=True)
 class Actions:
     actions: Any
@@ -118,13 +101,11 @@ class Actions:
         lengths, _ = jax.tree_util.tree_flatten(
             jax.tree_util.tree_map(lambda x: x.shape[0], self.actions)
         )
-        return lengths[0]
-
-    def init_state(self, x0):
-        return 0
+        return lengths[0] + 1
 
     @jax.jit
-    def __call__(self, x0, T):
+    def __call__(self, x0, T=None):
+        T = T if T is not None else 0
         action = jax.tree_util.tree_map(lambda x: x[T], self.actions)
         return PolicyOutput(action=action, policy_state=T + 1)
 
@@ -134,33 +115,39 @@ class NoisyPolicy:
     sigma: float
     base_policy: Callable
     
-    def init_state(self, x0):
-        return (self.rng_key, self.base_policy.init_state(x0))
-    
-    def __call__(self, x, policy_state):
-        rng_key, base_policy_state = policy_state
+    def __call__(self, x, policy_state=None):
+        rng_key, base_policy_state = (
+            policy_state 
+            if policy_state is not None else
+            (self.rng_key, None)
+        )
+
         rng_key, sk = jax.random.split(rng_key)
 
-        u_base, base_policy_state = self.base_policy(x, base_policy_state)
+        output = (
+            self.base_policy(x, base_policy_state) 
+                if base_policy_state is not None else
+            self.base_policy(x)
+        )
 
         # flatten u, add the noise, unflatten
-        u_flat, unflatten = jax.flatten_util.ravel_pytree(u_base)
+        u_flat, unflatten = jax.flatten_util.ravel_pytree(output.action)
         noise = self.sigma * jax.random.normal(sk, u_flat.shape)
         u_flat = u_flat + noise
-        u = unflatten(u_flat)
+        action = unflatten(u_flat)
 
-        return u, (rng_key, base_policy_state)
+        return PolicyOutput(
+            action,
+            policy_state=(rng_key, output.policy_state)
+        )
 
 @dataclass(jax=True)
 class RandomPolicy:
     rng_key: PRNGKey
     sample_fn: Callable
 
-    def init_state(self, x0):
-        return self.rng_key
-    
-    def __call__(self, x, policy_state):
-        rng_key = policy_state
+    def __call__(self, x, policy_state=None):
+        rng_key = self.rng_key if policy_state is None else policy_state
         rng_key, sk = jax.random.split(rng_key)
         u = self.sample_fn(sk)
         return u, rng_key

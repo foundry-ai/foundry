@@ -9,9 +9,9 @@ import jax.numpy as jnp
 
 @dataclass(jax=True)
 class OptaxSolver(IterativeSolver):
-    fun: Callable
-    optimizer: Any
-    max_iterations: int
+    fun: Callable = None
+    optimizer: Any = None
+    max_iterations: int = 1000
     terminate: Callable = None
     has_aux: bool = False
     tol: float = 1e-3

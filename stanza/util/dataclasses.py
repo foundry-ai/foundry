@@ -1,8 +1,9 @@
 import dataclasses
 from dataclasses import dataclass as _dataclass, is_dataclass, \
-            fields, replace, field
+            fields, replace, field as _field
 from functools import partial
 from typing import Any
+from itertools import chain
 
 
 """
@@ -27,15 +28,39 @@ def make_dataclass(cls=None, *, frozen=False, jax=False):
         )
     return dcls
 
+def field(*, jax_static=False, **kwargs):
+    f = _field(**kwargs, metadata={'jax_static': jax_static})
+    return f
+
 def _dataclass_flatten(dcls, do):
     import jax.util
     # for speeed use jax.util.unzip2
-    keys, values = jax.util.unzip2(sorted(do.__dict__.items()))[::-1]
-    return keys, values
+    keys, values = jax.util.unzip2(sorted(do.__dict__.items()))
+    fields = [dcls.__dataclass_fields__[k] for k in keys]
 
-def _dataclass_unflatten(dcls, keys, values):
+    static_keys = []
+    static_values = []
+    dyn_keys = []
+    dyn_values = []
+    for (k,v,f) in zip(keys,values,fields):
+        jax_static = f.metadata.get('jax_static') if f.metadata else False
+        if jax_static:
+            static_keys.append(k)
+            static_values.append(v)
+        else:
+            dyn_keys.append(k)
+            dyn_values.append(v)
+
+    aux = (dyn_keys, static_keys, static_values)
+    children = dyn_values
+    return children, aux
+
+def _dataclass_unflatten(dcls, aux, children):
     do = dcls.__new__(dcls)
-    attrs = dict(zip(keys, values))
+    dyn_keys, static_keys, static_values = aux
+    dyn_values = children
+
+    attrs = dict(chain(zip(dyn_keys, dyn_values), zip(static_keys, static_values)))
     # fill in the fields from the children
     for field in dcls.__dataclass_fields__.values():
         if field.name in attrs:
