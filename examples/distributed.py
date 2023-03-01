@@ -1,12 +1,10 @@
 import os
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 
-import sys
 from stanza.runtime.pool import Pool, replica_id
 from stanza.util.logging import logger
 import asyncio
 import argparse
-import time
 
 def func(x):
     logger.info(f"Worker {replica_id()}: got {x}")

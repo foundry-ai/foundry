@@ -16,8 +16,8 @@ def dataclass(cls=None, **kwargs):
         return partial(make_dataclass, **kwargs)
     return make_dataclass(cls, **kwargs)
 
-def make_dataclass(cls=None, *, frozen=False, jax=False):
-    dcls = _dataclass(cls, frozen=jax or frozen)
+def make_dataclass(cls=None, *, frozen=False, jax=False, **kwargs):
+    dcls = _dataclass(cls, frozen=jax or frozen, **kwargs)
     # register the dcls type in jax
     if jax:
         from jax.tree_util import register_pytree_node

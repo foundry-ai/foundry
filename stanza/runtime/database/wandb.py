@@ -5,7 +5,7 @@ from stanza.runtime.database import Database, Experiment, Run, remap, \
 
 import numpy as np
 
-class WandbRepo(Repo):
+class WandbDatabase(Database):
     def __init__(self, entity):
         self.entity = entity
     

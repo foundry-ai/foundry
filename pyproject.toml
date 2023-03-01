@@ -10,9 +10,9 @@ readme = "README.md"
 activity = "stanza.runtime:launch_activity"
 
 [tool.poetry.dependencies]
-python = "^3.8"
-jax = { version = "^0.4.1" }
-jaxlib = { version = "^0.4.1" }
+python = "^3.10"
+jax = { version = "^0.4.4" }
+jaxlib = { version = "^0.4.4" }
 optax = "^0.1.4"
 rich = "^13.3.1"
 cloudpickle = "^2.2.1"

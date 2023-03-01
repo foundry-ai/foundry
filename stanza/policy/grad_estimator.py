@@ -7,14 +7,26 @@ import jax.scipy as jsp
 
 import stanza.envs
 import stanza.util
+from stanza.util.dataclasses import dataclass
 
 from functools import partial
-from typing import NamedTuple, Any
+from typing import NamedTuple, Any, Callable
 
 class EstimatorState(NamedTuple):
     rng: jax.random.PRNGKey
     total_samples: int
 
+@dataclass(jax=True)
+class LeastSquareEstimator:
+    samples: int
+    sigma: float
+    rollout_fn: Callable
+    def __init__(self, samples, sigma, dynamics):
+        pass
+
+    def __call__(self, rng, state, action):
+        if action is None:
+            self.dynamics(state)
 
 USE_LEAST_SQUARES = True
 

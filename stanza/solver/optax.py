@@ -1,19 +1,19 @@
 from typing import Any, Callable
 
 from stanza.solver import IterativeSolver, sanitize_cost
-from stanza.util.dataclasses import dataclass
+from stanza.util.dataclasses import dataclass, field
 
 import optax
 import jax
 import jax.numpy as jnp
 
-@dataclass(jax=True)
+@dataclass(jax=True, kw_only=True)
 class OptaxSolver(IterativeSolver):
     fun: Callable = None
     optimizer: Any = None
     max_iterations: int = 1000
     terminate: Callable = None
-    has_aux: bool = False
+    has_aux: bool = field(default=False, jax_static=True)
     tol: float = 1e-3
 
     def update(self, fun_state, fun_params, solver_state):

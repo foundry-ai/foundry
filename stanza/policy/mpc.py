@@ -16,22 +16,25 @@ from stanza.solver.newton import NewtonSolver
 from stanza.policy import Actions, PolicyOutput
 
 # A vanilla MPC controller
-@dataclass(jax=True)
+@dataclass(jax=True, kw_only=True)
 class MPC:
     action_sample: Any
     cost_fn : Any
-    model_fn : Any
+
+    # either model_fn (state, u) --> state 
+    # or rollout_fn (state0, us) --> states
+    # must be specified.
+    model_fn : Callable = None
+    rollout_fn : Callable = None
+
+    stochastic_dynamics : bool = field(default=True, jax_static=True)
 
     # Horizon is part of the static jax type
     horizon_length : int = field(default=20, jax_static=True)
+
     # Solver must be a dataclass with either (1) a "fun" argument
     # or (2) a dynamics_fn, cost_fn argument
     solver : Solver = NewtonSolver()
-
-    # If the cost function needs to propagate a state
-    # This is used for gradient-estimator
-    stochastic_model: bool = field(default=False, jax_static=True)
-    model_nrg: PRNGKey = None
 
     # If the cost horizon should receed or stay static
     # if receed=False, you can only rollout horizon_length
@@ -44,7 +47,7 @@ class MPC:
     # but not receed=True, replan=False
     replan : bool = field(default=True, jax_static=True)
 
-    def _loss_fn(self, rng_state, state0, actions):
+    def _loss_fn(self, state0, actions):
         r = stanza.policy.rollout(
                 self.model_fn, state0, policy=Actions(actions)
             )

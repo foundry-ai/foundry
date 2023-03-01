@@ -114,6 +114,11 @@ def rollout(model, state0,
     return Rollout(states=states, actions=us, 
         aux=auxs, final_policy_state=policy_state_f)
 
+# Shorthand alias for rollout with an actions policy
+def rollout_inputs(model, state0, actions, last_state=True):
+    return rollout(model, state0, policy=Actions(actions),
+                   last_state=last_state)
+
 # An "Actions" policy can be used to replay
 # actions from a history buffer
 @dataclass(jax=True)

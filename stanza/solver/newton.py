@@ -11,7 +11,7 @@ class NewtonState:
     eq_dual: jnp.array = None
 
 # A newton solver with backtracking support
-@dataclass(jax=True)
+@dataclass(jax=True, kw_only=True)
 class NewtonSolver(IterativeSolver):
     fun: Callable = None
 
