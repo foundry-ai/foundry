@@ -158,7 +158,7 @@ class FeedbackMPC:
     
     def _loss_fn(self, est_state, x0,
                 ref_xs, ref_gains, us):
-        rollout = partial(ode.envs.rollout_input_gains, self.model_fn, x0, ref_xs, ref_gains)
+        rollout = partial(stanza.envs.rollout_input_gains, self.model_fn, x0, ref_xs, ref_gains)
         xs = rollout(us)
 
         def print_func(arg, _):

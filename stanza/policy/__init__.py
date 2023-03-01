@@ -30,6 +30,29 @@ class Rollout(Trajectory):
     aux: Any = None
     final_policy_state: Any = None
 
+class PolicyWrapper:
+    def __init__(self, fun):
+        self._wrapped = fun
+    
+    def __getattr__(self, name):
+        return getattr(self._wrapped, name)
+
+    def __call__(self, state, policy_state=None, **kwargs):
+        if policy_state is None:
+            r = self._wrapped(state, **kwargs)
+        else:
+            r = self._wrapped(state, policy_state, **kwargs)
+        if not isinstance(r, PolicyOutput):
+            r = PolicyOutput(r)
+        return r
+
+# Will wrap a policy, guaranteeing the output is
+# of type PolicyOutput and that policy_state is an optional
+# input. It is recommended that functionals which take policies
+# should call wrap() on the policies.
+def wrap(policy):
+    return PolicyWrapper(policy) if policy is not None else None
+
 # stanza.jit can handle function arguments
 # and intelligently makes them static and allows
 # for vectorizing over functins.
@@ -54,12 +77,13 @@ def rollout(model, state0,
         raise ValueError("Rollout length must be specified")
     if length == 0:
         raise ValueError("Rollout length must be > 0")
+    # standardize the policy
+    policy = wrap(policy)
 
     def scan_fn(comb_state, _):
         env_state, policy_state = comb_state
         if policy is not None:
-            policy_output = policy(env_state, policy_state) \
-                    if policy_state is not None else policy(env_state)
+            policy_output = policy(env_state, policy_state)
             action = policy_output.action
             aux = policy_output.aux
 

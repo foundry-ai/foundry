@@ -2,12 +2,9 @@ import jax
 import jax.flatten_util
 import jax.numpy as jnp
 
-import optax
-
-from typing import NamedTuple, Any
+from typing import NamedTuple, Callable, Any
 from functools import partial
-from stanza.util.dataclasses import dataclass
-import stanza
+from stanza.util.dataclasses import dataclass, replace
 
 @dataclass(jax=True)
 class SolverResults:

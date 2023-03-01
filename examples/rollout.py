@@ -25,7 +25,6 @@ rollout = policy.rollout(
 logger.info('Actions Rollout Results')
 logger.info('states: {}', rollout.states)
 logger.info('actions: {}', rollout.actions)
-logger.info('final_policy_state: {}', rollout.final_policy_state)
 
 # An MPC policy
 rollout = policy.rollout(
@@ -39,9 +38,11 @@ rollout = policy.rollout(
         horizon_length=20,
         solver=NewtonSolver()
     ),
-    length=30
+    length=50
 )
 logger.info('MPC Rollout Results')
 logger.info('states: {}', rollout.states)
 logger.info('actions: {}', rollout.actions)
-logger.info('final_policy_state: {}', rollout.final_policy_state)
+
+# Rolling out an MPC with log-barrier functions
+logger.info('Barrier MPC Rollout Results')

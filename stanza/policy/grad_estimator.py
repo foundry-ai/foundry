@@ -64,7 +64,7 @@ class IsingEstimator:
         W = self.sigma*jax.random.choice(rng, jnp.array([-1,1]), (self.samples,) + us.shape)
         # rollout all of the perturbed trajectories
         #rollout = partial(ode.envs.rollout_input_gains, self.model_fn, state_0, traj.x, gains)
-        rollout = partial(ode.envs.rollout_input, model_fn, state_0)
+        rollout = partial(stanza.envs.rollout_input, model_fn, state_0)
         # Get the first state
         trajs = jax.vmap(rollout)(us + W)
         # subtract off x_bar

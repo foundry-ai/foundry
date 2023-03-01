@@ -5,13 +5,20 @@ from typing import Any, Callable
 import jax
 import jax.numpy as jnp
 
+@dataclass(jax=True)
+class NewtonState:
+    ineq_dual: jnp.array = None
+    eq_dual: jnp.array = None
 
 # A newton solver with backtracking support
 @dataclass(jax=True)
 class NewtonSolver(IterativeSolver):
     fun: Callable = None
-    # If specified, performs infeasible-start update
-    aff_constraint: Callable = None
+
+    # If specified, performs infeasible-newton update
+    # to satisfy constraint = 0
+    eq_constraint: Callable = None
+
     terminate: Callable = None
     has_aux: bool = field(default=False, jax_static=True)
     tol: float = 1e-2
@@ -19,10 +26,12 @@ class NewtonSolver(IterativeSolver):
     # backtracking beta
     beta: float = 0.5
 
-    def update(self, fun_state, fun_params, dual_state):
-        if self.aff_constraint is not None and dual_state is None:
-            v = jnp.atleast_1d(self.aff_constraint(fun_params))
+    def update(self, fun_state, fun_params, solver_state):
+        if self.eq_constraint is not None and solver_state is None:
+            v = jnp.atleast_1d(self.eq_constraint(fun_params))
             dual_state = jnp.zeros_like(v)
+        else:
+            dual_state = solver_state
 
         # unravel argument structure
         param_v, p_fmt = jax.flatten_util.ravel_pytree(fun_params)
@@ -34,9 +43,9 @@ class NewtonSolver(IterativeSolver):
         grad = jax.grad(vec_fun)(param_v)
         hess = jax.hessian(vec_fun)(param_v)
 
-        if self.aff_constraint is not None:
-            A = jax.jacrev(lambda v: jnp.atleast_1d(self.aff_constraint(p_fmt(v))))(param_v)
-            sat = jnp.atleast_1d(self.aff_constraint(fun_params))
+        if self.eq_constraint is not None:
+            A = jax.jacrev(lambda v: jnp.atleast_1d(self.eq_constraint(p_fmt(v))))(param_v)
+            sat = jnp.atleast_1d(self.constraint(fun_params))
             comb_hess = jnp.block([
                 [hess, A.T],
                 [A, jnp.zeros((A.shape[0], A.shape[0]))]

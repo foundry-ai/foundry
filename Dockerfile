@@ -1,4 +1,5 @@
-FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
+#FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
+FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV DEBCONF_NONINTERACTIVE_SEEN true
