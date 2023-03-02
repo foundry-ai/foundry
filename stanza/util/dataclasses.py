@@ -1,8 +1,8 @@
-import dataclasses
 from dataclasses import dataclass as _dataclass, is_dataclass, \
             fields, replace, field as _field
 from functools import partial
 from typing import Any
+import types
 from itertools import chain
 
 
@@ -33,6 +33,7 @@ def field(*, jax_static=False, **kwargs):
     return f
 
 def _dataclass_flatten(dcls, do):
+    from stanza import is_jaxtype
     import jax.util
     # for speeed use jax.util.unzip2
     keys, values = jax.util.unzip2(sorted(do.__dict__.items()))
@@ -44,7 +45,7 @@ def _dataclass_flatten(dcls, do):
     dyn_values = []
     for (k,v,f) in zip(keys,values,fields):
         jax_static = f.metadata.get('jax_static') if f.metadata else False
-        if jax_static:
+        if jax_static or (callable(v) and not is_jaxtype(type(v))):
             static_keys.append(k)
             static_values.append(v)
         else:
