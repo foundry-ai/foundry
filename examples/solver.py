@@ -3,20 +3,20 @@ from stanza.solver import Minimize
 from functools import partial
 
 import jax.numpy as jnp
+from jax.tree_util import Partial
 import jax
+import stanza
 
-# How to use the newton solver
 
-
-def cost(x, dsoln):
-    y = x - 2*dsoln
+def cost(x, s):
+    y = x - 2*s
     v = jnp.array([[1., 0.], [0., 1.]]) @ y
     return jnp.dot(y, v)
 
-def solve(dsoln):
+def solve(s):
     solver = NewtonSolver()
     result = solver.run(Minimize(
-        fun=partial(cost, dsoln=dsoln),
+        fun=partial(cost, s=s),
         init_params=jnp.array([1.,1.])
     ))
     return result.params

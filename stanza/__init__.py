@@ -66,32 +66,4 @@ def is_jaxtype(t):
         return True
     return False
 
-# returns a version of x
-# through which gradients will not flow
-# backwards
-@jax.custom_vjp
-def block_grad(x):
-    return x
-
-def _block_grad_fwd(x):
-    return x, None
-
-def _block_grad_bkw(_0, _1):
-    return None
-
-block_grad.defvjp(_block_grad_fwd, _block_grad_bkw)
-
-# returns a version of fp ("fixed point")
-# where the derivatives of fp wrt args come from
-# implicitly differentiating
-# optimality_fun(fp, args) == 0
-def implicit_diff(fun, optimality_fun, fp, args):
-    def fun_fwd(fp, args):
-        return fp, fp
-    def fun_bkw(fp, fp_bar):
-        # fp + delta fp = f
-        # _, vjpfun = jax.vjp(optimality_fun, fp, args)
-        # jax.debug.print("jac: {}", vjpfun(fp_bar))
-        return None, None
-    fun.defvjp(fun_fwd, fun_bkw)
-    return fun(fp, args)
+from jaxopt._src.implicit_diff import root_vjp as _root_vjp

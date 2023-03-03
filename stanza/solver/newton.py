@@ -27,6 +27,7 @@ class NewtonSolver(IterativeSolver):
     
     # gradient of the objective at params == 0
     def optimality(self, objective, state):
+        print('state:', state)
         grad = jax.grad(lambda p: objective.eval(state.obj_state, p)[1])(state.obj_params)
         return grad
 

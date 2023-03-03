@@ -80,6 +80,7 @@ class IterativeSolver(Solver):
 
     # -------------------- Class Internals --------------------
 
+    @jax.jit
     def _do_step(self, kwargs, objective, loop_state):
         state = self.update(objective, loop_state, **kwargs)
         if self.terminate is not None:
@@ -93,43 +94,34 @@ class IterativeSolver(Solver):
             self._do_step)
         return state, loop_state
     
-    def _solve_scan(self, args):
-        objective, state, kwargs = args
+    def _solve_scan(self, objective, kwargs, state):
         scan_fn = partial(self._scan_fn, kwargs, objective)
         return jax.lax.scan(scan_fn, state, None,
                     length=self.max_iterations)
 
-    def _solve_loop(self, args):
-        objective, state, kwargs = args
+    def _solve_loop(self, objective, kwargs, state):
         step_fn = partial(self._do_step, kwargs, objective)
         return jax.lax.while_loop(
             lambda s: jnp.logical_and(jnp.logical_not(s.solved),
                             s.iteration < self.max_iterations),
             step_fn, state), None
 
-    def _optimality(self, fp, args):
-        final_state = fp
-        objective, kwargs = args
-        return self.optimality(objective, final_state, **kwargs)
+    def _optimality(self, objective, kwargs, state):
+        return self.optimality(objective, state, **kwargs)
 
-    @partial(jax.jit, 
+    @partial(jax.jit,
         static_argnames=['history', 'unroll', 'implicit_diff'])
     def run(self, objective, *,
             history=False,
             implicit_diff=True, **kwargs):
         state = self._do_step(kwargs, objective, None)
-        init_guess = (objective, state, kwargs)
-
+        optimality = partial(self._optimality, objective, kwargs)
         solve = self._solve_scan if history else self._solve_loop
-        if implicit_diff:
-            final_state, history = \
-                jax.lax.custom_root(self._optimality, 
-                    (objective, state, kwargs),
-                    solve, 
-                    lambda g, y: jnp.linalg.solve(jax.jacobian(g)(y), y),
-                    has_aux=True)
-        else:
-            final_state, history = solve(init_guess)
+        solve = partial(solve, objective, kwargs)
+
+        solve = jax.lax.custom_root(optimality, state, solve, has_aux=True)
+
+        final_state, history = solve(objective, state, kwargs)
         return SolverResults(
             solved=final_state.solved,
             state=final_state.obj_state,
