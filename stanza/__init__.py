@@ -1,29 +1,43 @@
 from functools import partial, wraps
-from stanza.util.dataclasses import dataclass
+from jax.tree_util import Partial
+import jax.tree_util
 from typing import Callable
 import types
 import jax
 
 # Tools for auto wrapping and unwrapping
 # function arguments
-@dataclass(jax=True)
 class _FuncWrapper:
-    func: Callable
+    def __init__(self, func):
+        self.func = func
 
-def _wrap_arg(node):
-    if callable(node) and not is_jaxtype(type(node)):
-        node = _FuncWrapper(node)
-    return node
+def _wrapper_flatten(v):
+    return (), v.func
 
-def _unwrap_arg(node):
-    if isinstance(node, _FuncWrapper):
-        node = node.func
-    return node
+def _wrapper_unflatten(aux, children):
+    return _FuncWrapper(aux)
 
-def _unwrap_is_leaf(node):
-    if isinstance(node, _FuncWrapper):
-        return True
-    return False
+jax.tree_util.register_pytree_node(_FuncWrapper, _wrapper_flatten, _wrapper_unflatten)
+
+def _wrap(args):
+    def _wrap_arg(node):
+        if callable(node) and not is_jaxtype(type(node)):
+            node = _FuncWrapper(node)
+        return node
+    return jax.tree_util.tree_map(_wrap_arg, args)
+
+def _unwrap(args):
+    def _unwrap_arg(node):
+        if isinstance(node, _FuncWrapper):
+            node = node.func
+        return node
+
+    def _unwrap_is_leaf(node):
+        if isinstance(node, _FuncWrapper):
+            return True
+        return False
+    return jax.tree_util.tree_map(_unwrap_arg, args, is_leaf=_unwrap_is_leaf)
+
 
 """
     A version of jax.jit which
@@ -36,16 +50,15 @@ def jit(fun=None, **kwargs):
     return _jit(fun, **kwargs)
 
 def _jit(fun, **kwargs):
-    def internal_fun(*fargs, **kwargs):
-        (fargs, kwargs) = jax.tree_util.tree_map(_unwrap_arg, 
-                                                 (fargs, kwargs),
-                                                 is_leaf=_unwrap_is_leaf)
-        return fun(*fargs, **kwargs)
+    @wraps(fun)
+    def internal_fun(*fargs, **fkwargs):
+        (fargs, fkwargs) = _unwrap((fargs, fkwargs))
+        return fun(*fargs, **fkwargs)
     jfun = jax.jit(internal_fun, **kwargs)
 
     @wraps(fun)
     def wrapped_fun(*fargs, **fkwargs):
-        (fargs, fkwargs) = jax.tree_util.tree_map(_wrap_arg, (fargs, fkwargs))
+        (fargs, fkwargs) = _wrap((fargs, fkwargs))
         return jfun(*fargs, **fkwargs)
     return wrapped_fun
 

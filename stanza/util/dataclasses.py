@@ -5,6 +5,7 @@ from typing import Any
 import types
 from itertools import chain
 
+from stanza import _wrap, _unwrap
 
 """
     Like dataclass(), but has frozen=True by default and will
@@ -37,38 +38,24 @@ def _dataclass_flatten(dcls, do):
     import jax.util
     # for speeed use jax.util.unzip2
     keys, values = jax.util.unzip2(sorted(do.__dict__.items()))
-    fields = [dcls.__dataclass_fields__[k] for k in keys]
-
-    static_keys = []
-    static_values = []
-    dyn_keys = []
-    dyn_values = []
-    for (k,v,f) in zip(keys,values,fields):
-        jax_static = f.metadata.get('jax_static') if f.metadata else False
-        if jax_static or (callable(v) and not is_jaxtype(type(v))):
-            static_keys.append(k)
-            static_values.append(v)
-        else:
-            dyn_keys.append(k)
-            dyn_values.append(v)
-
-    aux = (dyn_keys, static_keys, static_values)
-    children = dyn_values
+    # use _wrap to deal with functions as part of dataclasses
+    values = [_wrap(v) for v in values]
+    children = values
+    aux = keys
     return children, aux
 
 def _dataclass_unflatten(dcls, aux, children):
     do = dcls.__new__(dcls)
-    dyn_keys, static_keys, static_values = aux
+    dyn_keys = aux
     dyn_values = children
-
-    attrs = dict(chain(zip(dyn_keys, dyn_values), zip(static_keys, static_values)))
+    dyn_values = [_unwrap(v) for v in dyn_values]
+    # use _unwrap to deal with functions as part of dataclasses
+    attrs = dict(zip(dyn_keys, dyn_values))
     # fill in the fields from the children
     for field in dcls.__dataclass_fields__.values():
         if field.name in attrs:
             object.__setattr__(do, field.name, attrs[field.name])
     return do
-
-import inspect
 
 # An immutable set of arguments
 class Parameters:

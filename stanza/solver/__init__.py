@@ -80,7 +80,6 @@ class IterativeSolver(Solver):
 
     # -------------------- Class Internals --------------------
 
-    @jax.jit
     def _do_step(self, kwargs, objective, loop_state):
         state = self.update(objective, loop_state, **kwargs)
         if self.terminate is not None:
@@ -112,7 +111,7 @@ class IterativeSolver(Solver):
     def _tangent_solve(self, sol_lin, y):
         return jnp.linalg.solve(jax.jacobian(sol_lin)(y), y)
 
-    @partial(jax.jit, static_argnames=['history', 'unroll', 'implicit_diff'])
+    # @partial(jax.jit, static_argnames=['history', 'unroll', 'implicit_diff'])
     def run(self, objective, *,
             history=False,
             implicit_diff=True, **kwargs):

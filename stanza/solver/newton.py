@@ -1,14 +1,9 @@
-from stanza.util.dataclasses import dataclass, field
+from stanza.util.dataclasses import dataclass
 from stanza.solver import IterativeSolver, UnsupportedObectiveError, \
         SolverState, Minimize
 
 import jax
 import jax.numpy as jnp
-
-@dataclass(jax=True)
-class NewtonState:
-    ineq_dual: jnp.array = None
-    eq_dual: jnp.array = None
 
 # A newton solver with backtracking support
 @dataclass(jax=True, kw_only=True)

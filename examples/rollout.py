@@ -29,30 +29,6 @@ logger.info('Actions Rollout Results')
 logger.info('states: {}', rollout.states)
 logger.info('actions: {}', rollout.actions)
 
-# rollout_inputs is an alias for the above
-rollout = policy.rollout_inputs(
-            model=pendulum.step,
-            state0=pendulum.reset(PRNGKey(0)),
-            actions=jnp.ones((10,))
-        )
-
-# An MPC policy
-rollout = policy.rollout(
-    model=pendulum.step,
-    state0=pendulum.reset(PRNGKey(0)),
-    policy=MPC(
-        # Sample action
-        action_sample=pendulum.sample_action(PRNGKey(0)),
-        cost_fn=pendulum.cost, 
-        model_fn=pendulum.step,
-        horizon_length=20,
-        solver=NewtonSolver()
-    ),
-    length=50
-)
-logger.info('MPC Rollout with Newton solver results')
-logger.info('states: {}', rollout.states)
-logger.info('actions: {}', rollout.actions)
 optimizer = optax.chain(
     # Set the parameters of Adam. Note the learning_rate is not here.
     optax.scale_by_schedule(optax.cosine_decay_schedule(1.0,
@@ -75,5 +51,30 @@ rollout = policy.rollout(
     length=50
 )
 logger.info('MPC Rollout with Optax solver results')
+logger.info('states: {}', rollout.states)
+logger.info('actions: {}', rollout.actions)
+
+# rollout_inputs is an alias for the above
+rollout = policy.rollout_inputs(
+            model=pendulum.step,
+            state0=pendulum.reset(PRNGKey(0)),
+            actions=jnp.ones((10,))
+        )
+
+# An MPC policy
+rollout = policy.rollout(
+    model=pendulum.step,
+    state0=pendulum.reset(PRNGKey(0)),
+    policy=MPC(
+        # Sample action
+        action_sample=pendulum.sample_action(PRNGKey(0)),
+        cost_fn=pendulum.cost, 
+        model_fn=pendulum.step,
+        horizon_length=20,
+        solver=NewtonSolver()
+    ),
+    length=50
+)
+logger.info('MPC Rollout with Newton solver results')
 logger.info('states: {}', rollout.states)
 logger.info('actions: {}', rollout.actions)

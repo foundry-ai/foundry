@@ -1,35 +1,54 @@
-from typing import Any, Callable
+from stanza.util.dataclasses import dataclass
+from stanza.solver import IterativeSolver, UnsupportedObectiveError, \
+        SolverState, Minimize
 
-from stanza.solver import IterativeSolver, sanitize_cost
-from stanza.util.dataclasses import dataclass, field
+from typing import Any
+import jax
+import jax.numpy as jnp
 
 import optax
 import jax
 import jax.numpy as jnp
 
+
+@dataclass(jax=True)
+class OptaxState(SolverState):
+    optimizer_state : Any
+
 @dataclass(jax=True, kw_only=True)
 class OptaxSolver(IterativeSolver):
-    optimizer: Any = None
-    terminate: Callable = None
-    has_aux: bool = field(default=False, jax_static=True)
     tol: float = 1e-3
+    optimizer: Any = None
 
-    def update(self, fun_state, fun_params, solver_state):
-        if solver_state is None:
-            solver_state = self.optimizer.init(fun_params)
+    def init_state(self, objective):
+        return OptaxState(
+            iteration=0,
+            solved=False,
+            obj_state=objective.init_state,
+            obj_params=objective.init_params,
+            obj_aux=None,
+            optimizer_state = self.optimizer.init(objective.init_params)
+        )
 
-        cost_fun = sanitize_cost(self.fun, self.has_aux)
-        fun = lambda v: cost_fun(fun_state, v)[1]
-        grad = jax.grad(fun)(fun_params)
-        updates, opt_state = self.optimizer.update(grad, solver_state)
+    def optimality(self, objective, obj_state, obj_params):
+        grad = jax.grad(lambda p: objective.eval(obj_state, p)[1])(obj_params)
+        return grad
 
-        new_params = optax.apply_updates(fun_params, updates)
-        new_state, _, _ = cost_fun(fun_state, fun_params)
-        _, cost, aux = cost_fun(new_state, new_params)
-
-        # check the distance for solution
-        if self.terminate is not None:
-            solved = self.terminate(cost, aux)
-        else:
-            solved = False
-        return solved, new_state, new_params, opt_state
+    def update(self, objective, state):
+        if not isinstance(objective, Minimize) or objective.constraints:
+            raise UnsupportedObectiveError("Can only handle unconstrained minimization objectives")
+        if state is None:
+            state = self.init_state(objective)
+        def f(p):
+            obj_state, cost, obj_aux = objective.eval(state.obj_state, p)
+            return cost, (obj_state, obj_aux)
+        grad, (obj_state, obj_aux) = jax.grad(f, has_aux=True)(state.obj_params)
+        updates, new_opt_state = self.optimizer.update(grad, state.optimizer_state, state.obj_params)
+        obj_params = optax.apply_updates(state.obj_params, updates)
+        return OptaxState(iteration=state.iteration + 1,
+                    solved=False,
+                    obj_state=obj_state,
+                    obj_params=obj_params,
+                    obj_aux=obj_aux,
+                    optimizer_state=new_opt_state
+                )

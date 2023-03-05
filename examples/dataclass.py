@@ -3,6 +3,7 @@
 import stanza
 from stanza.util.dataclasses import dataclass, field
 import jax.numpy as jnp
+from functools import partial
 
 
 # jax=True registers the type and enables frozen=True
@@ -16,6 +17,7 @@ print("int: ", stanza.is_jaxtype(type(1)))
 print("array: ", stanza.is_jaxtype(type(jnp.array([0]))))
 print("str: ", stanza.is_jaxtype(type("foo")))
 print("func: ", stanza.is_jaxtype(type(lambda x: x)))
+print("partial: ", stanza.is_jaxtype(type(partial(lambda x: x))))
 print("dataclass: ", stanza.is_jaxtype(Foo))
 
 @stanza.jit

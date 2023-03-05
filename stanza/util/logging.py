@@ -68,7 +68,7 @@ class JaxLogger:
         reg_args = []
         jax_args = []
         for a in args:
-            if stanza.is_jaxtype(a):
+            if stanza.is_jaxtype(type(a)):
                 jax_args.append(a)
                 reg_args.append(JAX_PLACEHODLER)
             else:
@@ -76,7 +76,7 @@ class JaxLogger:
         reg_kwargs = {}
         jax_kwargs = {}
         for (k,v) in kwargs.items():
-            if stanza.is_jaxtype(v):
+            if stanza.is_jaxtype(type(v)):
                 jax_kwargs[k] = v
             else:
                 reg_kwargs[k] = v

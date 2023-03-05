@@ -11,7 +11,7 @@ from stanza.util.logging import logger
 from stanza.util.dataclasses import dataclass, replace, field
 from jax.random import PRNGKey
 
-from stanza.solver import Solver
+from stanza.solver import Solver, Minimize
 from stanza.solver.newton import NewtonSolver
 from stanza.policy import Actions, PolicyOutput
 
@@ -54,21 +54,11 @@ class MPC:
         return self.cost_fn(r.states, r.actions)
     
     def _solve(self, state0, init_actions):
-        # if our chosen solver supports using dynamics
-        # as part of the lower-level optimization
-        if hasattr(self.solver, 'model_fn') and \
-                hasattr(self.solver, 'cost_fn'):
-            # TODO: Allow barrier with 
-            assert self.barrier_sdf is None
-            solver = replace(self.solver,
-                             model_fn=self.model_fn,
-                             cost_fn=self.cost_fn)
-            res = solver.run(init_params=init_actions, state0=state0)
-            return res.params
-        else:
-            solver = replace(self.solver, fun=Partial(self._loss_fn, state0))
-            res = solver.run(init_params=init_actions)
-            return res.params
+        res = self.solver.run(Minimize(
+            fun=Partial(self._loss_fn, state0),
+            init_params=init_actions
+        ))
+        return res.params
 
     def __call__(self, state, policy_state=None):
         if policy_state is None:
