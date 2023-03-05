@@ -7,9 +7,8 @@ from jax.tree_util import Partial
 import jax
 import stanza
 
-
 def cost(x, s):
-    y = x - 2*s
+    y = x - s
     v = jnp.array([[1., 0.], [0., 1.]]) @ y
     return jnp.dot(y, v)
 

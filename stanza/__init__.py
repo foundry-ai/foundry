@@ -65,5 +65,3 @@ def is_jaxtype(t):
     if t in _registry:
         return True
     return False
-
-from jaxopt._src.implicit_diff import root_vjp as _root_vjp

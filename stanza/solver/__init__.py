@@ -106,26 +106,33 @@ class IterativeSolver(Solver):
                             s.iteration < self.max_iterations),
             step_fn, state), None
 
-    def _optimality(self, objective, kwargs, state):
-        return self.optimality(objective, state, **kwargs)
+    def _optimality(self, objective, kwargs, obj_state, obj_params):
+        return self.optimality(objective, obj_state, obj_params, **kwargs)
 
-    @partial(jax.jit,
-        static_argnames=['history', 'unroll', 'implicit_diff'])
+    def _tangent_solve(self, sol_lin, y):
+        return jnp.linalg.solve(jax.jacobian(sol_lin)(y), y)
+
+    @partial(jax.jit, static_argnames=['history', 'unroll', 'implicit_diff'])
     def run(self, objective, *,
             history=False,
             implicit_diff=True, **kwargs):
         state = self._do_step(kwargs, objective, None)
-        optimality = partial(self._optimality, objective, kwargs)
         solve = self._solve_scan if history else self._solve_loop
-        solve = partial(solve, objective, kwargs)
+        final_state, history = solve(objective, kwargs, state)
 
-        solve = jax.lax.custom_root(optimality, state, solve, has_aux=True)
-
-        final_state, history = solve(objective, state, kwargs)
+        if implicit_diff:
+            # Prevent gradient backprop through final_state so we don't unroll
+            # the loop.
+            final_state = jax.lax.stop_gradient(final_state)
+            optimality = partial(self._optimality, objective, kwargs, final_state.obj_state)
+            params = jax.lax.custom_root(optimality, final_state.obj_params,
+                                    lambda _, x: x, self._tangent_solve)
+        else:
+            params = final_state.obj_params
         return SolverResults(
             solved=final_state.solved,
             state=final_state.obj_state,
-            params=final_state.obj_params,
+            params=params,
             solver_state=final_state,
             history=history
         )
