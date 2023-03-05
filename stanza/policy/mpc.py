@@ -11,9 +11,21 @@ from stanza.util.logging import logger
 from stanza.util.dataclasses import dataclass, replace, field
 from jax.random import PRNGKey
 
-from stanza.solver import Solver, Minimize
+from stanza.solver import Solver, Minimize, UnsupportedObectiveError, Objective
 from stanza.solver.newton import NewtonSolver
 from stanza.policy import Actions, PolicyOutput
+
+# A special MinimizeMPC objective
+# which solvers can take
+@dataclass(jax=True, kw_only=True)
+class MinimizeMPC(Objective):
+    cost_fn: Callable
+    # Either model_fn or rollout_fn must be specified
+    model_fn: Callable = None
+    rollout_fn: Callable = None
+
+    # rollout_fn or model_fn accepts rng as the first parameter
+    stochastic_dynamics : bool = field(default=False, jax_static=True)
 
 # A vanilla MPC controller
 @dataclass(jax=True, kw_only=True)
@@ -27,7 +39,7 @@ class MPC:
     model_fn : Callable = None
     rollout_fn : Callable = None
 
-    stochastic_dynamics : bool = field(default=True, jax_static=True)
+    stochastic_dynamics : bool = field(default=False, jax_static=True)
 
     # Horizon is part of the static jax type
     horizon_length : int = field(default=20, jax_static=True)
@@ -48,12 +60,26 @@ class MPC:
     replan : bool = field(default=True, jax_static=True)
 
     def _loss_fn(self, state0, actions):
-        r = stanza.policy.rollout(
-                self.model_fn, state0, policy=Actions(actions)
-            )
+        if self.rollout_fn:
+            r = self.rollout_fn(state0, actions)
+        else:
+            r = stanza.policy.rollout(
+                    self.model_fn, state0, policy=Actions(actions)
+                )
         return self.cost_fn(r.states, r.actions)
     
     def _solve(self, state0, init_actions):
+        # Try to provide a MinimizeMPC
+        # problem to the
+        try:
+            res = self.solver.run(MinimizeMPC(
+                cost_fn=self.cost_fn,
+                model_fn=self.model_fn,
+                rollout_fn=self.rollout_fn,
+                stochastic_dynamics=self.stochastic_dynamics
+            ))
+        except UnsupportedObectiveError:
+            pass
         res = self.solver.run(Minimize(
             fun=Partial(self._loss_fn, state0),
             init_params=init_actions

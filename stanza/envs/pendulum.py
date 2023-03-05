@@ -37,27 +37,24 @@ class PendulumEnvironment(Environment):
 
     def reset(self, key):
         # pick random position between +/- radians from center
-        angle = jax.random.uniform(key,shape=(), minval=-1,maxval=1) + math.pi
+        angle = jax.random.uniform(key,shape=(), minval=-1,maxval=1)
         vel = jnp.zeros(())
         return State(angle, vel)
 
     def step(self, state, action):
         angle = state.angle + self.dt*state.vel
-        vel = state.vel - self.dt*jnp.sin(state.angle + math.pi) + self.dt*action
+        vel = state.vel - self.dt*jnp.sin(state.angle) + self.dt*action
         state = State(angle, vel)
         return state
     
     # If u is None, this is the terminal cost
     def cost(self, x, u=None):
         x = jnp.stack((x.angle, x.vel), -1)
-        diff = x - jnp.array([0, 0])
-        if u is None:
-            x_cost = jnp.sum(diff**2)
-            return x_cost
-        else:
-            x_cost = jnp.sum(diff**2)
-            u_cost = jnp.sum(u**2)
-            return 2*x_cost + u_cost
+        diff = (x - jnp.array([math.pi, 0]))**2
+        x_cost = jnp.sum(diff)
+        xf_cost = jnp.sum(diff[-1])
+        u_cost = jnp.sum(u**2)
+        return 100*xf_cost + 2*x_cost + u_cost
 
     def barrier(self, _, us):
         constraints = [jnp.ravel(us - 3),
