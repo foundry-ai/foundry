@@ -19,6 +19,10 @@ from stanza.policy import Actions, PolicyOutput
 # which solvers can take
 @dataclass(jax=True, kw_only=True)
 class MinimizeMPC(Objective):
+    # The actions. 
+    initial_actions: Any
+    state0: Any
+
     cost_fn: Callable
     # Either model_fn or rollout_fn must be specified
     model_fn: Callable = None
@@ -78,11 +82,12 @@ class MPC:
                 rollout_fn=self.rollout_fn,
                 stochastic_dynamics=self.stochastic_dynamics
             ))
+            return res.actions
         except UnsupportedObectiveError:
             pass
         res = self.solver.run(Minimize(
             fun=Partial(self._loss_fn, state0),
-            init_params=init_actions
+            initial_params=init_actions
         ))
         return res.params
 

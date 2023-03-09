@@ -8,8 +8,10 @@ import stanza.policy as policy
 from stanza.policy import Actions
 from stanza.policy.mpc import MPC
 from stanza.util.logging import logger
+
 from stanza.solver.newton import NewtonSolver
 from stanza.solver.optax import OptaxSolver
+from stanza.solver.ilqr import iLQRSolver
 
 import optax
 
@@ -76,5 +78,29 @@ rollout = policy.rollout(
     length=50
 )
 logger.info('MPC Rollout with Newton solver results')
+logger.info('states: {}', rollout.states)
+logger.info('actions: {}', rollout.actions)
+
+rollout = policy.rollout_inputs(
+            model=pendulum.step,
+            state0=pendulum.reset(PRNGKey(0)),
+            actions=jnp.ones((10,))
+        )
+
+# An MPC policy
+rollout = policy.rollout(
+    model=pendulum.step,
+    state0=pendulum.reset(PRNGKey(0)),
+    policy=MPC(
+        # Sample action
+        action_sample=pendulum.sample_action(PRNGKey(0)),
+        cost_fn=pendulum.cost, 
+        model_fn=pendulum.step,
+        horizon_length=20,
+        solver=iLQRSolver()
+    ),
+    length=50
+)
+logger.info('MPC Rollout with iLQR solver results')
 logger.info('states: {}', rollout.states)
 logger.info('actions: {}', rollout.actions)

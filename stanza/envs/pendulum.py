@@ -31,13 +31,13 @@ class PendulumEnvironment(Environment):
     # give a distribution with support over all possible (or reasonable) states
     def sample_state(self, rng_key):
         k1, k2 = jax.random.split(rng_key)
-        angle = 5*jax.random.uniform(k1, shape=(), minval=-1, maxval=1)
+        angle = 5*jax.random.uniform(k1, shape=(), minval=-1, maxval=math.pi + 1)
         vel = 5*jax.random.uniform(k2, shape=(), minval=-1, maxval=1)
         return State(angle, vel)
 
     def reset(self, key):
         # pick random position between +/- radians from center
-        angle = jax.random.uniform(key,shape=(), minval=-1,maxval=1)
+        angle = jax.random.uniform(key,shape=(), minval=math.pi-1,maxval=math.pi+1)
         vel = jnp.zeros(())
         return State(angle, vel)
 

@@ -1,6 +1,6 @@
 from stanza.util.dataclasses import dataclass
 from stanza.solver import IterativeSolver, UnsupportedObectiveError, \
-        SolverState, Minimize
+        MinimizeState, Minimize
 
 from typing import Any
 import jax
@@ -12,7 +12,7 @@ import jax.numpy as jnp
 
 
 @dataclass(jax=True)
-class OptaxState(SolverState):
+class OptaxState(MinimizeState):
     optimizer_state : Any
 
 @dataclass(jax=True, kw_only=True)
@@ -24,9 +24,9 @@ class OptaxSolver(IterativeSolver):
         return OptaxState(
             iteration=0,
             solved=False,
-            obj_state=objective.init_state,
-            obj_params=objective.init_params,
-            obj_aux=None,
+            state=objective.initial_state,
+            params=objective.initial_params,
+            aux=None,
             optimizer_state = self.optimizer.init(objective.init_params)
         )
 
@@ -34,21 +34,22 @@ class OptaxSolver(IterativeSolver):
         grad = jax.grad(lambda p: objective.eval(obj_state, p)[1])(obj_params)
         return grad
 
-    def update(self, objective, state):
+    def update(self, objective, solver_state):
         if not isinstance(objective, Minimize) or objective.constraints:
             raise UnsupportedObectiveError("Can only handle unconstrained minimization objectives")
-        if state is None:
-            state = self.init_state(objective)
+        if solver_state is None:
+            solver_state = self.init_state(objective)
         def f(p):
-            obj_state, cost, obj_aux = objective.eval(state.obj_state, p)
+            obj_state, cost, obj_aux = objective.eval(solver_state.state, p)
             return cost, (obj_state, obj_aux)
-        grad, (obj_state, obj_aux) = jax.grad(f, has_aux=True)(state.obj_params)
-        updates, new_opt_state = self.optimizer.update(grad, state.optimizer_state, state.obj_params)
-        obj_params = optax.apply_updates(state.obj_params, updates)
-        return OptaxState(iteration=state.iteration + 1,
+        grad, (obj_state, obj_aux) = jax.grad(f, has_aux=True)(solver_state.params)
+        updates, new_opt_state = self.optimizer.update(grad, solver_state.optimizer_state, solver_state.params)
+        obj_params = optax.apply_updates(solver_state.params, updates)
+        return OptaxState(
+                    iteration=solver_state.iteration + 1,
                     solved=False,
-                    obj_state=obj_state,
-                    obj_params=obj_params,
-                    obj_aux=obj_aux,
+                    state=obj_state,
+                    params=obj_params,
+                    aux=obj_aux,
                     optimizer_state=new_opt_state
                 )

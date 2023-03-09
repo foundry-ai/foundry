@@ -7,13 +7,7 @@ from typing import Callable, Any
 from functools import partial
 from stanza.util.dataclasses import dataclass, field, replace
 
-@dataclass(jax=True)
-class SolverResults:
-    solved: bool
-    state: Any
-    params: Any
-    solver_state: Any
-    history: Any = None
+import jax.experimental.host_callback
 
 class Objective:
     pass
@@ -24,9 +18,9 @@ class Minimize(Objective):
     fun: Callable
     has_state: bool = field(default=False, jax_static=True)
     has_aux: bool = field(default=False, jax_static=True)
-    init_state: Any = None # Note that has_state needs to be true in order for this
+    initial_state: Any = None # Note that has_state needs to be true in order for this
                            # to be passed into the function!
-    init_params: Any = None
+    initial_params: Any = None
 
     # Tuple of parameter constraints
     constraints: tuple = ()
@@ -39,22 +33,39 @@ class Minimize(Objective):
         cost, aux = (r[0], r[1]) if self.has_aux else (r, None)
         return state, cost, aux
 
+# Fun <= 0
+@dataclass(jax=True)
+class IneqConstraint:
+    fun: Callable
+
+# Fun == 0
+@dataclass(jax=True)
+class EqConstraint:
+    fun: Callable
+
 class UnsupportedObectiveError(RuntimeError):
     pass
 
 class Solver:
     # Can raise an UnsupportedObjectiveError
     # if the objective is not compatible with this solver
-    def run(self, objective, **kwargs) -> SolverResults:
+    def run(self, objective, **kwargs) -> Any:
         raise NotImplementedError("Solver must implement run()")
 
+# All solver states must have iteration and solved
+# parameters
 @dataclass(jax=True)
 class SolverState:
     iteration: int
     solved: bool
-    obj_state: Any
-    obj_params: Any
-    obj_aux: Any # auxiliary output of the objective
+
+# A solver state for Minimize() objectives
+@dataclass(jax=True)
+class MinimizeState(SolverState):
+    # The function state
+    state: Any
+    params: Any
+    aux: Any # auxiliary output of the objective
 
 @dataclass(jax=True, kw_only=True)
 class IterativeSolver(Solver):
@@ -105,33 +116,46 @@ class IterativeSolver(Solver):
                             s.iteration < self.max_iterations),
             step_fn, state), None
 
-    def _optimality(self, objective, kwargs, obj_state, obj_params):
-        return self.optimality(objective, obj_state, obj_params, **kwargs)
+    def _optimality(self, objective, kwargs, unflatten, flat_state):
+        state = unflatten(flat_state)
+        o = self.optimality(objective, state, **kwargs)
+        of, _ = jax.flatten_util.ravel_pytree(o)
+        extra_d = flat_state.shape[0] - of.shape[0]
+        combined = jnp.concatenate((of, jnp.zeros((extra_d,))))
+        return combined
+    
+    def _custom_optimality(self, objective, kwargs, state, params):
+        if hasattr(state, 'params'):
+            state = replace(state, params=params)
+        elif hasattr(state, 'actions'):
+            state = replace(state, actions=params)
+        grad = self.optimality(objective, state, **kwargs)
+        return grad
 
     def _tangent_solve(self, sol_lin, y):
-        return jnp.linalg.solve(jax.jacobian(sol_lin)(y), y)
+        jac = jax.jacobian(sol_lin)(y)
+        s = jnp.linalg.solve(jac, y)
+        return s
 
-    # @partial(jax.jit, static_argnames=['history', 'unroll', 'implicit_diff'])
     def run(self, objective, *,
             history=False,
             implicit_diff=True, **kwargs):
         state = self._do_step(kwargs, objective, None)
         solve = self._solve_scan if history else self._solve_loop
-        final_state, history = solve(objective, kwargs, state)
+        final_state, state_history = solve(objective, kwargs, state)
 
         if implicit_diff:
             # Prevent gradient backprop through final_state so we don't unroll
             # the loop.
             final_state = jax.lax.stop_gradient(final_state)
-            optimality = partial(self._optimality, objective, kwargs, final_state.obj_state)
-            params = jax.lax.custom_root(optimality, final_state.obj_params,
-                                    lambda _, x: x, self._tangent_solve)
-        else:
-            params = final_state.obj_params
-        return SolverResults(
-            solved=final_state.solved,
-            state=final_state.obj_state,
-            params=params,
-            solver_state=final_state,
-            history=history
-        )
+
+            optimality = partial(self._custom_optimality, objective, kwargs, final_state)
+            if hasattr(final_state, 'params'):
+                params = jax.lax.custom_root(optimality, final_state.params,
+                                        lambda _, x: x, self._tangent_solve)
+                final_state = replace(final_state, params=params)
+            elif hasattr(final_state, 'actions'):
+                actions = jax.lax.custom_root(optimality, final_state.params,
+                                        lambda _, x: x, self._tangent_solve)
+                final_state = replace(final_state, actions=actions)
+        return (final_state, state_history) if history else final_state
