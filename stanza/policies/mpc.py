@@ -15,6 +15,9 @@ from stanza.solver import Solver, Minimize, UnsupportedObectiveError, Objective,
 from stanza.solver.newton import NewtonSolver
 from stanza.policies import Actions, PolicyOutput
 
+
+import jax.experimental.host_callback
+
 # A special MinimizeMPC objective
 # which solvers can take
 @dataclass(jax=True, kw_only=True)
@@ -149,7 +152,7 @@ class BarrierMPC(MPC):
         ).states
         constr = self.barrier_sdf(states, actions)
         # if all of the constraints are satisfied, early terminate
-        sat = jnp.all(constr < -1e-4)
+        sat = jnp.all(constr < -1e-3)
         # jax.debug.print("term_s: {}", states)
         # jax.debug.print("term: {} {}", sat, constr)
         return sat
@@ -175,6 +178,12 @@ class BarrierMPC(MPC):
         if self.barrier_sdf:
             # jax.debug.print("---------- PHASE I-----------")
             init_actions = self._solve_feasible(state0, init_actions)
+        
+        # def d(arg, _):
+        #     s, a = arg
+        #     if jnp.any(jnp.isnan(a)):
+        #         print(s)
+        # jax.experimental.host_callback.id_tap(d, (state0, init_actions))
         # phase II:
         # now that we have guaranteed feasibility, solve
         # the full loss

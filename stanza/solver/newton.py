@@ -146,16 +146,17 @@ class NewtonSolver(IterativeSolver):
             jax.debug.print("dlambda: {}", dlambda)
             jax.debug.print("dnu: {}", dnu)
             jax.debug.print("step: {}", s)
+
         new_x = x + s*dx
         new_nu_dual = nu_dual + s*dnu
         new_lambda_dual = lambda_dual + s*dlambda
 
-        def f(arg, _):
-            if jnp.any(jnp.isnan(arg)):
-                print(arg)
-                import sys
-                sys.exit(0)
-        jax.experimental.host_callback.id_tap(f, new_x)
+        # def f(arg, _):
+        #     if jnp.any(jnp.isnan(arg)):
+        #         print(arg)
+        #         import sys
+        #         sys.exit(0)
+        # jax.experimental.host_callback.id_tap(f, new_x)
 
         # Find the new state
         new_params = p_fmt(new_x)
