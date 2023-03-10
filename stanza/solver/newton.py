@@ -19,7 +19,7 @@ class NewtonState(MinimizeState):
 class NewtonSolver(IterativeSolver):
     tol: float = 1e-4
     beta: float = 0.5 # backtracking beta
-    alpha: float = 0.001 # backtracking beta
+    alpha: float = 0.005 # backtracking alpha
 
     eta: float = 0.001 # for interior point
 
@@ -152,6 +152,7 @@ class NewtonSolver(IterativeSolver):
 
         def f(arg, _):
             if jnp.any(jnp.isnan(arg)):
+                print(arg)
                 import sys
                 sys.exit(0)
         jax.experimental.host_callback.id_tap(f, new_x)

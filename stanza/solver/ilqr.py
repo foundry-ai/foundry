@@ -1,10 +1,10 @@
 from typing import Any
 from jax.random import PRNGKey
 
-from stanza.policy import Policy, PolicyOutput
+from stanza.policies import Policy, PolicyOutput
 from stanza.util.dataclasses import dataclass, field
 from stanza.solver import IterativeSolver, SolverState, UnsupportedObectiveError
-from stanza.policy.mpc import MinimizeMPC
+from stanza.policies.mpc import MinimizeMPC
 
 import warnings
 import jax

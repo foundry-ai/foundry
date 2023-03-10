@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 
-import stanza.policy
+import stanza.policies
 
 from typing import Any, Callable
 
@@ -13,7 +13,7 @@ from jax.random import PRNGKey
 
 from stanza.solver import Solver, Minimize, UnsupportedObectiveError, Objective, EqConstraint
 from stanza.solver.newton import NewtonSolver
-from stanza.policy import Actions, PolicyOutput
+from stanza.policies import Actions, PolicyOutput
 
 # A special MinimizeMPC objective
 # which solvers can take
@@ -67,7 +67,7 @@ class MPC:
         if self.rollout_fn:
             r = self.rollout_fn(state0, actions)
         else:
-            r = stanza.policy.rollout(
+            r = stanza.policies.rollout(
                     self.model_fn, state0, policy=Actions(actions)
                 )
         return self.cost_fn(r.states, r.actions)
@@ -114,7 +114,7 @@ class BarrierMPC(MPC):
 
     # The BarrierMPC loss function has s, params
     def _loss_fn(self, state0, actions):
-        states = stanza.policy.rollout(
+        states = stanza.policies.rollout(
             self.model_fn, state0, policy=Actions(actions)
         ).states
         cost = self.cost_fn(states, actions)
@@ -131,7 +131,7 @@ class BarrierMPC(MPC):
 
     def _feas_loss(self, state0, params):
         s, actions = params
-        states = stanza.policy.rollout(
+        states = stanza.policies.rollout(
             self.model_fn, state0, policy=Actions(actions)
         ).states
         # get all of the constraints
@@ -144,21 +144,23 @@ class BarrierMPC(MPC):
     # early termination handler
     def _feas_terminate(self, state0, solver_state):
         _, actions = solver_state.params
-        init_states = stanza.policy.rollout(
+        states = stanza.policies.rollout(
             self.model_fn, state0, policy=Actions(actions)
         ).states
-        constr = self.barrier_sdf(init_states, actions)
+        constr = self.barrier_sdf(states, actions)
         # if all of the constraints are satisfied, early terminate
         sat = jnp.all(constr < -1e-4)
+        # jax.debug.print("term_s: {}", states)
+        # jax.debug.print("term: {} {}", sat, constr)
         return sat
     
     def _solve_feasible(self, state0, init_actions):
-        init_states = stanza.policy.rollout(
+        init_states = stanza.policies.rollout(
             self.model_fn, state0, policy=Actions(init_actions)
         ).states
         constr = self.barrier_sdf(init_states, init_actions)
         # make the feasibility loss always feasible
-        s = jnp.max(constr) + 1
+        s = jnp.max(constr) + 10
         res = self.feasibility_solver.run(Minimize(
             fun=Partial(self._feas_loss, state0),
             initial_params=(s, init_actions),
@@ -171,10 +173,10 @@ class BarrierMPC(MPC):
     def _solve(self, state0, init_actions):
         # phase I:
         if self.barrier_sdf:
-            #jax.debug.print("---------- PHASE I-----------")
+            # jax.debug.print("---------- PHASE I-----------")
             init_actions = self._solve_feasible(state0, init_actions)
         # phase II:
         # now that we have guaranteed feasibility, solve
         # the full loss
-        #jax.debug.print("---------- PHASE II-----------")
+        # jax.debug.print("---------- PHASE II-----------")
         return super()._solve(state0, init_actions)

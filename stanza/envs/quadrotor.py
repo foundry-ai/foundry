@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import jax
 import plotly.express as px
 
-from stanza.env import Environment
+from stanza.envs import Environment
 
 class State(NamedTuple):
     x: jnp.ndarray

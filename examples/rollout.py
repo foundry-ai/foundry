@@ -1,12 +1,12 @@
 import jax
 import jax.numpy as jnp
-import stanza.env as envs
-import stanza.policy as policy
+import stanza.envs as envs
+import stanza.policies as policies
 import optax
 
 from jax.random import PRNGKey
-from stanza.policy import Actions
-from stanza.policy.mpc import MPC, BarrierMPC
+from stanza.policies import Actions
+from stanza.policies.mpc import MPC, BarrierMPC
 from stanza.util.logging import logger
 
 from stanza.solver.newton import NewtonSolver
@@ -21,7 +21,7 @@ env = envs.create("linear/di")
 # rollout_inputs is an alias for the above
 
 def rollout_inputs():
-    rollout = policy.rollout(
+    rollout = policies.rollout(
                 model=env.step,
                 state0=env.reset(PRNGKey(0)),
                 policy=Actions(jnp.ones((10,)))
@@ -30,7 +30,7 @@ def rollout_inputs():
     logger.info('actions: {}', rollout.actions)
     
     # This is equivalent to the above:
-    rollout = policy.rollout_inputs(
+    rollout = policies.rollout_inputs(
         model=env.step,
         state0=env.reset(PRNGKey(0)),
         actions=jnp.ones((10,))
@@ -38,7 +38,7 @@ def rollout_inputs():
 
 def rollout_mpc_newton():
     # An MPC policy
-    rollout = policy.rollout(
+    rollout = policies.rollout(
         model=env.step,
         state0=env.reset(PRNGKey(0)),
         policy=MPC(
@@ -64,7 +64,7 @@ def rollout_mpc_optax():
         # Put a minus sign to *minimise* the loss.
         optax.scale(-0.01)
     )
-    rollout = policy.rollout(
+    rollout = policies.rollout(
         model=env.step,
         state0=env.reset(PRNGKey(0)),
         policy=MPC(
@@ -92,9 +92,7 @@ def rollout_barrier():
             model_fn=env.step,
             horizon_length=10,
         )
-    logger.info("a: {}", p(jnp.array([0., 1.])))
-    return
-    rollout = policy.rollout(
+    rollout = policies.rollout(
         model=env.step,
         state0=env.reset(PRNGKey(0)),
         policy=p,
@@ -109,7 +107,7 @@ def rollout_barrier():
 
 def rollout_gradient():
     def roll_cost(actions):
-        rollout = policy.rollout_inputs(
+        rollout = policies.rollout_inputs(
             model=env.step,
             state0=env.reset(PRNGKey(0)),
             actions=actions
