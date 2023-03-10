@@ -27,11 +27,11 @@ class OptaxSolver(IterativeSolver):
             state=objective.initial_state,
             params=objective.initial_params,
             aux=None,
-            optimizer_state = self.optimizer.init(objective.init_params)
+            optimizer_state = self.optimizer.init(objective.initial_params)
         )
 
-    def optimality(self, objective, obj_state, obj_params):
-        grad = jax.grad(lambda p: objective.eval(obj_state, p)[1])(obj_params)
+    def optimality(self, objective, solver_state):
+        grad = jax.grad(lambda p: objective.eval(solver_state.state, p)[1])(solver_state.params)
         return grad
 
     def update(self, objective, solver_state):

@@ -37,7 +37,7 @@ class PendulumEnvironment(Environment):
 
     def reset(self, key):
         # pick random position between +/- radians from center
-        angle = jax.random.uniform(key,shape=(), minval=math.pi-1,maxval=math.pi+1)
+        angle = jax.random.uniform(key,shape=(), minval=-1,maxval=+1)
         vel = jnp.zeros(())
         return State(angle, vel)
 

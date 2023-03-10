@@ -10,8 +10,9 @@ class Config:
     param: float = 0.1
     name: str = "foo"
 
+
 @activity(Config)
 def demo(config, database):
     logger.info("Parsed config: {}", config)
-    time.sleep(5)
+    time.sleep(2)
     logger.info("Done!")

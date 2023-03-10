@@ -4,6 +4,7 @@ from stanza.solver import IterativeSolver, UnsupportedObectiveError, \
 from stanza import Partial
 
 import jax
+import jax.experimental.host_callback
 import jax.numpy as jnp
 
 @dataclass(jax=True)
@@ -16,14 +17,14 @@ class NewtonState(MinimizeState):
 # A newton solver with backtracking support
 @dataclass(jax=True, kw_only=True)
 class NewtonSolver(IterativeSolver):
-    tol: float = 1e-2
+    tol: float = 1e-4
     beta: float = 0.5 # backtracking beta
+    alpha: float = 0.001 # backtracking beta
+
+    eta: float = 0.001 # for interior point
 
     def init_state(self, objective):
-        a, _ = self._eq_constraints(objective,
-                    objective.initial_state,
-                    objective.initial_params)
-        b, _, _ = self._ineq_constraints(objective,
+        a, _, b, _, _ = self._constraints(objective,
                     objective.initial_state,
                     objective.initial_params)
         return NewtonState(
@@ -33,7 +34,7 @@ class NewtonSolver(IterativeSolver):
             params=objective.initial_params,
             aux=None,
             nu_dual=jnp.zeros_like(a),
-            lambda_dual=jnp.zeros_like(b)
+            lambda_dual=jnp.ones_like(b)
         )
     
     # gradient of the objective at params == 0
@@ -41,34 +42,36 @@ class NewtonSolver(IterativeSolver):
         grad = jax.grad(lambda p: objective.eval(solver_state.state, p)[1])(solver_state.params)
         return grad
     
-    def _eq_constraints(self, objective, state, params):
-        grads = []
-        vals = []
-        for c in objective.constraints:
-            if isinstance(c, EqConstraint):
-                f = lambda x: Partial(c.fun, state) if objective.has_state else c.fun
-                v_params, unflatten = jax.flatten_util.ravel_pytree(params)
-                fun = lambda x: f(unflatten(x))
-                grads.append(f(params))
-                vals.append(jax.grad(fun)(v_params))
-            else:
-                raise UnsupportedObectiveError("Cannot handle inequality constraints (yet)")
-        return jnp.concatenate(vals), jnp.concatenate(grads)
+    def _constraints(self, objective, state, params, hess=True):
+        eq_resid = []
+        eq_grads = []
 
-    def _ineq_constraints(self, objective, state, params):
-        hess = []
-        grads = []
-        vals = []
+        ineq_resid = []
+        ineq_grads = []
+        ineq_hess = []
+
+        v_params, unflatten = jax.flatten_util.ravel_pytree(params)
         for c in objective.constraints:
             if isinstance(c, EqConstraint):
-                f = lambda x: Partial(c.fun, state) if objective.has_state else c.fun
-                v_params, unflatten = jax.flatten_util.ravel_pytree(params)
+                f = Partial(c.fun, state) if objective.has_state else c.fun
                 fun = lambda x: f(unflatten(x))
-                grads.append(f(params))
-                vals.append(jax.grad(fun)(v_params))
-                hess.append(jax.grad(jax.grad(fun))(v_params))
-        return jnp.concatenate(vals), jnp.concatenate(grads), \
-                jnp.sum(jnp.array(hess), axis=0)
+                eq_resid.append(jnp.atleast_1d(f(v_params)))
+                eq_grads.append(jnp.atleast_2d(jax.grad(fun)(v_params)))
+            elif isinstance(c, IneqConstraint):
+                raise RuntimeError("Currently inequality constraints aren't working for newton solvers!")
+                f = Partial(c.fun, state) if objective.has_state else c.fun
+                fun = lambda x: f(unflatten(x))
+                ineq_resid.append(jnp.atleast_1d(f(v_params)))
+                ineq_grads.append(jnp.atleast_2d(jax.grad(fun)(v_params)))
+                if hess:
+                    ineq_hess.append(jax.hessian(fun)(v_params))
+
+        eq_resid = jnp.concatenate(eq_resid) if eq_resid else jnp.zeros((0,))
+        eq_grads = jnp.concatenate(eq_grads) if eq_grads else jnp.zeros((0, v_params.shape[0]))
+        ineq_resid = jnp.concatenate(ineq_resid) if ineq_resid else jnp.zeros((0,))
+        ineq_grads = jnp.concatenate(ineq_grads) if ineq_grads else jnp.zeros((0, v_params.shape[0]))
+        ineq_hess = jnp.sum(jnp.array(ineq_hess), axis=0) if ineq_hess else jnp.zeros((v_params.shape[0],v_params.shape[0]))
+        return eq_resid, eq_grads, ineq_resid, ineq_grads, ineq_hess
 
     def update(self, objective, solver_state):
         if not isinstance(objective, Minimize):
@@ -82,42 +85,75 @@ class NewtonSolver(IterativeSolver):
         nu_dual, lambda_dual = solver_state.nu_dual, solver_state.lambda_dual
 
         vec_cost = lambda v: objective.eval(solver_state.state, p_fmt(v))[1]
+        f_cost = vec_cost(x)
         f_grad = jax.grad(vec_cost)(x)
         f_hess = jax.hessian(vec_cost)(x)
-        r_primal, A = self._eq_constraints(objective, solver_state.state, solver_state.params)
-        r_cent, D, ineq_hess = self._ineq_constraints(objective, solver_state.state, solver_state.params)
+            
+        r_primal, A, f, D, ineq_hess = self._constraints(objective,
+                                                solver_state.state, solver_state.params)
+        r_cent = -lambda_dual*f - self.eta
+        r_dual = f_grad + D.T @ lambda_dual + A.T @ nu_dual
 
+        def residual(x, lambda_dual, nu_dual):
+            r_primal, A, f, D, _ = self._constraints(objective, solver_state.state, p_fmt(x), False)
+            r_cent = -lambda_dual*f
+            r_dual = f_grad + D.T @ lambda_dual + A.T @ nu_dual
+            return r_dual, r_cent, r_primal
 
-        # The 
+        # The off-diagonal zeros matrices
+        z1 = jnp.zeros((lambda_dual.shape[0], A.shape[0]))
+        z2 = jnp.zeros((A.shape[0], A.shape[0]))
+        # The big boy matrix
+        ld = (lambda_dual * D) if lambda_dual.shape[0] > 0 else jnp.zeros((0,D.shape[1]))
         M = jnp.block([
-            [f_hess + ineq_hess, D.T, A.T],
-            [lambda_dual * D, -jnp.diag(lambda_dual), jnp.zeros(lambda_dual.shape[0], A.shape[0])]
-            [A, jnp.zeros((A.shape[0], A.shape[0]))]
+            [f_hess + ineq_hess,    D.T,                    A.T],
+            [ld,       -jnp.diag(f), z1],
+            [A,                     z1.T,                   z2]
         ])
-        r_dual = f_grad + A.T @ solver_sta
-        v = jnp.block([f_grad, r_primal])
+        #jax.debug.print("M: {}", M)
+        r = jnp.block([r_dual, r_cent, r_primal])
+        r_norm_sq = jnp.sum(jnp.square(r))
+        #jax.debug.print("r: {}", r)
+        d = jnp.linalg.solve(M, -r)
+        #jax.debug.print("d: {}", d)
+        # split d into dx, dlambda, dnu
+        dx, dlambda, dnu = d[:x.shape[0]], \
+                d[x.shape[0]:x.shape[0] + lambda_dual.shape[0]], \
+                d[x.shape[0] + lambda_dual.shape[0]:]
+        #jax.debug.print("dx: {}", dx)
+        #jax.debug.print("dlambda: {}", dlambda)
+        #jax.debug.print("dnu: {}", dnu)
 
-        direction = jnp.solve()
+        # do backtracking
+        #jax.debug.print("l: {}", -lambda_dual/dlambda)
+        ms = jnp.where(dlambda < 0, -lambda_dual/dlambda, 1)
+        s_max = jnp.min(0.99*ms, initial=1)
 
-        reduction = 0.5*grad.T @ direction
-        current_cost = vec_cost(param_v)
-        def backtrack_cond(t):
-            new_cost = vec_cost(param_v + t*direction)
-            exp_cost = current_cost + t*reduction
-            return new_cost > exp_cost
+        # calculate initial lagrangian
+        # and do backtracking on the lagrangian
+        L = f_cost + jnp.dot(nu_dual, r_primal) + jnp.dot(lambda_dual,f)
+        def backtrack_cond(s):
+            r_primal, _, f, _, _ = self._constraints(objective, solver_state.state, p_fmt(x + dx), False)
+            L_new = vec_cost(x + s*dx) + jnp.dot(nu_dual + s*dnu, r_primal) \
+                    + jnp.dot(lambda_dual + s*dlambda,f)
+            return L_new > L + self.alpha*s*jnp.dot(f_grad, dx)/2
 
-        t = jax.lax.while_loop(backtrack_cond,
-                            lambda t: self.beta*t, 1)
-        new_param_v = param_v + t*direction
-        eps = jnp.linalg.norm(param_v - new_param_v)
+        s = jax.lax.while_loop(backtrack_cond,
+                            lambda s: self.beta*s, s_max)
+        new_x = x + s*dx
+        new_nu_dual = nu_dual + s*dnu
+        new_lambda_dual = lambda_dual + s*dlambda
+        r_dual, _, r_primal = residual(new_x, new_lambda_dual, new_nu_dual)
 
         # Find the new state
-        new_params = p_fmt(new_param_v)
-        solved = eps < self.tol
-        return MinimizeState(
+        new_params = p_fmt(new_x)
+        solved = jnp.linalg.norm(new_x - x) < self.tol
+        return NewtonState(
             iteration=solver_state.iteration + 1,
             solved=solved,
             params=new_params,
             state=new_state,
-            aux=aux
+            aux=aux,
+            nu_dual=new_nu_dual,
+            lambda_dual=new_lambda_dual
         )

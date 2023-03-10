@@ -77,6 +77,8 @@ class MPC:
         # problem to the
         try:
             res = self.solver.run(MinimizeMPC(
+                initial_actions=init_actions,
+                state0=state0,
                 cost_fn=self.cost_fn,
                 model_fn=self.model_fn,
                 rollout_fn=self.rollout_fn,

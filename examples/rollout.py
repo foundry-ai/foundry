@@ -14,10 +14,38 @@ from stanza.solver.optax import OptaxSolver
 from stanza.solver.ilqr import iLQRSolver
 
 import optax
+import sys
 
 # create an environment
 logger.info("Creating environment")
 pendulum = envs.create("pendulum")
+
+# rollout_inputs is an alias for the above
+rollout = policy.rollout_inputs(
+            model=pendulum.step,
+            state0=pendulum.reset(PRNGKey(0)),
+            actions=jnp.ones((10,))
+        )
+
+# An MPC policy
+rollout = policy.rollout(
+    model=pendulum.step,
+    state0=pendulum.reset(PRNGKey(0)),
+    policy=MPC(
+        # Sample action
+        action_sample=pendulum.sample_action(PRNGKey(0)),
+        cost_fn=pendulum.cost, 
+        model_fn=pendulum.step,
+        horizon_length=20,
+        solver=NewtonSolver()
+    ),
+    length=50
+)
+logger.info('MPC Rollout with Newton solver results')
+logger.info('states: {}', rollout.states)
+logger.info('actions: {}', rollout.actions)
+
+sys.exit(0)
 
 # Will rollout from a specified input array
 logger.info("Rolling out trajectory")
@@ -25,6 +53,13 @@ rollout = policy.rollout(
             model=pendulum.step,
             state0=pendulum.reset(PRNGKey(0)),
             policy=Actions(jnp.ones((10,)))
+        )
+
+# Rollout helper
+rollout = policy.rollout_inputs(
+            model=pendulum.step,
+            state0=pendulum.reset(PRNGKey(0)),
+            actions=jnp.ones((10,))
         )
 # we can see the rollout results
 logger.info('Actions Rollout Results')
@@ -56,51 +91,21 @@ logger.info('MPC Rollout with Optax solver results')
 logger.info('states: {}', rollout.states)
 logger.info('actions: {}', rollout.actions)
 
-# rollout_inputs is an alias for the above
-rollout = policy.rollout_inputs(
-            model=pendulum.step,
-            state0=pendulum.reset(PRNGKey(0)),
-            actions=jnp.ones((10,))
-        )
 
-# An MPC policy
-rollout = policy.rollout(
-    model=pendulum.step,
-    state0=pendulum.reset(PRNGKey(0)),
-    policy=MPC(
-        # Sample action
-        action_sample=pendulum.sample_action(PRNGKey(0)),
-        cost_fn=pendulum.cost, 
-        model_fn=pendulum.step,
-        horizon_length=20,
-        solver=NewtonSolver()
-    ),
-    length=50
-)
-logger.info('MPC Rollout with Newton solver results')
-logger.info('states: {}', rollout.states)
-logger.info('actions: {}', rollout.actions)
-
-rollout = policy.rollout_inputs(
-            model=pendulum.step,
-            state0=pendulum.reset(PRNGKey(0)),
-            actions=jnp.ones((10,))
-        )
-
-# An MPC policy
-rollout = policy.rollout(
-    model=pendulum.step,
-    state0=pendulum.reset(PRNGKey(0)),
-    policy=MPC(
-        # Sample action
-        action_sample=pendulum.sample_action(PRNGKey(0)),
-        cost_fn=pendulum.cost, 
-        model_fn=pendulum.step,
-        horizon_length=20,
-        solver=iLQRSolver()
-    ),
-    length=50
-)
-logger.info('MPC Rollout with iLQR solver results')
-logger.info('states: {}', rollout.states)
-logger.info('actions: {}', rollout.actions)
+# # An MPC policy
+# rollout = policy.rollout(
+#     model=pendulum.step,
+#     state0=pendulum.reset(PRNGKey(0)),
+#     policy=MPC(
+#         # Sample action
+#         action_sample=pendulum.sample_action(PRNGKey(0)),
+#         cost_fn=pendulum.cost, 
+#         model_fn=pendulum.step,
+#         horizon_length=20,
+#         solver=iLQRSolver()
+#     ),
+#     length=50
+# )
+# logger.info('MPC Rollout with iLQR solver results')
+# logger.info('states: {}', rollout.states)
+# logger.info('actions: {}', rollout.actions)
