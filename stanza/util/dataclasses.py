@@ -33,24 +33,40 @@ def field(*, jax_static=False, **kwargs):
     f = _field(**kwargs, metadata={'jax_static': jax_static})
     return f
 
+def _partition(pred, iterable):
+    trues = []
+    falses = []
+    for item in iterable:
+        if pred(item):
+            trues.append(item)
+        else:
+            falses.append(item)
+    return trues, falses
+
 def _dataclass_flatten(dcls, do):
     from stanza import is_jaxtype
     import jax.util
     # for speeed use jax.util.unzip2
-    keys, values = jax.util.unzip2(sorted(do.__dict__.items()))
-    # use _wrap to deal with functions as part of dataclasses
-    values = [_wrap(v) for v in values]
-    children = values
-    aux = keys
+    def is_static(p):
+        k,_ = p
+        f = dcls.__dataclass_fields__[k]
+        return f.metadata.get('jax_static') if f.metadata else False
+    static_items, dyn_items = _partition(is_static, sorted(do.__dict__.items()))
+
+    static_keys, static_values = jax.util.unzip2(static_items)
+    dyn_keys, dyn_values = jax.util.unzip2(dyn_items)
+    dyn_values = [_wrap(v) for v in dyn_values]
+    children = dyn_values
+    aux = dyn_keys, static_keys, static_values
     return children, aux
 
 def _dataclass_unflatten(dcls, aux, children):
     do = dcls.__new__(dcls)
-    dyn_keys = aux
+    dyn_keys, static_keys, static_values = aux
     dyn_values = children
     dyn_values = [_unwrap(v) for v in dyn_values]
-    # use _unwrap to deal with functions as part of dataclasses
-    attrs = dict(zip(dyn_keys, dyn_values))
+
+    attrs = dict(chain(zip(dyn_keys, dyn_values), zip(static_keys, static_values)))
     # fill in the fields from the children
     for field in dcls.__dataclass_fields__.values():
         if field.name in attrs:

@@ -8,10 +8,10 @@ from typing import Any, Callable
 from stanza import Partial
 
 from stanza.util.logging import logger
-from stanza.util.dataclasses import dataclass, replace, field
+from stanza.util.dataclasses import dataclass, field
 from jax.random import PRNGKey
 
-from stanza.solver import Solver, Minimize, UnsupportedObectiveError, Objective
+from stanza.solver import Solver, Minimize, UnsupportedObectiveError, Objective, EqConstraint
 from stanza.solver.newton import NewtonSolver
 from stanza.policy import Actions, PolicyOutput
 
@@ -95,7 +95,7 @@ class MPC:
 
     def __call__(self, state, policy_state=None):
         if policy_state is None:
-            actions = jax.tree_util.tree_map(lambda x: jnp.zeros((1,) + x.shape), self.action_sample)
+            actions = jax.tree_util.tree_map(lambda x: jnp.zeros((self.horizon_length,) + x.shape), self.action_sample)
         else:
             actions = jax.tree_util.tree_map(lambda x: x.at[:-1].set(x[1:]), policy_state)
         actions = self._solve(state, actions)
@@ -110,19 +110,55 @@ class BarrierMPC(MPC):
     barrier_sdf: Callable = None
     eta: float = 0.001
 
-    # The BarrierMPC loss function has s, params
-    def _loss_fn(self, state0, params):
-        s, actions = params
+    feasibility_solver : Solver = NewtonSolver()
 
+    # The BarrierMPC loss function has s, params
+    def _loss_fn(self, state0, actions):
         states = stanza.policy.rollout(
             self.model_fn, state0, policy=Actions(actions)
         ).states
-
         cost = self.cost_fn(states, actions)
         if not self.barrier_sdf:
             return cost
         b = self.barrier_sdf(states, actions)
         cost + self.eta*jnp.sum(b)
+    
+    # The log-based loss
+    # for finding a feasible point
 
-    def _solve(self, state0, actions):
-        pass
+    def _feas_loss(self, state0, params):
+        s, actions = params
+        states = stanza.policy.rollout(
+            self.model_fn, state0, policy=Actions(actions)
+        ).states
+        # get all of the constraints
+        constr = self.barrier_sdf(states, actions)
+        # constr < s should always hold true
+        val = jnp.sum(-jnp.log(s - constr))
+        val = jnp.nan_to_num(val, nan=jnp.inf)
+        return jnp.sum(val)
+    
+    def _solve_feasible(self, state0, init_actions):
+        init_states = stanza.policy.rollout(
+            self.model_fn, state0, policy=Actions(init_actions)
+        ).states
+        constr = self.barrier_sdf(init_states, init_actions)
+        # make the loss feasible
+        s = 2*jnp.max(constr) + 0.0001
+        res = self.feasibility_solver.run(Minimize(
+            fun=Partial(self._feas_loss, state0),
+            initial_params=(s, init_actions),
+            constraints=(EqConstraint(lambda p: p[0]),)
+        ))
+        s, actions = res.params
+        jax.debug.print("final s: {}", s)
+        return actions
+
+
+    def _solve(self, state0, init_actions):
+        # phase I:
+        if self.barrier_sdf:
+            init_actions = self._solve_feasible(state0, init_actions)
+        # now that we have guaranteed feasibility, solve
+        # the full loss
+        return super()._solve(state0, init_actions)
