@@ -24,6 +24,7 @@ class Minimize(Objective):
 
     # Tuple of parameter constraints
     constraints: tuple = ()
+    early_terminate: Callable = None
 
     # Always of the form (state, params) --> (new_state, cost, aux),
     # and handles the has_state, has_aux cases
@@ -73,12 +74,6 @@ class IterativeSolver(Solver):
     # if requested
     max_iterations: int = field(default=1000, jax_static=True)
 
-    # A custom terminate function,
-    # which will prematurely exit when a given
-    # condition is met. Solvers should *not* populate this
-    # by default and allow users to override.
-    terminate: Callable = None
-
     # step = None is passed in for the first step
     def update(self, objective, state, **kwargs):
         raise NotImplementedError("update() must be implemented")
@@ -93,8 +88,9 @@ class IterativeSolver(Solver):
 
     def _do_step(self, kwargs, objective, loop_state):
         state = self.update(objective, loop_state, **kwargs)
-        if self.terminate is not None:
-            solved = self.terminate(objective, state)
+        # if the objective has an early_terminate condition
+        if hasattr(objective, 'early_terminate') and objective.early_terminate is not None:
+            solved = objective.early_terminate(state)
             state = replace(state, solved=solved)
         return state
     
@@ -124,13 +120,14 @@ class IterativeSolver(Solver):
         combined = jnp.concatenate((of, jnp.zeros((extra_d,))))
         return combined
     
-    def _custom_optimality(self, objective, kwargs, state, params):
+    def _custom_optimality(self, objective, kwargs, state, unflatten, flat_params):
         if hasattr(state, 'params'):
-            state = replace(state, params=params)
+            state = replace(state, params=unflatten(flat_params))
         elif hasattr(state, 'actions'):
-            state = replace(state, actions=params)
+            state = replace(state, actions=unflatten(flat_params))
         grad = self.optimality(objective, state, **kwargs)
-        return grad
+        f_grad, _ = jax.flatten_util.ravel_pytree(grad)
+        return f_grad
 
     def _tangent_solve(self, sol_lin, y):
         jac = jax.jacobian(sol_lin)(y)
@@ -149,13 +146,18 @@ class IterativeSolver(Solver):
             # the loop.
             final_state = jax.lax.stop_gradient(final_state)
 
-            optimality = partial(self._custom_optimality, objective, kwargs, final_state)
             if hasattr(final_state, 'params'):
-                params = jax.lax.custom_root(optimality, final_state.params,
+                flat_params, unflatten = jax.flatten_util.ravel_pytree(final_state.params)
+                optimality = partial(self._custom_optimality, objective, kwargs, final_state, unflatten)
+                params = jax.lax.custom_root(optimality, flat_params,
                                         lambda _, x: x, self._tangent_solve)
+                params = unflatten(params)
                 final_state = replace(final_state, params=params)
             elif hasattr(final_state, 'actions'):
-                actions = jax.lax.custom_root(optimality, final_state.params,
+                flat_params, unflatten = jax.flatten_util.ravel_pytree(final_state.actions)
+                optimality = partial(self._custom_optimality, objective, kwargs, final_state, unflatten)
+                actions = jax.lax.custom_root(optimality, flat_params,
                                         lambda _, x: x, self._tangent_solve)
+                actions = unflatten(actions)
                 final_state = replace(final_state, actions=actions)
         return (final_state, state_history) if history else final_state

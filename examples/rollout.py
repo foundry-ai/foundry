@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-import stanza.envs as envs
+import stanza.env as envs
 import stanza.policy as policy
 import optax
 
@@ -16,7 +16,7 @@ from stanza.solver.ilqr import iLQRSolver
 
 # create an environment
 logger.info("Creating environment")
-env = envs.create("pendulum")
+env = envs.create("linear/di")
 
 # rollout_inputs is an alias for the above
 
@@ -84,22 +84,26 @@ def rollout_mpc_optax():
 
 def rollout_barrier():
     # Barrier-MPC based rollout
+    p = BarrierMPC(
+            # Sample action
+            action_sample=env.sample_action(PRNGKey(0)),
+            barrier_sdf=env.constraints,
+            cost_fn=env.cost, 
+            model_fn=env.step,
+            horizon_length=10,
+        )
+    logger.info("a: {}", p(jnp.array([0., 1.])))
+    return
     rollout = policy.rollout(
         model=env.step,
         state0=env.reset(PRNGKey(0)),
-        policy=BarrierMPC(
-            # Sample action
-            action_sample=env.sample_action(PRNGKey(0)),
-            cost_fn=env.cost, 
-            model_fn=env.step,
-            horizon_length=20,
-        ),
-        length=100
+        policy=p,
+        length=20
     )
-
     logger.info('MPC Rollout with barrier results')
     logger.info('states: {}', rollout.states)
     logger.info('actions: {}', rollout.actions)
+    logger.info('barrier: {}', jnp.max(env.constraints(rollout.states, rollout.actions)))
     logger.info('cost: {}', env.cost(rollout.states, rollout.actions))
 
 
@@ -111,8 +115,9 @@ def rollout_gradient():
             actions=actions
         )
         return env.cost(rollout.states, rollout.actions)
-    grad = jax.grad(roll_cost)(jnp.ones((20,)))
+    grad = jax.grad(roll_cost)(jnp.ones((10,)))
     logger.info("grad: {}", grad)
 
-rollout_mpc_optax()
-#rollout_gradient()
+# rollout_mpc_optax()
+rollout_barrier()
+# rollout_gradient()

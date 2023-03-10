@@ -112,7 +112,7 @@ class NewtonSolver(IterativeSolver):
         ])
         #jax.debug.print("M: {}", M)
         r = jnp.block([r_dual, r_cent, r_primal])
-        r_norm_sq = jnp.sum(jnp.square(r))
+        # r_norm_sq = jnp.sum(jnp.square(r))
         #jax.debug.print("r: {}", r)
         d = jnp.linalg.solve(M, -r)
         #jax.debug.print("d: {}", d)
@@ -120,9 +120,7 @@ class NewtonSolver(IterativeSolver):
         dx, dlambda, dnu = d[:x.shape[0]], \
                 d[x.shape[0]:x.shape[0] + lambda_dual.shape[0]], \
                 d[x.shape[0] + lambda_dual.shape[0]:]
-        #jax.debug.print("dx: {}", dx)
-        #jax.debug.print("dlambda: {}", dlambda)
-        #jax.debug.print("dnu: {}", dnu)
+
 
         # do backtracking
         #jax.debug.print("l: {}", -lambda_dual/dlambda)
@@ -140,10 +138,23 @@ class NewtonSolver(IterativeSolver):
 
         s = jax.lax.while_loop(backtrack_cond,
                             lambda s: self.beta*s, s_max)
+
+        if False:
+            jax.debug.print("x: {} nu: {} lambda: {}", x, nu_dual, lambda_dual)
+            jax.debug.print("cost: {}", f_cost)
+            jax.debug.print("dx: {}", dx)
+            jax.debug.print("dlambda: {}", dlambda)
+            jax.debug.print("dnu: {}", dnu)
+            jax.debug.print("step: {}", s)
         new_x = x + s*dx
         new_nu_dual = nu_dual + s*dnu
         new_lambda_dual = lambda_dual + s*dlambda
-        r_dual, _, r_primal = residual(new_x, new_lambda_dual, new_nu_dual)
+
+        def f(arg, _):
+            if jnp.any(jnp.isnan(arg)):
+                import sys
+                sys.exit(0)
+        jax.experimental.host_callback.id_tap(f, new_x)
 
         # Find the new state
         new_params = p_fmt(new_x)

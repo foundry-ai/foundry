@@ -1,26 +1,12 @@
-from stanza.runtime.database import Database, Experiment, Run, remap, \
-                                    Video, Figure
+from stanza.runtime.database import Database, Table
 
 class DummyDatabase(Database):
     def __init__(self):
         pass
 
-    def experiment(self, name):
-        return DummyExperiment()
-    
+    def open(self, name=None):
+        return DummyTable()
 
-class DummyExperiment(Experiment):
-    def create_run(self, name=None):
-        return DummyRun()
-
-class DummyRun(Run):
-    def __init__(self):
-        pass
-        # self.config = AttrDict()
-        # self.summary = AttrDict()
-
-    def sub_run(self, prefix):
-        return self
-    
-    def _log(self, data):
-        pass
+class DummyTable(Table):
+    def open(self, name=None):
+        return DummyTable()

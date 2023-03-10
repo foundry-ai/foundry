@@ -324,12 +324,12 @@ class RuntimeParser(ArgParser):
         def setter(param, opts, val):
             opts[param] = val
         parser = SimpleParser([OptionParser("target", partial(setter, "target"), nargs=1),
-                               OptionParser("database", partial(setter, "database"), nargs=1)],
+                               OptionParser("db", partial(setter, "database"), nargs=1)],
                               [PositionalParser(partial(setter, "entrypoint"))])
         parser.parse_tokens(opts, tokens)
         # Set defaults
         opts.target = opts.get("target", None) or "poetry://localhost"
-        opts.database = opts.get("database", None) or None
+        opts.database = opts.get("database", None) or "dummy://"
         opts.entrypoint = opts.get("entrypoint", None) or None
         if opts.entrypoint is None:
             raise ArgParseError("Must specify entrypoint")

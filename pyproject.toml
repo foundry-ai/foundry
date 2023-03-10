@@ -23,6 +23,7 @@ plotly = "^5.13.0"
 pandas = "^1.5.3"
 dm-haiku = "^0.0.9"
 trajax = { git = "https://github.com/google/trajax" }
+wandb = "^0.13.11"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.1"

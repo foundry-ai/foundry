@@ -108,7 +108,7 @@ class BarrierMPC(MPC):
     # Takes states, actions as inputs
     # outputs
     barrier_sdf: Callable = None
-    eta: float = 0.001
+    eta: float = 0.01
 
     feasibility_solver : Solver = NewtonSolver()
 
@@ -120,8 +120,11 @@ class BarrierMPC(MPC):
         cost = self.cost_fn(states, actions)
         if not self.barrier_sdf:
             return cost
-        b = self.barrier_sdf(states, actions)
-        cost + self.eta*jnp.sum(b)
+        sdf = self.barrier_sdf(states, actions)
+        b = -jnp.log(-sdf)
+        total_cost = cost + self.eta*jnp.sum(b)
+        total_cost = jnp.nan_to_num(total_cost, nan=jnp.inf)
+        return total_cost
     
     # The log-based loss
     # for finding a feasible point
@@ -138,27 +141,40 @@ class BarrierMPC(MPC):
         val = jnp.nan_to_num(val, nan=jnp.inf)
         return jnp.sum(val)
     
+    # early termination handler
+    def _feas_terminate(self, state0, solver_state):
+        _, actions = solver_state.params
+        init_states = stanza.policy.rollout(
+            self.model_fn, state0, policy=Actions(actions)
+        ).states
+        constr = self.barrier_sdf(init_states, actions)
+        # if all of the constraints are satisfied, early terminate
+        sat = jnp.all(constr < -1e-4)
+        return sat
+    
     def _solve_feasible(self, state0, init_actions):
         init_states = stanza.policy.rollout(
             self.model_fn, state0, policy=Actions(init_actions)
         ).states
         constr = self.barrier_sdf(init_states, init_actions)
-        # make the loss feasible
-        s = 2*jnp.max(constr) + 0.0001
+        # make the feasibility loss always feasible
+        s = jnp.max(constr) + 1
         res = self.feasibility_solver.run(Minimize(
             fun=Partial(self._feas_loss, state0),
             initial_params=(s, init_actions),
-            constraints=(EqConstraint(lambda p: p[0]),)
-        ))
+            constraints=(EqConstraint(lambda p: p[0]),),
+            early_terminate=Partial(self._feas_terminate, state0)
+        ), implicit_diff=False)
         s, actions = res.params
-        jax.debug.print("final s: {}", s)
         return actions
-
-
+    
     def _solve(self, state0, init_actions):
         # phase I:
         if self.barrier_sdf:
+            #jax.debug.print("---------- PHASE I-----------")
             init_actions = self._solve_feasible(state0, init_actions)
+        # phase II:
         # now that we have guaranteed feasibility, solve
         # the full loss
+        #jax.debug.print("---------- PHASE II-----------")
         return super()._solve(state0, init_actions)

@@ -1,4 +1,4 @@
-from stanza.envs import Environment
+from stanza.env import Environment
 
 import jax
 import jax.numpy as jnp
@@ -43,7 +43,7 @@ class PendulumEnvironment(Environment):
 
     def step(self, state, action):
         angle = state.angle + self.dt*state.vel
-        vel = state.vel + self.dt*action #- self.dt*jnp.sin(state.angle) + self.dt*action
+        vel = state.vel + self.dt*jnp.sin(state.angle) + self.dt*action
         state = State(angle, vel)
         return state
     
@@ -52,18 +52,15 @@ class PendulumEnvironment(Environment):
         x = jnp.stack((x.angle, x.vel), -1)
         diff = (x - jnp.array([math.pi, 0]))
         x_cost = jnp.sum(diff**2)
-        #xf_cost = jnp.sum(diff[-1]**2)
+        xf_cost = jnp.sum(diff[-1]**2)
         u_cost = jnp.sum(u**2)
-        return x_cost + u_cost
+        return 5*xf_cost + x_cost + 0.1*u_cost
 
-    def barrier(self, _, us):
+    def constraints(self, _, us):
         constraints = [jnp.ravel(us - 3),
                        jnp.ravel(-3 - us)]
         return jnp.concatenate(constraints)
 
-    def barrier_feasible(self, x0, us):
-        return jnp.zeros_like(us)
-    
     def visualize(self, states, actions):
         traj = px.line(x=jnp.squeeze(states.angle, -1), y=jnp.squeeze(states.vel, -1))
         traj.update_layout(xaxis_title="Theta", yaxis_title="Omega", title="State Trajectory")

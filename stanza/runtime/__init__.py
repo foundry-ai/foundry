@@ -33,8 +33,8 @@ class FuncActivity(Activity):
     
     def run(self, config=None, run=None, *args, **kwargs):
         if run is None:
-            from stanza.runtime.database.dummy import DummyRun
-            run = DummyRun()
+            from stanza.runtime.database.dummy import DummyTable
+            run = DummyTable()
         if config is None:
             config = self.config_dataclass()
         return self._exec(config, run, *args, **kwargs)
@@ -53,6 +53,10 @@ def activity(config_dataclass=None, f=None):
         return functools.wraps(f)(a)
     return decorator
 
+def activity_sub(entrypoint, db_url, cfg):
+    db = Database.from_url(db_url)
+    entrypoint(cfg, db.open())
+
 async def launch_activity_main():
     import sys
     import os
@@ -63,7 +67,8 @@ async def launch_activity_main():
     runtime_cfg = parser.parse_args(sys.argv[1:])
     target = await Target.from_url(runtime_cfg.target)
     async with Pool(target) as p:
-        await p.run(runtime_cfg.activity, runtime_cfg.configs)
+        activity = functools.partial(activity_sub, runtime_cfg.activity, runtime_cfg.database)
+        await p.run(activity, runtime_cfg.configs)
 
 
 # Entrypoint for launching activities, sweeps

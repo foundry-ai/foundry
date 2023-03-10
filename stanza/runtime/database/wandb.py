@@ -1,46 +1,27 @@
 import wandb
 
-from stanza.runtime.database import Database, Experiment, Run, remap, \
-                            Video, Figure
+from stanza.runtime.database import Database, Table, \
+                            Video, Figure, remap
 
 import numpy as np
 
 class WandbDatabase(Database):
-    def __init__(self, entity):
+    def __init__(self, path):
+        path = path or "dpfrommer-projects/"
+        entity, project = path.split("/")
         self.entity = entity
+        self.project = project
     
-    def experiment(self, name):
-        return WandbExperiment(self.entity, name)
-
-class WandbExperiment(Experiment):
-    def __init__(self, entity, name):
-        self.entity = entity
-        self.name = name
-    
-    def create_run(self, name=None):
-        run = wandb.init(entity=self.entity, project=self.name, name=name)
+    def open(self, name=None):
+        run = wandb.init(entity=self.entity, project=self.project, name=name)
         return WandbRun(run)
 
-class WandbRun(Run):
+class WandbRun(Table):
     def __init__(self, run, prefix=''):
         self.run = run
         self.prefix = prefix
    
-    @property
-    def config(self):
-        return self.run.config
-   
-    @property
-    def summary(self):
-        return self.run.summary 
-    
-    def sub_run(self, prefix):
-        if self.prefix != '':
-            return WandbRun(self.run, f'{self.prefix}.{prefix}')
-        else:
-            return WandbRun(self.run, f'{prefix}')
-    
-    def _log(self, data):
+    def log(self, data):
         data = remap(data, {
                 Figure: lambda f: f.fig,
                 Video: lambda v: wandb.Video(np.array(v.data), fps=v.fps)

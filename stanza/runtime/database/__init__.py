@@ -3,6 +3,7 @@ from stanza.util.logging import logger
 from dataclasses import dataclass
 
 import jax.numpy as jnp
+import urllib
 
 class Figure:
     def __init__(self, fig):
@@ -14,21 +15,34 @@ class Video:
         self.fps = fps
 
 class Database:
-    def experiment(self, name):
+    # open a root-level table
+    # name will be auto-generated if None
+    def open(self, name=None):
         pass
 
     @staticmethod
-    def from_url(repo_url):
-        if repo_url == 'dummy':
-            from stanza.experiment.dummy import DummyRepo
-            return DummyRepo()
-        elif repo_url.startswith('wandb/'):
-            entity = repo_url[6:]
-            from stanza.experiment.wandb import WandbRepo
-            return WandbRepo(entity)
+    def from_url(db_url):
+        parsed = urllib.parse.urlparse(db_url)
+        if parsed.scheme == 'dummy':
+            from stanza.runtime.database.dummy import DummyDatabase
+            return DummyDatabase()
+        elif parsed.scheme == 'wandb':
+            entity = parsed.path.lstrip('/')
+            from stanza.runtime.database.wandb import WandbDatabase
+            return WandbDatabase(entity)
+        else:
+            raise RuntimeError("Unknown database url")
 
-class Experiment:
-    def create_run(self, name=None):
+class Table:
+    # open a sub-table
+    # name will be auto-generated if None
+    def open(self, name=None):
+        pass
+
+    def log(self, data):
+        pass
+
+    def tag(self, name):
         pass
 
 def remap(obj, type_mapping):
@@ -44,37 +58,3 @@ def remap(obj, type_mapping):
         return type_mapping[type(obj)](obj)
     else:
         return obj
-
-# Helper function to merge 
-def _merge(a, b, path=None):
-    if path is None: path = []
-    for key in b:
-        if key in a:
-            if isinstance(a[key], dict) and isinstance(b[key], dict):
-                merge(a[key], b[key], path + [str(key)])
-            else:
-                a[key] = b[key]
-        else:
-            a[key] = b[key]
-    return a
-
-class Run:
-    def __init__(self):
-        self.step = 0
-        self._temp_data = {}
-
-    def log(self, data, step=None, commit=True):
-        if step is None and commit:
-            self._log(data)
-        elif step == self.step or not commit:
-            merge(self._temp_data, data)
-        elif step == self.step + 1:
-            self._log(self._temp_data)
-            self._temp_data = {}
-            merge(data, self._temp_data)
-        else:
-            raise RuntimeError("Step must be either current or next!")
-
-    def _log(self, data):
-        raise RuntimeError("Not implemented!")
-
