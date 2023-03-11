@@ -1,7 +1,7 @@
 from .rng import RNGDataset
 
-from stanza.policy import RandomPolicy
-import stanza.policy
+from stanza.policies import RandomPolicy
+import stanza.policies
 import jax
 
 class EnvDataset(RNGDataset):
@@ -19,7 +19,7 @@ class EnvDataset(RNGDataset):
 
     def get(self, iterator):
         rng = super().get(iterator)
-        traj = stanza.policy.rollout(self.env.step,
+        traj = stanza.policies.rollout(self.env.step,
             self.env.reset(rng),
             length=self.traj_length, policy=self.policy, last_state=self.last_state)
         return traj

@@ -1,4 +1,4 @@
-from stanza.policy.imitation_learning import ImitationLearning
+from stanza.policies.imitation_learning import ImitationLearning
 from stanza.dataset.env import EnvDataset
 
 from jax.random import PRNGKey
@@ -11,7 +11,7 @@ import functools
 def net(x, sample_action):
     x_flat, _ = jax.flatten_util.ravel_pytree(x)
 
-env = envs.create("pendulum")
+envs = envs.create("pendulum")
 
 #dataset = EnvDataset(PRNGKey(42), env, 100, policy=iLQR)
 # Train by hand using Trainer()

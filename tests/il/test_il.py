@@ -4,7 +4,7 @@ import jax.numpy as jnp
 from jax.random import PRNGKey
 
 from stanza.dataset import PyTreeDataset
-from stanza.policy.imitation_learning import ImitationLearning
+from stanza.policies.imitation_learning import ImitationLearning
 
 import optax
 import haiku as hk
