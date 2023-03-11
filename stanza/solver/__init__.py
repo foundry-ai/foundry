@@ -30,8 +30,9 @@ class Minimize(Objective):
     # and handles the has_state, has_aux cases
     def eval(self, state, params):
         r = self.fun(state, params) if self.has_state else self.fun(params)
+        r = (r,) if not (self.has_state or self.has_aux) else r
         state, r = (r[0], r[1:]) if self.has_state else (None, r)
-        cost, aux = (r[0], r[1]) if self.has_aux else (r, None)
+        cost, aux = (r[0], r[1]) if self.has_aux else (r[0], None)
         return state, cost, aux
 
 # Fun <= 0

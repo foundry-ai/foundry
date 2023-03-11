@@ -7,6 +7,7 @@ import optax
 from jax.random import PRNGKey
 from stanza.policies import Actions
 from stanza.policies.mpc import MPC, BarrierMPC
+from stanza.policies.grad_estimator import LSEstimator
 from stanza.util.logging import logger
 
 from stanza.solver.newton import NewtonSolver
@@ -59,10 +60,10 @@ def rollout_mpc_optax():
     optimizer = optax.chain(
         # Set the parameters of Adam. Note the learning_rate is not here.
         optax.scale_by_schedule(optax.cosine_decay_schedule(1.0,
-                                1000, alpha=0.01)),
+                                1000, alpha=0.1)),
         optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-8),
         # Put a minus sign to *minimise* the loss.
-        optax.scale(-0.01)
+        optax.scale(-0.05)
     )
     rollout = policies.rollout(
         model=env.step,
@@ -72,15 +73,39 @@ def rollout_mpc_optax():
             action_sample=env.sample_action(PRNGKey(0)),
             cost_fn=env.cost, 
             model_fn=env.step,
+            # The LSE estimator requires stochastic
+            # input for the gradients
             horizon_length=20,
-            solver=OptaxSolver(optimizer=optimizer)
+            solver=OptaxSolver(optimizer=optimizer),
+            #receed=False
         ),
         length=50
+    )
+    # logger.info('MPC Rollout with Optax solver results')
+    # logger.info('states: {}', rollout.states)
+    # logger.info('actions: {}', rollout.actions)
+
+    rollout = policies.rollout(
+        model=env.step,
+        state0=env.reset(PRNGKey(0)),
+        policy=MPC(
+            # Sample action
+            action_sample=env.sample_action(PRNGKey(0)),
+            cost_fn=env.cost, 
+
+            rollout_fn=LSEstimator(samples=50, sigma=0.01, model_fn=env.step),
+            rollout_has_state=True,
+
+            horizon_length=10,
+            solver=OptaxSolver(optimizer=optimizer,max_iterations=10000),
+            receed=False
+        ),
+        length=20
     )
     logger.info('MPC Rollout with Optax solver results')
     logger.info('states: {}', rollout.states)
     logger.info('actions: {}', rollout.actions)
-
+    # do a rollout with stochastic gradient estimation
 
 def rollout_barrier():
     # Barrier-MPC based rollout
@@ -116,6 +141,7 @@ def rollout_gradient():
     grad = jax.grad(roll_cost)(jnp.ones((10,)))
     logger.info("grad: {}", grad)
 
-# rollout_mpc_optax()
-rollout_barrier()
-# rollout_gradient()
+#rollout_mpc_newton()
+rollout_mpc_optax()
+#rollout_barrier()
+#rollout_gradient()

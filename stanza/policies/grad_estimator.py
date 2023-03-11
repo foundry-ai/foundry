@@ -7,6 +7,7 @@ import jax.scipy as jsp
 
 import stanza.envs
 import stanza.util
+import stanza.policies
 from stanza.util.dataclasses import dataclass
 
 from functools import partial
@@ -16,17 +17,23 @@ class EstimatorState(NamedTuple):
     rng: jax.random.PRNGKey
     total_samples: int
 
-@dataclass(jax=True)
-class LeastSquareEstimator:
+@dataclass(jax=True, kw_only=True)
+class LSEstimator:
     samples: int
     sigma: float
-    rollout_fn: Callable
-    def __init__(self, samples, sigma, dynamics):
-        pass
 
-    def __call__(self, rng, state, action):
-        if action is None:
-            self.dynamics(state)
+    # Must supply either rollout_fn or model_fn
+    rollout_fn: Callable=None
+    model_fn: Callable=None
+
+    def _rollout(self, state, actions):
+        if self.rollout_fn:
+            return self.rollout_fn(state, actions)
+        else:
+            return stanza.policies.rollout_inputs(self.model_fn, state, actions)
+
+    def __call__(self, rng, state, actions):
+        return rng, self._rollout(state, actions)
 
 USE_LEAST_SQUARES = True
 

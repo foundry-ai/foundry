@@ -30,9 +30,8 @@ class MinimizeMPC(Objective):
     # Either model_fn or rollout_fn must be specified
     model_fn: Callable = None
     rollout_fn: Callable = None
-
-    # rollout_fn or model_fn accepts rng as the first parameter
-    stochastic_dynamics : bool = field(default=False, jax_static=True)
+    # rollout_fn has a state
+    rollout_has_state: bool = field(default=False, jax_static=True)
 
 # A vanilla MPC controller
 @dataclass(jax=True, kw_only=True)
@@ -45,8 +44,8 @@ class MPC:
     # must be specified.
     model_fn : Callable = None
     rollout_fn : Callable = None
-
-    stochastic_dynamics : bool = field(default=False, jax_static=True)
+    # if rollout_fn takes an rng as the first parameter
+    rollout_has_state: bool = field(default=False, jax_static=True)
 
     # Horizon is part of the static jax type
     horizon_length : int = field(default=20, jax_static=True)
@@ -60,24 +59,23 @@ class MPC:
     # length trajectories with this MPC
     receed : bool = field(default=True, jax_static=True)
 
-    # If the controller should replan at every iteration
-    # you can have receed=False, replan=True
-    # or receed=False, replan=False (plan once, blindly executed)
-    # but not receed=True, replan=False
-    replan : bool = field(default=True, jax_static=True)
-
-    def _loss_fn(self, state0, actions):
+    # the offset, base_states, base_actions are for
+    # when receed=False but replan=True
+    def _loss_fn(self, state0, rollout_state, actions):
         if self.rollout_fn:
-            r = self.rollout_fn(state0, actions)
+            if self.rollout_has_state:
+                rollout_state, r = self.rollout_fn(rollout_state, state0, actions)
+            else:
+                r = self.rollout_fn(state0, actions)
         else:
             r = stanza.policies.rollout(
                     self.model_fn, state0, policy=Actions(actions)
                 )
-        return self.cost_fn(r.states, r.actions)
+        return rollout_state, self.cost_fn(r.states, r.actions)
     
-    def _solve(self, state0, init_actions):
+    def _solve(self, rollout_state, state0, init_actions):
         # Try to provide a MinimizeMPC
-        # problem to the
+        # problem to the solver first
         try:
             res = self.solver.run(MinimizeMPC(
                 initial_actions=init_actions,
@@ -85,25 +83,37 @@ class MPC:
                 cost_fn=self.cost_fn,
                 model_fn=self.model_fn,
                 rollout_fn=self.rollout_fn,
-                stochastic_dynamics=self.stochastic_dynamics
+                rollout_has_state=self.rollout_has_state
             ))
             return res.actions
         except UnsupportedObectiveError:
             pass
         res = self.solver.run(Minimize(
             fun=Partial(self._loss_fn, state0),
-            initial_params=init_actions
+            has_state=True,
+            initial_params=init_actions,
+            initial_state=rollout_state
         ))
-        return res.params
+        return res.state, res.params
 
     def __call__(self, state, policy_state=None):
         if policy_state is None:
             actions = jax.tree_util.tree_map(lambda x: jnp.zeros((self.horizon_length,) + x.shape), self.action_sample)
+            rollout_state = None
+            t = 0
+            rollout_state, actions = self._solve(rollout_state, state, actions)
         else:
-            actions = jax.tree_util.tree_map(lambda x: x.at[:-1].set(x[1:]), policy_state)
-        actions = self._solve(state, actions)
-        action0 = jax.tree_util.tree_map(lambda x: x[0], actions)
-        return PolicyOutput(action0, policy_state=actions)
+            actions = policy_state[0]
+            rollout_state = policy_state[1]
+            t = policy_state[2]
+
+        if self.receed and policy_state is not None:
+            actions = jax.tree_util.tree_map(lambda x: x.at[:-1].set(x[1:]), actions)
+            rollout_state, actions = self._solve(rollout_state, state, actions)
+            action = jax.tree_util.tree_map(lambda x: x[0], actions)
+        else:
+            action = jax.tree_util.tree_map(lambda x: x[t], actions)
+        return PolicyOutput(action, policy_state=(actions, rollout_state, t+1))
 
 # A barrier-based MPC
 @dataclass(jax=True)
@@ -111,12 +121,16 @@ class BarrierMPC(MPC):
     # Takes states, actions as inputs
     # outputs
     barrier_sdf: Callable = None
+
+    # State at which to center the barrier around
+    # if None, uses uncentered
+    center_state: Any = None
     eta: float = 0.01
 
     feasibility_solver : Solver = NewtonSolver()
 
     # The BarrierMPC loss function has s, params
-    def _loss_fn(self, state0, actions):
+    def _loss_fn(self, state0, rollout_state, actions):
         states = stanza.policies.rollout(
             self.model_fn, state0, policy=Actions(actions)
         ).states
@@ -127,7 +141,7 @@ class BarrierMPC(MPC):
         b = -jnp.log(-sdf)
         total_cost = cost + self.eta*jnp.sum(b)
         total_cost = jnp.nan_to_num(total_cost, nan=jnp.inf)
-        return total_cost
+        return rollout_state, total_cost
     
     # The log-based loss
     # for finding a feasible point
@@ -173,7 +187,7 @@ class BarrierMPC(MPC):
         s, actions = res.params
         return actions
     
-    def _solve(self, state0, init_actions):
+    def _solve(self, rollout_state, state0, init_actions):
         # phase I:
         if self.barrier_sdf:
             # jax.debug.print("---------- PHASE I-----------")
@@ -188,4 +202,4 @@ class BarrierMPC(MPC):
         # now that we have guaranteed feasibility, solve
         # the full loss
         # jax.debug.print("---------- PHASE II-----------")
-        return super()._solve(state0, init_actions)
+        return super()._solve(rollout_state, state0, init_actions)

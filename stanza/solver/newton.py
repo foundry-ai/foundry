@@ -135,6 +135,7 @@ class NewtonSolver(IterativeSolver):
             L_new = vec_cost(x + s*dx) + jnp.dot(nu_dual + s*dnu, r_primal) \
                     + jnp.dot(lambda_dual + s*dlambda,f)
             return L_new > L + self.alpha*s*jnp.dot(f_grad, dx)/2
+            #return L_new > L + self.alpha*s*jnp.dot(r_dual, dx)/2
 
         s = jax.lax.while_loop(backtrack_cond,
                             lambda s: self.beta*s, s_max)
