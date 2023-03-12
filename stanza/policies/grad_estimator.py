@@ -8,32 +8,69 @@ import jax.scipy as jsp
 import stanza.envs
 import stanza.util
 import stanza.policies
-from stanza.util.dataclasses import dataclass
+from stanza.util.dataclasses import dataclass, field
 
 from functools import partial
 from typing import NamedTuple, Any, Callable
 
-class EstimatorState(NamedTuple):
+@dataclass(jax=True)
+class EstState:
     rng: jax.random.PRNGKey
+    ref_traj: jnp.array
+    ref_gains: jnp.array
     total_samples: int
 
 @dataclass(jax=True, kw_only=True)
-class LSEstimator:
+class FeedbackEstimator:
     samples: int
     sigma: float
 
-    # Must supply either rollout_fn or model_fn
-    rollout_fn: Callable=None
-    model_fn: Callable=None
+    # Must supply model_fn
+    model_fn: Callable
+    rng: jax.random.PRNGKey
 
-    def _rollout(self, state, actions):
-        if self.rollout_fn:
-            return self.rollout_fn(state, actions)
-        else:
-            return stanza.policies.rollout_inputs(self.model_fn, state, actions)
+    use_gains : bool = field(default=True, jax_static=True)
 
-    def __call__(self, rng, state, actions):
-        return rng, self._rollout(state, actions)
+    # flattened model function
+    def _model_fn_flat(self, x_unflat, u_unflat, x_flat, u_flat):
+        x = x_unflat(x_flat)
+        u = u_unflat(u_flat)
+        x = self.model_fn(x, u)
+        x_flat, _ = jax.flatten_util.ravel_pytree(x)
+        return x_flat
+
+    @jax.custom_jvp
+    def _rollout(self, flat_model_fn, rng, state_flat, actions_flat, gains_flat):
+        return 
+    stanza.policies.rollout(
+            flat_model_fn, state_flat, 
+            stanza.policies.ActionsFeedback(actions_flat, gains_flat)
+        )
+    
+    @_rollout.defjvp
+    def _rollout_jvp(primals, tangents):
+        print(primals)
+
+    def _solve_markov(self, W):
+        raise NotImplementedError("To be implemented by deriving classes")
+
+    def _solve_dynamics(self, W):
+        raise NotImplementedError("To be implemented by deriving classes")
+    
+    def __call__(self, est_state, state, inputs):
+        r = stanza.policies.rollout(self.model_fn, state, inputs)
+        x = jax.tree_util.tree_map(lambda x: jax.flatten_util.ravel_pytree(x)[0], r.states)
+        if est_state is None:
+            est_state = EstState(
+                self.rng,
+            )
+        rng, gains = est_state
+        new_est_state = rng, gains
+        return new_est_state, self._rollout(rng, state, actions, gains)
+
+class LSFeedbackEstimator(FeedbackEstimator):
+    def _solve_markov(self, W):
+        pass
 
 USE_LEAST_SQUARES = True
 

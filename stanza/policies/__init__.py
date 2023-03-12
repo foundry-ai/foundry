@@ -145,6 +145,28 @@ class Actions:
         return PolicyOutput(action=action, policy_state=T + 1)
 
 @dataclass(jax=True)
+class ActionsFeedback:
+    actions: Any
+    ref_states: Any
+    ref_gains: Any
+
+    @property
+    def rollout_length(self):
+        lengths, _ = jax.tree_util.tree_flatten(
+            jax.tree_util.tree_map(lambda x: x.shape[0], self.actions)
+        )
+        return lengths[0] + 1
+
+    @jax.jit
+    def __call__(self, x, T=None):
+        T = T if T is not None else 0
+        action = jax.tree_util.tree_map(lambda x: x[T], self.actions)
+        ref_x = jax.tree_util.tree_map(lambda x: x[T], self.ref_states)
+        ref_gain = jax.tree_util.tree_map(lambda x: x[T], self.ref_gains)
+        fb_action = action + ref_gain @ (x - ref_x)
+        return PolicyOutput(action=fb_action, policy_state=T + 1)
+
+@dataclass(jax=True)
 class NoisyPolicy:
     rng_key: PRNGKey
     sigma: float

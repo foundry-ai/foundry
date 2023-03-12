@@ -40,11 +40,11 @@ class MPC:
     cost_fn : Any
 
     # either model_fn (state, u) --> state 
-    # or rollout_fn (state0, us) --> states
+    # or rollout_fn (state0, inputs) --> states
     # must be specified.
     model_fn : Callable = None
     rollout_fn : Callable = None
-    # if rollout_fn takes an rng as the first parameter
+    # if rollout_fn takes a state as the first parameter
     rollout_has_state: bool = field(default=False, jax_static=True)
 
     # Horizon is part of the static jax type

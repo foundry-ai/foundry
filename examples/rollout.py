@@ -7,7 +7,7 @@ import optax
 from jax.random import PRNGKey
 from stanza.policies import Actions
 from stanza.policies.mpc import MPC, BarrierMPC
-from stanza.policies.grad_estimator import LSEstimator
+from stanza.policies.grad_estimator import LSFeedbackEstimator
 from stanza.util.logging import logger
 
 from stanza.solver.newton import NewtonSolver
@@ -93,7 +93,7 @@ def rollout_mpc_optax():
             action_sample=env.sample_action(PRNGKey(0)),
             cost_fn=env.cost, 
 
-            rollout_fn=LSEstimator(samples=50, sigma=0.01, model_fn=env.step),
+            rollout_fn=LSFeedbackEstimator(samples=50, sigma=0.01, model_fn=env.step),
             rollout_has_state=True,
 
             horizon_length=10,
