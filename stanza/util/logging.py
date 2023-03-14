@@ -114,6 +114,7 @@ logger = JaxLogger()
 class ProgressBar:
     def __init__(self, topic, total):
         self.topic = topic
+        self.total = total
         jax.debug.callback(self._create, total, ordered=True)
 
     def inc(self, amt=1, stats={}):
@@ -127,17 +128,14 @@ class ProgressBar:
         jax.debug.callback(self._close, ordered=True)
 
     def _create(self, total):
-        self.bar = tqdm.tqdm(total=total)
-        s = ''
-        self.bar.set_description(f' {topic} | {s:6} ')
+        pass
 
     def _inc(self, amt, stats):
         postfix = ', '.join([f'{k}: {v.item():8.3}' for (k,v) in stats.items()])
-        self.bar.set_postfix_str(postfix)
-        self.bar.update(amt)
+        console.log(f'{self.topic} - {postfix}')
 
     def _close(self):
-        self.bar.close()
+        pass
 
     def __enter__(self):
         return self

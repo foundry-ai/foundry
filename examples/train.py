@@ -47,11 +47,13 @@ def loss_fn(params, rng_key, sample):
     return loss, {'loss': loss}
 
 # Train by hand using Trainer()
-trainer = Trainer(loss_fn, max_iterations=1000)
-
 logger.info("Generating dataset...")
 dataset = PyTreeDataset.from_dataset(dataset[:10])
 logger.info("Training model...")
+trainer = Trainer(loss_fn, max_iterations=1000)
+trainer.train(dataset, PRNGKey(0), params)
+logger.info("Training model with smaller batch size...")
+trainer = Trainer(loss_fn, batch_size=5, max_iterations=1000)
 trainer.train(dataset, PRNGKey(0), params)
 
 # A convenience wrapper for the above

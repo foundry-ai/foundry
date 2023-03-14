@@ -12,27 +12,41 @@ import jax
 import jax.numpy as jnp
 
 @dataclass(jax=True)
-class TrainState:
+class EpochState:
     epoch: int
     iteration: int
 
-    full_dataset: Any
-    batch_dataset: Any
-    first_batch: Any # None if not on first batch
-    iterator: Any
+    max_iterations: int
+
+    shuffle: bool = field(jax_static=True)
+    dataset: Any
 
     rng_key: PRNGKey
     fn_params: Any
     fn_state: Any
     opt_state: Any
 
+@dataclass(jax=True)
+class StepState:
+    epoch: int
+    iteration: int
+
+    max_iterations: int
+
+    batch_dataset: Any
+    batch_iterator: Any
+    first_batch: Any
+
+    rng_key: PRNGKey
+    fn_params: Any
+    fn_state: Any
+    opt_state: Any
 
 @dataclass(jax=True)
 class TrainResults:
     fn_params: Any
     fn_state: Any
     opt_state: Any
-    history: Any
 
 # A sentinel for not passing in state
 # to the loss function
@@ -70,11 +84,11 @@ class Trainer:
         rng_key, sk = jax.random.split(state.rng_key)
 
         if state.first_batch is None:
-            batch = state.batch_dataset.get(state.iterator)
-            iterator = state.batch_dataset.next(state.iterator)
+            batch = state.batch_dataset.get(state.batch_iterator)
+            iterator = state.batch_dataset.next(state.batch_iterator)
         else: 
             batch = state.first_batch
-            iterator = state.iterator
+            iterator = state.batch_iterator
 
         batch_fn = partial(self._batch_loss_fn, state.fn_state,
                         sk, batch)
@@ -84,55 +98,64 @@ class Trainer:
 
         fn_params = optax.apply_updates(state.fn_params, updates)
 
-        return TrainState(
+        return StepState(
             epoch=state.epoch,
             iteration=state.iteration + 1,
+            max_iterations=state.max_iterations,
 
             first_batch=None,
-            full_dataset=state.full_dataset,
             batch_dataset=state.batch_dataset,
-            iterator=iterator,
+            batch_iterator=iterator,
 
             rng_key=rng_key,
             fn_params=fn_params,
             fn_state=fn_state,
             opt_state=opt_state
-        ), stats
+        )
     
-    @partial(jax.jit, static_argnums=(1,))
-    def _adv_epoch(self, shuffle, state):
-        rng_key, sk = jax.random.split(state.rng_key)
-        if shuffle:
-            full_dataset = state.full_dataset.shuffle(sk)
+    @jax.jit
+    def _train_epoch(self, state):
+        if state.shuffle:
+            rng_key, sk = jax.random.split(state.rng_key)
+            dataset = state.dataset.shuffle(rng_key)
         else:
-            full_dataset = state.full_dataset
-        first_batch, dataset = full_dataset.batch(self.batch_size, ret_first=True)
-        new_state = TrainState(
-            epoch=state.epoch,
-            iteration=state.iteration,
+            rng_key = state.rng_key
+            dataset = state.dataset
 
-            full_dataset=state.full_dataset,
-            batch_dataset=dataset,
+        first_batch, batch_dataset = dataset.batch(self.batch_size, ret_first=True)
+        step_state = StepState(
+            epoch=state.epoch, iteration=state.iteration,
+            max_iterations=state.max_iterations,
+
             first_batch=first_batch,
-            iterator=dataset.start,
+            batch_dataset=batch_dataset,
+            batch_iterator=batch_dataset.start,
 
             rng_key=rng_key,
             fn_params=state.fn_params,
             fn_state=state.fn_state,
             opt_state=state.opt_state
         )
-        return self._train_step(new_state)
 
-    @partial(jax.jit, static_argnums=(1,2))
-    def _train_scan(self, pb, shuffle, state, _):
-        new_epoch = state.batch_dataset.is_end(state.iterator)
-        state, stats = jax.lax.cond(new_epoch,
-            partial(self._adv_epoch, shuffle), self._train_step, state)
+        if first_batch is not None:
+            step_state = self._train_step(step_state)
 
-        # move the progress bar!
-        if pb is not None:
-            pb.inc(1, stats)
-        return state, stats
+        if batch_dataset.length > 0:
+            step_state = jax.lax.while_loop(lambda s: jnp.logical_and(s.iteration < s.max_iterations,
+                                                jnp.logical_not(s.batch_dataset.is_end(s.batch_iterator))),
+                                self._train_step, step_state)
+
+        return EpochState(
+            epoch=state.epoch + 1, iteration=step_state.iteration,
+            max_iterations=state.max_iterations,
+
+            shuffle=state.shuffle,
+            dataset=state.dataset,
+            rng_key=step_state.rng_key,
+            fn_params=step_state.fn_params,
+            fn_state=step_state.fn_state,
+            opt_state=step_state.opt_state
+        )
     
     @partial(jax.jit, static_argnums=(8,9))
     def train(self, dataset, rng_key,
@@ -159,43 +182,32 @@ class Trainer:
         if shuffle:
             dataset = dataset.shuffle(sub_key)
 
-        first_batch, batch_dataset = dataset.batch(self.batch_size)
+        num_batches = (dataset.length - 1) // self.batch_size + 1
         if max_iterations is None:
-            max_iterations = (batch_dataset.length + 1)*epochs
+            max_iterations = num_batches*epochs
             if not jnp.isfinite(max_iterations):
                 raise ValueError("Must train for a finite number of iterations")
 
-
-        state = TrainState(
+        state = EpochState(
             epoch=0, iteration=0,
+            max_iterations=max_iterations,
+            
+            shuffle=shuffle,
+            dataset=dataset,
 
-            full_dataset=dataset,
-            batch_dataset=batch_dataset,
-            first_batch=first_batch,
-            iterator=batch_dataset.start,
             rng_key=rng_key, 
             fn_params=init_fn_params,
             fn_state=init_fn_state,
             opt_state=init_opt_state
         )
-        if show_pbar:
-            with pbar('trainer', total=max_iterations) as pb:
-                # Do out the first step!
-                state, stats = self._train_scan(pb, shuffle, state, None)
-                final_state, stat_history = jax.lax.scan(partial(self._train_scan, pb), 
-                                                         state, None, length=(max_iterations - 1))
-        else:
-            final_state, stat_history = jax.lax.scan(partial(self._train_scan, None), state, None, length=max_iterations)
-            # for i in range(max_iterations):
-            #     state, _ = self._train_scan(pb, state, None)
-            # final_state = state
-            # stat_history = None
-        # return the final state and stat history
-        logger.info("trainer", "Training complete")
+
+        final_state = jax.lax.while_loop(
+            lambda s: s.iteration < max_iterations,
+            self._train_epoch, state
+        )
         results = TrainResults(
             fn_params = final_state.fn_params,
             fn_state = final_state.fn_state,
             opt_state = final_state.opt_state,
-            history = stat_history
         )
         return results

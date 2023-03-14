@@ -142,7 +142,7 @@ class PyTreeDataset(Dataset):
                 lambda x: x[:first_dim].reshape((first_dim, -1) + x.shape[1:]), 
                 self.data)
             batches = jax.tree_util.tree_map(
-                lambda x: x[first_dim:].reshape((n, -1) + x.shape[1:]), 
+                lambda x: x[first_dim:].reshape((-1, n) + x.shape[1:]), 
                 self.data)
             return first_batch, PyTreeDataset(batches)
         else:
