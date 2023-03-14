@@ -24,7 +24,14 @@ class Minimize(Objective):
 
     # Tuple of parameter constraints
     constraints: tuple = ()
+
+    # (optimizer_state) --> bool
     early_terminate: Callable = None
+
+    # custom per-iteration
+    # optimizer_state --> optimizer_state
+    # callback
+    post_step_callback: Callable = None
 
     # Always of the form (state, params) --> (new_state, cost, aux),
     # and handles the has_state, has_aux cases
@@ -93,6 +100,8 @@ class IterativeSolver(Solver):
         if hasattr(objective, 'early_terminate') and objective.early_terminate is not None:
             solved = objective.early_terminate(state)
             state = replace(state, solved=solved)
+        if hasattr(objective, 'post_step_callback') and objective.post_step_callback is not None:
+            state = objective.post_step_callback(state)
         return state
     
     def _scan_fn(self, kwargs, objective, loop_state, _):

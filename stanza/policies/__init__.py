@@ -3,7 +3,8 @@ import jax.numpy as jnp
 from jax.random import PRNGKey
 from typing import Callable, Any
 import stanza
-from stanza.util.dataclasses import dataclass
+from stanza.util.dataclasses import dataclass, field
+from stanza.util.attrdict import Attrs
 from functools import partial
 
 # A policy is a function from x --> u or
@@ -14,9 +15,7 @@ class PolicyOutput:
     action: Any
     # The policy state
     policy_state: Any = None
-    # Aux output of the policy
-    # this can be anything!
-    aux: Any = None
+    extra: Attrs = field(default_factory=Attrs)
 
 @dataclass(jax=True)
 class Trajectory:
@@ -27,7 +26,7 @@ class Trajectory:
 # final policy state
 @dataclass(jax=True)
 class Rollout(Trajectory):
-    aux: Any = None
+    extras: Attrs = field(default_factory=Attrs)
     final_policy_state: Any = None
 
 # Mainly useful for type hints,
@@ -91,16 +90,16 @@ def rollout(model, state0,
         if policy is not None:
             policy_output = policy(env_state, policy_state)
             action = policy_output.action
-            aux = policy_output.aux
+            extra = policy_output.extra
 
             new_policy_state = policy_output.policy_state
             new_env_state = model(env_state, action)
         else:
             action = None
-            aux = None
+            extra = None
             new_env_state = model(env_state)
             new_policy_state = policy_state
-        return (new_env_state, new_policy_state), (env_state, action, aux)
+        return (new_env_state, new_policy_state), (env_state, action, extra)
 
     # Do the first step manually to populate the policy state
     state = (state0, None)
@@ -112,13 +111,13 @@ def rollout(model, state0,
         lambda a, b: jnp.concatenate((jnp.expand_dims(a,0), b)),
         first_output, outputs)
 
-    states, us, auxs = outputs
+    states, us, extras = outputs
     if last_state:
         states = jax.tree_util.tree_map(
             lambda a, b: jnp.concatenate((a, jnp.expand_dims(b, 0))),
             states, state_f)
     return Rollout(states=states, actions=us, 
-        aux=auxs, final_policy_state=policy_state_f)
+        extras=extras, final_policy_state=policy_state_f)
 
 # Shorthand alias for rollout with an actions policy
 def rollout_inputs(model, state0, actions, last_state=True):

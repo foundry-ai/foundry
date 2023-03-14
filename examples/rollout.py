@@ -7,7 +7,7 @@ import optax
 from jax.random import PRNGKey
 from stanza.policies import Actions
 from stanza.policies.mpc import MPC, BarrierMPC
-from stanza.policies.grad_estimator import LSFeedbackEstimator
+from stanza.policies.grad_estimator import FeedbackRollout
 from stanza.util.logging import logger
 
 from stanza.solver.newton import NewtonSolver
@@ -81,9 +81,10 @@ def rollout_mpc_optax():
         ),
         length=50
     )
-    # logger.info('MPC Rollout with Optax solver results')
-    # logger.info('states: {}', rollout.states)
-    # logger.info('actions: {}', rollout.actions)
+    logger.info('MPC Rollout with Optax solver results')
+    logger.info('states: {}', rollout.states)
+    logger.info('actions: {}', rollout.actions)
+    logger.info('------ Rolling out with Feedback Gains ------')
 
     rollout = policies.rollout(
         model=env.step,
@@ -93,7 +94,7 @@ def rollout_mpc_optax():
             action_sample=env.sample_action(PRNGKey(0)),
             cost_fn=env.cost, 
 
-            rollout_fn=LSFeedbackEstimator(samples=50, sigma=0.01, model_fn=env.step),
+            rollout_fn=FeedbackRollout(model_fn=env.step, rng_key=PRNGKey(0)),
             rollout_has_state=True,
 
             horizon_length=10,

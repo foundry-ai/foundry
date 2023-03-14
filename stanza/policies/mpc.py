@@ -8,7 +8,7 @@ from typing import Any, Callable
 from stanza import Partial
 
 from stanza.util.logging import logger
-from stanza.util.dataclasses import dataclass, field
+from stanza.util.dataclasses import dataclass, field, replace
 from jax.random import PRNGKey
 
 from stanza.solver import Solver, Minimize, UnsupportedObectiveError, Objective, EqConstraint
@@ -44,11 +44,12 @@ class MPC:
     # must be specified.
     model_fn : Callable = None
     rollout_fn : Callable = None
+
     # if rollout_fn takes a state as the first parameter
     rollout_has_state: bool = field(default=False, jax_static=True)
 
     # Horizon is part of the static jax type
-    horizon_length : int = field(default=20, jax_static=True)
+    horizon_length : int = field(jax_static=True)
 
     # Solver must be a dataclass with either (1) a "fun" argument
     # or (2) a dynamics_fn, cost_fn argument
@@ -73,6 +74,19 @@ class MPC:
                 )
         return rollout_state, self.cost_fn(r.states, r.actions)
     
+    # if the rollout_fn has an update_actions (roll_state, state0, actions) --> actions
+    # to be called after each iteration, it will be called here
+    def _post_step_cb(self, state0, solver_state):
+        actions = solver_state.params
+        roll_state = solver_state.state
+        if hasattr(self.rollout_fn, 'update_actions'):
+            actions = self.rollout_fn.update_actions(state0, actions)
+            if self.rollout_has_state:
+                roll_state, actions = self.rollout_fn.update_actions(roll_state, state0, actions)
+            else:
+                actions = self.rollout_fn.update_actions(state0, actions)
+        return replace(solver_state, params=actions, state=roll_state)
+    
     def _solve(self, rollout_state, state0, init_actions):
         # Try to provide a MinimizeMPC
         # problem to the solver first
@@ -92,7 +106,8 @@ class MPC:
             fun=Partial(self._loss_fn, state0),
             has_state=True,
             initial_params=init_actions,
-            initial_state=rollout_state
+            initial_state=rollout_state,
+            post_step_callback=Partial(self._post_step_cb, state0)
         ))
         return res.state, res.params
 

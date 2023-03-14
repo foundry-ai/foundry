@@ -1,6 +1,6 @@
 from typing import Callable, Any
 from stanza.util.logging import logger, pbar
-from stanza.util.dataclasses import dataclass
+from stanza.util.dataclasses import dataclass, field
 from jax.random import PRNGKey
 from stanza import Partial
 from functools import partial
@@ -18,6 +18,7 @@ class TrainState:
 
     full_dataset: Any
     batch_dataset: Any
+    first_batch: Any # None if not on first batch
     iterator: Any
 
     rng_key: PRNGKey
@@ -42,10 +43,10 @@ NO_STATE=NO_STATE_TYPE()
 class Trainer:
     loss_fn: Callable
     optimizer: optax.GradientTransformation = optax.adam(0.001)
-    batch_size: int = 32
-    preprocess_fn = None
-    epochs = None
-    max_iterations = None
+    batch_size: int = field(default=32, jax_static=True)
+    preprocess_fn : Callable = None
+    epochs : int = field(default=None, jax_static=True)
+    max_iterations : int = field(default=None, jax_static=True)
 
     @jax.jit
     def _batch_loss_fn(self, fn_state, rng_key, batch, fn_params):
@@ -65,11 +66,15 @@ class Trainer:
         return loss, (stats, fn_state)
 
     @jax.jit
-    def _train_step(self, state):
+    def _train_step(self, state): # first_batch is non-None
         rng_key, sk = jax.random.split(state.rng_key)
 
-        batch = state.batch_dataset.get(state.iterator)
-        iterator = state.batch_dataset.next(state.iterator)
+        if state.first_batch is None:
+            batch = state.batch_dataset.get(state.iterator)
+            iterator = state.batch_dataset.next(state.iterator)
+        else: 
+            batch = state.first_batch
+            iterator = state.iterator
 
         batch_fn = partial(self._batch_loss_fn, state.fn_state,
                         sk, batch)
@@ -83,6 +88,7 @@ class Trainer:
             epoch=state.epoch,
             iteration=state.iteration + 1,
 
+            first_batch=None,
             full_dataset=state.full_dataset,
             batch_dataset=state.batch_dataset,
             iterator=iterator,
@@ -98,13 +104,16 @@ class Trainer:
         rng_key, sk = jax.random.split(state.rng_key)
         if shuffle:
             full_dataset = state.full_dataset.shuffle(sk)
-        dataset = full_dataset.batch(self.batch_size)
-        return TrainState(
+        else:
+            full_dataset = state.full_dataset
+        first_batch, dataset = full_dataset.batch(self.batch_size, ret_first=True)
+        new_state = TrainState(
             epoch=state.epoch,
             iteration=state.iteration,
 
             full_dataset=state.full_dataset,
             batch_dataset=dataset,
+            first_batch=first_batch,
             iterator=dataset.start,
 
             rng_key=rng_key,
@@ -112,13 +121,13 @@ class Trainer:
             fn_state=state.fn_state,
             opt_state=state.opt_state
         )
+        return self._train_step(new_state)
 
-    @partial(jax.jit, static_argnums=(2,3))
+    @partial(jax.jit, static_argnums=(1,2))
     def _train_scan(self, pb, shuffle, state, _):
         new_epoch = state.batch_dataset.is_end(state.iterator)
-        state = jax.lax.cond(new_epoch,
-            partial(self._adv_epoch, shuffle), lambda x: x, state)
-        state, stats = self._train_step(state)
+        state, stats = jax.lax.cond(new_epoch,
+            partial(self._adv_epoch, shuffle), self._train_step, state)
 
         # move the progress bar!
         if pb is not None:
@@ -143,9 +152,6 @@ class Trainer:
         if init_opt_state is None:
             init_opt_state = self.optimizer.init(init_fn_params)
 
-        if self.preprocess:
-            dataset = self.preprocess(dataset)
-
         if not max_iterations and not epochs:
             raise ValueError("Must specify either number of epochs or iterations")
         
@@ -153,9 +159,9 @@ class Trainer:
         if shuffle:
             dataset = dataset.shuffle(sub_key)
 
-        batch_dataset = dataset.batch(self.batch_size)
+        first_batch, batch_dataset = dataset.batch(self.batch_size)
         if max_iterations is None:
-            max_iterations = batch_dataset.length*epochs
+            max_iterations = (batch_dataset.length + 1)*epochs
             if not jnp.isfinite(max_iterations):
                 raise ValueError("Must train for a finite number of iterations")
 
@@ -165,6 +171,7 @@ class Trainer:
 
             full_dataset=dataset,
             batch_dataset=batch_dataset,
+            first_batch=first_batch,
             iterator=batch_dataset.start,
             rng_key=rng_key, 
             fn_params=init_fn_params,
@@ -173,7 +180,10 @@ class Trainer:
         )
         if show_pbar:
             with pbar('trainer', total=max_iterations) as pb:
-                final_state, stat_history = jax.lax.scan(partial(self._train_scan, pb), state, None, length=max_iterations)
+                # Do out the first step!
+                state, stats = self._train_scan(pb, shuffle, state, None)
+                final_state, stat_history = jax.lax.scan(partial(self._train_scan, pb), 
+                                                         state, None, length=(max_iterations - 1))
         else:
             final_state, stat_history = jax.lax.scan(partial(self._train_scan, None), state, None, length=max_iterations)
             # for i in range(max_iterations):

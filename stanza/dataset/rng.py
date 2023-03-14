@@ -1,10 +1,11 @@
 from stanza.dataset import Dataset, INFINITE
+from stanza.util.dataclasses import dataclass
 
 import jax.random
 
+@dataclass(jax=True)
 class RNGDataset(Dataset):
-    def __init__(self, rng_key):
-        self.rng_key = rng_key
+    rng_key: jax.random.PRNGKey
 
     @property
     def start(self):

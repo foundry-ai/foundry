@@ -8,28 +8,35 @@ import jax.scipy as jsp
 import stanza.envs
 import stanza.util
 import stanza.policies
+
+from stanza.policies import Rollout, ActionsFeedback
 from stanza.util.dataclasses import dataclass, field
+from stanza.util import mapped_ravel_pytree
 
 from functools import partial
-from typing import NamedTuple, Any, Callable
+from typing import Callable
 
 @dataclass(jax=True)
 class EstState:
-    rng: jax.random.PRNGKey
-    ref_traj: jnp.array
-    ref_gains: jnp.array
+    rng_key: jax.random.PRNGKey
+    ref_old_states: jnp.array
+    ref_old_gains: jnp.array
+    ref_new_states: jnp.array
+    ref_new_gains: jnp.array
     total_samples: int
 
 @dataclass(jax=True, kw_only=True)
-class FeedbackEstimator:
-    samples: int
-    sigma: float
-
-    # Must supply model_fn
+class FeedbackRollout:
+    # A rollout function where extras.A and extras.B
+    # are populated
     model_fn: Callable
-    rng: jax.random.PRNGKey
+    rng_key: jax.random.PRNGKey
+
+    samples : int = field(default=0, jax_static=True)
+    sigma : float = field(default=0.001)
 
     use_gains : bool = field(default=True, jax_static=True)
+    burn_in : int = field(default=10, jax_static=True)
 
     # flattened model function
     def _model_fn_flat(self, x_unflat, u_unflat, x_flat, u_flat):
@@ -39,38 +46,83 @@ class FeedbackEstimator:
         x_flat, _ = jax.flatten_util.ravel_pytree(x)
         return x_flat
 
-    @jax.custom_jvp
-    def _rollout(self, flat_model_fn, rng, state_flat, actions_flat, gains_flat):
-        return 
-    stanza.policies.rollout(
-            flat_model_fn, state_flat, 
-            stanza.policies.ActionsFeedback(actions_flat, gains_flat)
-        )
-    
-    @_rollout.defjvp
-    def _rollout_jvp(primals, tangents):
-        print(primals)
+    # returns 
+    def _rollout_with_jac(self, flat_model_fn, rng_key, ref_states, ref_gains, state0, actions):
+        def rollout(actions):
+            return stanza.policies.rollout(
+                flat_model_fn, state0, 
+                stanza.policies.ActionsFeedback(actions, ref_states, ref_gains)
+            ).states
+        states = rollout(actions)
+        jac = jax.jacrev(rollout)(actions)
+        return states, jac
 
     def _solve_markov(self, W):
         raise NotImplementedError("To be implemented by deriving classes")
 
-    def _solve_dynamics(self, W):
-        raise NotImplementedError("To be implemented by deriving classes")
+    def _solve_A_B(self, jac, prev_gains):
+        C = jac[:self.burn_in,self.burn_in:]
+        C_k = C[:,:-1]
+        C_kp = C[:,1:]
+        # flatten out the first dimension into the column dimension
+        C_k = jnp.transpose(C_k, (1,2,0,3))
+        C_k = C_k.reshape((C_k.shape[0], C_k.shape[1],-1))
+        C_kp = jnp.transpose(C_kp, (1,2,0,3))
+        C_kp = C_kp.reshape((C_kp.shape[0], C_kp.shape[1],-1))
+        # C_k, C_kp are (traj_length - burn_in - 1, x_dim, input x burn_in)
+        # the pseudoinverse should broadcast over the first dimension
+        # select 1 above the jacobian diagonal for the Bs
+        Bs_est = jnp.transpose(jnp.diagonal(jac, 1), (2,0,1))[self.burn_in:]
+        # estimate the A matrices
+        As_est = C_kp @ jnp.linalg.pinv(C_k) - Bs_est @ prev_gains[self.burn_in:]
     
-    def __call__(self, est_state, state, inputs):
-        r = stanza.policies.rollout(self.model_fn, state, inputs)
-        x = jax.tree_util.tree_map(lambda x: jax.flatten_util.ravel_pytree(x)[0], r.states)
+    def _synth_gains(self, As, Bs):
+        return As
+
+    # Modify the actions to account for feedback gains
+    def update_actions(self, est_state, state0, actions):
+        if not self.use_gains:
+            return actions
+        state_flat, x_unflat = jax.flatten_util.ravel_pytree(state0)
+        actions_flat, actions_unflat, u_unflat = mapped_ravel_pytree(actions)
+        model_flat = partial(self._model_fn_flat, x_unflat, u_unflat)
+
+        # We took a step under the system with the old gains,
+        # rollout with the old gains
+        ref = stanza.policies.rollout(model_flat, state_flat, actions_flat)
+        actions_mod = actions_flat + est_state.ref_old_gains @ (ref.states - est_state.ref_states)
+        return actions_unflat(actions_mod)
+
+    def __call__(self, est_state, state0, actions):
+        state0_flat, x_unflat = jax.flatten_util.ravel_pytree(state0)
+        actions_flat, us_unflat, u_unflat = mapped_ravel_pytree(actions)
+        model_flat = partial(self._model_fn_flat, x_unflat, u_unflat)
+
         if est_state is None:
-            est_state = EstState(
-                self.rng,
-            )
-        rng, gains = est_state
-        new_est_state = rng, gains
-        return new_est_state, self._rollout(rng, state, actions, gains)
+            rng_key = self.rng_key
+            ref_states = stanza.policies.rollout_inputs(model_flat, state0_flat, actions_flat).states
+            ref_states = jax.lax.stop_gradient(ref_states)
+            ref_gains = jnp.zeros((ref_states.shape[0], actions_flat.shape[1], ref_states.shape[1]))
+        else:
+            rng_key = est_state.rng_key
+            ref_states, ref_gains = est_state.ref_new_states, est_state.ref_new_gains
 
-class LSFeedbackEstimator(FeedbackEstimator):
-    def _solve_markov(self, W):
-        pass
+        rng_key, sk = jax.random.split(rng_key)
+
+        states_flat, jac = self._rollout_with_jac(model_flat, sk, ref_states, ref_gains, state0_flat, actions_flat)
+        if self.use_gains:
+            As, Bs = self._solve_A_B(jac, ref_gains)
+            new_gains = self._synth_gains(As, Bs)
+            actions_flat = actions_flat + ref_gains @ (states_flat - ref_states)
+
+        actions = us_unflat(actions_flat)
+        states = jax.vmap(x_unflat)(states_flat)
+        # modify actions based on gains
+        new_est_state = EstState(
+            rng_key=rng_key, ref_states=ref_states,
+            ref_gains=ref_gains
+        )
+        return new_est_state, Rollout(states, actions)
 
 USE_LEAST_SQUARES = True
 
