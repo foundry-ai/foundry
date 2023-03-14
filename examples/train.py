@@ -55,6 +55,3 @@ trainer.train(dataset, PRNGKey(0), params)
 logger.info("Training model with smaller batch size...")
 trainer = Trainer(loss_fn, batch_size=5, max_iterations=1000)
 trainer.train(dataset, PRNGKey(0), params)
-
-# A convenience wrapper for the above
-# il = ImitationLearning(env, net, policy)

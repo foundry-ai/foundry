@@ -78,6 +78,9 @@ class Trainer:
         loss = jnp.mean(loss)
         stats = jax.tree_util.tree_map(lambda x: jnp.mean(x,axis=0), stats)
         return loss, (stats, fn_state)
+    
+    def _report(self, state, stats):
+        logger.info("Training ({}/{}): {}", state.iteration + 1, state.max_iterations, stats)
 
     @jax.jit
     def _train_step(self, state): # first_batch is non-None
@@ -97,6 +100,9 @@ class Trainer:
         updates, opt_state = self.optimizer.update(grads, state.opt_state, state.fn_params)
 
         fn_params = optax.apply_updates(state.fn_params, updates)
+
+        r = jnp.logical_or((state.iteration + 1) % 100 == 0, state.iteration == 0)
+        jax.lax.cond(r, self._report, lambda _0, _1: None, state, stats)
 
         return StepState(
             epoch=state.epoch,

@@ -27,7 +27,7 @@ LEVEL_COLORS = {
 
 console = rich.console.Console()
 
-JAX_PLACEHODLER = object()
+JAX_PLACEHOLDER = object()
 
 # A jax-compatible logger
 # This will bypass logging at compile time
@@ -46,7 +46,7 @@ class JaxLogger:
         args = []
         jax_iter = iter(jax_args)
         for a in reg_args:
-            if a is JAX_PLACEHODLER:
+            if a is JAX_PLACEHOLDER:
                 args.append(next(jax_iter))
             else:
                 args.append(a)
@@ -62,7 +62,7 @@ class JaxLogger:
         console.log(f'[{level_color}]{level:6}[/{level_color}] - {msg}', 
             highlight=highlight, _stack_offset=stack_offset)
 
-    def log(self, level, msg, *args, highlight=True, **kwargs):
+    def log(self, level, msg, *args, highlight=True, show_tracing=False, **kwargs):
         # split the arguments and kwargs
         # based on whether they are jax-compatible types or not
         reg_args = []
@@ -70,7 +70,7 @@ class JaxLogger:
         for a in args:
             if stanza.is_jaxtype(type(a)):
                 jax_args.append(a)
-                reg_args.append(JAX_PLACEHODLER)
+                reg_args.append(JAX_PLACEHOLDER)
             else:
                 reg_args.append(a)
         reg_kwargs = {}
@@ -81,7 +81,7 @@ class JaxLogger:
             else:
                 reg_kwargs[k] = v
         tracing = isinstance(jax.numpy.array(0), jax.core.Tracer)
-        if tracing:
+        if tracing and show_tracing:
             self._log_callback(level, msg, (reg_args, reg_kwargs), (jax_args, jax_kwargs), 
                             tracing=True, stack_offset=3)
 
