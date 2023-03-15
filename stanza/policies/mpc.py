@@ -60,6 +60,8 @@ class MPC:
     # length trajectories with this MPC
     receed : bool = field(default=True, jax_static=True)
 
+    replan : bool = field(default=True, jax_static=True)
+
     # the offset, base_states, base_actions are for
     # when receed=False but replan=True
     def _loss_fn(self, state0, rollout_state, actions):

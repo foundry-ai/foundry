@@ -4,7 +4,7 @@ from stanza.dataset import PyTreeDataset
 from stanza.envs import Environment
 
 from stanza.policies import RandomPolicy, Policy
-from stanza.util.dataclasses import dataclass, field
+from stanza.util.dataclasses import dataclass, field, replace
 import stanza.policies
 import jax
 
@@ -19,13 +19,22 @@ class EnvDataset(RNGDataset):
     traj_length: int = field(jax_static=True)
     policy: Policy
 
-    def as_state_actions(self):
-        m = self.map(_to_state_action)
+    @staticmethod
+    def as_state_actions(dataset):
+        m = dataset.map(_to_state_action)
         return m.flatten()
 
     def get(self, iterator):
         rng = super().get(iterator)
+        rng, sk = jax.random.split(rng)
+
+        # TODO: There should be a cleaner
+        # way to have a policy with an rng seed key
+        if hasattr(self.policy, 'rng_key'):
+            policy = replace(self.policy, rng_key=sk)
+        else:
+            policy = self.policy
         traj = stanza.policies.rollout(self.env.step,
             self.env.reset(rng),
-            length=self.traj_length, policy=self.policy)
+            length=self.traj_length, policy=policy)
         return traj

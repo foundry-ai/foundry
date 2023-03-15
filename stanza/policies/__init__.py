@@ -206,4 +206,4 @@ class RandomPolicy:
         rng_key = self.rng_key if policy_state is None else policy_state
         rng_key, sk = jax.random.split(rng_key)
         u = self.sample_fn(sk)
-        return u, rng_key
+        return PolicyOutput(action=u, policy_state=rng_key)

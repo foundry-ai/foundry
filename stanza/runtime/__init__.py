@@ -55,7 +55,7 @@ def activity(config_dataclass=None, f=None):
 
 def activity_sub(entrypoint, db_url, cfg):
     db = Database.from_url(db_url)
-    entrypoint(cfg, db.open())
+    entrypoint(cfg, db)
 
 async def launch_activity_main():
     import sys
@@ -69,7 +69,6 @@ async def launch_activity_main():
     async with Pool(target) as p:
         activity = functools.partial(activity_sub, runtime_cfg.activity, runtime_cfg.database)
         await p.run(activity, runtime_cfg.configs)
-
 
 # Entrypoint for launching activities, sweeps
 def launch_activity():

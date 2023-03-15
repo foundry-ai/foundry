@@ -72,17 +72,13 @@ class QuadrotorEnvironment(Environment):
             phi_dot=state.phi_dot + dt*phi_ddot,
         )
 
-    def cost(self, state, action=None, t=None):
+    def cost(self, state, action):
         x_cost = state.x**2 + state.z**2 + \
                 10*state.phi**2 + \
                 0.1*(state.x_dot**2 + state.z_dot**2 + \
                 state.phi_dot**2)
-        cost = x_cost
-        if action is not None:
-            u_cost = 0.1*jnp.sum(action**2)
-            cost = cost + u_cost
-        else:
-            cost = 10*cost
+        u_cost = jnp.sum(action**2)
+        cost = jnp.sum(x_cost) + 0.1*u_cost + 10*x_cost[-1]
         return cost
     
     def visualize(self, states, actions):

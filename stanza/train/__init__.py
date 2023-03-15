@@ -16,6 +16,7 @@ class EpochState:
     epoch: int
     iteration: int
 
+    log_interval: int
     max_iterations: int
 
     shuffle: bool = field(jax_static=True)
@@ -31,6 +32,7 @@ class StepState:
     epoch: int
     iteration: int
 
+    log_interval: int
     max_iterations: int
 
     batch_dataset: Any
@@ -58,7 +60,7 @@ class Trainer:
     loss_fn: Callable
     optimizer: optax.GradientTransformation = optax.adam(0.001)
     batch_size: int = field(default=32, jax_static=True)
-    preprocess_fn : Callable = None
+
     epochs : int = field(default=None, jax_static=True)
     max_iterations : int = field(default=None, jax_static=True)
 
@@ -101,13 +103,15 @@ class Trainer:
 
         fn_params = optax.apply_updates(state.fn_params, updates)
 
-        r = jnp.logical_or((state.iteration + 1) % 100 == 0, state.iteration == 0)
-        jax.lax.cond(r, self._report, lambda _0, _1: None, state, stats)
+        if state.log_interval is not None:
+            r = jnp.logical_or((state.iteration + 1) % state.log_interval == 0, state.iteration == 0)
+            jax.lax.cond(r, self._report, lambda _0, _1: None, state, stats)
 
         return StepState(
             epoch=state.epoch,
             iteration=state.iteration + 1,
             max_iterations=state.max_iterations,
+            log_interval=state.log_interval,
 
             first_batch=None,
             batch_dataset=state.batch_dataset,
@@ -132,6 +136,7 @@ class Trainer:
         step_state = StepState(
             epoch=state.epoch, iteration=state.iteration,
             max_iterations=state.max_iterations,
+            log_interval=state.log_interval,
 
             first_batch=first_batch,
             batch_dataset=batch_dataset,
@@ -154,6 +159,7 @@ class Trainer:
         return EpochState(
             epoch=state.epoch + 1, iteration=step_state.iteration,
             max_iterations=state.max_iterations,
+            log_interval=state.log_interval,
 
             shuffle=state.shuffle,
             dataset=state.dataset,
@@ -171,7 +177,7 @@ class Trainer:
                 # constructor or override in train() 
                 # function
                 epochs=None, max_iterations=None,
-                shuffle=True, show_pbar=True):
+                shuffle=True, log_interval=None):
         
         # epochs and max_iterations can come from either
         # the trainer parameters or the train parameters
@@ -197,6 +203,7 @@ class Trainer:
         state = EpochState(
             epoch=0, iteration=0,
             max_iterations=max_iterations,
+            log_interval=log_interval,
             
             shuffle=shuffle,
             dataset=dataset,

@@ -23,7 +23,7 @@ policy = MPC(
 dataset = EnvDataset(PRNGKey(42), env, 25, policy)
 # Just get the (state, action) pairs
 logger.info('Trajectory: {}', dataset.get(dataset.start))
-dataset = dataset.as_state_actions()
+dataset = EnvDataset.as_state_actions(dataset)
 x_sample, u_sample = dataset.get(dataset.start)
 logger.info('State, action: {}, {}', x_sample, u_sample)
 
