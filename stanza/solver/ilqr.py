@@ -18,7 +18,6 @@ with warnings.catch_warnings():
 
 class iLQRState(SolverState):
     actions: Any
-    rng_key: PRNGKey
 
 @dataclass(jax=True)
 class FeedbackPolicy(Policy):

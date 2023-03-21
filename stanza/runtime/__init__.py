@@ -1,12 +1,10 @@
 """
     Contains high-level "target" entrypoint
 """
-import argparse
-import functools
-import importlib
-import rich
-import asyncio
 
+import functools
+import sys
+import asyncio
 from stanza.util.logging import logger
 from stanza.util.dataclasses import dataclass
 from stanza.runtime.config import RuntimeParser
@@ -72,6 +70,7 @@ async def launch_activity_main():
 
 # Entrypoint for launching activities, sweeps
 def launch_activity():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(launch_activity_main())
+    try:
+        asyncio.run(launch_activity_main())
+    except KeyboardInterrupt:
+        sys.exit(0)

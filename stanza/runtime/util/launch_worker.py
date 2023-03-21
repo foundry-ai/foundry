@@ -2,6 +2,7 @@ import os
 import sys
 os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
 sys.path.append(os.path.abspath(os.path.join(__file__, "..","..","..", "..", "projects")))
+os.environ["XLA_FLAGS"] = '--xla_force_host_platform_device_count=16'
 
 from stanza.util.logging import logger
 from stanza.runtime.pool import WorkerRemote

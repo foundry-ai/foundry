@@ -98,7 +98,7 @@ class IterativeSolver(Solver):
         state = self.update(objective, loop_state, **kwargs)
         # if the objective has an early_terminate condition
         if hasattr(objective, 'early_terminate') and objective.early_terminate is not None:
-            solved = objective.early_terminate(state)
+            solved = jnp.logical_or(state.solved, objective.early_terminate(state))
             state = replace(state, solved=solved)
         if hasattr(objective, 'post_step_callback') and objective.post_step_callback is not None:
             state = objective.post_step_callback(state)

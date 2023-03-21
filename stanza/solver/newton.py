@@ -7,6 +7,9 @@ import jax
 import jax.experimental.host_callback
 import jax.numpy as jnp
 
+
+DEBUG = False
+
 @dataclass(jax=True)
 class NewtonState(MinimizeState):
     # The dual variables for eq constraints
@@ -94,11 +97,6 @@ class NewtonSolver(IterativeSolver):
         r_cent = -lambda_dual*f - self.eta
         r_dual = f_grad + D.T @ lambda_dual + A.T @ nu_dual
 
-        def residual(x, lambda_dual, nu_dual):
-            r_primal, A, f, D, _ = self._constraints(objective, solver_state.state, p_fmt(x), False)
-            r_cent = -lambda_dual*f
-            r_dual = f_grad + D.T @ lambda_dual + A.T @ nu_dual
-            return r_dual, r_cent, r_primal
 
         # The off-diagonal zeros matrices
         z1 = jnp.zeros((lambda_dual.shape[0], A.shape[0]))
@@ -121,37 +119,58 @@ class NewtonSolver(IterativeSolver):
                 d[x.shape[0]:x.shape[0] + lambda_dual.shape[0]], \
                 d[x.shape[0] + lambda_dual.shape[0]:]
 
-
         # do backtracking
         #jax.debug.print("l: {}", -lambda_dual/dlambda)
         ms = jnp.where(dlambda < 0, -lambda_dual/dlambda, 1)
         s_max = jnp.min(0.99*ms, initial=1)
 
-        # calculate initial lagrangian
-        # and do backtracking on the lagrangian
-        L = f_cost + jnp.dot(nu_dual, r_primal) + jnp.dot(lambda_dual,f)
-        def backtrack_cond(s):
-            r_primal, _, f, _, _ = self._constraints(objective, solver_state.state, p_fmt(x + dx), False)
-            L_new = vec_cost(x + s*dx) + jnp.dot(nu_dual + s*dnu, r_primal) \
-                    + jnp.dot(lambda_dual + s*dlambda,f)
-            return L_new > L + self.alpha*s*jnp.dot(f_grad, dx)/2
-            #return L_new > L + self.alpha*s*jnp.dot(r_dual, dx)/2
-
-        s = jax.lax.while_loop(backtrack_cond,
-                            lambda s: self.beta*s, s_max)
-
         if False:
-            jax.debug.print("x: {} nu: {} lambda: {}", x, nu_dual, lambda_dual)
-            jax.debug.print("cost: {}", f_cost)
-            jax.debug.print("dx: {}", dx)
-            jax.debug.print("dlambda: {}", dlambda)
-            jax.debug.print("dnu: {}", dnu)
-            jax.debug.print("step: {}", s)
+            # detect if we are in a locally-concave area
+            # and step the opposite direction
+            dx = -jnp.sign(jnp.dot(f_grad, dx))*dx
+            dec = jnp.dot(f_grad, dx)
+            def backtrack_cond(s):
+                #r_primal, _, f, _, _ = self._constraints(objective, solver_state.state, p_fmt(x + dx), False)
+                # L_new = vec_cost(x + s*dx) + jnp.dot(nu_dual + s*dnu, r_primal) \
+                #         + jnp.dot(lambda_dual + s*dlambda,f)
+                cost_new = vec_cost(x + s*dx)
+                jax.debug.print("tried {}: {}", s, cost_new)
+                return cost_new > f_cost + self.alpha*s*dec/2
+                #return L_new > L + self.alpha*s*jnp.dot(r_dual, dx)/2
+            s = jax.lax.while_loop(backtrack_cond,
+                                lambda s: self.beta*s, s_max)
+        elif True:
+            #dx = -jnp.sign(jnp.dot(f_grad, dx))*dx
+            #dec = jnp.dot(f_grad, dx)
+            dec = jnp.dot(r_dual, dx)
+            if DEBUG:
+                jax.debug.print("dec {}", dec)
+            L = vec_cost(x) + jnp.dot(nu_dual, r_primal) \
+                    + jnp.dot(lambda_dual,f)
+            def backtrack_cond(s):
+                r_primal, _, f, _, _ = self._constraints(objective, solver_state.state, p_fmt(x + dx), False)
+                L_new = vec_cost(x + s*dx) + jnp.dot(nu_dual + s*dnu, r_primal) \
+                        + jnp.dot(lambda_dual + s*dlambda,f)
+                tol = self.alpha*s*dec/2
+                if DEBUG:
+                    jax.debug.print("tried {}: {} ({} tol {})", s, L_new, L, tol)
+                return L_new > L + tol
+            s = jax.lax.while_loop(backtrack_cond,
+                                lambda s: self.beta*s, s_max)
 
         new_x = x + s*dx
         new_nu_dual = nu_dual + s*dnu
         new_lambda_dual = lambda_dual + s*dlambda
 
+        if DEBUG:
+            jax.debug.print("x: {} nu: {} lambda: {}", x, nu_dual, lambda_dual)
+            jax.debug.print("cost: {}", f_cost)
+            jax.debug.print("dx: {}", dx)
+            jax.debug.print("dec: {}", dec)
+            jax.debug.print("dlambda: {}", dlambda)
+            jax.debug.print("dnu: {}", dnu)
+            jax.debug.print("step: {}", s)
+            jax.debug.print("up: {}", jnp.linalg.norm(s*dx))
         # def f(arg, _):
         #     if jnp.any(jnp.isnan(arg)):
         #         print(arg)
@@ -162,6 +181,7 @@ class NewtonSolver(IterativeSolver):
         # Find the new state
         new_params = p_fmt(new_x)
         solved = jnp.linalg.norm(new_x - x) < self.tol
+        solved = jnp.logical_or(solved, jnp.any(jnp.isnan(new_x)))
         return NewtonState(
             iteration=solver_state.iteration + 1,
             solved=solved,

@@ -1,5 +1,6 @@
 import os
 import rich
+import signal
 from rich.progress import Progress
 from rich.markup import escape
 
@@ -8,7 +9,6 @@ from pathlib import Path
 import urllib
 import asyncio
 import threading
-import functools
 
 class Service:
     # Wait for all containers in the
@@ -99,9 +99,14 @@ class PoetryProcessSet(Service):
     
     async def stop(self):
         for proc in self._procs:
+            logger.trace("Terminating child PID {}", proc.pid)
             proc.terminate()
+        await asyncio.wait_for(self.wait(), 2)
+        for proc in self._procs:
+            if proc.returncode is None:
+                logger.trace("Hard-killing PID {}", proc.pid)
+                proc.send_signal(signal.SIGKILL)
         await self.wait()
-    
 
 class PoetryLocal(Target):
     def __init__(self, n):
@@ -282,7 +287,7 @@ class DockerEngine(Engine):
                 prog.update(task, total=1, completed=1)
 
         res = self.client.inspect_image(tag)
-        image_digest = res["RepoDigests"][0] if res["RepoDigests"] else image_id
+        image_digest = res["RepoDigests"][0] if res["RepoDigests"] else image_tag
 
         logger.info(f"Pushed image [green]{image_tag}[/green] to {tag}")
         return image_digest
@@ -319,7 +324,7 @@ class DockerEngine(Engine):
         container_id = container["Id"]
         # get container info
         info = self.client.inspect_container(container_id)
-        container = DockerContainer(self, container_id, replica)
+        container = DockerContainers(self, container_id, replica)
         return container
     
     async def _create_local(self, replica, image, args, env={}):

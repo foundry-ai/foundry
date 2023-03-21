@@ -1,12 +1,11 @@
-import queue
 import os
 
-import socket
 import asyncio
 import cloudpickle
 import rpyc
 import threading
 import functools
+import atexit
 import inspect
 
 from stanza.util.logging import logger

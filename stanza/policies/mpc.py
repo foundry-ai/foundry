@@ -8,6 +8,7 @@ from typing import Any, Callable
 from stanza import Partial
 
 from stanza.util.logging import logger
+from stanza.util.attrdict import Attrs
 from stanza.util.dataclasses import dataclass, field, replace
 from jax.random import PRNGKey
 
@@ -111,26 +112,29 @@ class MPC:
             initial_state=rollout_state,
             post_step_callback=Partial(self._post_step_cb, state0)
         ))
-        return res.state, res.params
+        _, cost = self._loss_fn(state0, res.state, res.params)
+        return res.state, res.params, cost
 
     def __call__(self, state, policy_state=None):
         if policy_state is None:
             actions = jax.tree_util.tree_map(lambda x: jnp.zeros((self.horizon_length,) + x.shape), self.action_sample)
             rollout_state = None
             t = 0
-            rollout_state, actions = self._solve(rollout_state, state, actions)
+            rollout_state, actions, cost = self._solve(rollout_state, state, actions)
         else:
             actions = policy_state[0]
             rollout_state = policy_state[1]
             t = policy_state[2]
+            cost = policy_state[3]
 
         if self.receed and policy_state is not None:
             actions = jax.tree_util.tree_map(lambda x: x.at[:-1].set(x[1:]), actions)
-            rollout_state, actions = self._solve(rollout_state, state, actions)
+            rollout_state, actions, cost = self._solve(rollout_state, state, actions)
             action = jax.tree_util.tree_map(lambda x: x[0], actions)
         else:
             action = jax.tree_util.tree_map(lambda x: x[t], actions)
-        return PolicyOutput(action, policy_state=(actions, rollout_state, t+1))
+        return PolicyOutput(action, policy_state=(actions, rollout_state, t+1, cost),
+                            extra=Attrs(cost=cost))
 
 # A barrier-based MPC
 @dataclass(jax=True)
@@ -183,7 +187,7 @@ class BarrierMPC(MPC):
         ).states
         constr = self.barrier_sdf(states, actions)
         # if all of the constraints are satisfied, early terminate
-        sat = jnp.all(constr < -1e-3)
+        sat = jnp.all(constr < -5e-3)
         # jax.debug.print("term_s: {}", states)
         # jax.debug.print("term: {} {}", sat, constr)
         return sat
@@ -210,11 +214,10 @@ class BarrierMPC(MPC):
             # jax.debug.print("---------- PHASE I-----------")
             init_actions = self._solve_feasible(state0, init_actions)
         
-        # def d(arg, _):
-        #     s, a = arg
-        #     if jnp.any(jnp.isnan(a)):
-        #         print(s)
-        # jax.experimental.host_callback.id_tap(d, (state0, init_actions))
+        # states = stanza.policies.rollout(
+        #     self.model_fn, state0, policy=Actions(init_actions)
+        # ).states
+        # constr = self.barrier_sdf(states, init_actions)
         # phase II:
         # now that we have guaranteed feasibility, solve
         # the full loss

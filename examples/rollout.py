@@ -17,7 +17,7 @@ from stanza.solver.ilqr import iLQRSolver
 
 # create an environment
 logger.info("Creating environment")
-env = envs.create("linear/di")
+env = envs.create("pendulum")
 
 # rollout_inputs is an alias for the above
 
@@ -44,11 +44,12 @@ def rollout_mpc_newton():
         state0=env.reset(PRNGKey(0)),
         policy=MPC(
             # Sample action
-            action_sample=env.sample_action(PRNGKey(0)),
+            action_sample=env.sample_action(PRNGKey(42)),
             cost_fn=env.cost, 
             model_fn=env.step,
-            horizon_length=20,
-            solver=NewtonSolver()
+            horizon_length=50,
+            solver=NewtonSolver(),
+            receed=False
         ),
         length=50
     )
@@ -142,7 +143,7 @@ def rollout_gradient():
     grad = jax.grad(roll_cost)(jnp.ones((10,)))
     logger.info("grad: {}", grad)
 
-#rollout_mpc_newton()
-rollout_mpc_optax()
+rollout_mpc_newton()
+# rollout_mpc_optax()
 #rollout_barrier()
 #rollout_gradient()
