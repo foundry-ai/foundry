@@ -136,6 +136,24 @@ class MPC:
         return PolicyOutput(action, policy_state=(actions, rollout_state, t+1, cost),
                             extra=Attrs(cost=cost))
 
+def log_barrier(barrier_sdf, states, actions):
+    sdf = barrier_sdf(states, actions)
+    return -jnp.sum(jnp.log(-sdf))
+
+def centered_barrier(barrier_sdf, center_state, center_action,
+                     states, actions):
+    s_flat, s_unflat = jax.flatten_util.ravel_pytree(states)
+    a_flat, a_unflat = jax.flatten_util.ravel_pytree(actions)
+    s_center = jnp.zeros_like(s_flat)
+    a_center = jnp.zeros_like(a_flat)
+
+    b = lambda s, a: log_barrier(barrier_sdf, s_unflat(s), a_unflat(a))
+    v = b(s_center, a_center)
+    center_s_grad, center_a_grad = jax.grad(b, argnums=(0,1))(s_center, a_center)
+    return log_barrier(barrier_sdf, states, actions) + \
+            jnp.dot(center_s_grad, s_flat - s_center) + \
+            jnp.dot(center_a_grad, a_flat - a_center) - v
+
 # A barrier-based MPC
 @dataclass(jax=True)
 class BarrierMPC(MPC):
@@ -146,6 +164,8 @@ class BarrierMPC(MPC):
     # State at which to center the barrier around
     # if None, uses uncentered
     center_state: Any = None
+    center_action: Any = None
+
     eta: float = 0.01
 
     feasibility_solver : Solver = NewtonSolver()
@@ -158,9 +178,12 @@ class BarrierMPC(MPC):
         cost = self.cost_fn(states, actions)
         if not self.barrier_sdf:
             return cost
-        sdf = self.barrier_sdf(states, actions)
-        b = -jnp.log(-sdf)
-        total_cost = cost + self.eta*jnp.sum(b)
+        if self.center_state is not None and self.center_action is not None:
+            b = centered_barrier(self.barrier_sdf,
+                self.center_state, self.center_action, states, actions)
+        else:
+            b = log_barrier(self.barrier_sdf, states, actions)
+        total_cost = cost + self.eta*b
         total_cost = jnp.nan_to_num(total_cost, nan=jnp.inf)
         return rollout_state, total_cost
     
@@ -175,9 +198,9 @@ class BarrierMPC(MPC):
         # get all of the constraints
         constr = self.barrier_sdf(states, actions)
         # constr < s should always hold true
-        val = jnp.sum(-jnp.log(s - constr))
+        val = jnp.mean(-jnp.log(s - constr))
         val = jnp.nan_to_num(val, nan=jnp.inf)
-        return jnp.sum(val)
+        return val
     
     # early termination handler
     def _feas_terminate(self, state0, solver_state):
