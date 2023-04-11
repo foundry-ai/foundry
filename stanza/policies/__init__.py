@@ -63,19 +63,21 @@ def policy(p):
 # stanza.jit can handle function arguments
 # and intelligently makes them static and allows
 # for vectorizing over functins.
-@partial(stanza.jit, static_argnums=(4,5))
+@partial(stanza.jit, static_argnums=(4,),
+         static_argnames=("length", "last_state"))
 def rollout(model, state0,
             # policy is optional. If policy is not supplied
             # it is assumed that model_fn is for an
             # autonomous system
             policy=None,
-            # The initial policy state. If "None" is supplied
-            # and policy has an 'init_state' function, that
-            # policy.init_state(x0) will be used instead
+            # The initial policy state.
             policy_init_state=None,
             # either length is an integer or  policy.rollout_length
             # or model.rollout_length is not None
-            length=None, last_state=True):
+            length=None,
+            # if observe=None, the input to the controller
+            # is the full state. Otherwise it is observe(state)
+            observe=None, *, last_state=True):
     # Look for a fallback to the rollout length
     # in the policy. This is useful mainly for the Actions policy
     if length is None and hasattr(policy, 'rollout_length'):
@@ -88,7 +90,8 @@ def rollout(model, state0,
     def scan_fn(comb_state, _):
         env_state, policy_state = comb_state
         if policy is not None:
-            policy_output = policy(env_state, policy_state)
+            obs = env_state if observe is None else observe(env_state)
+            policy_output = policy(obs, policy_state)
             action = policy_output.action
             extra = policy_output.extra
 
@@ -102,7 +105,7 @@ def rollout(model, state0,
         return (new_env_state, new_policy_state), (env_state, action, extra)
 
     # Do the first step manually to populate the policy state
-    state = (state0, None)
+    state = (state0, policy_init_state)
     new_state, first_output = scan_fn(state, None)
     # outputs is (xs, us, jacs) or (xs, us)
     (state_f, policy_state_f), outputs = jax.lax.scan(scan_fn, new_state,

@@ -26,6 +26,10 @@ trajax = { git = "https://github.com/google/trajax" }
 wandb = "^0.13.11"
 kaleido = "0.2.1"
 pymunk = "^6.4.0"
+pycairo = "^1.23.0"
+ffmpegio = "^0.8.3"
+gdown = "^4.7.1"
+zarr = "^2.14.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.1"

@@ -3,6 +3,7 @@
 .datasets
 __pycache__
 .pytest_cache
+.cache
 results
 wandb
 *.png

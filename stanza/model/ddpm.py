@@ -1,9 +1,8 @@
 from stanza.util.dataclasses import dataclass, field
-from typing import Callable
 
 import jax.numpy as jnp
 
-@dataclass
+@dataclass(jax=True)
 class DDPMSchedule:
     betas: jnp.array
     alphas: jnp.array = field(init=False)

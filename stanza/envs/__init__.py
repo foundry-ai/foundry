@@ -51,8 +51,7 @@ def register_lazy(name, module_name):
         return mod.builder
     __ENV_BUILDERS[name] = make_env_constructor
 
-register_lazy('brax', '.brax')
-register_lazy('gym', '.gym')
+register_lazy('pusht', '.pusht')
 register_lazy('pendulum', '.pendulum')
 register_lazy('linear', '.linear')
 register_lazy('quadrotor', '.quadrotor')
