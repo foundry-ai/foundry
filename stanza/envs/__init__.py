@@ -13,22 +13,25 @@ from functools import partial
 
 from typing import Any
 
-# Generic environment
+# Generic environment. Note that all
+# environments are also adapters
 class Environment:
+    def sample_state(self, rng_key):
+        raise NotImplementedError("Must impelement sample_state()")
+
     def sample_action(self, rng_key):
         raise NotImplementedError("Must impelement sample_action()")
 
     def reset(self, key):
         raise NotImplementedError("Must impelement reset()")
 
-    def step(self, x, u):
+    def step(self, state, action):
         raise NotImplementedError("Must impelement step()")
 
-    # If u is None, evaluate the terminal cost
-    def cost(self, x, u=None):
+    def cost(self, states, actions):
         raise NotImplementedError("Must impelement cost()")
     
-    def visualize(self, xs, us):
+    def visualize(self, states, actions):
         raise NotImplementedError("Must impelement visualize()")
 
 __ENV_BUILDERS = {}
@@ -55,6 +58,7 @@ register_lazy('pusht', '.pusht')
 register_lazy('pendulum', '.pendulum')
 register_lazy('linear', '.linear')
 register_lazy('quadrotor', '.quadrotor')
+
 
 # Takes a cost function and maps it over a trajectory
 # where there is one more x than u

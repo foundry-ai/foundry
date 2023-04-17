@@ -20,6 +20,7 @@ class PolicyOutput:
 @dataclass(jax=True)
 class Trajectory:
     states: Any
+    observations: Any
     actions: Any = None
 
 # Rollout contains the trajectory + aux data,
@@ -29,36 +30,24 @@ class Rollout(Trajectory):
     extras: Attrs = field(default_factory=Attrs)
     final_policy_state: Any = None
 
-# Mainly useful for type hints,
-# policies can just be regular functions and
-# may not extend Policy
 class Policy:
-    def __call__(self, state, policy_state=None, **kwargs):
+    @property
+    def rollout_length(self):
+        return None
+
+    def __call__(self, state, policy_state=None):
         raise NotImplementedError("Must implement __call__()")
 
 @dataclass(jax=True)
-class PolicyWrapper(Policy):
-    fun: Any = None
-    
-    # Pass any unknown attributes
-    # through to fun
-    def __getattr__(self, name):
-        return getattr(self.fun, name)
+class PolicyAdapter:
+    policy: Policy
 
-    def __call__(self, state, policy_state=None, **kwargs):
-        if policy_state is None:
-            r = self.fun(state, **kwargs)
-        else:
-            r = self.fun(state, policy_state, **kwargs)
-        if not isinstance(r, PolicyOutput):
-            r = PolicyOutput(r)
-        return r
+    @property
+    def rollout_length(self):
+        return self.policy.rollout_length
 
-# Will wrap a policy, guaranteeing the output is
-# of type PolicyOutput and that policy_state is an optional
-# input.
-def policy(p):
-    return PolicyWrapper(p) if p is not None else None
+    def __call__(self, state, policy_state):
+        return self.policy(state, policy_state)
 
 # stanza.jit can handle function arguments
 # and intelligently makes them static and allows
@@ -77,7 +66,7 @@ def rollout(model, state0,
             length=None,
             # if observe=None, the input to the controller
             # is the full state. Otherwise it is observe(state)
-            observe=None, *, last_state=True):
+            *, last_state=True):
     # Look for a fallback to the rollout length
     # in the policy. This is useful mainly for the Actions policy
     if length is None and hasattr(policy, 'rollout_length'):
@@ -90,8 +79,7 @@ def rollout(model, state0,
     def scan_fn(comb_state, _):
         env_state, policy_state = comb_state
         if policy is not None:
-            obs = env_state if observe is None else observe(env_state)
-            policy_output = policy(obs, policy_state)
+            policy_output = policy(env_state, policy_state)
             action = policy_output.action
             extra = policy_output.extra
 

@@ -1,10 +1,13 @@
 from stanza.envs import Environment
+from stanza.policies import Policy, PolicyAdapter, PolicyOutput
 from stanza.util.dataclasses import dataclass, field
 from stanza.dataset import Dataset
 from functools import partial
 
+import itertools
 import jax.numpy as jnp
 import jax.random
+from jax.random import PRNGKey
 import numpy as np
 
 import pymunk
@@ -23,17 +26,11 @@ class BlockState:
 @dataclass(jax=True)
 class PushTState:
     # for rendering purposes
-    last_target_pos : jnp.array
     agent: AgentState
     block: BlockState
 
 @dataclass(jax=True)
-class PushTAction:
-    # the target position
-    target_pos: jnp.array
-
-@dataclass(jax=True)
-class PushTObservation:
+class PushTPositionState:
     agent_pos: jnp.array
     block_pos: jnp.array
     block_rot: jnp.array
@@ -41,12 +38,6 @@ class PushTObservation:
 @dataclass(jax=True)
 class PushTEnv(Environment):
     sim_hz: float = 100
-    control_hz: float = 5
-
-    # PID controller
-    k_p: float = 100
-    k_v: float = 20
-
     goal_pose : BlockState = field(
         default_factory=lambda: BlockState(
             jnp.array([256.,256.]),
@@ -56,7 +47,7 @@ class PushTEnv(Environment):
 
     def sample_action(self, rng_key):
         pos_agent = jax.random.randint(rng_key, (2,), 50, 450).astype(float)
-        return PushTAction(pos_agent)
+        return pos_agent
 
     def sample_state(self, rng_key):
         return self.reset(rng_key)
@@ -68,22 +59,20 @@ class PushTEnv(Environment):
         pos_block = jax.random.randint(block_key, (2,), 100, 400).astype(float)
         rot_block = jax.random.uniform(rot_key, minval=-jnp.pi, maxval=jnp.pi)
         block = BlockState(pos_block, jnp.zeros((2,)), rot_block)
-        return PushTState(jnp.zeros((2,)), agent, block)
+        return PushTState(agent, block)
     
     def observe(self, state):
-        return PushTObservation(state.agent.pos,
-                                state.block.pos,
-                                state.block.rot)
+        return state
 
-    def render(self, state, width=500, height=500):
+    def render(self, state, action=None, width=500, height=500):
         img = jax.pure_callback(
             partial(PushTEnv._callback_render, width=width, height=height),
             jax.ShapeDtypeStruct((3, width, height), jnp.uint8),
-            self, state
+            self, state, action
         )
         return jnp.transpose(img, (1,2,0))
 
-    def _callback_render(self, state, width=512, height=512):
+    def _callback_render(self, state, action, width, height):
         space, _, _ = self._setup_space(state)
         # add the target block to the space to render
         self._add_tee(space,
@@ -91,11 +80,12 @@ class PushTEnv(Environment):
             (0,0), self.goal_pose.rot,
             color=(0,1,0), z=-1)
         # add a crosshairs at the control input position
-        ltp = state.last_target_pos
-        self._add_segment(space, (ltp[0] - 15, ltp[1]), (ltp[0]+15, ltp[1]), 2,
-                          color=(1,0,0), z=1)
-        self._add_segment(space, (ltp[0], ltp[1]-15), (ltp[0], ltp[1]+15), 2,
-                          color=(1,0,0), z=1)
+        if action is not None and self.pos_control:
+            ltp = action
+            self._add_segment(space, (ltp[0] - 15, ltp[1]), (ltp[0]+15, ltp[1]), 2,
+                            color=(1,0,0), z=1)
+            self._add_segment(space, (ltp[0], ltp[1]-15), (ltp[0], ltp[1]+15), 2,
+                            color=(1,0,0), z=1)
         return render_space(space, 512, 512, width, height)
 
     def step(self, state, action=None):
@@ -104,25 +94,16 @@ class PushTEnv(Environment):
     def _callback_step(self, state, action):
         space, agent, block = self._setup_space(state)
         dt = 1.0 / self.sim_hz
-        n_steps = self.sim_hz // self.control_hz
         if action is not None:
-            target = action.target_pos
-            for i in range(n_steps):
-                # Step PD control.
-                # self.agent.velocity = self.k_p * (act - self.agent.position)    # P control works too.
-                acceleration = self.k_p * (pymunk.Vec2d(target[0], target[1])- agent.position) \
-                                + self.k_v * (pymunk.Vec2d(0,0) - agent.velocity)
-                agent.velocity += acceleration * dt
-                # Step physics.
-                space.step(dt)
+            agent.velocity += action * dt
+        space.step(dt)
         # extract the end state from the space
         agent_state = AgentState(jnp.array([agent.position.x, agent.position.y]),
                                  jnp.array([agent.velocity.x, agent.velocity.y]))
         block_state = BlockState(jnp.array([block.position.x, block.position.y]),
                                  jnp.array([block.velocity.x, block.velocity.y]),
                                  jnp.array(block.angle))
-        action = jnp.zeros((2,)) if action is None else action
-        return PushTState(action, agent_state, block_state)
+        return PushTState(agent_state, block_state)
 
     def _setup_space(self, state):
         space = pymunk.Space()
@@ -197,6 +178,143 @@ class PushTEnv(Environment):
         body.position = position
         return body
 
+def builder(name):
+    return PushTEnv()
+
+# A state-feedback adapter
+class PushTPositionPolicy(PolicyAdapter):
+    @property
+    def rollout_length(self):
+        return self.policy.rollout_length
+
+    def __call__(self, state, policy_state):
+        pos_state = PushTPositionPolicy(
+            state.block.block_pos
+        )
+        return PolicyOutput()
+
+def expert_dataset():
+    import gdown
+    import os
+    cache = os.path.join(os.getcwd(), '.cache')
+    os.makedirs(cache, exist_ok=True)
+    dataset_path = os.path.join(cache, 'pusht_data.zarr.zip')
+    if not os.path.exists(dataset_path):
+        id = "1KY1InLurpMvJDRb14L9NlXT_fEsCvVUq&confirm=t"
+        gdown.download(id=id, output=dataset_path, quiet=False)
+    import zarr
+    with zarr.open(dataset_path, "r") as data:
+        # Read in all of the data
+        state = jnp.array(data['data/state'])
+        actions = jnp.array(data['data/action'])
+    # fill in zeros for the missing state
+    # data
+    agent_pos = state[:,:2]
+    agent_vel = jnp.zeros_like(agent_pos)
+    block_pos = state[:,2:4]
+    block_vel = jnp.zeros_like(block_pos)
+    block_rot = state[:,4]
+    states = PushTState(
+        AgentState(agent_pos, agent_vel),
+        BlockState(block_pos, block_vel, block_rot))
+    return Dataset.from_pytree((states, actions))
+
+# ----- pretrained network -------
+
+def remap_diff_step_encoder():
+    yield 'diffusion_step_encoder.1', "net/diff_embed_linear_0"
+    yield 'diffusion_step_encoder.3', "net/diff_embed_linear_1"
+
+def remap_resblock(in_prefix, out_prefix):
+    for l in [0,1]:
+        yield f"{in_prefix}.blocks.{l}.block.0", f"{out_prefix}/block{l}/conv"
+        yield f"{in_prefix}.blocks.{l}.block.1", f"{out_prefix}/block{l}/group_norm"
+    yield f'{in_prefix}.residual_conv', f'{out_prefix}/residual_conv'
+    yield f'{in_prefix}.cond_encoder.1', f'{out_prefix}/cond_encoder'
+def remap_downsample(in_prefix, out_prefix):
+    yield f'{in_prefix}.conv', f'{out_prefix}/conv'
+
+def remap_upsample(in_prefix, out_prefix):
+    yield f'{in_prefix}.conv', f'{out_prefix}/conv_transpose'
+
+
+MOD_NAME_MAP = dict(itertools.chain(
+    remap_diff_step_encoder(),
+    remap_resblock('mid_modules.0', 'net/mid0'),
+    remap_resblock('mid_modules.1', 'net/mid1'),
+
+    remap_resblock('down_modules.0.0', 'net/down0_res0'),
+    remap_resblock('down_modules.0.1', 'net/down0_res1'),
+    remap_downsample('down_modules.0.2', 'net/down0_downsample'),
+    remap_resblock('down_modules.1.0', 'net/down1_res0'),
+    remap_resblock('down_modules.1.1', 'net/down1_res1'),
+    remap_downsample('down_modules.1.2', 'net/down1_downsample'),
+    remap_resblock('down_modules.2.0', 'net/down2_res0'),
+    remap_resblock('down_modules.2.1', 'net/down2_res1'),
+
+    remap_resblock('up_modules.0.0', 'net/up0_res0'),
+    remap_resblock('up_modules.0.1', 'net/up0_res1'),
+    remap_upsample('up_modules.0.2', 'net/up0_upsample'),
+    remap_resblock('up_modules.1.0', 'net/up1_res0'),
+    remap_resblock('up_modules.1.1', 'net/up1_res1'),
+    remap_upsample('up_modules.1.2', 'net/up1_upsample'),
+    [('final_conv.0.block.0', 'net/final_conv_block/conv'),
+     ('final_conv.0.block.1', 'net/final_conv_block/group_norm'),
+     ('final_conv.1', 'net/final_conv')],
+))
+
+def pretrained_net():
+    import gdown
+    import os
+    import torch
+    cache = os.path.join(os.getcwd(), '.cache')
+    os.makedirs(cache, exist_ok=True)
+    model_path = os.path.join(cache, 'pusht_model.ckpt')
+    if not os.path.exists(model_path):
+        id = "1mHDr_DEZSdiGo9yecL50BBQYzR8Fjhl_&confirm=t"
+        gdown.download(id=id, output=model_path, quiet=False)
+    
+    tm = torch.load(model_path, map_location=torch.device('cpu'))
+    mapped_params = {}
+    for (k,v) in tm.items():
+        v = jnp.array(v.numpy()).T
+        if k.endswith('.weight'):
+            root = k[:-len('.weight')]
+            # root = MOD_NAME_MAP[root]
+            ext = 'scale' if 'group_norm' in root else 'w'
+        elif k.endswith('.bias'):
+            root = k[:-len('.bias')]
+            ext = 'offset' if 'group_norm' in root else 'b'
+        mapped_root = MOD_NAME_MAP[root]
+        if 'group_norm' in mapped_root:
+            ext = 'offset' if ext == 'b' else 'scale'
+        # print(f'{k} -> {mapped_root} {ext} {v.shape}')
+        # Map the root name
+        if 'transpose' in mapped_root and ext == 'w':
+            # for some reason the conv transposed
+            # needs the kernel to be flipped but the
+            # regular conv does not?
+            v = jnp.flip(v, 0)
+        d = mapped_params.setdefault(mapped_root,{})
+        d[ext] = v
+
+    from stanza.model.unet1d import ConditionalUnet1D
+    import haiku as hk
+    def model(sample, timestep, cond):
+        model = ConditionalUnet1D(name='net')
+        r = model(sample, timestep, cond)
+        return r
+    net = hk.transform_with_state(model)
+    # # sample input
+    # params, state = net.init(PRNGKey(0), jnp.zeros((16,2)),
+    #                         jnp.zeros(()), jnp.zeros((10,)))
+    # for k, v in params.items():
+    #     mv = mapped_params[k]
+    #     print(k, jax.tree_util.tree_map(lambda x: x.shape, v),
+    #             jax.tree_util.tree_map(lambda x: x.shape, mv))
+    return net, mapped_params, {}
+
+# ----- Rendering utilities ------
 def render_space(space, space_width, space_height, width, height):
     from cairo import ImageSurface, Context, Format
     surface = ImageSurface(Format.ARGB32, width, height)
@@ -253,35 +371,3 @@ def cairo_to_numpy(surface):
     data[:,:,[0,1,2,3]] = data[:,:,[2,1,0,3]]
     data = np.transpose(data, (2, 0, 1))
     return data
-
-def expert_dataset():
-    import gdown
-    import os
-    cache = os.path.join(os.getcwd(), '.cache')
-    os.makedirs(cache, exist_ok=True)
-    dataset_path = os.path.join(cache, 'pusht_data.zarr.zip')
-    if not os.path.exists(dataset_path):
-        id = "1KY1InLurpMvJDRb14L9NlXT_fEsCvVUq&confirm=t"
-        gdown.download(id=id, output=dataset_path, quiet=False)
-    import zarr
-    with zarr.open(dataset_path, "r") as data:
-        # Read in all of the data
-        state = jnp.array(data['data/state'])
-        actions = jnp.array(data['data/action'])
-    # fill in zeros for the missing state
-    # data
-    last_action = jnp.roll(actions, 1, 0)
-    agent_pos = state[:,:2]
-    agent_vel = jnp.zeros_like(agent_pos)
-    block_pos = state[:,2:4]
-    block_vel = jnp.zeros_like(block_pos)
-    block_rot = state[:,4]
-    states = PushTState(
-        last_action,
-        AgentState(agent_pos, agent_vel),
-        BlockState(block_pos, block_vel, block_rot))
-    actions = PushTAction(actions)
-    return Dataset.from_pytree((states, actions))
-
-def builder(name):
-    return PushTEnv()

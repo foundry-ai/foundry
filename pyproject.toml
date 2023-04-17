@@ -30,6 +30,8 @@ pycairo = "^1.23.0"
 ffmpegio = "^0.8.3"
 gdown = "^4.7.1"
 zarr = "^2.14.2"
+drake = "^1.14.0"
+torch = "^2.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.1"

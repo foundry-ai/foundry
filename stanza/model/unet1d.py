@@ -10,19 +10,19 @@ class SinusoidalPosEmbed(hk.Module):
         self.dim = dim
 
     def __call__(self, x):
-        half_dim = x.shape[-1] // 2
-        emb = jnp.log(1000) / (half_dim - 1)
+        half_dim = self.dim // 2
+        emb = jnp.log(10000) / (half_dim - 1)
         emb = jnp.exp(jnp.arange(half_dim) * -emb)
-        emb = x[:,jnp.newaxis] * emb[jnp.newaxis,:]
-        emb = jnp.concatenate((jnp.sin(emb), jnp.cos(emb)), axis=-1)
-        return emb
+        emb = x[jnp.newaxis,...] * emb[...,jnp.newaxis]
+        emb = jnp.concatenate((jnp.sin(emb), jnp.cos(emb)), axis=0)
+        return emb.reshape((-1))
     
 class Downsample1D(hk.Module):
     def __call__(self, x):
         conv = hk.Conv1D(x.shape[-1],
                     kernel_shape=3,
                     stride=2,
-                    padding=(1,1))
+                    padding=[(1,1)], name='conv')
         return conv(x)
 
 class Upsample1D(hk.Module):
@@ -30,7 +30,8 @@ class Upsample1D(hk.Module):
         conv = hk.Conv1DTranspose(x.shape[-1],
                     kernel_shape=4,
                     stride=2,
-                    padding=(1,1))
+                    padding=[(2,2)],
+                    name='conv_transpose')
         return conv(x)
 
 def mish(x): return x * jnp.tanh(jax.nn.softplus(x))
@@ -48,8 +49,11 @@ class Conv1DBlock(hk.Module):
         block = hk.Sequential([
             hk.Conv1D(self.output_channels,
                       kernel_shape=self.kernel_size,
-                      padding=(self.kernel_size // 2, self.kernel_size // 2)),
-            hk.GroupNorm(self.n_groups),
+                      padding=(self.kernel_size // 2, self.kernel_size // 2),
+                      name="conv"),
+            # We have no batch axes in our input
+            # so average over all axes
+            hk.GroupNorm(self.n_groups, axis=slice(0,None),name="group_norm"),
             mish
         ])
         return block(x)
@@ -63,15 +67,16 @@ class CondResBlock1D(hk.Module):
         self.n_groups = n_groups
     
     def __call__(self, x, cond):
-        block0 = Conv1DBlock(self.out_channels, self.kernel_size, n_groups=self.n_groups)
-        block1 = Conv1DBlock(self.out_channels, self.kernel_size, n_groups=self.n_groups)
+        block0 = Conv1DBlock(self.output_channels, 
+                    self.kernel_size, n_groups=self.n_groups, name='block0')
+        block1 = Conv1DBlock(self.output_channels,
+                    self.kernel_size, n_groups=self.n_groups, name='block1')
         residual_conv = hk.Conv1D(
-            self.output_channels, 1
-        ) if x.shape[-1] != self.output_channels else (lambda x: x)
+            self.output_channels, 1, name='residual_conv') \
+                if x.shape[-1] != self.output_channels else (lambda x: x)
         cond_encoder = hk.Sequential(
-            [mish, hk.Linear(self.output_channels*2)]
+            [mish, hk.Linear(self.output_channels*2,name='cond_encoder')]
         )
-
         out = block0(x)
         embed = cond_encoder(cond)
         # reshape into (dims, 2, output_channels)
@@ -108,15 +113,15 @@ class ConditionalUnet1D(hk.Module):
         dsed = self.diffusion_step_embed_dim
 
         diffusion_step_encoder = hk.Sequential([
-            SinusoidalPosEmbed(dsed),
-            hk.Linear(4*dsed),
+            SinusoidalPosEmbed(dsed, name='diff_embed'),
+            hk.Linear(4*dsed, name='diff_embed_linear_0'),
             mish,
-            hk.Linear(4*dsed, dsed)
+            hk.Linear(dsed, name='diff_embed_linear_1')
         ])
         # encode a timesteps array
         # condition on timesteps + global_cond
         x = sample
-        global_feat = diffusion_step_encoder(timestep)
+        global_feat = diffusion_step_encoder(jnp.atleast_1d(timestep))
         if global_cond is not None:
             global_feat = jnp.concatenate((global_feat, global_cond), -1)
 
@@ -124,36 +129,46 @@ class ConditionalUnet1D(hk.Module):
         hs = []
         for ind, dim_out in enumerate(down_dims):
             is_last = ind >= (len(down_dims) - 1)
-            res1 = CondResBlock1D(dim_out, kernel_size=kernel_size, n_groups=n_groups)
-            res2 = CondResBlock1D(dim_out, kernel_size=kernel_size, n_groups=n_groups)
+            res0 = CondResBlock1D(dim_out, kernel_size=kernel_size, n_groups=n_groups,
+                                  name=f'down{ind}_res0')
+            res1 = CondResBlock1D(dim_out, kernel_size=kernel_size, n_groups=n_groups,
+                                  name=f'down{ind}_res1')
+            x = res0(x, global_feat)
+            # print(f'down{ind}', x)
             x = res1(x, global_feat)
-            x = res2(x, global_feat)
             hs.append(x)
             if not is_last:
-                ds = Downsample1D()
+                ds = Downsample1D(name=f'down{ind}_downsample')
                 x = ds(x)
 
+        # print('pre_mid', x)
+        mid0 = CondResBlock1D(mid_dim, kernel_size=kernel_size,
+                        n_groups=n_groups, name='mid0')
         mid1 = CondResBlock1D(mid_dim, kernel_size=kernel_size,
-                        n_groups=n_groups),
-        mid2 = CondResBlock1D(mid_dim, kernel_size=kernel_size,
-                        n_groups=n_groups)
-        x = mid1(x, global_cond)
-        x = mid2(x, global_cond)
+                        n_groups=n_groups, name='mid1')
+        x = mid0(x, global_feat)
+        x = mid1(x, global_feat)
+        # print('post_mid', x)
 
-        for ind, (dim_out, h) in enumerate(reversed(zip(down_dims[:-1], h))):
+        for ind, (dim_out, h) in enumerate(zip(
+                    reversed(down_dims[:-1]), reversed(hs)
+                )):
             is_last = ind >= (len(down_dims) - 1)
-            res1 = CondResBlock1D(dim_out, kernel_size=kernel_size, n_groups=n_groups),
-            res2 = CondResBlock1D(dim_out, kernel_size=kernel_size, n_groups=n_groups),
-            x = jnp.concatenate((x, h), axis=1)
+            res0 = CondResBlock1D(dim_out, kernel_size=kernel_size, n_groups=n_groups,
+                                  name=f'up{ind}_res0')
+            res1 = CondResBlock1D(dim_out, kernel_size=kernel_size, n_groups=n_groups,
+                                  name=f'up{ind}_res1')
+            x = jnp.concatenate((x, h), axis=-1)
+            x = res0(x, global_feat)
             x = res1(x, global_feat)
-            x = res2(x, global_feat)
             if not is_last:
-                us = Upsample1D()
+                us = Upsample1D(name=f'up{ind}_upsample')
                 x = us(x)
 
         final_conv = hk.Sequential([
-            Conv1DBlock(start_dim, kernel_size=kernel_size),
-            hk.Conv1D(sample.shape[-1], 1)
+            Conv1DBlock(start_dim, kernel_size=kernel_size,
+                        name='final_conv_block'),
+            hk.Conv1D(sample.shape[-1], 1, name='final_conv')
         ])
         x = final_conv(x)
         return x
