@@ -32,7 +32,7 @@ expected = jnp.array([[-3.1368,  1.7825],
          [ 1.9312, -0.8340],
          [-2.2321,  0.5938],
          [ 0.6338,  1.2663]])
-res, _ = net.apply(params, state, None, noised_action,
+res, _ = net.apply(params, None, noised_action,
                 timestep, obs.reshape((-1,)))
 print("single-sample success:", jnp.linalg.norm(res - expected) < 0.001)
 # should be

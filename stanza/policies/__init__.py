@@ -20,7 +20,6 @@ class PolicyOutput:
 @dataclass(jax=True)
 class Trajectory:
     states: Any
-    observations: Any
     actions: Any = None
 
 # Rollout contains the trajectory + aux data,
@@ -29,44 +28,43 @@ class Trajectory:
 class Rollout(Trajectory):
     extras: Attrs = field(default_factory=Attrs)
     final_policy_state: Any = None
+    final_policy_rng_key: Any = None
 
 class Policy:
     @property
     def rollout_length(self):
         return None
 
-    def __call__(self, state, policy_state=None):
+    def __call__(self, state, policy_state=None, rng_key=None):
         raise NotImplementedError("Must implement __call__()")
 
-@dataclass(jax=True)
-class PolicyAdapter:
-    policy: Policy
-
-    @property
-    def rollout_length(self):
-        return self.policy.rollout_length
-
-    def __call__(self, state, policy_state):
-        return self.policy(state, policy_state)
+# Transform a policy (and potentially an initial state for this
+# policy) into a new policy
+class PolicyTransform:
+    def __call__(self, policy, policy_init_state=None):
+        raise NotImplementedError("Must implement __call__()")
 
 # stanza.jit can handle function arguments
 # and intelligently makes them static and allows
 # for vectorizing over functins.
-@partial(stanza.jit, static_argnums=(4,),
-         static_argnames=("length", "last_state"))
+@partial(stanza.jit, static_argnames=("length", "last_state"))
 def rollout(model, state0,
             # policy is optional. If policy is not supplied
-            # it is assumed that model_fn is for an
+            # it is assumed that model is for an
             # autonomous system
             policy=None,
+            *,
             # The initial policy state.
             policy_init_state=None,
-            # either length is an integer or  policy.rollout_length
-            # or model.rollout_length is not None
-            length=None,
-            # if observe=None, the input to the controller
-            # is the full state. Otherwise it is observe(state)
-            *, last_state=True):
+            # The policy rng key
+            policy_rng_key=None,
+            # Apply a transform to the
+            # policy before rolling out.
+            policy_transform=None,
+            # either length is an integer or policy.rollout_length is not None
+            length=None, last_state=True):
+    if policy_transform is not None:
+        policy, policy_init_state = policy_transform(policy, policy_init_state)
     # Look for a fallback to the rollout length
     # in the policy. This is useful mainly for the Actions policy
     if length is None and hasattr(policy, 'rollout_length'):
@@ -77,9 +75,11 @@ def rollout(model, state0,
         raise ValueError("Rollout length must be > 0")
 
     def scan_fn(comb_state, _):
-        env_state, policy_state = comb_state
+        env_state, policy_state, policy_rng = comb_state
+        new_policy_rng, sk = jax.random.split(policy_rng) \
+            if policy_rng is not None else (None, None)
         if policy is not None:
-            policy_output = policy(env_state, policy_state)
+            policy_output = policy(env_state, policy_state, sk)
             action = policy_output.action
             extra = policy_output.extra
 
@@ -90,13 +90,13 @@ def rollout(model, state0,
             extra = None
             new_env_state = model(env_state)
             new_policy_state = policy_state
-        return (new_env_state, new_policy_state), (env_state, action, extra)
+        return (new_env_state, new_policy_state, new_policy_rng), (env_state, action, extra)
 
     # Do the first step manually to populate the policy state
-    state = (state0, policy_init_state)
+    state = (state0, policy_init_state, policy_rng_key)
     new_state, first_output = scan_fn(state, None)
     # outputs is (xs, us, jacs) or (xs, us)
-    (state_f, policy_state_f), outputs = jax.lax.scan(scan_fn, new_state,
+    (state_f, policy_state_f, policy_rng_f), outputs = jax.lax.scan(scan_fn, new_state,
                                     None, length=length-2)
     outputs = jax.tree_util.tree_map(
         lambda a, b: jnp.concatenate((jnp.expand_dims(a,0), b)),
@@ -108,7 +108,8 @@ def rollout(model, state0,
             lambda a, b: jnp.concatenate((a, jnp.expand_dims(b, 0))),
             states, state_f)
     return Rollout(states=states, actions=us, 
-        extras=extras, final_policy_state=policy_state_f)
+        extras=extras, final_policy_state=policy_state_f, 
+        final_policy_rng_key=policy_rng_f)
 
 # Shorthand alias for rollout with an actions policy
 def rollout_inputs(model, state0, actions, last_state=True):
@@ -129,7 +130,7 @@ class Actions:
         return lengths[0] + 1
 
     @jax.jit
-    def __call__(self, x0, T=None):
+    def __call__(self, x0, T=None, rng_key=None):
         T = T if T is not None else 0
         action = jax.tree_util.tree_map(lambda x: x[T], self.actions)
         return PolicyOutput(action=action, policy_state=T + 1)
@@ -148,7 +149,7 @@ class ActionsFeedback:
         return lengths[0] + 1
 
     @jax.jit
-    def __call__(self, x, T=None):
+    def __call__(self, x, T=None, rng_key=None):
         T = T if T is not None else 0
         action = jax.tree_util.tree_map(lambda x: x[T], self.actions)
         ref_x = jax.tree_util.tree_map(lambda x: x[T], self.ref_states)

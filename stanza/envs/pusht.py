@@ -1,9 +1,10 @@
 from stanza.envs import Environment
-from stanza.policies import Policy, PolicyAdapter, PolicyOutput
+from stanza.policies import Policy, PolicyTransform, PolicyOutput
 from stanza.util.dataclasses import dataclass, field
 from stanza.dataset import Dataset
 from functools import partial
 
+import stanza
 import itertools
 import jax.numpy as jnp
 import jax.random
@@ -181,17 +182,20 @@ class PushTEnv(Environment):
 def builder(name):
     return PushTEnv()
 
-# A state-feedback adapter
-class PushTPositionPolicy(PolicyAdapter):
-    @property
-    def rollout_length(self):
-        return self.policy.rollout_length
+# A state-feedback adapter for the PushT environment
+# Will run a PID controller under the hood
+class PositionalPushT(PolicyTransform):
+    def __call__(self, policy, policy_init_state):
+        return PushTPositionalPolicy(policy), policy_init_state
+    
+@dataclass(jax=True)
+class PushTPositionalPolicy(Policy):
+    policy: Policy
 
-    def __call__(self, state, policy_state):
-        pos_state = PushTPositionPolicy(
-            state.block.block_pos
-        )
-        return PolicyOutput()
+    def __call__(self, state, policy_state=None, rng_key=None):
+        # extract just the position parts
+        # to feed into the policy
+        pass
 
 def expert_dataset():
     import gdown
@@ -304,15 +308,18 @@ def pretrained_net():
         model = ConditionalUnet1D(name='net')
         r = model(sample, timestep, cond)
         return r
-    net = hk.transform_with_state(model)
-    # # sample input
-    # params, state = net.init(PRNGKey(0), jnp.zeros((16,2)),
-    #                         jnp.zeros(()), jnp.zeros((10,)))
-    # for k, v in params.items():
-    #     mv = mapped_params[k]
-    #     print(k, jax.tree_util.tree_map(lambda x: x.shape, v),
-    #             jax.tree_util.tree_map(lambda x: x.shape, mv))
-    return net, mapped_params, {}
+    net = hk.transform(model)
+    return net, mapped_params
+
+def pretrained_policy():
+    from stanza.model.diffusion import DDPMSchedule
+    net, params = pretrained_net()
+    model = stanza.Partial(net.apply, params, None)
+    schedule = DDPMSchedule.make_squaredcos_cap_v2(
+        100, clip_sample_range=1)
+    sample_action_trajectory = jnp.zeros((16, 2))
+    def policy(obs, policy_state, rng_key):
+        schedule.sample(rng_key, model)
 
 # ----- Rendering utilities ------
 def render_space(space, space_width, space_height, width, height):

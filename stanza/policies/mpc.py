@@ -115,7 +115,7 @@ class MPC:
         _, cost = self._loss_fn(state0, res.state, res.params)
         return res.state, res.params, cost
 
-    def __call__(self, state, policy_state=None):
+    def __call__(self, state, policy_state=None, rng_key=None):
         if policy_state is None:
             actions = jax.tree_util.tree_map(lambda x: jnp.zeros((self.horizon_length,) + x.shape), self.action_sample)
             rollout_state = None
