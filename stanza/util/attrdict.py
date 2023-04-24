@@ -15,7 +15,10 @@ class Attrs:
     def __init__(self, *args, **kwargs):
         d = dict()
         for a in args:
-            d.update(dict(a))
+            if isinstance(a, Attrs):
+                a = a._dict
+            a = dict(a)
+            d.update(a)
         k = dict(**kwargs)
         d.update(k)
         self._dict = d
@@ -33,6 +36,9 @@ class Attrs:
             return self._dict.get(name)
         except KeyError:
             raise AttributeError("Missing attribute")
+
+def attrs(*args, **kwargs):
+    return Attrs(*args, **kwargs)
 
 def _flatten_attrs(attrs):
     keys, values = jax.util.unzip2(attrs._dict.items())

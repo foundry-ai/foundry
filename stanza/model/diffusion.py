@@ -96,8 +96,10 @@ class DDPMSchedule:
     def _sample_step(self, model, delta_steps, carry, timestep):
         rng_key, sample = carry
         rng_key, model_rng, step_rng = jax.random.split(rng_key, 3)
-        model_output = model(model_rng, sample, timestep)
-        next_sample = self.step(step_rng, sample, timestep, delta_steps, model_output)
+        with jax.named_scope("eval_model"):
+            model_output = model(model_rng, sample, timestep)
+        with jax.named_scope("step"):
+            next_sample = self.step(step_rng, sample, timestep, delta_steps, model_output)
         return (rng_key, next_sample), None
 
     # model is a map from rng_key, sample, timestep --> model_output

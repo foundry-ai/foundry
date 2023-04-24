@@ -3,6 +3,7 @@ from stanza.policies import Policy, PolicyOutput, PolicyTransform, \
                             chain_transforms, \
                             SampleRateTransform, ChunkTransform
 from stanza.util.dataclasses import dataclass, field, replace
+from stanza.util.attrdict import attrs
 from stanza.dataset import Dataset
 from functools import partial
 
@@ -226,7 +227,10 @@ class PositionControlPolicy(Policy):
         obs = input.observation
         output = self.policy(input)
         a = self.k_p * (output.action - obs.agent.position) + self.k_v * (-obs.agent.velocity)
-        return replace(output, action=a)
+        return replace(
+            output, action=a,
+            info=attrs(output.info, target_pos=output.action)
+        )
     
 class PushTDatasetEntry:
     state: PushTState
@@ -355,30 +359,40 @@ def pretrained_policy():
     schedule = DDPMSchedule.make_squaredcos_cap_v2(
         100, clip_sample_range=1)
     sample_action_trajectory = jnp.zeros((16, 2))
-
-    def policy(input):
+    obs_scale = {'min': jnp.array([1.3456424e+01, 3.2938293e+01, 5.7471767e+01, 1.0827995e+02, 2.1559125e-04], dtype=jnp.float32), 
+           'max': jnp.array([496.14618, 510.9579, 439.9153, 485.6641, 6.2830877], dtype=jnp.float32)}
+    action_scale = {'min': jnp.array([12., 25.], dtype=jnp.float32),
+              'max': jnp.array([511., 511.], dtype=jnp.float32)}
+    
+    @jax.jit
+    def high_level_policy(input):
         obs = input.observation
         obs = jnp.concatenate(
             (obs.agent_pos, obs.block_pos, obs.block_rot[:,jnp.newaxis]), 
             axis=-1
         )
+        obs = (obs - obs_scale['min'])/(obs_scale['max'] - obs_scale['min'])
         obs = obs.reshape((-1))
         model = stanza.Partial(net.apply, params, cond=obs)
         diffused = schedule.sample(input.rng_key, model,
-            sample_action_trajectory, num_steps=10)
+            sample_action_trajectory, num_steps=100)
         traj = diffused[:8]
+        traj = traj*(action_scale['max'] - action_scale['min']) \
+                    + action_scale['min']
         return PolicyOutput(traj)
+
     return chain_transforms(
         ChunkTransform(input_chunk_size=2,
                        output_chunk_size=8),
-        # Low-level controller runs 20x higher
+        # Low-level position controller runs 20x higher
         # frequency than the high-level controller
+        # which outputs target positions
         SampleRateTransform(control_interval=20),
         # The low-level controller takes a
         # target position and runs feedback gains
         PositionObsTransform(),
         PositionControlTransform()
-    )(policy)
+    )(high_level_policy), high_level_policy
 
 # ----- Rendering utilities ------
 def render_space(space, space_width, space_height, width, height):
