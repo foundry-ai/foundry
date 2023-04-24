@@ -10,7 +10,7 @@ readme = "README.md"
 activity = "stanza.runtime:launch_activity"
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = ">=3.10,<3.11"
 jax = { version = "0.4.4" }
 jaxlib = { version = "0.4.4" }
 optax = "^0.1.4"
@@ -30,8 +30,9 @@ pycairo = "^1.23.0"
 ffmpegio = "^0.8.3"
 gdown = "^4.7.1"
 zarr = "^2.14.2"
-drake = "^1.14.0"
 torch = "^2.0.0"
+llvmlite = "^0.39.1"
+robosuite = "^1.4.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.1"

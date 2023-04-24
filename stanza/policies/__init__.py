@@ -1,21 +1,26 @@
 import jax
 import jax.numpy as jnp
 from jax.random import PRNGKey
-from typing import Callable, Any
+from typing import Callable, List, Any
 import stanza
-from stanza.util.dataclasses import dataclass, field
+from stanza.util.dataclasses import dataclass, field, replace
 from stanza.util.attrdict import Attrs
 from functools import partial
 
-# A policy is a function from x --> u or
-# x --> PolicyOutput
-# optionally (x, policy_state) --> PolicyOutput
+# A policy is a function from PolicyInput --> PolicyOutput
+
+@dataclass(jax=True)
+class PolicyInput:
+    observation: Any
+    policy_state: Any = None
+    rng_key : PRNGKey = None
+
 @dataclass(jax=True)
 class PolicyOutput:
     action: Any
     # The policy state
     policy_state: Any = None
-    extra: Attrs = field(default_factory=Attrs)
+    info: Attrs = field(default_factory=Attrs)
 
 @dataclass(jax=True)
 class Trajectory:
@@ -23,10 +28,10 @@ class Trajectory:
     actions: Any = None
 
 # Rollout contains the trajectory + aux data,
-# final policy state
+# final policy state, final rng key
 @dataclass(jax=True)
 class Rollout(Trajectory):
-    extras: Attrs = field(default_factory=Attrs)
+    info: Attrs = field(default_factory=Attrs)
     final_policy_state: Any = None
     final_policy_rng_key: Any = None
 
@@ -35,15 +40,25 @@ class Policy:
     def rollout_length(self):
         return None
 
-    def __call__(self, state, policy_state=None, rng_key=None):
+    def __call__(self, input):
         raise NotImplementedError("Must implement __call__()")
 
-# Transform a policy (and potentially an initial state for this
-# policy) into a new policy
+# Transform a (policy, state) into a new (policy, state)
 class PolicyTransform:
-    def __call__(self, policy, policy_init_state=None):
-        raise NotImplementedError("Must implement __call__()")
+    # Override these! Not __call__!
+    def transform_policy(self, policy):
+        return policy
 
+    def transform_policy_state(self, policy_state):
+        return policy_state
+
+    # Do not override unless you also keep the return behavior
+    # Just override the above
+    def __call__(self, policy, policy_state=None):
+        tpol = self.transform_policy(policy)
+        return tpol if policy_state is None else \
+            (tpol, self.transform_policy_state(policy_state))
+    
 # stanza.jit can handle function arguments
 # and intelligently makes them static and allows
 # for vectorizing over functins.
@@ -79,18 +94,19 @@ def rollout(model, state0,
         new_policy_rng, sk = jax.random.split(policy_rng) \
             if policy_rng is not None else (None, None)
         if policy is not None:
-            policy_output = policy(env_state, policy_state, sk)
+            input = PolicyInput(env_state, policy_state, sk)
+            policy_output = policy(input)
             action = policy_output.action
-            extra = policy_output.extra
+            info = policy_output.info
 
             new_policy_state = policy_output.policy_state
             new_env_state = model(env_state, action)
         else:
             action = None
-            extra = None
+            info = None
             new_env_state = model(env_state)
             new_policy_state = policy_state
-        return (new_env_state, new_policy_state, new_policy_rng), (env_state, action, extra)
+        return (new_env_state, new_policy_state, new_policy_rng), (env_state, action, info)
 
     # Do the first step manually to populate the policy state
     state = (state0, policy_init_state, policy_rng_key)
@@ -102,13 +118,13 @@ def rollout(model, state0,
         lambda a, b: jnp.concatenate((jnp.expand_dims(a,0), b)),
         first_output, outputs)
 
-    states, us, extras = outputs
+    states, us, info = outputs
     if last_state:
         states = jax.tree_util.tree_map(
             lambda a, b: jnp.concatenate((a, jnp.expand_dims(b, 0))),
             states, state_f)
     return Rollout(states=states, actions=us, 
-        extras=extras, final_policy_state=policy_state_f, 
+        info=info, final_policy_state=policy_state_f, 
         final_policy_rng_key=policy_rng_f)
 
 # Shorthand alias for rollout with an actions policy
@@ -130,72 +146,216 @@ class Actions:
         return lengths[0] + 1
 
     @jax.jit
-    def __call__(self, x0, T=None, rng_key=None):
-        T = T if T is not None else 0
+    def __call__(self, input):
+        T = input.policy_state if input.policy_state is not None else 0
         action = jax.tree_util.tree_map(lambda x: x[T], self.actions)
         return PolicyOutput(action=action, policy_state=T + 1)
 
 @dataclass(jax=True)
-class ActionsFeedback:
-    actions: Any
-    ref_states: Any
-    ref_gains: Any
+class RandomPolicy(Policy):
+    sample_fn: Callable
 
-    @property
-    def rollout_length(self):
-        lengths, _ = jax.tree_util.tree_flatten(
-            jax.tree_util.tree_map(lambda x: x.shape[0], self.actions)
-        )
-        return lengths[0] + 1
-
-    @jax.jit
-    def __call__(self, x, T=None, rng_key=None):
-        T = T if T is not None else 0
-        action = jax.tree_util.tree_map(lambda x: x[T], self.actions)
-        ref_x = jax.tree_util.tree_map(lambda x: x[T], self.ref_states)
-        ref_gain = jax.tree_util.tree_map(lambda x: x[T], self.ref_gains)
-        fb_action = action + ref_gain @ (x - ref_x)
-        return PolicyOutput(action=fb_action, policy_state=T + 1)
+    def __call__(self, input):
+        u = self.sample_fn(input.rng_key)
+        return PolicyOutput(action=u)
 
 @dataclass(jax=True)
-class NoisyPolicy:
-    rng_key: PRNGKey
+class ChainedTransform(PolicyTransform):
+    transforms: List[PolicyTransform]
+
+    def transform_policy(self, policy):
+        for t in self.transforms:
+            policy = t.transform_policy(policy)
+        return policy
+
+    def transform_policy_state(self, policy_state):
+        for t in self.transforms:
+            policy = t.transform_policy_state(policy_state)
+        return policy
+
+def chain_transforms(*transforms):
+    return ChainedTransform(transforms)
+
+# ---- NoiseTransform ----
+# Injects noise ontop of a given policy
+
+@dataclass(jax=True)
+class NoiseTransform(PolicyTransform):
     sigma: float
-    base_policy: Callable
+    def __call__(self, policy, policy_state):
+        return NoisyPolicy(policy, self.sigma), policy_state
+
+@dataclass(jax=True)
+class NoisyPolicy(Policy):
+    policy: Callable
+    sigma: float
     
-    def __call__(self, x, policy_state=None):
-        rng_key, base_policy_state = (
-            policy_state 
-            if policy_state is not None else
-            (self.rng_key, None)
-        )
+    def __call__(self, input):
+        rng_key, sk = jax.random.split(input.rng_key)
 
-        rng_key, sk = jax.random.split(rng_key)
+        sub_input = replace(input, rng_key=rng_key)
+        output = self.policy(sub_input)
 
-        output = (
-            self.base_policy(x, base_policy_state) 
-                if base_policy_state is not None else
-            self.base_policy(x)
-        )
-
-        # flatten u, add the noise, unflatten
         u_flat, unflatten = jax.flatten_util.ravel_pytree(output.action)
         noise = self.sigma * jax.random.normal(sk, u_flat.shape)
         u_flat = u_flat + noise
         action = unflatten(u_flat)
+        output = replace(output, action=action)
+        return output
 
-        return PolicyOutput(
-            action,
-            policy_state=(rng_key, output.policy_state)
+## ---- ChunkTransform -----
+# A chunk transform will composite inputs,
+# outputs
+
+@dataclass(jax=True)
+class ChunkPolicyState:
+    # The batched input
+    obs_batch: Any = None
+    # The last (batched) output
+    # from the sub-policy
+    last_batched_output: Any = None
+    t: int = 0
+
+@dataclass(jax=True)
+class ChunkTransform(PolicyTransform):
+    # If None, no input/output batch dimension
+    input_chunk_size: int = field(default=None, jax_static=True)
+    output_chunk_size: int = field(default=None, jax_static=True)
+
+    def transform_policy(self, policy):
+        return ChunkPolicy(policy, self.input_chunk_size, self.output_chunk_size)
+    
+    def transform_policy_state(self, policy_state):
+        return ChunkPolicyState(None, PolicyOutput(None, policy_state, None),
+                                self.output_chunk_size)
+
+@dataclass(jax=True)
+class ChunkPolicy(Policy):
+    policy: Policy
+    # If None, no input/output batch dimension
+    input_chunk_size: int = field(default=None, jax_static=True)
+    output_chunk_size: int = field(default=None, jax_static=True)
+
+    @property
+    def rollout_length(self):
+        return (self.policy.rollout_length * self.output_chunk_size) \
+            if self.output_chunk_size is not None else \
+                self.policy.rollout_length
+            
+    def __call__(self, input):
+        policy_state = input.policy_state
+        if policy_state is None:
+            # replicate the input batch
+            obs_batch = input.observation \
+                if self.input_chunk_size is None else \
+                jax.tree_util.tree_map(
+                    lambda x: jnp.repeat(x[jnp.newaxis,...],
+                        self.input_chunk_size, axis=0), input.observation
+                )
+        else:
+            # create the new input chunk
+            obs_batch = input.observation if self.input_chunk_size is None else \
+                jax.tree_util.tree_map(
+                    lambda x, y: jnp.roll(x, -1, axis=0).at[-1,...].set(y), 
+                    policy_state.obs_batch, input.observation
+                )
+
+        def reevaluate():
+            output = self.policy(PolicyInput(
+                obs_batch,
+                policy_state.last_batched_output.policy_state \
+                    if policy_state is not None else None,
+                input.rng_key
+            ))
+            action = output.action \
+                if self.output_chunk_size is None else \
+                jax.tree_util.tree_map(
+                    lambda x: x[0, ...], output.action
+                ) 
+            return PolicyOutput(
+                action=action,
+                policy_state=ChunkPolicyState(obs_batch, output, 1),
+                info=output.info
+            )
+        def index():
+            action = policy_state.last_batched_output.action \
+                if self.output_chunk_size is None else \
+                jax.tree_util.tree_map(
+                    lambda x: x[policy_state.t, ...], policy_state.last_batched_output.action
+                )
+            return PolicyOutput(
+                action,
+                ChunkPolicyState(
+                    obs_batch,
+                    policy_state.last_batched_output,
+                    policy_state.t + 1
+                ),
+                policy_state.last_batched_output.info
+            )
+        if self.output_chunk_size is None \
+                or input.policy_state is None:
+            return reevaluate()
+        else:
+            return jax.lax.cond(
+                policy_state.t >= self.output_chunk_size,
+                reevaluate, index
+            )
+
+## ----- SamplingTransform -----
+# A FreqTransform will run a policy at
+# a lower frequency, evaluating it every control_interval
+# number of steps. This is useful
+# if an expensive controller is combined
+# with a higher-frequency low-level controller.
+# This is equivalent to a ChunkPolicy where the output
+# gets replicated control_interval number of times
+
+@dataclass(jax=True)
+class SampleRateTransform(PolicyTransform):
+    control_interval : int = field(default=1, jax_static=True)
+
+    def transform_policy(self, policy):
+        return SampleRatePolicy(policy, self.control_interval)
+    
+    def transform_policy_state(self, policy_state):
+        return SampleRateState(
+            PolicyOutput(None, policy_state, None),
+            self.control_interval
         )
 
 @dataclass(jax=True)
-class RandomPolicy:
-    rng_key: PRNGKey
-    sample_fn: Callable
+class SampleRateState:
+    # The last output from the low-level controller
+    last_output: PolicyOutput
+    # Time since last evaluation
+    t: int
 
-    def __call__(self, x, policy_state=None):
-        rng_key = self.rng_key if policy_state is None else policy_state
-        rng_key, sk = jax.random.split(rng_key)
-        u = self.sample_fn(sk)
-        return PolicyOutput(action=u, policy_state=rng_key)
+@dataclass(jax=True)
+class SampleRatePolicy(Policy):
+    policy: Policy = None
+    control_interval : int = field(default=1, jax_static=True)
+
+    @property
+    def rollout_length(self):
+        return self.policy.rollout_length*self.control_interval
+    
+    def __call__(self, input):
+        ps = input.policy_state if input.policy_state is not None else \
+            SampleRateState(PolicyOutput(None), None)
+
+        # For the input to the sub-policy
+        # use the policy state from the last outut we had
+        sub_input = replace(input, 
+            policy_state=ps.last_output.policy_state)
+        if ps.t is None:
+            t = 1
+            sub_output = self.policy(sub_input)
+        else:
+            t, sub_output = jax.lax.cond(ps.t >= self.control_interval,
+                        lambda: (1, self.policy(sub_input)),
+                        lambda: (ps.t + 1, ps.last_output))
+        # Store the last output of the high-level policy
+        # in the policy state
+        output = replace(sub_output,
+            policy_state=SampleRateState(sub_output, t))
+        return output

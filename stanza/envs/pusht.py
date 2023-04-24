@@ -1,6 +1,8 @@
 from stanza.envs import Environment
-from stanza.policies import Policy, PolicyTransform, PolicyOutput
-from stanza.util.dataclasses import dataclass, field
+from stanza.policies import Policy, PolicyOutput, PolicyTransform, \
+                            chain_transforms, \
+                            SampleRateTransform, ChunkTransform
+from stanza.util.dataclasses import dataclass, field, replace
 from stanza.dataset import Dataset
 from functools import partial
 
@@ -14,36 +16,27 @@ import numpy as np
 import pymunk
 
 @dataclass(jax=True)
-class AgentState:
-    pos: jnp.array
-    vel: jnp.array
-
-@dataclass(jax=True)
-class BlockState:
-    pos: jnp.array
-    vel: jnp.array
-    rot: jnp.array
+class BodyState:
+    position: jnp.array
+    velocity: jnp.array
+    angle: jnp.array
+    angular_velocity: jnp.array
 
 @dataclass(jax=True)
 class PushTState:
     # for rendering purposes
-    agent: AgentState
-    block: BlockState
-
-@dataclass(jax=True)
-class PushTPositionState:
-    agent_pos: jnp.array
-    block_pos: jnp.array
-    block_rot: jnp.array
+    agent: BodyState
+    block: BodyState
 
 @dataclass(jax=True)
 class PushTEnv(Environment):
     sim_hz: float = 100
-    goal_pose : BlockState = field(
-        default_factory=lambda: BlockState(
+    goal_pose : BodyState = field(
+        default_factory=lambda: BodyState(
             jnp.array([256.,256.]),
             jnp.array([0.,0.]),
-            jnp.array(jnp.pi/4)
+            jnp.array(jnp.pi/4),
+            jnp.array(0)
         ))
 
     def sample_action(self, rng_key):
@@ -54,59 +47,64 @@ class PushTEnv(Environment):
         return self.reset(rng_key)
 
     def reset(self, rng_key):
+        z = jnp.zeros(())
+        z2 = jnp.zeros((2,))
         pos_key, block_key, rot_key = jax.random.split(rng_key, 3)
         pos_agent = jax.random.randint(pos_key, (2,), 50, 450).astype(float)
-        agent = AgentState(pos_agent, jnp.zeros((2,)))
+        agent = BodyState(pos_agent, z2, z, z)
         pos_block = jax.random.randint(block_key, (2,), 100, 400).astype(float)
         rot_block = jax.random.uniform(rot_key, minval=-jnp.pi, maxval=jnp.pi)
-        block = BlockState(pos_block, jnp.zeros((2,)), rot_block)
+        block = BodyState(pos_block, z2, rot_block, z)
         return PushTState(agent, block)
-    
-    def observe(self, state):
-        return state
 
-    def render(self, state, action=None, width=500, height=500):
+    def render(self, state, width=500, height=500):
         img = jax.pure_callback(
             partial(PushTEnv._callback_render, width=width, height=height),
             jax.ShapeDtypeStruct((3, width, height), jnp.uint8),
-            self, state, action
+            self, state,
         )
         return jnp.transpose(img, (1,2,0))
 
-    def _callback_render(self, state, action, width, height):
-        space, _, _ = self._setup_space(state)
+    def _callback_render(self, state, width, height):
+        space, _, _ = self._setup_space(state.agent, state.block)
         # add the target block to the space to render
-        self._add_tee(space,
-            (self.goal_pose.pos[0],self.goal_pose.pos[1]),
-            (0,0), self.goal_pose.rot,
-            color=(0,1,0), z=-1)
-        # add a crosshairs at the control input position
-        if action is not None and self.pos_control:
-            ltp = action
-            self._add_segment(space, (ltp[0] - 15, ltp[1]), (ltp[0]+15, ltp[1]), 2,
-                            color=(1,0,0), z=1)
-            self._add_segment(space, (ltp[0], ltp[1]-15), (ltp[0], ltp[1]+15), 2,
-                            color=(1,0,0), z=1)
+        self._add_tee(space, self.goal_pose, color=(0,1,0), z=-1)
         return render_space(space, 512, 512, width, height)
 
     def step(self, state, action=None):
         return jax.pure_callback(PushTEnv._callback_step, state, self, state, action)
     
+    def _get_body_state(self, body):
+        pos = jnp.array([body.position.x, body.position.y])
+        vel = jnp.array([body.velocity.x, body.velocity.y])
+        angle = jnp.array(body.angle)
+        angular_vel = jnp.array(body.angular_velocity)
+        return BodyState(pos, vel, angle, angular_vel)
+
+    def _set_body_state(self, body, state):
+        pos = (state.position[0].item(), state.position[1].item())
+        vel = (state.velocity[0].item(), state.velocity[1].item())
+        angle = state.angle.item()
+        angular_vel = state.angular_velocity.item()
+        body.angle = angle
+        body.position = pos
+        body.velocity = vel
+        body.angular_vel = angular_vel
+        body._space.reindex_shapes_for_body(body)
+    
     def _callback_step(self, state, action):
-        space, agent, block = self._setup_space(state)
+        space, agent, block = self._setup_space(state.agent, state.block)
         dt = 1.0 / self.sim_hz
-        if action is not None:
-            agent.velocity += action * dt
-        space.step(dt)
+        for i in range(5):
+            if action is not None:
+                agent.velocity += action * dt/5
+            space.step(dt/5)
         # extract the end state from the space
-        agent_state = AgentState(jnp.array([agent.position.x, agent.position.y]),
-                                 jnp.array([agent.velocity.x, agent.velocity.y]))
-        block_state = BlockState(jnp.array([block.position.x, block.position.y]),
-                                 jnp.array([block.velocity.x, block.velocity.y]),
-                                 jnp.array(block.angle))
+        agent_state = self._get_body_state(agent)
+        block_state = self._get_body_state(block)
         return PushTState(agent_state, block_state)
 
-    def _setup_space(self, state):
+    def _setup_space(self, agent_state, block_state):
         space = pymunk.Space()
         space.gravity = 0, 0
         space.damping = 0
@@ -117,13 +115,9 @@ class PushTEnv(Environment):
         self._add_segment(space, (5, 506), (506, 506), 2)
 
         # Add the circle agent
-        agent = self._add_circle(space,
-                (state.agent.pos[0],state.agent.pos[1]),
-                (state.agent.vel[0],state.agent.vel[1]), 15,
-                (65/255, 105/255, 225/255))
-        block = self._add_tee(space,
-                (state.block.pos[0],state.block.pos[1]),
-                (state.block.vel[0],state.block.vel[1]), state.block.rot.item(),
+        agent = self._add_circle(space, agent_state, 15,
+                color=(65/255, 105/255, 225/255))
+        block = self._add_tee(space, block_state,
                 color=(119/255, 136/255, 153/255))
         # Add collision handeling
         # _ = space.add_collision_handler(0, 0)
@@ -137,17 +131,16 @@ class PushTEnv(Environment):
         space.add(shape)
         return shape
 
-    def _add_circle(self, space, position, velocity, radius, color):
+    def _add_circle(self, space, state, radius, color):
         body = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
-        body.position = position
-        body.velocity = velocity
         body.friction = 1
         circle = pymunk.Circle(body, radius)
         circle.color = color
         space.add(body, circle)
+        self._set_body_state(body, state)
         return body
 
-    def _add_tee(self, space, position, velocity, angle,
+    def _add_tee(self, space, state,
                  scale=30, color=None, mask=pymunk.ShapeFilter.ALL_MASKS(), z=None):
         mass = 1
         length = 4
@@ -157,9 +150,9 @@ class PushTEnv(Environment):
                                  (-length*scale/2, 0)]
         inertia1 = pymunk.moment_for_poly(mass, vertices=vertices1)
         vertices2 = [(-scale/2, scale),
-                                 (-scale/2, length*scale),
-                                 ( scale/2, length*scale),
-                                 ( scale/2, scale)]
+                     (-scale/2, length*scale),
+                     ( scale/2, length*scale),
+                     ( scale/2, scale)]
         inertia2 = pymunk.moment_for_poly(mass, vertices=vertices1)
         body = pymunk.Body(mass, inertia1 + inertia2)
         shape1 = pymunk.Poly(body, vertices1)
@@ -171,31 +164,73 @@ class PushTEnv(Environment):
         shape1.filter = pymunk.ShapeFilter(mask=mask)
         shape2.filter = pymunk.ShapeFilter(mask=mask)
         body.center_of_gravity = (shape1.center_of_gravity + shape2.center_of_gravity) / 2
-        body.position = position
-        body.velocity = velocity
-        body.angle = angle
         body.friction = 1
+        # self._set_body_state(body, state)
         space.add(body, shape1, shape2)
-        body.position = position
+        self._set_body_state(body, state)
         return body
 
 def builder(name):
     return PushTEnv()
 
-# A state-feedback adapter for the PushT environment
-# Will run a PID controller under the hood
-class PositionalPushT(PolicyTransform):
-    def __call__(self, policy, policy_init_state):
-        return PushTPositionalPolicy(policy), policy_init_state
-    
 @dataclass(jax=True)
-class PushTPositionalPolicy(Policy):
+class PushTPositionObs:
+    agent_pos: jnp.array
+    block_pos: jnp.array
+    block_rot: jnp.array
+
+@dataclass(jax=True)
+class PositionObsTransform(PolicyTransform):
+    def transform_policy(self, policy):
+        return PositionObsPolicy(policy)
+
+@dataclass(jax=True)
+class PositionObsPolicy(Policy):
     policy: Policy
 
-    def __call__(self, state, policy_state=None, rng_key=None):
-        # extract just the position parts
-        # to feed into the policy
-        pass
+    @property
+    def rollout_length(self):
+        return self.policy.rollout_length
+    
+    def __call__(self, input):
+        obs = input.observation
+        obs = PushTPositionObs(
+            obs.agent.position,
+            obs.block.position,
+            obs.block.angle
+        )
+        input = replace(input, observation=obs)
+        return self.policy(input)
+
+# A state-feedback adapter for the PushT environment
+# Will run a PID controller under the hood
+@dataclass(jax=True)
+class PositionControlTransform(PolicyTransform):
+    k_p : float = 100
+    k_v : float = 20
+
+    def transform_policy(self, policy):
+        return PositionControlPolicy(policy, self.k_p, self.k_v)
+
+@dataclass(jax=True)
+class PositionControlPolicy(Policy):
+    policy: Policy
+    k_p : float = 100
+    k_v : float = 20
+
+    @property
+    def rollout_length(self):
+        return self.policy.rollout_length
+
+    def __call__(self, input):
+        obs = input.observation
+        output = self.policy(input)
+        a = self.k_p * (output.action - obs.agent.position) + self.k_v * (-obs.agent.velocity)
+        return replace(output, action=a)
+    
+class PushTDatasetEntry:
+    state: PushTState
+    target_pos: jnp.array
 
 def expert_dataset():
     import gdown
@@ -211,16 +246,18 @@ def expert_dataset():
         # Read in all of the data
         state = jnp.array(data['data/state'])
         actions = jnp.array(data['data/action'])
+        episode_ends = jnp.array(data['meta/episode_ends'])
     # fill in zeros for the missing state
     # data
+    z = jnp.zeros(())
+    z2 = jnp.zeros((2,))
     agent_pos = state[:,:2]
-    agent_vel = jnp.zeros_like(agent_pos)
     block_pos = state[:,2:4]
-    block_vel = jnp.zeros_like(block_pos)
     block_rot = state[:,4]
     states = PushTState(
-        AgentState(agent_pos, agent_vel),
-        BlockState(block_pos, block_vel, block_rot))
+        BodyState(agent_pos, z2, z, z),
+        BodyState(block_pos, z2, block_rot, z)
+    )
     return Dataset.from_pytree((states, actions))
 
 # ----- pretrained network -------
@@ -314,12 +351,33 @@ def pretrained_net():
 def pretrained_policy():
     from stanza.model.diffusion import DDPMSchedule
     net, params = pretrained_net()
-    model = stanza.Partial(net.apply, params, None)
     schedule = DDPMSchedule.make_squaredcos_cap_v2(
         100, clip_sample_range=1)
     sample_action_trajectory = jnp.zeros((16, 2))
-    def policy(obs, policy_state, rng_key):
-        schedule.sample(rng_key, model)
+
+    def policy(input):
+        obs = input.observation
+        obs = jnp.concatenate(
+            (obs.agent_pos, obs.block_pos, obs.block_rot[:,jnp.newaxis]), 
+            axis=-1
+        )
+        obs = obs.reshape((-1))
+        model = stanza.Partial(net.apply, params, cond=obs)
+        diffused = schedule.sample(input.rng_key, model,
+            sample_action_trajectory, num_steps=100)
+        traj = diffused[:8]
+        return PolicyOutput(traj)
+    return chain_transforms(
+        ChunkTransform(input_chunk_size=2,
+                       output_chunk_size=8),
+        # Low-level controller runs 20x higher
+        # frequency than the high-level controller
+        SampleRateTransform(control_interval=20),
+        # The low-level controller takes a
+        # target position and runs feedback gains
+        PositionObsTransform(),
+        PositionControlTransform()
+    )(policy)
 
 # ----- Rendering utilities ------
 def render_space(space, space_width, space_height, width, height):

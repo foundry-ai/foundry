@@ -17,6 +17,10 @@ class DDPMSchedule:
     # If None, no clipping
     clip_sample_range: float = None
 
+    def __post_init__(self):
+        object.__setattr__(self, 'alphas', 1 - self.betas)
+        object.__setattr__(self, 'alphas_cumprod', jnp.cumprod(self.alphas))
+
     @staticmethod
     def make_linear(num_timesteps, beta_start=0.0001, beta_end=0.02,
                     **kwargs):
@@ -41,9 +45,6 @@ class DDPMSchedule:
     def num_steps(self):
         return self.betas.shape[0]
 
-    def __postinit__(self):
-        self.alphas = 1 - self.betas
-        self.alphas_cumprod = jnp.cumprod(self.alphas)
 
     # This will do the noising
     # forward process
@@ -84,11 +85,11 @@ class DDPMSchedule:
 
         pred_original_sample_coeff = jnp.sqrt(alpha_prod_t_prev) * current_beta_t / beta_prod_t
         current_sample_coeff = jnp.sqrt(current_alpha_t) * beta_prod_t_prev / beta_prod_t
-        pred_prev_sample = pred_original_sample_coeff * pred_sample + current_sample_coeff * sample
+        pred_prev_sample = pred_original_sample_coeff * pred_sample + current_sample_coeff * sample_flat
 
         variance = (1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * current_beta_t
         # we always take the log of variance, so clamp it to ensure it's not 0
-        variance = jnp.clip(variance, min=1e-20)
+        variance = jnp.clip(variance, a_min=1e-20)
         sigma = jnp.sqrt(variance)
         noise = sigma*jax.random.normal(rng_key, pred_prev_sample.shape)
         return unflatten(pred_prev_sample + noise)
@@ -97,12 +98,12 @@ class DDPMSchedule:
     def _sample_step(self, model, delta_steps, carry, timestep):
         rng_key, sample = carry
         rng_key, model_rng, step_rng = jax.random.split(rng_key, 3)
-        model_output = model(model_rng, timestep, sample)
+        model_output = model(model_rng, sample, timestep)
         next_sample = self.step(step_rng, sample, timestep, delta_steps, model_output)
-        return next_sample, None
+        return (rng_key, next_sample), None
 
-    # model is a map from rng_key, timestep, sample --> model_output
-    @stanza.jit
+    # model is a map from rng_key, sample, timestep --> model_output
+    @stanza.jit(static_argnames='num_steps')
     def sample(self, rng_key, model, example_sample, *, num_steps=None):
         if num_steps is None:
             num_steps = self.num_steps
@@ -110,13 +111,14 @@ class DDPMSchedule:
         step_ratio = self.num_steps // num_steps
         step = partial(self._sample_step, model, step_ratio)
 
-        timesteps = (jnp.arange(0, num_steps) * step_ratio).round()[::-1].copy().astype(jnp.int64)
+        timesteps = (jnp.arange(0, num_steps) * step_ratio).round()[::-1] \
+                .copy().astype(jnp.int32)
 
         # sample initial noise
         sample_flat, unflatten = jax.flatten_util.ravel_pytree(example_sample)
         random_sample = unflatten(jax.random.normal(rng_key, sample_flat.shape))
 
         carry = (rng_key, random_sample)
-        carry, _ = jax.lax.scan(step, (rng_key,), timesteps)
+        carry, _ = jax.lax.scan(step, carry, timesteps)
         _, sample = carry
         return sample

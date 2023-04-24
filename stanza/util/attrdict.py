@@ -8,7 +8,6 @@ class AttrDict(dict):
     
     def __getattr__(self, name: str):
         return self[name]
-    
 
 # A version of attrdict
 # which is immutable, jax-compatible

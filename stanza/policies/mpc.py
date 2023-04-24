@@ -115,26 +115,27 @@ class MPC:
         _, cost = self._loss_fn(state0, res.state, res.params)
         return res.state, res.params, cost
 
-    def __call__(self, state, policy_state=None, rng_key=None):
-        if policy_state is None:
+    def __call__(self, input):
+        if input.policy_state is None:
             actions = jax.tree_util.tree_map(lambda x: jnp.zeros((self.horizon_length,) + x.shape), self.action_sample)
             rollout_state = None
             t = 0
-            rollout_state, actions, cost = self._solve(rollout_state, state, actions)
+            rollout_state, actions, cost = self._solve(rollout_state, input.observation, actions)
         else:
-            actions = policy_state[0]
-            rollout_state = policy_state[1]
-            t = policy_state[2]
-            cost = policy_state[3]
+            actions = input.policy_state[0]
+            rollout_state = input.policy_state[1]
+            t = input.policy_state[2]
+            cost = input.policy_state[3]
 
-        if self.receed and policy_state is not None:
+        if self.receed and input.policy_state is not None:
             actions = jax.tree_util.tree_map(lambda x: x.at[:-1].set(x[1:]), actions)
-            rollout_state, actions, cost = self._solve(rollout_state, state, actions)
+            rollout_state, actions, cost = self._solve(rollout_state, input.observation, actions)
             action = jax.tree_util.tree_map(lambda x: x[0], actions)
         else:
             action = jax.tree_util.tree_map(lambda x: x[t], actions)
-        return PolicyOutput(action, policy_state=(actions, rollout_state, t+1, cost),
-                            extra=Attrs(cost=cost))
+        return PolicyOutput(action, 
+                            (actions, rollout_state, t+1, cost),
+                            Attrs(cost=cost))
 
 def log_barrier(barrier_sdf, states, actions):
     sdf = barrier_sdf(states, actions)

@@ -36,11 +36,11 @@ class Environment:
 
 __ENV_BUILDERS = {}
 
-def create(env_name, *args, **kwargs):
-    env_path = env_name.split("/")
+def create(env_type, **kwargs):
+    env_path = env_type.split("/")
     # register buildres if empty
     builder = __ENV_BUILDERS[env_path[0]]()
-    return builder(env_name, *args, **kwargs)
+    return builder(env_type, **kwargs)
 
 # Register them lazily so we don't
 # import dependencies we don't actually use
@@ -58,7 +58,8 @@ register_lazy('pusht', '.pusht')
 register_lazy('pendulum', '.pendulum')
 register_lazy('linear', '.linear')
 register_lazy('quadrotor', '.quadrotor')
-
+register_lazy('gym', '.gym')
+register_lazy('robosuite', '.robosuite')
 
 # Takes a cost function and maps it over a trajectory
 # where there is one more x than u
