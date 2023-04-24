@@ -92,7 +92,7 @@ class DDPMSchedule:
         noise = sigma*jax.random.normal(rng_key, pred_prev_sample.shape)
         return unflatten(pred_prev_sample + noise)
 
-    @stanza.jit
+    @jax.jit
     def _sample_step(self, model, delta_steps, carry, timestep):
         rng_key, sample = carry
         rng_key, model_rng, step_rng = jax.random.split(rng_key, 3)

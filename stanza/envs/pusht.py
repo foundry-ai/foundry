@@ -387,7 +387,7 @@ def pretrained_policy():
         # Low-level position controller runs 20x higher
         # frequency than the high-level controller
         # which outputs target positions
-        SampleRateTransform(control_interval=20),
+        SampleRateTransform(control_interval=10),
         # The low-level controller takes a
         # target position and runs feedback gains
         PositionObsTransform(),
