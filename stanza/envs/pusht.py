@@ -341,6 +341,7 @@ def pretrained_net():
 
     from stanza.model.unet1d import ConditionalUnet1D
     import haiku as hk
+    @jax.jit
     def model(sample, timestep, cond):
         model = ConditionalUnet1D(name='net')
         r = model(sample, timestep, cond)
@@ -364,7 +365,7 @@ def pretrained_policy():
         obs = obs.reshape((-1))
         model = stanza.Partial(net.apply, params, cond=obs)
         diffused = schedule.sample(input.rng_key, model,
-            sample_action_trajectory, num_steps=100)
+            sample_action_trajectory, num_steps=10)
         traj = diffused[:8]
         return PolicyOutput(traj)
     return chain_transforms(

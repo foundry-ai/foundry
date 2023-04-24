@@ -42,7 +42,10 @@ logger.info("x0: {}", x0)
 
 # dataset = pusht.expert_dataset()
 policy = pusht.pretrained_policy()
-print(policy(policies.PolicyInput(x0, None, PRNGKey(0))))
+logger.info(
+    "{}", 
+    policy(policies.PolicyInput(x0, None, PRNGKey(0)))
+)
 
 # rollout = policies.rollout(env.step, x0, policy, 
 #                            policy_rng_key=PRNGKey(42),

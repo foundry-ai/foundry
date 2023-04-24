@@ -31,14 +31,12 @@ class DDPMSchedule:
     
     @staticmethod
     def make_squaredcos_cap_v2(num_timesteps, max_beta=0.999, **kwargs):
-        ts = jnp.arange(num_timesteps).astype(float)/num_timesteps
-        ts_po = (jnp.arange(num_timesteps) + 1).astype(float)/num_timesteps
+        t1 = jnp.arange(num_timesteps).astype(float)/num_timesteps
+        t2 = (jnp.arange(num_timesteps) + 1).astype(float)/num_timesteps
         def alpha_bar(t):
             return jnp.square(jnp.cos((t + 0.008) / 1.008 * jnp.pi / 2))
-        ts = alpha_bar(ts)
-        ts_po = alpha_bar(ts)
         return DDPMSchedule(
-            betas=jnp.minimum(1 - ts_po / ts, max_beta), **kwargs
+            betas=jnp.minimum(1 - alpha_bar(t2) / alpha_bar(t1), max_beta), **kwargs
         )
 
     @property
@@ -77,7 +75,7 @@ class DDPMSchedule:
             pred_sample = (sample_flat - beta_prod_t ** (0.5) * model_output_flat) / alpha_prod_t ** (0.5)
         elif self.prediction_type == "sample":
             pred_sample = model_output
-        elif self.prediction_type == "v_predcition":
+        elif self.prediction_type == "v_prediction":
             pred_sample = (alpha_prod_t**0.5) * sample_flat - (beta_prod_t**0.5) * model_output_flat
 
         if self.clip_sample_range is not None:
