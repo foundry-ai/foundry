@@ -314,15 +314,14 @@ def pretrained_net():
     import torch
     cache = os.path.join(os.getcwd(), '.cache')
     os.makedirs(cache, exist_ok=True)
-    model_path = os.path.join(cache, 'pusht_model.ckpt')
+    model_path = os.path.join(cache, 'pusht_model.ckpt.npy')
     if not os.path.exists(model_path):
-        id = "1mHDr_DEZSdiGo9yecL50BBQYzR8Fjhl_&confirm=t"
+        id = "1AMUZvH4mtkCFn4C2MJMgQkfeds2m8dsh&confirm=t"
         gdown.download(id=id, output=model_path, quiet=False)
-    
-    tm = torch.load(model_path, map_location=torch.device('cpu'))
+    tm = jnp.load(model_path, allow_pickle=True).item()
     mapped_params = {}
     for (k,v) in tm.items():
-        v = jnp.array(v.numpy()).T
+        v = jnp.array(v).T
         if k.endswith('.weight'):
             root = k[:-len('.weight')]
             # root = MOD_NAME_MAP[root]

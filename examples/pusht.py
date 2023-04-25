@@ -49,13 +49,12 @@ obs = pusht.PushTPositionObs(
 obs = jax.tree_util.tree_map(lambda a,b: jnp.stack((a,b), axis=0), obs, obs)
 output = ll_policy(policies.PolicyInput(obs, None, PRNGKey(42)))
 
-with jax.profiler.trace("/tmp/jax-profile", create_perfetto_link=True):
-    output = ll_policy(policies.PolicyInput(obs, None, PRNGKey(42)))
-    jax.tree_util.tree_map(
-        lambda x: x.block_until_ready(),
-        output
-    )
-    logger.info("{}", output)
+output = ll_policy(policies.PolicyInput(obs, None, PRNGKey(42)))
+jax.tree_util.tree_map(
+    lambda x: x.block_until_ready(),
+    output
+)
+logger.info("{}", output)
 
 # rollout = policies.rollout(env.step, x0, policy,
 #                     length=100*20, policy_rng_key=PRNGKey(42), last_state=False)
