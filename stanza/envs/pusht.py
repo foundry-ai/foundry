@@ -311,7 +311,6 @@ MOD_NAME_MAP = dict(itertools.chain(
 def pretrained_net():
     import gdown
     import os
-    import torch
     cache = os.path.join(os.getcwd(), '.cache')
     os.makedirs(cache, exist_ok=True)
     model_path = os.path.join(cache, 'pusht_model.ckpt.npy')

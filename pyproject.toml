@@ -11,8 +11,6 @@ activity = "stanza.runtime:launch_activity"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.11"
-jax = { version = "0.4.4" }
-jaxlib = { version = "0.4.4" }
 optax = "^0.1.4"
 rich = "^13.3.1"
 cloudpickle = "^2.2.1"
@@ -30,9 +28,10 @@ pycairo = "^1.23.0"
 ffmpegio = "^0.8.3"
 gdown = "^4.7.1"
 zarr = "^2.14.2"
-torch = "^2.0.0"
+#torch = "^2.0.0"
 llvmlite = "^0.39.1"
 robosuite = "^1.4.0"
+jax = {extras = ["cuda12-pip"], version = "^0.4.8"}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.1"
@@ -41,6 +40,6 @@ pytest = "^7.2.1"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-#[[tool.poetry.source]]
-#name = "private"
-#url = "https://storage.googleapis.com/jax-releases/jax_cuda_releases.html"
+[[tool.poetry.source]]
+name = "private"
+url = "https://storage.googleapis.com/jax-releases/jax_cuda_releases.html"

@@ -3,6 +3,7 @@ import stanza.policies as policies
 import stanza.envs.pusht as pusht
 from stanza.util.logging import logger
 
+import time
 import jax.numpy as jnp
 import jax
 from jax.random import PRNGKey
@@ -56,12 +57,16 @@ jax.tree_util.tree_map(
 )
 logger.info("{}", output)
 
-# rollout = policies.rollout(env.step, x0, policy,
-#                     length=100*20, policy_rng_key=PRNGKey(42), last_state=False)
-# video = jax.vmap(env.render)(rollout.states)
-# import ffmpegio
-# ffmpegio.video.write('pretrained_video.mp4', 28, video, 
-#     overwrite=True, loglevel='quiet')
+t = time.time()
+rollout = policies.rollout(env.step, x0, policy,
+            length=200*10, 
+            policy_rng_key=PRNGKey(42), last_state=False)
+logger.info('took: {:02}s to rollout', time.time() - t)
+
+video = jax.vmap(env.render)(rollout.states)
+import ffmpegio
+ffmpegio.video.write('trained_video.mp4', 28, video, 
+    overwrite=True, loglevel='quiet')
 
 # rollout = policies.rollout(env.step, x0, policy, 
 #                            policy_rng_key=PRNGKey(42),
