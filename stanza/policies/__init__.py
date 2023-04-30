@@ -4,7 +4,7 @@ from jax.random import PRNGKey
 from typing import Callable, List, Any
 import stanza
 from stanza.util.dataclasses import dataclass, field, replace
-from stanza.util.attrdict import Attrs
+from stanza.util.attrdict import AttrMap
 from functools import partial
 
 # A policy is a function from PolicyInput --> PolicyOutput
@@ -20,7 +20,7 @@ class PolicyOutput:
     action: Any
     # The policy state
     policy_state: Any = None
-    info: Attrs = field(default_factory=Attrs)
+    info: AttrMap = field(default_factory=AttrMap)
 
 @dataclass(jax=True)
 class Trajectory:
@@ -31,9 +31,10 @@ class Trajectory:
 # final policy state, final rng key
 @dataclass(jax=True)
 class Rollout(Trajectory):
-    info: Attrs = field(default_factory=Attrs)
+    info: AttrMap = field(default_factory=AttrMap)
     final_policy_state: Any = None
-    final_policy_rng_key: Any = None
+    final_policy_rng_key: PRNGKey = None
+    final_model_rng_key: PRNGKey = None
 
 class Policy:
     @property
@@ -69,6 +70,8 @@ def rollout(model, state0,
             # autonomous system
             policy=None,
             *,
+            # The rng_key for the environment
+            model_rng_key=None,
             # The initial policy state.
             policy_init_state=None,
             # The policy rng key
@@ -90,29 +93,33 @@ def rollout(model, state0,
         raise ValueError("Rollout length must be > 0")
 
     def scan_fn(comb_state, _):
-        env_state, policy_state, policy_rng = comb_state
-        new_policy_rng, sk = jax.random.split(policy_rng) \
+        env_state, policy_state, policy_rng, model_rng = comb_state
+        new_policy_rng, p_sk = jax.random.split(policy_rng) \
             if policy_rng is not None else (None, None)
+        new_model_rng, m_sk = jax.random.split(model_rng) \
+            if model_rng is not None else (None, None)
         if policy is not None:
-            input = PolicyInput(env_state, policy_state, sk)
+            input = PolicyInput(env_state, policy_state, p_sk)
             policy_output = policy(input)
             action = policy_output.action
             info = policy_output.info
 
             new_policy_state = policy_output.policy_state
-            new_env_state = model(env_state, action)
+            new_env_state = model(env_state, action, m_sk)
         else:
             action = None
             info = None
-            new_env_state = model(env_state)
+            new_env_state = model(env_state, None, m_sk)
             new_policy_state = policy_state
-        return (new_env_state, new_policy_state, new_policy_rng), (env_state, action, info)
+        return (new_env_state, new_policy_state, new_policy_rng, new_model_rng),\
+                (env_state, action, info)
 
     # Do the first step manually to populate the policy state
-    state = (state0, policy_init_state, policy_rng_key)
+    state = (state0, policy_init_state, policy_rng_key, model_rng_key)
     new_state, first_output = scan_fn(state, None)
     # outputs is (xs, us, jacs) or (xs, us)
-    (state_f, policy_state_f, policy_rng_f), outputs = jax.lax.scan(scan_fn, new_state,
+    (state_f, policy_state_f, 
+     policy_rng_f, model_rng_f), outputs = jax.lax.scan(scan_fn, new_state,
                                     None, length=length-2)
     outputs = jax.tree_util.tree_map(
         lambda a, b: jnp.concatenate((jnp.expand_dims(a,0), b)),
@@ -125,7 +132,7 @@ def rollout(model, state0,
             states, state_f)
     return Rollout(states=states, actions=us, 
         info=info, final_policy_state=policy_state_f, 
-        final_policy_rng_key=policy_rng_f)
+        final_policy_rng_key=policy_rng_f, final_model_rng_key=model_rng_f)
 
 # Shorthand alias for rollout with an actions policy
 def rollout_inputs(model, state0, actions, last_state=True):

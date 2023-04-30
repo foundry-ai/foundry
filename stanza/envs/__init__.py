@@ -1,15 +1,9 @@
 import importlib
 import inspect
 
-import stanza
 import jax
 import jax.tree_util
 import jax.numpy as jnp
-
-from stanza.dataset import MappedDataset
-from stanza.util.random import PRNGDataset
-from stanza.util.dataclasses import dataclass
-from functools import partial
 
 from typing import Any
 

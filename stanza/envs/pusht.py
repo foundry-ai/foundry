@@ -72,7 +72,7 @@ class PushTEnv(Environment):
         self._add_tee(space, self.goal_pose, color=(0,1,0), z=-1)
         return render_space(space, 512, 512, width, height)
 
-    def step(self, state, action=None):
+    def step(self, state, action, rng_key):
         return jax.pure_callback(PushTEnv._callback_step, state, self, state, action)
     
     def _get_body_state(self, body):
@@ -424,5 +424,3 @@ def pretrained_policy():
         PositionObsTransform(),
         PositionControlTransform()
     )(high_level_policy)
-
-# Dataset parser

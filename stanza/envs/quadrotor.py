@@ -51,7 +51,7 @@ class QuadrotorEnvironment(Environment):
             phi_dot=jnp.zeros(())
         )
     
-    def step(self, state, action):
+    def step(self, state, action, rng_key):
         thrust = action[0]
         torque = action[1]
 

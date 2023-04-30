@@ -5,9 +5,10 @@
 import functools
 import sys
 import asyncio
+import rich
 from stanza.util.logging import logger
 from stanza.util.dataclasses import dataclass
-from stanza.runtime.config import RuntimeParser
+from stanza.runtime.config import RuntimeParser, ArgParseError
 from stanza.runtime.database import Database
 from stanza.runtime.container import Target
 from stanza.runtime.pool import Pool
@@ -62,7 +63,11 @@ async def launch_activity_main():
     sys.path.append(os.path.abspath(os.path.join(__file__, "..","..","..", "projects")))
 
     parser = RuntimeParser()
-    runtime_cfg = parser.parse_args(sys.argv[1:])
+    try:
+        runtime_cfg = parser.parse_args(sys.argv[1:])
+    except ArgParseError as e:
+        rich.print(f"[red]Invalid Arguments:[/red] {e}")
+        return
     target = await Target.from_url(runtime_cfg.target)
     async with Pool(target) as p:
         activity = functools.partial(activity_sub, runtime_cfg.activity, runtime_cfg.database)

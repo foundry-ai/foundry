@@ -190,9 +190,9 @@ class PyTreeData(Data):
         def scan_fn(iter, _):
             return data.next(iter), iter
         _, iters = jax.lax.scan(scan_fn, start, None,
-                    length=dataset.remaining(start))
+                    length=data.remaining(start))
         # in parallel fetch the iterators...
-        data = jax.vmap(dataset.get)(iters)
+        data = jax.vmap(data.get)(iters)
         return PyTreeData(data)
 
 @dataclass(jax=True)

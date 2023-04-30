@@ -40,7 +40,7 @@ class LinearSystem(Environment):
         max = self.x0_max if self.x0_max else 1
         return jax.random.uniform(key, (self.A.shape[0],), jnp.float32, min, max)
     
-    def step(self, state, action):
+    def step(self, state, action, rng_key):
         action = jnp.atleast_1d(action)
         x = self.A @ jnp.expand_dims(state, -1) + self.B @ jnp.expand_dims(action, -1)
         return jnp.squeeze(x, -1)

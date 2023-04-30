@@ -8,7 +8,7 @@ from typing import Any, Callable
 from stanza import Partial
 
 from stanza.util.logging import logger
-from stanza.util.attrdict import Attrs
+from stanza.util.attrdict import AttrMap
 from stanza.util.dataclasses import dataclass, field, replace
 from jax.random import PRNGKey
 
@@ -135,7 +135,7 @@ class MPC:
             action = jax.tree_util.tree_map(lambda x: x[t], actions)
         return PolicyOutput(action, 
                             (actions, rollout_state, t+1, cost),
-                            Attrs(cost=cost))
+                            AttrMap(cost=cost))
 
 def log_barrier(barrier_sdf, states, actions):
     sdf = barrier_sdf(states, actions)

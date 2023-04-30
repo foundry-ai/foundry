@@ -37,13 +37,6 @@ class TrainResults:
     fn_state: Any
     opt_state: Any
 
-@dataclass(jax=True)
-class Callback:
-    iter_interval: int
-
-    def __call__(self, state):
-        pass
-
 # A sentinel for not passing in state
 # to the loss function
 NO_STATE_TYPE=namedtuple('NoState',[])
@@ -77,7 +70,7 @@ class Trainer:
         stats = jax.tree_util.tree_map(lambda x: jnp.mean(x,axis=0), stats)
         return loss, (stats, fn_state)
 
-    def _train_step(self, state, *, loss_fn, batch_dataset, callbacks):
+    def _train_step(self, state, *, loss_fn, batch_dataset, hooks):
         rng_key, sk = jax.random.split(state.rng_key)
 
         if state.first_batch is None:
@@ -106,17 +99,16 @@ class Trainer:
             rng_key=rng_key,
             fn_params=fn_params, fn_state=fn_state, opt_state=opt_state)
 
-        for r in callbacks:
-            if r.iter_interval is not None:
-                b = state.total_iteration % r.iter_interval == 0
-                jax.lax.cond(b, lambda: r(state), lambda: None)
+        for h in hooks:
+            state = h(state)
         return state
 
     @partial(jax.jit, static_argnames=("shuffle",))
     def _train_epoch(self, state, *, 
-                loss_fn, dataset, callbacks, shuffle):
-
+                loss_fn, dataset, hooks, shuffle):
         rng_key, sk = jax.random.split(state.rng_key)
+        state = replace(state, rng_key=rng_key)
+
         dataset = dataset if not shuffle else dataset.shuffle(sk)
         first_batch, batch_dataset = dataset.batch(self.batch_size)
 
@@ -130,7 +122,7 @@ class Trainer:
         step_fn = Partial(self._train_step,
                     loss_fn=loss_fn,
                     batch_dataset=batch_dataset,
-                    callbacks=callbacks)
+                    hooks=hooks)
 
         step_state = step_fn(first_step_state)
         if batch_dataset.length > 0:
@@ -139,6 +131,7 @@ class Trainer:
         return replace(state,
             epoch=state.epoch+1,
             epoch_iteration=0,
+            last_stats=step_state.last_stats,
             total_iteration=step_state.total_iteration,
             rng_key=step_state.rng_key,
             fn_params=step_state.fn_params,
@@ -155,7 +148,7 @@ class Trainer:
                 # constructor or override in train() 
                 # function
                 epochs=None, max_iterations=None,
-                shuffle=True, callbacks=[]):
+                shuffle=True, hooks=[]):
         
         # epochs and max_iterations can come from either
         # the trainer parameters or the train parameters
@@ -200,7 +193,7 @@ class Trainer:
             self._train_epoch,
             loss_fn=Partial(loss_fn),
             dataset=dataset,
-            callbacks=callbacks,
+            hooks=hooks,
             shuffle=shuffle
         )
 
@@ -216,8 +209,8 @@ class Trainer:
             epoch_fn, state
         )
 
-        for c in callbacks:
-            c(final_state)
+        for h in hooks:
+            final_state = h(final_state)
 
         results = TrainResults(
             fn_params = final_state.fn_params,

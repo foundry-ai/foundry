@@ -41,7 +41,7 @@ class PendulumEnv(Environment):
         vel = jnp.zeros(())
         return State(angle, vel)
 
-    def step(self, state, action):
+    def step(self, state, action, rng_key):
         angle = state.angle + self.dt*state.vel
         vel = state.vel + self.dt*jnp.sin(state.angle) + self.dt*action
         state = State(angle, vel)
