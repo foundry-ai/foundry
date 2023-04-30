@@ -25,14 +25,11 @@ class Environment:
     def reset(self, key):
         raise NotImplementedError("Must impelement reset()")
 
-    def step(self, state, action):
+    # rng_key may be None.
+    # if it is None and the environment
+    # is inherently stochastic, throw an error!
+    def step(self, state, action, rng_key):
         raise NotImplementedError("Must impelement step()")
-
-    def cost(self, states, actions):
-        raise NotImplementedError("Must impelement cost()")
-    
-    def visualize(self, states, actions):
-        raise NotImplementedError("Must impelement visualize()")
 
 __ENV_BUILDERS = {}
 

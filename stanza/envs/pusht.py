@@ -231,38 +231,65 @@ class PositionControlPolicy(Policy):
             output, action=a,
             info=attrs(output.info, target_pos=output.action)
         )
-    
-class PushTDatasetEntry:
-    state: PushTState
-    target_pos: jnp.array
 
-def expert_dataset():
-    import gdown
-    import os
-    cache = os.path.join(os.getcwd(), '.cache')
-    os.makedirs(cache, exist_ok=True)
-    dataset_path = os.path.join(cache, 'pusht_data.zarr.zip')
-    if not os.path.exists(dataset_path):
-        id = "1KY1InLurpMvJDRb14L9NlXT_fEsCvVUq&confirm=t"
-        gdown.download(id=id, output=dataset_path, quiet=False)
-    import zarr
-    with zarr.open(dataset_path, "r") as data:
-        # Read in all of the data
-        state = jnp.array(data['data/state'])
-        actions = jnp.array(data['data/action'])
-        episode_ends = jnp.array(data['meta/episode_ends'])
-    # fill in zeros for the missing state
-    # data
-    z = jnp.zeros(())
-    z2 = jnp.zeros((2,))
-    agent_pos = state[:,:2]
-    block_pos = state[:,2:4]
-    block_rot = state[:,4]
-    states = PushTState(
-        BodyState(agent_pos, z2, z, z),
-        BodyState(block_pos, z2, block_rot, z)
-    )
-    return Dataset.from_pytree((states, actions))
+# ----- Rendering utilities ------
+
+def render_space(space, space_width, space_height, width, height):
+    from cairo import ImageSurface, Context, Format
+    surface = ImageSurface(Format.ARGB32, width, height)
+    ctx = Context(surface)
+    ctx.rectangle(0, 0, width, height)
+    ctx.set_source_rgb(0.9, 0.9, 0.9)
+    ctx.fill()
+    ctx.move_to(width/2, height/2)
+    ctx.scale(width/space_width, height/space_height)
+
+    # do a transform based on space_width, space_height
+    # and width, height
+    shapes = list(space.shapes)
+    shapes.sort(key=lambda x: x.z if hasattr(x, 'z') and x.z is not None else 0)
+    for shape in shapes:
+        ctx.save()
+        ctx.translate(shape.body.position[0], shape.body.position[1])
+        ctx.rotate(shape.body.angle)
+        if hasattr(shape, 'color') and shape.color:
+            ctx.set_source_rgb(shape.color[0], shape.color[1], shape.color[2])
+        else:
+            ctx.set_source_rgb(0.3,0.3,0.3)
+
+        if isinstance(shape, pymunk.Circle):
+            # draw a circle
+            ctx.arc(shape.offset[0], shape.offset[1], shape.radius, 0, 2*np.pi)
+            ctx.close_path()
+            ctx.fill()
+        elif isinstance(shape, pymunk.Poly):
+            verts = shape.get_vertices()
+            ctx.move_to(verts[0].x, verts[0].y)
+            for v in verts[1:]:
+                ctx.line_to(v.x, v.y)
+            ctx.close_path()
+            ctx.fill()
+        elif isinstance(shape, pymunk.Segment):
+            ctx.move_to(shape.a.x, shape.a.y)
+            ctx.line_to(shape.b.x, shape.b.y)
+            ctx.set_line_width(shape.radius)
+            ctx.stroke()
+        else:
+            pass
+        ctx.restore()
+    img = cairo_to_numpy(surface)[:3,:,:]
+    # we need to make a copy otherwise it may
+    # get overridden the next time we render
+
+    return np.copy(img)
+
+def cairo_to_numpy(surface):
+    data = np.ndarray(shape=(surface.get_height(), surface.get_width(), 4),
+                    dtype=np.uint8,
+                    buffer=surface.get_data())
+    data[:,:,[0,1,2,3]] = data[:,:,[2,1,0,3]]
+    data = np.transpose(data, (2, 0, 1))
+    return data
 
 # ----- pretrained network -------
 
@@ -369,12 +396,18 @@ def pretrained_policy():
             (obs.agent_pos, obs.block_pos, obs.block_rot[:,jnp.newaxis]), 
             axis=-1
         )
+        # normalize to [0, 1]
         obs = (obs - obs_scale['min'])/(obs_scale['max'] - obs_scale['min'])
+        # shift to [-1, 1]
+        obs = obs*2 - 1
         obs = obs.reshape((-1))
         model = stanza.Partial(net.apply, params, cond=obs)
         diffused = schedule.sample(input.rng_key, model,
             sample_action_trajectory, num_steps=100)
         traj = diffused[:8]
+        # shift from [-1, 1] to [0, 1]
+        traj = (traj + 1)/2
+        # rescale
         traj = traj*(action_scale['max'] - action_scale['min']) \
                     + action_scale['min']
         return PolicyOutput(traj)
@@ -390,62 +423,6 @@ def pretrained_policy():
         # target position and runs feedback gains
         PositionObsTransform(),
         PositionControlTransform()
-    )(high_level_policy), high_level_policy
+    )(high_level_policy)
 
-# ----- Rendering utilities ------
-def render_space(space, space_width, space_height, width, height):
-    from cairo import ImageSurface, Context, Format
-    surface = ImageSurface(Format.ARGB32, width, height)
-    ctx = Context(surface)
-    ctx.rectangle(0, 0, width, height)
-    ctx.set_source_rgb(0.9, 0.9, 0.9)
-    ctx.fill()
-    ctx.move_to(width/2, height/2)
-    ctx.scale(width/space_width, height/space_height)
-
-    # do a transform based on space_width, space_height
-    # and width, height
-    shapes = list(space.shapes)
-    shapes.sort(key=lambda x: x.z if hasattr(x, 'z') and x.z is not None else 0)
-    for shape in shapes:
-        ctx.save()
-        ctx.translate(shape.body.position[0], shape.body.position[1])
-        ctx.rotate(shape.body.angle)
-        if hasattr(shape, 'color') and shape.color:
-            ctx.set_source_rgb(shape.color[0], shape.color[1], shape.color[2])
-        else:
-            ctx.set_source_rgb(0.3,0.3,0.3)
-
-        if isinstance(shape, pymunk.Circle):
-            # draw a circle
-            ctx.arc(shape.offset[0], shape.offset[1], shape.radius, 0, 2*np.pi)
-            ctx.close_path()
-            ctx.fill()
-        elif isinstance(shape, pymunk.Poly):
-            verts = shape.get_vertices()
-            ctx.move_to(verts[0].x, verts[0].y)
-            for v in verts[1:]:
-                ctx.line_to(v.x, v.y)
-            ctx.close_path()
-            ctx.fill()
-        elif isinstance(shape, pymunk.Segment):
-            ctx.move_to(shape.a.x, shape.a.y)
-            ctx.line_to(shape.b.x, shape.b.y)
-            ctx.set_line_width(shape.radius)
-            ctx.stroke()
-        else:
-            pass
-        ctx.restore()
-    img = cairo_to_numpy(surface)[:3,:,:]
-    # we need to make a copy otherwise it may
-    # get overridden the next time we render
-
-    return np.copy(img)
-
-def cairo_to_numpy(surface):
-    data = np.ndarray(shape=(surface.get_height(), surface.get_width(), 4),
-                    dtype=np.uint8,
-                    buffer=surface.get_data())
-    data[:,:,[0,1,2,3]] = data[:,:,[2,1,0,3]]
-    data = np.transpose(data, (2, 0, 1))
-    return data
+# Dataset parser

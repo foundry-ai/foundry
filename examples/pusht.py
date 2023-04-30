@@ -6,6 +6,7 @@ from stanza.util.logging import logger
 import time
 import jax.numpy as jnp
 import jax
+import sys
 from jax.random import PRNGKey
 from jax.tree_util import tree_map
 
@@ -40,30 +41,16 @@ ffmpegio.video.write('video.mp4', 28, video,
     overwrite=True, loglevel='quiet')
 
 # dataset = pusht.expert_dataset()
-policy, ll_policy = pusht.pretrained_policy()
-
-obs = pusht.PushTPositionObs(
-    jnp.array([235., 124.]),
-    jnp.array([335., 128.]),
-    jnp.array(5.37825788)
-)
-obs = jax.tree_util.tree_map(lambda a,b: jnp.stack((a,b), axis=0), obs, obs)
-output = ll_policy(policies.PolicyInput(obs, None, PRNGKey(42)))
-
-output = ll_policy(policies.PolicyInput(obs, None, PRNGKey(42)))
-jax.tree_util.tree_map(
-    lambda x: x.block_until_ready(),
-    output
-)
-logger.info("{}", output)
-
+policy = pusht.pretrained_policy()
 t = time.time()
 rollout = policies.rollout(env.step, x0, policy,
-            length=200*10, 
+            length=200*10,
             policy_rng_key=PRNGKey(42), last_state=False)
 logger.info('took: {:02}s to rollout', time.time() - t)
 
-video = jax.vmap(env.render)(rollout.states)
+# render every 10th state
+vis_states = jax.tree_util.tree_map(lambda x: x[::10], rollout.states)
+video = jax.vmap(env.render)(vis_states)
 import ffmpegio
 ffmpegio.video.write('trained_video.mp4', 28, video, 
     overwrite=True, loglevel='quiet')
