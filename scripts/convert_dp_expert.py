@@ -80,6 +80,7 @@ def get_parameters(name, id):
 IDS = { 
     "pusht": "1AMUZvH4mtkCFn4C2MJMgQkfeds2m8dsh&confirm=t"
 }
+
 # save the parameters:
 params = get_parameters("pusht", IDS["pusht"])
 np.save("pusht.ckpt.npy", params)

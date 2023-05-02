@@ -568,6 +568,46 @@ files = [
 preview = ["glfw-preview"]
 
 [[package]]
+name = "gym"
+version = "0.26.2"
+description = "Gym: A universal API for reinforcement learning environments"
+category = "main"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "gym-0.26.2.tar.gz", hash = "sha256:e0d882f4b54f0c65f203104c24ab8a38b039f1289986803c7d02cdbe214fbcc4"},
+]
+
+[package.dependencies]
+cloudpickle = ">=1.2.0"
+gym_notices = ">=0.0.4"
+numpy = ">=1.18.0"
+
+[package.extras]
+accept-rom-license = ["autorom[accept-rom-license] (>=0.4.2,<0.5.0)"]
+all = ["ale-py (>=0.8.0,<0.9.0)", "box2d-py (==2.3.5)", "imageio (>=2.14.1)", "lz4 (>=3.1.0)", "matplotlib (>=3.0)", "moviepy (>=1.0.0)", "mujoco (==2.2)", "mujoco_py (>=2.1,<2.2)", "opencv-python (>=3.0)", "pygame (==2.1.0)", "pytest (==7.0.1)", "swig (>=4.0.0,<5.0.0)"]
+atari = ["ale-py (>=0.8.0,<0.9.0)"]
+box2d = ["box2d-py (==2.3.5)", "pygame (==2.1.0)", "swig (>=4.0.0,<5.0.0)"]
+classic-control = ["pygame (==2.1.0)"]
+mujoco = ["imageio (>=2.14.1)", "mujoco (==2.2)"]
+mujoco-py = ["mujoco_py (>=2.1,<2.2)"]
+other = ["lz4 (>=3.1.0)", "matplotlib (>=3.0)", "moviepy (>=1.0.0)", "opencv-python (>=3.0)"]
+testing = ["box2d-py (==2.3.5)", "imageio (>=2.14.1)", "lz4 (>=3.1.0)", "matplotlib (>=3.0)", "moviepy (>=1.0.0)", "mujoco (==2.2)", "mujoco_py (>=2.1,<2.2)", "opencv-python (>=3.0)", "pygame (==2.1.0)", "pytest (==7.0.1)", "swig (>=4.0.0,<5.0.0)"]
+toy-text = ["pygame (==2.1.0)"]
+
+[[package]]
+name = "gym-notices"
+version = "0.0.8"
+description = "Notices for gym"
+category = "main"
+optional = false
+python-versions = "*"
+files = [
+    {file = "gym-notices-0.0.8.tar.gz", hash = "sha256:ad25e200487cafa369728625fe064e88ada1346618526102659b4640f2b4b911"},
+    {file = "gym_notices-0.0.8-py3-none-any.whl", hash = "sha256:e5f82e00823a166747b4c2a07de63b6560b1acb880638547e0cabf825a01e463"},
+]
+
+[[package]]
 name = "idna"
 version = "3.4"
 description = "Internationalized Domain Names in Applications (IDNA)"
@@ -798,37 +838,37 @@ dev = ["absl-py", "pyink", "pylint (>=2.6.0)", "pytest", "pytest-xdist"]
 
 [[package]]
 name = "mujoco"
-version = "2.3.4"
+version = "2.3.5"
 description = "MuJoCo Physics Simulator"
 category = "main"
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "mujoco-2.3.4-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:ea4531f4c1702dc93cd4a3a32932cb3f164ea0cadd85b9afbe9afc7ca642d0d7"},
-    {file = "mujoco-2.3.4-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:cfad59d9bc5236d3276da7dce57005140e06ab3ec221386099d104fc91e44d38"},
-    {file = "mujoco-2.3.4-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0b283afbdd7359b1d398433384b03b02264751f6a53fb064cdf4a82a9c695601"},
-    {file = "mujoco-2.3.4-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c42d7ff9deebbb3897a54a67aa16986987089c9b3301f79d6932f1f7c76f154b"},
-    {file = "mujoco-2.3.4-cp310-cp310-win_amd64.whl", hash = "sha256:c66b9236e2ffe052bd2c507b86e3f06cf501c9bd6f43cfa5132b71a87514d55c"},
-    {file = "mujoco-2.3.4-cp311-cp311-macosx_10_12_x86_64.whl", hash = "sha256:13671a5e77fad9ee90c6a12e889e42c083ce0860aa31050d84c53dba43a4ff33"},
-    {file = "mujoco-2.3.4-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:985ce74d4b6e3edcca210377a9dd06621fd74b0526baee3609dbb5cddc254ba6"},
-    {file = "mujoco-2.3.4-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ca88a250bc29b37e29b57739d943a4ee953b6d32241c63988cd9e7b9be6694b8"},
-    {file = "mujoco-2.3.4-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:47b6bd56ce4274b328fdff5ad98e14417b52552d07b18607e44853fdd890e44c"},
-    {file = "mujoco-2.3.4-cp311-cp311-win_amd64.whl", hash = "sha256:c1cdac2c87b4f76701e7c742bd0472d3eac8a308bfb0edaf1623a78d57ddc416"},
-    {file = "mujoco-2.3.4-cp37-cp37m-macosx_10_12_x86_64.whl", hash = "sha256:e16c5e16633e80675c34006e486d9ebe954564850a98e7b0003b5567bbdbcece"},
-    {file = "mujoco-2.3.4-cp37-cp37m-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:8a3816bb7f6616d8e3550cda972d271d8b0279c123c0044cfb36b2d73748754f"},
-    {file = "mujoco-2.3.4-cp37-cp37m-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e1650152c9f2ef85ccdfde25d13f74f650958d8d78e97e280a2a72b1b7e12bec"},
-    {file = "mujoco-2.3.4-cp37-cp37m-win_amd64.whl", hash = "sha256:e343c75ab9e7b404cc0eb6a1f59ec2ef119d46cced162295873df70d2a23a689"},
-    {file = "mujoco-2.3.4-cp38-cp38-macosx_10_12_x86_64.whl", hash = "sha256:06c171783751bcff586abfa39f8dc3e6e2fa66e62be3379f7d75ef5269469d17"},
-    {file = "mujoco-2.3.4-cp38-cp38-macosx_11_0_arm64.whl", hash = "sha256:f263fd88e4e899bc561051af7fbc3f78b33bdaf7c5af596214ca6579c03291ce"},
-    {file = "mujoco-2.3.4-cp38-cp38-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:d476afdefee0ca1e5099bc6c3aac9599f9b06f91acfa32dd2e9d564e70ea4c95"},
-    {file = "mujoco-2.3.4-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:57019e78c977029daeccd8ad279cbe158eca7f9d642adcb0503facbce4bd484b"},
-    {file = "mujoco-2.3.4-cp38-cp38-win_amd64.whl", hash = "sha256:b47f82dfb338dc132448a64cc425c21d3b1825a44e388d9b9dc57a38f16e1ea8"},
-    {file = "mujoco-2.3.4-cp39-cp39-macosx_10_12_x86_64.whl", hash = "sha256:a5fd885feddfcb9f1f2affcb1470f441f5210bacb15bfa64ea34e2d876128f15"},
-    {file = "mujoco-2.3.4-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:c3852d8af89886888e4305c2e8f7ffb22ea4c693d415c7a79c47248d222b6bd2"},
-    {file = "mujoco-2.3.4-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:11804281bebd20970798f1a10f9bc9a21903765dbaa777b5f268ba42f45a1f75"},
-    {file = "mujoco-2.3.4-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:5d2d89b9bd25ee73dd13bdf6f07344802c21a48859bd561891278c1c558007b6"},
-    {file = "mujoco-2.3.4-cp39-cp39-win_amd64.whl", hash = "sha256:fd7f7fa9601409aee24422bb97c9d74a247dfe93801fa3d1d4b9710898ef12b0"},
-    {file = "mujoco-2.3.4.tar.gz", hash = "sha256:c226e9dc698156d4cc9927eee77140d94e53a6cf7d67a10bd8db17a9470758d1"},
+    {file = "mujoco-2.3.5-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:51909772a5289b183434ccc74ed26420255f5ff905bb1e030f982dabba2a4afc"},
+    {file = "mujoco-2.3.5-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:de6c544046b9f104c05c025daabc4c10370f9638094b352329314f0e36225714"},
+    {file = "mujoco-2.3.5-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:c17b4a79b214a092fa561b9065e051ae3af4d6c6f138fd934bb6e82daec059df"},
+    {file = "mujoco-2.3.5-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:8f4b1c431f454fda3237a54b48b75d7dc320836fbc2c386beadd498ff3b03aa0"},
+    {file = "mujoco-2.3.5-cp310-cp310-win_amd64.whl", hash = "sha256:121b551e65f5211e9c406be2c00f67d6a9a13e6c44d89fe46419542d0e2054b5"},
+    {file = "mujoco-2.3.5-cp311-cp311-macosx_10_12_x86_64.whl", hash = "sha256:9cd73e6ead99b4f0baf1b42c5aa571da8818a7d1d72331b08bd190e5a0cea1ad"},
+    {file = "mujoco-2.3.5-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:d621353d6be604a5e11bc015a52f76c594496d19f5a431df0c2beb9ee71bcd3d"},
+    {file = "mujoco-2.3.5-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:55a5f082acc156499c531f1c0a0b53aefa51dcadf5b3588edcadc71c5a8e646d"},
+    {file = "mujoco-2.3.5-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:32bf87cb5e17a993ce71f820ef2786a8c71f588e426a346d6de01cbf16843d14"},
+    {file = "mujoco-2.3.5-cp311-cp311-win_amd64.whl", hash = "sha256:1c3ab3bf087255c535571ceeab4c2fb62d8f00dfbd3a0d2a5c1cc115c1144d79"},
+    {file = "mujoco-2.3.5-cp37-cp37m-macosx_10_12_x86_64.whl", hash = "sha256:1ba3f282b0a537d7bd22e81488305ec104e55b18e48cae6718fa7cf820d18aed"},
+    {file = "mujoco-2.3.5-cp37-cp37m-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:daae78b6fd7831bbc8510a02cfe34d2be641f8af2257df9b9b81f1f4abb00067"},
+    {file = "mujoco-2.3.5-cp37-cp37m-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:fffe7e3a8a13eb0ef9478d91ce16760db645b33da939db1935751d7e88893ed9"},
+    {file = "mujoco-2.3.5-cp37-cp37m-win_amd64.whl", hash = "sha256:962a7d94d8ad9fb5a16ca97f25f8dabe607a2b7ec0cdc84173b9614c132fc488"},
+    {file = "mujoco-2.3.5-cp38-cp38-macosx_10_12_x86_64.whl", hash = "sha256:4d64445da3e091c4a63ceec0d2a181d981b89a2f3215cc4c78dd793815368f4e"},
+    {file = "mujoco-2.3.5-cp38-cp38-macosx_11_0_arm64.whl", hash = "sha256:e218455e52ea3309ae90b97f7344c98f01e5e54515e27794677d19d64722cad7"},
+    {file = "mujoco-2.3.5-cp38-cp38-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:cbdc5a19f1006c50edbd97bff349e45f3f7b81b9058a185a02123c1b06397962"},
+    {file = "mujoco-2.3.5-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:1e2d45eaa76799681e61d2ef0a2d22a12a77b6ac4f4471deef862e80b3e7cbe2"},
+    {file = "mujoco-2.3.5-cp38-cp38-win_amd64.whl", hash = "sha256:8333cb49049e77f64d8ae944c05fa907a012fbcc19002ab752ab461a814ca17d"},
+    {file = "mujoco-2.3.5-cp39-cp39-macosx_10_12_x86_64.whl", hash = "sha256:b61e54e8618365c48395cb20bcc46a456dbb248b24a059729b2deb43646c4a80"},
+    {file = "mujoco-2.3.5-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:10aa8ff583b42966170b9a38d62c4fdad35351fca716d3d005887d45dbe69b95"},
+    {file = "mujoco-2.3.5-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:27f8cd4e94d6e153c5477001f9ad8df4d44e2a45e4d76f1829af4204d9806701"},
+    {file = "mujoco-2.3.5-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:223882a4b4c4becb57172a94255709060f58d5075c59ef7f2869b080d7199d84"},
+    {file = "mujoco-2.3.5-cp39-cp39-win_amd64.whl", hash = "sha256:3f411e1950fe6e7bc6266ae71749860c272e1a0865db2a865624407272710205"},
+    {file = "mujoco-2.3.5.tar.gz", hash = "sha256:39d966e6ec3cb9ed212de238de0c563ea9b4450f2c87043feff256089514aab4"},
 ]
 
 [package.dependencies]
@@ -1638,14 +1678,14 @@ files = [
 
 [[package]]
 name = "requests"
-version = "2.28.2"
+version = "2.29.0"
 description = "Python HTTP for Humans."
 category = "main"
 optional = false
-python-versions = ">=3.7, <4"
+python-versions = ">=3.7"
 files = [
-    {file = "requests-2.28.2-py3-none-any.whl", hash = "sha256:64299f4909223da747622c030b781c0d7811e359c37124b4bd368fb8c6518baa"},
-    {file = "requests-2.28.2.tar.gz", hash = "sha256:98b1b2782e3c6c4904938b84c0eb932721069dfdb9134313beff7c83c2df24bf"},
+    {file = "requests-2.29.0-py3-none-any.whl", hash = "sha256:e8f3c9be120d3333921d213eef078af392fba3933ab7ed2d1cba3b56f2568c3b"},
+    {file = "requests-2.29.0.tar.gz", hash = "sha256:f2e34a75f4749019bb0e3effb66683630e4ffeaf75819fb51bebef1bf5aef059"},
 ]
 
 [package.dependencies]
@@ -1661,14 +1701,14 @@ use-chardet-on-py3 = ["chardet (>=3.0.2,<6)"]
 
 [[package]]
 name = "rich"
-version = "13.3.4"
+version = "13.3.5"
 description = "Render rich text, tables, progress bars, syntax highlighting, markdown and more to the terminal"
 category = "main"
 optional = false
 python-versions = ">=3.7.0"
 files = [
-    {file = "rich-13.3.4-py3-none-any.whl", hash = "sha256:22b74cae0278fd5086ff44144d3813be1cedc9115bdfabbfefd86400cb88b20a"},
-    {file = "rich-13.3.4.tar.gz", hash = "sha256:b5d573e13605423ec80bdd0cd5f8541f7844a0e71a13f74cf454ccb2f490708b"},
+    {file = "rich-13.3.5-py3-none-any.whl", hash = "sha256:69cdf53799e63f38b95b9bf9c875f8c90e78dd62b2f00c13a911c7a3b9fa4704"},
+    {file = "rich-13.3.5.tar.gz", hash = "sha256:2d11b9b8dd03868f09b4fffadc84a6a8cda574e40dc90821bd845720ebb8e89c"},
 ]
 
 [package.dependencies]
@@ -1754,14 +1794,14 @@ test = ["asv", "gmpy2", "mpmath", "pooch", "pytest", "pytest-cov", "pytest-timeo
 
 [[package]]
 name = "sentry-sdk"
-version = "1.20.0"
+version = "1.21.1"
 description = "Python client for Sentry (https://sentry.io)"
 category = "main"
 optional = false
 python-versions = "*"
 files = [
-    {file = "sentry-sdk-1.20.0.tar.gz", hash = "sha256:a3410381ae769a436c0852cce140a5e5e49f566a07fb7c2ab445af1302f6ad89"},
-    {file = "sentry_sdk-1.20.0-py2.py3-none-any.whl", hash = "sha256:0ad6bbbe78057b8031a07de7aca6d2a83234e51adc4d436eaf8d8c697184db71"},
+    {file = "sentry-sdk-1.21.1.tar.gz", hash = "sha256:99c15556a23621be9f18c2955f7ce63321713bf1c0ad396b27b61399bac5f458"},
+    {file = "sentry_sdk-1.21.1-py2.py3-none-any.whl", hash = "sha256:092888f3abf7a2ea78f0bfcefc3e0465caee2b6f0efb26f538ccc60f95dca179"},
 ]
 
 [package.dependencies]
@@ -2136,4 +2176,4 @@ jupyter = ["ipytree (>=0.2.2)", "ipywidgets (>=8.0.0)", "notebook"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "d02a423f68771276ba443da6ff9047e23b312686afae065f35fc3b9f841ac273"
+content-hash = "6b0f0cda1c2e2a7c0acf11aa5aaed16fa7c1a140e5b4237b5ad92526a6271886"

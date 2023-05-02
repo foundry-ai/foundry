@@ -48,7 +48,7 @@ def loss_fn(params, rng_key, sample):
     return loss, stats
 
 with RichReporter(iter_interval=500) as cb:
-    trainer = Trainer(epochs=5000)
+    trainer = Trainer(epochs=5000, batch_size=10)
     init_params = net.init(PRNGKey(7), jnp.ones(()))
     res = trainer.train(
         loss_fn, dataset,

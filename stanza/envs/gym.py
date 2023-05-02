@@ -21,7 +21,7 @@ class EnvPool:
         e.reset()
         return self.env_id
     
-    def step(self, env_id, action):
+    def step(self, env_id, action, rng):
         e = self.envs[jnp.array(env_id).item()]
         e.step(action)
 

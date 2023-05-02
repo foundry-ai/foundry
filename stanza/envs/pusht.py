@@ -294,16 +294,16 @@ def cairo_to_numpy(surface):
 
 # ----- turn a pretrained network -------
 def load_pretrained_net():
+    obs_scale = {'min': jnp.array([1.3456424e+01, 3.2938293e+01, 5.7471767e+01, 1.0827995e+02, 2.1559125e-04], dtype=jnp.float32), 
+           'max': jnp.array([496.14618, 510.9579, 439.9153, 485.6641, 6.2830877], dtype=jnp.float32)}
+    action_scale = {'min': jnp.array([12., 25.], dtype=jnp.float32),
+              'max': jnp.array([511., 511.], dtype=jnp.float32)}
     pass
 
 def make_diffusion_policy(schedule, net, params,
                           obs_scaler, action_scaler):
     from stanza.model.diffusion import DDPMSchedule
     sample_action_trajectory = jnp.zeros((16, 2))
-    obs_scale = {'min': jnp.array([1.3456424e+01, 3.2938293e+01, 5.7471767e+01, 1.0827995e+02, 2.1559125e-04], dtype=jnp.float32), 
-           'max': jnp.array([496.14618, 510.9579, 439.9153, 485.6641, 6.2830877], dtype=jnp.float32)}
-    action_scale = {'min': jnp.array([12., 25.], dtype=jnp.float32),
-              'max': jnp.array([511., 511.], dtype=jnp.float32)}
 
     @jax.jit
     def high_level_policy(input):

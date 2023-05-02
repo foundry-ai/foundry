@@ -35,6 +35,7 @@ class TrainResults:
     fn_params: Any
     fn_state: Any
     opt_state: Any
+    hook_states: List[Any]
 
 # A sentinel for not passing in state
 # to the loss function
@@ -51,9 +52,13 @@ class Trainer:
     epochs : int = field(default=None)
     max_iterations : int = field(default=None)
 
+    # TODO: This batched loss function
+    # does not handle the state properly
+    # since masked-out entries can influence
+    # the state
     @jax.jit
     def _batch_loss_fn(self, loss_fn, fn_state, 
-                    rng_key, batch, fn_params):
+                    rng_key, batch, batch_n, fn_params):
         if type(fn_state) == NO_STATE_TYPE:
             batch_loss_fn = jax.vmap(loss_fn,
                                      in_axes=(None, None, 0),
@@ -65,8 +70,13 @@ class Trainer:
                                      axis_name='batch')
             fn_state, loss, stats = batch_loss_fn(fn_params, fn_state,
                                                     rng_key, batch)
-        loss = jnp.mean(loss)
-        stats = jax.tree_util.tree_map(lambda x: jnp.mean(x,axis=0), stats)
+
+        sample_mask = jnp.arange(loss.shape[0]) < batch_n
+        def mean(x):
+            x = jnp.where(sample_mask, x, 0)
+            return jnp.sum(x, axis=0)/batch_n
+        loss = mean(loss)
+        stats = jax.tree_util.tree_map(mean, stats)
         return loss, (stats, fn_state)
     
     def _run_hooks(self, state, hooks):
@@ -88,7 +98,7 @@ class Trainer:
 
         batch_fn = Partial(self._batch_loss_fn, loss_fn,
                             state.fn_state,
-                            sk, batch.data)
+                            sk, batch.data, batch.n)
 
         grads, (stats, fn_state) = jax.grad(batch_fn, has_aux=True)(state.fn_params)
         updates, opt_state = self.optimizer.update(grads, state.opt_state, state.fn_params)

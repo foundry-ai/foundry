@@ -10,6 +10,7 @@ from stanza.util.random import PRNGSequence
 from stanza.util.logging import logger
 from stanza.model.unet1d import ConditionalUnet1D
 from stanza.model.diffusion import DDPMSchedule
+from stanza.data.noramlizer import LinearNormalizer
 
 from functools import partial
 
@@ -39,9 +40,18 @@ def setup_problem(config):
             r = model(curr_sample, timestep, cond)
             return r
         net = hk.transform(model)
-        return data, net
+        data_flat = data.flatten()
+        action_norm = LinearNormalizer.from_data(data_flat.map(lambda x: x.action))
+        obs_norm = LinearNormalizer.from_data(data_flat.map(lambda x: x.observation))
 
-def loss(config, net, diffuser, params, rng, sample):
+        # chunk the data and flatten
+        data = data.chunk(input_chunk_size=2, output_chunk_size=16).flatten()
+
+        return data, net, obs_norm, action_norm
+
+def loss(config, net, diffuser, obs_norm, action_norm,
+            # these are passed in per training loop:
+            params, rng, sample):
     t_sk, n_sk, s_sk = jax.random.split(rng, 3)
     timestep = jax.random.randint(t_sk, (), 0, diffuser.num_steps)
     action = sample.action
@@ -57,7 +67,7 @@ def loss(config, net, diffuser, params, rng, sample):
 
     pred_flat, _ = jax.flatten_util.ravel_pytree(pred_noise)
     noise_flat, _ = jax.flatten_util.ravel_pytree(noise)
-    
+
     loss = jnp.mean(jnp.square(pred_flat - noise_flat))
     stats = {
         "loss": loss
@@ -73,7 +83,7 @@ def train_policy(config, database):
     # takes params
     # and returns a full policy
     # that can be evaluated
-    data, net = setup_problem(config)
+    data, net, obs_norm, action_norm = setup_problem(config)
 
     # flatten the trajectory data
     data = data.flatten()
@@ -105,7 +115,7 @@ def train_policy(config, database):
                            jnp.array(1), sample.observation)
     diffuser = DDPMSchedule.make_squaredcos_cap_v2(
         100, clip_sample_range=1)
-    loss_fn = partial(loss, config, net, diffuser)
+    loss_fn = partial(loss, config, net, diffuser, obs_norm, action_norm)
 
     ema_hook = EmaHook(
         decay=0.75

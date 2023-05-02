@@ -107,10 +107,18 @@ class TrajectoryData(Data):
             ),
             self.timesteps
         )
-
+    
     def flatten(self):
         return self.timesteps
+    
+    # TODO: For now we just hack
+    # chunk() into here...
+    # we need to figure out a way to make
+    # this play cleanly though
+    def chunk(input_chunk_size=None, output_chunk_size=None):
+        return NOne
 
+@dataclass(jax=True)
 class ChunkedTrajectory(Data):
     pass
 

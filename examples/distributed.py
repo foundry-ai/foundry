@@ -11,7 +11,7 @@ def func(x):
 
 async def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("target", default="poetry://localhost?n=5")
+    parser.add_argument("target", default="poetry://localhost?n=5", nargs='?')
     args = parser.parse_args()
 
     data = range(20)
