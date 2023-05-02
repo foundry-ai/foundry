@@ -45,11 +45,16 @@ class RichCallback:
         cb = functools.partial(self.cpu_stat_callback, split=split)
         id_tap(cb, (self.reporter_id, stats))
 
-    def __call__(self, state):
+    def __call__(self, hs, state):
         # Don't load the parameter state to the CPU
-        return jax.lax.cond(
-            jnp.logical_or(state.total_iteration % self.iter_interval == 0,
-                           state.epoch_iteration == 0),
+        return hs, jax.lax.cond(
+            jnp.logical_or(
+                jnp.logical_and(state.total_iteration % self.iter_interval == 0,
+                            state.last_stats is not None),
+                # When we have reached the end, do a callback
+                # so that we can finish the progress bars
+                state.epoch == state.max_epoch
+            ),
             self._do_state_callback,
             lambda x: x, state
         )
@@ -102,7 +107,8 @@ class RichReporter:
         epoch = state.epoch.item()
         max_epoch = state.max_epoch.item() if state.max_epoch else None
         # clear the table
-        self.split_stats['Train'] = state.last_stats
+        if state.last_stats is not None:
+            self.split_stats['Train'] = state.last_stats
         self._update_table()
         if not self.initialized:
             self.initialized = True

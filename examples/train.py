@@ -8,7 +8,7 @@ dataset = Data.from_pytree(
     (jnp.arange(100), jnp.arange(100)[::-1])
 )
 logger.info("Dataset length: {}", dataset.length)
-batches = dataset.batch(20, ret_first=False)
+batches = dataset.batch(20)
 logger.info("Batched length: {}", batches.length)
 
 import haiku as hk
@@ -23,6 +23,10 @@ net = hk.transform(net_fn)
 import optax
 from stanza.train import Trainer
 from stanza.train.rich import RichReporter
+from stanza.util.random import permutation
+
+
+logger.info("Permutation test: {}", permutation(PRNGKey(42), 10, n=6))
 
 optimizer = optax.chain(
     # Set the parameters of Adam. Note the learning_rate is not here.

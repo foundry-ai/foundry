@@ -3,8 +3,9 @@ from stanza.policies import Policy, PolicyOutput, PolicyTransform, \
                             chain_transforms, \
                             SampleRateTransform, ChunkTransform
 from stanza.util.dataclasses import dataclass, field, replace
-from stanza.util.attrdict import attrs
-from stanza.dataset import Dataset
+from stanza.util.attrdict import AttrMap
+from stanza.data.env import Timestep, TrajectoryData, TrajectoryIndices
+from stanza.data import Data
 from functools import partial
 
 import stanza
@@ -229,7 +230,7 @@ class PositionControlPolicy(Policy):
         a = self.k_p * (output.action - obs.agent.position) + self.k_v * (-obs.agent.velocity)
         return replace(
             output, action=a,
-            info=attrs(output.info, target_pos=output.action)
+            info=AttrMap(output.info, target_pos=output.action)
         )
 
 # ----- Rendering utilities ------
@@ -424,3 +425,45 @@ def pretrained_policy():
         PositionObsTransform(),
         PositionControlTransform()
     )(high_level_policy)
+
+# ----- The expert dataset ----
+
+def expert_data():
+    import gdown
+    import os
+    cache = os.path.join(os.getcwd(), '.cache')
+    os.makedirs(cache, exist_ok=True)
+    dataset_path = os.path.join(cache, 'pusht_data.zarr.zip')
+    if not os.path.exists(dataset_path):
+        id = "1KY1InLurpMvJDRb14L9NlXT_fEsCvVUq&confirm=t"
+        gdown.download(id=id, output=dataset_path, quiet=False)
+    import zarr
+    with zarr.open(dataset_path, "r") as data:
+        # Read in all of the data
+        state = jnp.array(data['data/state'])
+        actions = jnp.array(data['data/action'])
+        episode_ends = jnp.array(data['meta/episode_ends'])
+        episode_starts = jnp.roll(episode_ends, 1)
+        episode_starts = episode_starts.at[0].set(0)
+    # fill in zeros for the missing state data
+    z = jnp.zeros((state.shape[0],))
+    z2 = jnp.zeros((state.shape[0],2))
+    agent_pos = state[:,:2]
+    block_pos = state[:,2:4]
+    block_rot = state[:,4]
+    states = PushTState(
+        BodyState(agent_pos, z2, z, z),
+        BodyState(block_pos, z2, block_rot, z)
+    )
+    timesteps = Timestep(
+        states,
+        actions
+    )
+    indices = TrajectoryIndices(
+        episode_starts,
+        episode_ends
+    )
+    return TrajectoryData(
+        Data.from_pytree(indices),
+        Data.from_pytree(timesteps)
+    )

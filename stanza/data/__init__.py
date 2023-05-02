@@ -3,6 +3,7 @@ import chex
 import jax
 import jax.tree_util as tree_util
 import jax.numpy as jnp
+import numpy as np
 
 from jax.tree_util import register_pytree_node_class
 from stanza.util.logging import logger
@@ -14,6 +15,7 @@ from typing import Callable, Any
 # datasets so that we can manipulate the
 # dataset size and the result is still coherent
 INFINITE = jnp.inf
+UNKNOWN = jnp.nan
 
 class Data:
     # Please override the following:
@@ -23,9 +25,16 @@ class Data:
             f"{self.__class__.__name__} must implement start"
         )
 
+    # Returns number of elements remainng
+    # in the dataset *including* the provided
+    # iterator. i.e. if the iterator is at the end
+    # of the dataset, this should be 0.
     def remaining(self, iterator):
+        return UNKNOWN
+
+    def is_end(self, iterator):
         raise NotImplementedError(
-            f"{self.__class__.__name__} must implement remaining"
+            f"{self.__class__.__name__} must implement is_end"
         )
 
     def next(self, iterator):
@@ -38,9 +47,7 @@ class Data:
             f"{self.__class__.__name__} must implement get"
         )
 
-    # Do not need to override
-    def is_end(self, iterator):
-        return self.remaining(iterator) <= 0
+    # These should NOT be overridden:
 
     @property
     def length(self):
@@ -57,9 +64,11 @@ class Data:
         return self.length
 
     def __getitem__(self, i):
-        if not isinstance(i, slice):
-            raise ValueError("Can only slice, not index, datasets")
-        return self.slice(i.start, i.stop, i.step)
+        if isinstance(i, slice):
+            return self.slice(i.start, i.stop, i.step)
+        else:
+            it = jax.lax.fori_loop(0, i, self.next, self.start)
+            return self.get(it)
 
     # ------------------------- Transformations --------------------------------
     def slice(self, start, stop, step=1):
@@ -73,24 +82,12 @@ class Data:
 
     # Will return the first batch separately.
     # The first batch may be jagged if length % n != 0
-    def batch(self, n, ret_first=True):
-        l = self.length
-        n = min(l, n)
-        if ret_first:
-            first_dim = ((l - 1) % n) + 1
-            start = self.start
-            batch_first = BatchedData.batch_advance(self, start, first_dim)
-            return DataSlice(self, start, first_dim), \
-                   BatchedData(self, batch_first, n)
-        else:
-            chex.assert_equal(self.length % n, 0)
-            return BatchedData(self, self.start, n)
+    def batch(self, n):
+        return BatchedData(self, n)
 
     # Flatten and batch are opposites
-    # (modulo rounding due to the first batch 
-    # being a different size)
     def flatten(self):
-        return FlattenedData(self)
+        raise NotImplementedError("Dataset does not implement flatten()")
 
     def map(self, fun):
         return MappedData(self, fun)
@@ -100,25 +97,32 @@ class Data:
         raise NotImplementedError("Dataset does not implement shuffle()")
     
     @staticmethod
-    def from_pytree(data):
-        return PyTreeData(data)
+    def from_pytree(data, n=None):
+        nums_tree = tree_util.tree_map(lambda x: jnp.shape(x)[0], data)
+        all_nums = tree_util.tree_flatten(nums_tree)[0]
+        num = all_nums[0]
+        return PyTreeData(data, num if n is None else n)
     
 # Type alias for iterators
 Iterator = Any
 
 @dataclass(jax=True)
 class PyTreeData(Data):
-    data: jnp.array = None
+    data: jnp.array
+    # n can be less than the data shape!
+    # This allows PyTreeData to represent
+    # uneven size batches
+    n: int
 
     @property
     def start(self):
         return 0
-    
+
     def remaining(self, iter):
-        nums_tree = tree_util.tree_map(lambda x: jnp.shape(x)[0], self.data)
-        all_nums = tree_util.tree_flatten(nums_tree)[0]
-        num = all_nums[0]
-        return num - iter
+        return self.n - iter
+    
+    def is_end(self, iter):
+        return iter >= self.n
 
     def next(self, iter):
         return iter + 1
@@ -126,61 +130,48 @@ class PyTreeData(Data):
     def get(self, iter):
         return tree_util.tree_map(lambda x: x[iter], self.data)
 
-    # override slice/batch/flatten transformations
-    # to just reshape for efficiency
-    def slice(self, start, stop, step=1):
-        data = jax.tree_util.tree_map(lambda x: x[start:stop:step], self.data)
-        return PyTreeData(data)
-
-    def batch(self, n, ret_first=True):
-        # If length % n == 0 we can
-        # return this as just a side-case of a 
-        # batch dataset
-        l = self.length
-        n = min(l, n)
-        if ret_first:
-            first_dim = ((l - 1) % n) + 1
-            first_batch = jax.tree_util.tree_map(
-                lambda x: x[:first_dim], self.data
-            )
-            rest = jax.tree_util.tree_map(
-                lambda x: x[first_dim:], self.data
-            )
-            # reshape the rest into the appropriate
-            # batch shape
-            rest = jax.tree_util.tree_map(
-                lambda x: x.reshape((-1, n) + x.shape[1:]),
-                rest
-            )
-            # The rest is just a PytreeData of PytreeDatas!
-            return PyTreeData(first_batch), \
-                PyTreeData(PyTreeData(rest))
-        else:
-            chex.assert_equal(self.length % n, 0)
-            data = jax.tree_util.tree_map(
-                lambda x: x.reshape((-1, n) + x.shape[1:]),
-                self.data 
-            )
-            return PyTreeData(PyTreeData(data))
+    def batch(self, n):
+        dim = tree_util.tree_flatten(self.data)[0][0].shape[0]
+        # get the amount of padding we need
+        pdim = (((n - dim) % n) + n) % n
+        batches = (dim + pdim)//n
+        def make_batches(x):
+            padding = jnp.repeat(jnp.expand_dims(x[-1],0), pdim)
+            padded = jnp.concatenate((x,padding), axis=0)
+            return padded.reshape((-1,n) + padded.shape[1:])
+        batched = jax.tree_util.tree_map(
+            make_batches, self.data
+        )
+        batch_sizes = n*jnp.ones((batches,))
+        # modify the last batch size
+        batch_sizes = batch_sizes.at[-1].set(n - pdim)
+        return PyTreeData(
+            PyTreeData(batched, batch_sizes),
+            batches
+        )
 
     def flatten(self):
-        def reshape(x):
-            return x.reshape((-1,) + x.shape[2:])
-        data = jax.tree_util.tree_map(reshape, self.data)
-        return PyTreeData(data)
+        if isinstance(self.data, PyTreeData):
+            data = jax.tree_util.tree_map(
+                lambda x: x.reshape((-1,) + x.shape[2:]),
+                self.data.data)
+            # sum all of the sub-sizes
+            n = self.data.n.sum()
+            return PyTreeData(data, n)
+        raise NotImplementedError("Can only flatten() recursive PyTreeData datasets")
 
     # This dataset type is shuffleable
     def shuffle(self, key):
-        nums_tree = tree_util.tree_map(lambda x: jnp.shape(x)[0], self.data)
-        all_nums = tree_util.tree_flatten(nums_tree)[0]
-        num = all_nums[0]
+        import stanza.util.random
+        dim = tree_util.tree_flatten(self.data)[0][0].shape[0]
+        idx = stanza.util.random.permutation(key, dim, self.n)
+        data = jax.tree_util.tree_map(
+            lambda x: jnp.take(x, idx, axis=0, unique_indices=True),
+        self.data)
+        return PyTreeData(data, self.n)
 
-        idxs = jax.random.permutation(key, jnp.arange(num))
-        data = jax.tree_util.tree_map(lambda x: x[idxs,...], self.data)
-        return PyTreeData(data)
-    
     @staticmethod
-    def from_data(data, start=None):
+    def from_data(data, start=None, buffer_size=None):
         if isinstance(data, PyTreeData):
             return data
         start = start or data.start
@@ -203,6 +194,9 @@ class MappedData(Data):
     @property
     def start(self):
         return self.data.start
+    
+    def is_end(self, iterator):
+        return self.data.is_end(iterator)
     
     def remaining(self, iterator):
         return self.data.remaining(iterator)
@@ -230,17 +224,14 @@ class MappedData(Data):
     def shuffle(self, rng_key):
         return MappedData(self.data.shuffle(rng_key), self.fun)
 
-# Returns a slice into another
-# data
 @dataclass(jax=True)
 class DataSlice(Data):
     data: Data
     start_iter: Iterator
-    n : int = field(jax_static=True)
-
+    n : int
     # amount to advance underlying
     # iterator per next() call
-    skip: int = field(default=1, jax_static=True)
+    step: int = field(default=1, jax_static=True)
 
     @property
     def start(self):
@@ -248,15 +239,18 @@ class DataSlice(Data):
 
     def next(self, iterator):
         it, i = iterator
-        next_it = jax.lax.fori_loop(0, self.skip, self.data.next, it)
+        next_it = jax.lax.fori_loop(0, self.step, self.data.next, it)
         return (i + 1, next_it)
 
     def remaining(self, iterator):
-        it, i = iterator
-        return self.n - i
-    
+        _, i = iterator
+        dr = self.data.remaining(i)
+        r = self.n - i
+        # return whichever of dr, r is less
+        return jnp.minimum(dr, r)
+
     def get(self, iterator):
-        it, i = iterator
+        it, _ = iterator
         return self.data.get(it)
 
 # n should not be part
@@ -264,50 +258,26 @@ class DataSlice(Data):
 @dataclass(jax=True)
 class BatchedData(Data):
     data: Data
-    start_iter: Iterator
     n : int = field(jax_static=True)
 
     @property
     def start(self):
-        return self.start_iter
+        return self.data.start
     
-    def get(self, iterator):
-        return Slice(self.data, iterator, n)
-    
-    def next(self, iterator):
-        # advance the iterator by n
-        return jax.lax.fori_loop(0, self.n, self.data.next, iterator)
+    def is_end(self, iterator):
+        return self.data.is_end(iterator)
 
     def remaining(self, iterator):
         return self.data.remaining(iterator) // self.n 
 
-@dataclass(jax=True)
-class FlattenedData(Data):
-    dataset: Data
-
-    @staticmethod
-    def sample_dim(sample):
-        t, _ = jax.tree_util.tree_flatten(sample)
-        return t[0].shape[0]
-
-    @property
-    def start(self):
-        start = self.data.start
-        sample = self.data.get(start)
-        next = self.data.next(start)
-        return sample, 0, next
-    
-    def remaining(self, iterator):
-        sample, i, n = iterator
-        w = FlatDataset.sample_dim(sample)
-        return (w - i) + w*self.data.remaining(n)
-
     def get(self, iterator):
-        sample, i, _ = iterator
-        return jax.tree_util.tree_map(lambda x: x[i], sample)
-
+        return DataSlice(self.data, iterator, self.n)
+    
     def next(self, iterator):
-        sample, i, next_it = iterator
-        w = FlatDataset.sample_dim(sample)
-        return jax.lax.cond(i < w, lambda: (sample, i + 1, next_it),
-                     lambda: (self.data.get(next_it), 0, self.data.next(next_it)))
+        # advance the iterator by n
+        return jax.lax.fori_loop(0, self.n, self.data.next, iterator)
+    
+    # Override flatten()
+    # to just return the original dataset!
+    def flatten(self):
+        return self.data

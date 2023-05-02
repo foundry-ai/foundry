@@ -4,7 +4,7 @@ from stanza.data import PyTreeData
 
 from jax.random import PRNGKey
 
-from typing import Callable, Any
+from typing import Any, List
 from collections import namedtuple
 from functools import partial
 
@@ -21,10 +21,9 @@ class TrainState:
     epoch_iteration: int
     max_iteration: int
 
-    first_batch: Any
     batch_iterator: Any
-
     last_stats : Any
+    hook_states : List[Any]
 
     rng_key: PRNGKey
     fn_params: Any
@@ -42,15 +41,15 @@ class TrainResults:
 NO_STATE_TYPE=namedtuple('NoState',[])
 NO_STATE=NO_STATE_TYPE()
 
-@dataclass(jax=True)
+@dataclass(jax=True, kw_only=True)
 class Trainer:
     optimizer: optax.GradientTransformation = optax.adam(1e-3)
 
     batch_size: int = field(default=32, jax_static=True)
     # optional, if not set
     # must be passed into train()
-    epochs : int = field(default=None, jax_static=True)
-    max_iterations : int = field(default=None, jax_static=True)
+    epochs : int = field(default=None)
+    max_iterations : int = field(default=None)
 
     @jax.jit
     def _batch_loss_fn(self, loss_fn, fn_state, 
@@ -69,18 +68,24 @@ class Trainer:
         loss = jnp.mean(loss)
         stats = jax.tree_util.tree_map(lambda x: jnp.mean(x,axis=0), stats)
         return loss, (stats, fn_state)
+    
+    def _run_hooks(self, state, hooks):
+        new_hook_states = []
+        for h, hs in zip(hooks, state.hook_states):
+            hs, state = h(hs, state)
+            new_hook_states.append(hs)
+        state = replace(state, hook_states=new_hook_states)
+        return state
 
     def _train_step(self, state, *, loss_fn, batch_dataset, hooks):
         rng_key, sk = jax.random.split(state.rng_key)
+        batch_data = batch_dataset.get(state.batch_iterator)
+        batch_iterator = batch_dataset.next(state.batch_iterator)
 
-        if state.first_batch is None:
-            batch_data = batch_dataset.get(state.batch_iterator)
-            batch_iterator = batch_dataset.next(state.batch_iterator)
-        else: 
-            batch_data = state.first_batch
-            batch_iterator = batch_dataset.start
+        # Specify a buffer size!
+        batch = PyTreeData.from_data(batch_data,
+                            buffer_size=self.batch_size)
 
-        batch = PyTreeData.from_data(batch_data)
         batch_fn = Partial(self._batch_loss_fn, loss_fn,
                             state.fn_state,
                             sk, batch.data)
@@ -93,14 +98,11 @@ class Trainer:
         state = replace(state,
             epoch_iteration=state.epoch_iteration + 1,
             total_iteration=state.total_iteration + 1,
-            first_batch=None,
             batch_iterator=batch_iterator,
             last_stats=stats,
             rng_key=rng_key,
             fn_params=fn_params, fn_state=fn_state, opt_state=opt_state)
-
-        for h in hooks:
-            state = h(state)
+        state = self._run_hooks(state, hooks)
         return state
 
     @partial(jax.jit, static_argnames=("shuffle",))
@@ -110,19 +112,18 @@ class Trainer:
         state = replace(state, rng_key=rng_key)
 
         dataset = dataset if not shuffle else dataset.shuffle(sk)
-        first_batch, batch_dataset = dataset.batch(self.batch_size)
+        batch_dataset = dataset.batch(self.batch_size)
 
-        first_step_state = replace(state,
-            first_batch=first_batch,
-            batch_iterator=None)
-        # handle the first batch
-        # separately
+        first_step_state = replace(state, batch_iterator=batch_dataset.start)
         cond_fn = lambda s: jnp.logical_and(s.total_iteration < s.max_iteration,
                                 jnp.logical_not(batch_dataset.is_end(s.batch_iterator)))
         step_fn = Partial(self._train_step,
                     loss_fn=loss_fn,
                     batch_dataset=batch_dataset,
                     hooks=hooks)
+
+        # call the hooks before each epoch
+        first_step_state = self._run_hooks(first_step_state, hooks)
 
         step_state = step_fn(first_step_state)
         if batch_dataset.length > 0:
@@ -131,7 +132,6 @@ class Trainer:
         return replace(state,
             epoch=state.epoch+1,
             epoch_iteration=0,
-            last_stats=step_state.last_stats,
             total_iteration=step_state.total_iteration,
             rng_key=step_state.rng_key,
             fn_params=step_state.fn_params,
@@ -139,7 +139,12 @@ class Trainer:
             opt_state=step_state.opt_state
         )
     
-    @stanza.jit(static_argnames=("epochs", "max_iterations", "shuffle"))
+    @staticmethod
+    def total_iterations(dataset, batch_size, epochs):
+        num_batches = (dataset.length - 1) // batch_size + 1
+        return num_batches * epochs
+    
+    @stanza.jit(static_argnames=("shuffle",))
     def train(self, loss_fn, dataset, rng_key,
                 init_fn_params, init_fn_state=NO_STATE,
                 init_opt_state=None,
@@ -152,13 +157,11 @@ class Trainer:
         
         # epochs and max_iterations can come from either
         # the trainer parameters or the train parameters
-        epochs = epochs or self.epochs
-        max_iterations = max_iterations or self.max_iterations
-
+        epochs = self.epochs if epochs is None else epochs
+        max_iterations = self.max_iterations if max_iterations is None else max_iterations
         if init_opt_state is None:
             init_opt_state = self.optimizer.init(init_fn_params)
-
-        if not max_iterations and not epochs:
+        if max_iterations is None and epochs is None:
             raise ValueError("Must specify either number of epochs or iterations")
         
         rng_key, sub_key = jax.random.split(rng_key)
@@ -178,10 +181,10 @@ class Trainer:
 
             # Used at the step level
             # not the state level
-            first_batch=None,
             batch_iterator=None,
 
             last_stats=None,
+            hook_states=[None]*len(hooks),
 
             rng_key=rng_key, 
             fn_params=init_fn_params,
@@ -209,12 +212,12 @@ class Trainer:
             epoch_fn, state
         )
 
-        for h in hooks:
-            final_state = h(final_state)
+        final_state = self._run_hooks(final_state, hooks)
 
         results = TrainResults(
             fn_params = final_state.fn_params,
             fn_state = final_state.fn_state,
             opt_state = final_state.opt_state,
+            hook_states = final_state.hook_states
         )
         return results

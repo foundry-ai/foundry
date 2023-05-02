@@ -2,6 +2,7 @@ from stanza.util.dataclasses import dataclass, field, replace
 from functools import partial
 
 import jax.numpy as jnp
+import jax.flatten_util
 import jax
 import stanza
 
@@ -52,7 +53,7 @@ class DDPMSchedule:
         sample_flat, unflatten = jax.flatten_util.ravel_pytree(sample)
         noise = jax.random.normal(rng_key, sample_flat.shape)
         noisy_flat = sqrt_alphas_prod * sample_flat + (1 - sqrt_alphas_prod)*noise
-        return unflatten(noisy_flat)
+        return unflatten(noisy_flat), unflatten(noise)
     
     # This does a reverse process step
     @jax.jit

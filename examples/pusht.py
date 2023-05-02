@@ -11,7 +11,7 @@ from jax.random import PRNGKey
 from jax.tree_util import tree_map
 
 env = envs.create('pusht')
-x0 = env.reset(PRNGKey(0))
+x0 = env.reset(PRNGKey(13))
 x0_img = env.render(x0)
 
 logger.info("x0: {}", x0)
@@ -44,7 +44,7 @@ ffmpegio.video.write('video.mp4', 28, video,
 policy = pusht.pretrained_policy()
 t = time.time()
 rollout = policies.rollout(env.step, x0, policy,
-            length=200*10,
+            length=250*10,
             policy_rng_key=PRNGKey(42), last_state=False)
 logger.info('took: {:02}s to rollout', time.time() - t)
 

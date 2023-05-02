@@ -2,17 +2,23 @@ import numpy as np
 import jax.numpy as jnp
 import urllib
 
+from stanza.util.dataclasses import dataclass
 from stanza.util.logging import logger
 from typing import Any
 
-class Figure:
-    def __init__(self, fig):
-        self.fig = fig
 
+@dataclass(frozen=True)
+class Figure:
+    fig: Any
+
+@dataclass(frozen=True)
 class Video:
-    def __init__(self, data, fps=4):
-        self.data = data
-        self.fps = fps
+    data: np.array
+    fps: int = 28
+
+@dataclass(frozen=True)
+class PyTree:
+    data: Any
 
 class Database:
     # open a root-level table
@@ -53,22 +59,6 @@ class Table:
     # open a sub-table
     # name will be auto-generated if None
     def open(self, name=None):
-        pass
-
-    def set(self, name, value):
-        pass
-
-    def get(self, name):
-        pass
-
-    @property
-    def info(self):
-        return TableInfo(self)
-
-    def log(self, data):
-        pass
-
-    def tag(self, name):
         pass
 
 def remap(obj, type_mapping):

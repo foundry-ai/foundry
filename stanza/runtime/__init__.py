@@ -42,7 +42,7 @@ class FuncActivity(Activity):
         return self.run(config, *args, **kwargs)
 
 # A decorator version for convenience
-def activity(config_dataclass=None, f=None):
+def activity(config_dataclass, f=None):
     if callable(f):
         return FuncActivity(config_dataclass, f)
 
