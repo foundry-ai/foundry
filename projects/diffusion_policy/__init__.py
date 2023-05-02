@@ -3,6 +3,7 @@ from stanza.runtime.database import PyTree
 
 from stanza.train import Trainer
 from stanza.train.ema import EmaHook
+from stanza.train.rich import RichReporter
 
 from stanza.util.dataclasses import dataclass, field
 from stanza.util.random import PRNGSequence
@@ -38,9 +39,7 @@ def setup_problem(config):
             r = model(curr_sample, timestep, cond)
             return r
         net = hk.transform(model)
-        def policy_builder(params):
-            pass
-        return data, net, policy_builder
+        return data, net
 
 def loss(config, net, diffuser, params, rng, sample):
     t_sk, n_sk, s_sk = jax.random.split(rng, 3)
@@ -74,7 +73,7 @@ def train_policy(config, database):
     # takes params
     # and returns a full policy
     # that can be evaluated
-    data, net, policy_builder = setup_problem(config)
+    data, net = setup_problem(config)
 
     # flatten the trajectory data
     data = data.flatten()
@@ -104,13 +103,17 @@ def train_policy(config, database):
     sample = data.get(data.start)
     init_params = net.init(next(rng), sample.action,
                            jnp.array(1), sample.observation)
-                        
-    diffuser = DDPMSchedule.make_squaredcos_cap_v2(100)
+    diffuser = DDPMSchedule.make_squaredcos_cap_v2(
+        100, clip_sample_range=1)
     loss_fn = partial(loss, config, net, diffuser)
 
-    ema_hook = EmaHook()
-    results = trainer.train(loss_fn, data, init_params,
-                hooks=[ema_hook])
+    ema_hook = EmaHook(
+        decay=0.75
+    )
+    reporter = RichReporter(iter_interval=5)
+    with reporter as reporter_hook:
+        results = trainer.train(loss_fn, data, init_params,
+                    hooks=[ema_hook, reporter_hook])
     params = results.fn_params
     # get the moving average params
     ema_params = results.hook_states[0]
