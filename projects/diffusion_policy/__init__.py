@@ -10,7 +10,7 @@ from stanza.util.random import PRNGSequence
 from stanza.util.logging import logger
 from stanza.model.unet1d import ConditionalUnet1D
 from stanza.model.diffusion import DDPMSchedule
-from stanza.data.noramlizer import LinearNormalizer
+from stanza.data.normalizer import LinearNormalizer
 
 from functools import partial
 

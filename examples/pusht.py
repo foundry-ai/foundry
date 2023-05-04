@@ -35,31 +35,19 @@ policy = policies.chain_transforms(
     pusht.PositionControlTransform()
 )(policies.Actions(target_pos))
 rollout = policies.rollout(env.step, x0, policy, last_state=False)
-video = jax.vmap(env.render)(rollout.states)
-import ffmpegio
-ffmpegio.video.write('video.mp4', 28, video, 
-    overwrite=True, loglevel='quiet')
 
-# dataset = pusht.expert_dataset()
-policy = pusht.pretrained_policy()
-t = time.time()
-rollout = policies.rollout(env.step, x0, policy,
-            length=250*10,
-            policy_rng_key=PRNGKey(42), last_state=False)
-logger.info('took: {:02}s to rollout', time.time() - t)
+# Load in the data!
+data = pusht.expert_data()
+from stanza.data.trajectory import chunk_trajectory
+from stanza.data import PyTreeData
+from functools import partial
+# flat = data.flatten()
+# print(len(flat))
 
-# render every 10th state
-vis_states = jax.tree_util.tree_map(lambda x: x[::10], rollout.states)
-video = jax.vmap(env.render)(vis_states)
-import ffmpegio
-ffmpegio.video.write('trained_video.mp4', 28, video, 
-    overwrite=True, loglevel='quiet')
-
-# rollout = policies.rollout(env.step, x0, policy, 
-#                            policy_rng_key=PRNGKey(42),
-#                             length=2)
-# logger.info('rollout: {}', rollout)
-# data = dataset[:1000].data
-# video = jax.vmap(env.render)(data[0])
-# ffmpegio.video.write('dataset_video.mp4', 60, video, 
-#     overwrite=True, loglevel='quiet')
+chunked = data.map(
+    partial(chunk_trajectory, 
+    obs_chunk_size=2, action_chunk_size=8))
+data = PyTreeData.from_data(chunked.flatten(), chunk_size=2048)
+print(jax.tree_util.tree_map(lambda x: x.shape, data.data))
+print(f"Got data {len(data)}")
+# chunked = PyTreeData.from_data(chunked, chunk_size=2048)

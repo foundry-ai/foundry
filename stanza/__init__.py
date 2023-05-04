@@ -78,3 +78,10 @@ def is_jaxtype(t):
     if t in _registry:
         return True
     return False
+
+def is_concrete(val):
+    from jax._src.core import Tracer, ConcreteArray
+    if isinstance(val, Tracer) and \
+            not isinstance(val.aval, ConcreteArray):
+        return False
+    return True

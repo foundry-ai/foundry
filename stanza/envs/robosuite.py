@@ -7,7 +7,7 @@ from gym.spaces import Box
 from robomimic.envs.env_robosuite import EnvRobosuite
 
 class RobomimicLowdimWrapper(gym.Env):
-    def __init__(self, 
+    def __init__(self,
             env: EnvRobosuite,
             obs_keys: List[str]=[
                 'object', 

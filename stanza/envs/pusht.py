@@ -4,7 +4,9 @@ from stanza.policies import Policy, PolicyOutput, PolicyTransform, \
                             SampleRateTransform, ChunkTransform
 from stanza.util.dataclasses import dataclass, field, replace
 from stanza.util.attrdict import AttrMap
-from stanza.data.env import Timestep, TrajectoryData, TrajectoryIndices
+from stanza.data.trajectory import (
+    Timestep, IndexedTrajectoryData, TrajectoryIndices
+)
 from stanza.data import Data
 from functools import partial
 
@@ -378,7 +380,7 @@ def expert_data():
         episode_starts,
         episode_ends
     )
-    return TrajectoryData(
+    return IndexedTrajectoryData(
         Data.from_pytree(indices),
         Data.from_pytree(timesteps)
     )

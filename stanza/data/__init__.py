@@ -25,6 +25,22 @@ class Data:
             f"{self.__class__.__name__} must implement start"
         )
 
+    def next(self, iterator):
+        raise NotImplementedError(
+            f"{self.__class__.__name__} must implement next"
+        )
+
+    # Will move an iterator n forward. By default
+    # just calls a for loop, but may be more efficient
+    # for some Data sources!
+    def advance(self, iterator, n):
+        return jax.lax.fori_loop(0, n, lambda i, x: self.next(x), iterator)
+
+    def get(self, iterator):
+        raise NotImplementedError(
+            f"{self.__class__.__name__} must implement get"
+        )
+
     # Returns number of elements remainng
     # in the dataset *including* the provided
     # iterator. i.e. if the iterator is at the end
@@ -35,16 +51,6 @@ class Data:
     def is_end(self, iterator):
         raise NotImplementedError(
             f"{self.__class__.__name__} must implement is_end"
-        )
-
-    def next(self, iterator):
-        raise NotImplementedError(
-            f"{self.__class__.__name__} must implement next"
-        )
-
-    def get(self, iterator):
-        raise NotImplementedError(
-            f"{self.__class__.__name__} must implement get"
         )
 
     # These should NOT be overridden:
@@ -65,33 +71,42 @@ class Data:
 
     def __getitem__(self, i):
         if isinstance(i, slice):
-            return self.slice(i.start, i.stop, i.step)
+            if i.start is not None:
+                start = jax.lax.cond(i.start < 0, 
+                    lambda: i.start + self.length,
+                    lambda: i.start)
+            else:
+                start = 0
+            if i.stop is not None:
+                stop = jax.lax.cond(i.stop < 0,
+                    lambda: i.stop + self.length,
+                    lambda: i.stop)
+                l = stop - start
+            else:
+                l = None
+            if i.step is not None:
+                raise ValueError("Step must be None")
+            start_it = self.advance(self.start, start)
+            return self.slice(start_it, l)
         else:
-            it = jax.lax.fori_loop(0, i, self.next, self.start)
+            it = self.advance(self.start, i)
             return self.get(it)
 
     # ------------------------- Transformations --------------------------------
-    def slice(self, start, stop, step=1):
-        assert step > 0
-        if start < 0:
-            start = self.length + start
-        if stop < 0:
-            stop = self.length + stop
-        start_it = jax.lax.fori_loop(0, start, self.next, self.start)
-        return DataSlice(self, start_it, stop - start, step)
+    def slice(self, start_iter, length):
+        return DataSlice(self, start_iter, length)
 
     # Will return the first batch separately.
     # The first batch may be jagged if length % n != 0
     def batch(self, n):
         return BatchedData(self, n)
-
-    # Flatten and batch are opposites
+    
     def flatten(self):
-        raise NotImplementedError("Dataset does not implement flatten()")
+        return FlatData(self)
 
     def map(self, fun):
         return MappedData(self, fun)
-    
+
     # Not all datasets implement shuffle!
     def shuffle(self, key):
         raise NotImplementedError("Dataset does not implement shuffle()")
@@ -102,9 +117,51 @@ class Data:
         all_nums = tree_util.tree_flatten(nums_tree)[0]
         num = all_nums[0]
         return PyTreeData(data, num if n is None else n)
-    
+
 # Type alias for iterators
 Iterator = Any
+
+@dataclass(jax=True)
+class SliceIterator:
+    it: Iterator 
+    slice_idx: int
+
+@dataclass(jax=True)
+class DataSlice(Data):
+    data: Data
+    start_iter: Iterator
+    n : int
+
+    @property
+    def start(self):
+        return SliceIterator(self.start_iter, 0)
+
+    def next(self, iterator):
+        return SliceIterator(
+            self.data.next(iterator.it),
+            iterator.slice_idx + 1
+        )
+
+    def remaining(self, iterator):
+        if self.n is not None:
+            dr = self.data.remaining(iterator.it)
+            r = self.n - iterator.slice_idx
+            # return whichever of dr, r is less
+            return jnp.minimum(dr, r)
+        else:
+            return self.data.remaining(iterator.slice_idx)
+    
+    def is_end(self, iterator):
+        if self.n is not None:
+            return jnp.logical_or(
+                self.data.is_end(iterator.it),
+                iterator.slice_idx >= self.n
+            )
+        else:
+            return self.data.is_end(iterator.it)
+
+    def get(self, iterator):
+        return self.data.get(iterator.it)
 
 @dataclass(jax=True)
 class PyTreeData(Data):
@@ -126,6 +183,9 @@ class PyTreeData(Data):
 
     def next(self, iter):
         return iter + 1
+
+    def advance(self, iterator, n):
+        return iterator + n
 
     def get(self, iter):
         return tree_util.tree_map(lambda x: x[iter], self.data)
@@ -151,6 +211,8 @@ class PyTreeData(Data):
         )
 
     def flatten(self):
+        # Add an optimization for PyTreeData
+        # of PyTreeData
         if isinstance(self.data, PyTreeData):
             data = jax.tree_util.tree_map(
                 lambda x: x.reshape((-1,) + x.shape[2:]),
@@ -158,7 +220,7 @@ class PyTreeData(Data):
             # sum all of the sub-sizes
             n = self.data.n.sum()
             return PyTreeData(data, n)
-        raise NotImplementedError("Can only flatten() recursive PyTreeData datasets")
+        return super().flatten()
 
     # This dataset type is shuffleable
     def shuffle(self, key):
@@ -171,20 +233,45 @@ class PyTreeData(Data):
         return PyTreeData(data, self.n)
 
     @staticmethod
-    def from_data(data, start=None, buffer_size=None):
-        if isinstance(data, PyTreeData):
+    def from_data(data, start=None, buffer_size=None, chunk_size=None):
+        if buffer_size is None and chunk_size is None:
+            raise RuntimeError("Must specify buffer or chunk size")
+        if isinstance(data, PyTreeData) and start is None:
             return data
-        start = start or data.start
-        if not math.isfinite(data.remaining(start)):
-            raise ValueError("Cannot read in an infinite dataset")
-        # Scan out the iterators
-        def scan_fn(iter, _):
-            return data.next(iter), iter
-        _, iters = jax.lax.scan(scan_fn, start, None,
-                    length=data.remaining(start))
+        if start is None:
+            start = data.start
+        if buffer_size is not None:
+            data, n, _ = PyTreeData._data_chunk(data, start, buffer_size)
+            return PyTreeData(data, n)
+        else:
+            items = []
+            n = 0
+            iter = start
+            while not data.is_end(iter):
+                chunk, sn, iter = PyTreeData._data_chunk(data, iter, chunk_size)
+                # cut the chunk down to size
+                chunk = jax.tree_util.tree_map(lambda x: x[:sn], chunk)
+                n = n + sn
+                items.append(chunk)
+            data = jax.tree_util.tree_map(
+                lambda *x: jnp.concatenate(x), *items)
+            return PyTreeData(data, n)
+    
+    # Returns
+    @staticmethod
+    def _data_chunk(data, start, buffer_size):
+        def scan_fn(carry, _):
+            iter, n = carry
+            new_iter, n = jax.lax.cond(data.is_end(iter),
+                lambda: (iter, n),
+                lambda: (data.next(iter), n + 1)
+            )
+            return (new_iter, n), iter
+        (iter, n), iters = jax.lax.scan(scan_fn, (start, 0), None,
+                    length=buffer_size)
         # in parallel fetch the iterators...
         data = jax.vmap(data.get)(iters)
-        return PyTreeData(data)
+        return data, n, iter
 
 @dataclass(jax=True)
 class MappedData(Data):
@@ -209,14 +296,14 @@ class MappedData(Data):
         return self.data.next(iterator)
 
     def get(self, iterator):
-        it = self.data.get(iterator)
-        return self.fun(it)
+        item = self.data.get(iterator)
+        return self.fun(item)
     
     # override slice, shuffle, batch transformations
     # to happen pre-map application since this is 
     # generally more efficient (i.e for PyTreeData)
-    def slice(self, start, stop, step):
-        return MappedData(self.data.slice(start,stop, step), self.fun)
+    def slice(self, start_iter, len):
+        return MappedData(self.data.slice(start_iter, len), self.fun)
     
     def batch(self, n):
         return MappedData(self.data.batch(n), jax.vmap(self.fun))
@@ -224,34 +311,6 @@ class MappedData(Data):
     def shuffle(self, rng_key):
         return MappedData(self.data.shuffle(rng_key), self.fun)
 
-@dataclass(jax=True)
-class DataSlice(Data):
-    data: Data
-    start_iter: Iterator
-    n : int
-    # amount to advance underlying
-    # iterator per next() call
-    step: int = field(default=1, jax_static=True)
-
-    @property
-    def start(self):
-        return (self.start_iter, 0)
-
-    def next(self, iterator):
-        it, i = iterator
-        next_it = jax.lax.fori_loop(0, self.step, self.data.next, it)
-        return (i + 1, next_it)
-
-    def remaining(self, iterator):
-        _, i = iterator
-        dr = self.data.remaining(i)
-        r = self.n - i
-        # return whichever of dr, r is less
-        return jnp.minimum(dr, r)
-
-    def get(self, iterator):
-        it, _ = iterator
-        return self.data.get(it)
 
 # n should not be part
 # of the jax tree
@@ -271,13 +330,50 @@ class BatchedData(Data):
         return self.data.remaining(iterator) // self.n 
 
     def get(self, iterator):
-        return DataSlice(self.data, iterator, self.n)
-    
+        left = self.data.remaining(iterator)
+        n = jnp.minimum(self.n, left)
+        return DataSlice(iterator, iterator + n)
+
     def next(self, iterator):
         # advance the iterator by n
-        return jax.lax.fori_loop(0, self.n, self.data.next, iterator)
-    
-    # Override flatten()
-    # to just return the original dataset!
+        return self.data.advance(iterator, self.n)
+
     def flatten(self):
         return self.data
+
+@dataclass(jax=True)
+class FlatIterator:
+    it: Iterator
+    sub_it: Iterator
+
+@dataclass(jax=True)
+class FlatData(Data):
+    data: Data
+
+    @property
+    def start(self):
+        upper_it = self.data.start
+        upper_data = self.data.get(upper_it)
+        return FlatIterator(upper_it, upper_data.start)
+    
+    def is_end(self, iterator):
+        return self.data.is_end(iterator.it)
+
+    def next(self, iterator):
+        sub_data = self.data.get(iterator.it)
+        sit = sub_data.next(iterator.sub_it)
+        def advance_main():
+            # advance it, get new sub_it
+            new_it = self.data.next(iterator.it)
+            sub_data = self.data.get(new_it)
+            new_sub_it = sub_data.start
+            return FlatIterator(new_it, new_sub_it)
+        return jax.lax.cond(
+            sub_data.is_end(sit),
+            advance_main,
+            lambda: FlatIterator(iterator.it, sit)
+        )
+
+    def get(self, iterator):
+        sub_data = self.data.get(iterator.it)
+        return sub_data.get(iterator.sub_it)
