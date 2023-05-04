@@ -86,8 +86,8 @@ class ChunkedTrajectory(Data):
     def start(self):
         i = self.obs_chunk_size \
             if self.obs_chunk_size is not None else 1
-        o = self.obs_chunk_size \
-            if self.obs_chunk_size is not None else 1
+        o = self.action_chunk_size \
+            if self.action_chunk_size is not None else 1
 
         start = self.trajectory.start
         def scan_fn(i, _):

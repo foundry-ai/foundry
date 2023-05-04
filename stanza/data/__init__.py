@@ -237,6 +237,13 @@ class PyTreeData(Data):
         if buffer_size is None and chunk_size is None:
             raise RuntimeError("Must specify buffer or chunk size")
         if isinstance(data, PyTreeData) and start is None:
+            if buffer_size is not None:
+                buf = jax.tree_util.tree_map(
+                    lambda x: x[:buffer_size], data.data
+                )
+                return PyTreeData(buf, jnp.minimum(data.n, buffer_size))
+            # If we were supposed to chunk, just
+            # read in all of the data anyways...
             return data
         if start is None:
             start = data.start
