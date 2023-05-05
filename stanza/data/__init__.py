@@ -1,5 +1,5 @@
 import math
-import chex
+import math
 import jax
 import jax.tree_util as tree_util
 import jax.numpy as jnp
@@ -15,7 +15,7 @@ from typing import Callable, Any
 # datasets so that we can manipulate the
 # dataset size and the result is still coherent
 INFINITE = jnp.inf
-UNKNOWN = jnp.nan
+UNKNOWN = None
 
 class Data:
     # Please override the following:
@@ -196,7 +196,11 @@ class PyTreeData(Data):
         pdim = (((n - dim) % n) + n) % n
         batches = (dim + pdim)//n
         def make_batches(x):
-            padding = jnp.repeat(jnp.expand_dims(x[-1],0), pdim)
+            # print('x', x.shape)
+            last = jnp.expand_dims(x[-1], 0)
+            # print('last', last.shape)
+            padding = jnp.repeat(last, pdim, axis=0)
+            # print('padding', padding.shape)
             padded = jnp.concatenate((x,padding), axis=0)
             return padded.reshape((-1,n) + padded.shape[1:])
         batched = jax.tree_util.tree_map(
@@ -234,8 +238,6 @@ class PyTreeData(Data):
 
     @staticmethod
     def from_data(data, start=None, buffer_size=None, chunk_size=None):
-        if buffer_size is None and chunk_size is None:
-            raise RuntimeError("Must specify buffer or chunk size")
         if isinstance(data, PyTreeData) and start is None:
             if buffer_size is not None:
                 buf = jax.tree_util.tree_map(
@@ -245,6 +247,15 @@ class PyTreeData(Data):
             # If we were supposed to chunk, just
             # read in all of the data anyways...
             return data
+        # : If we can calculate the buffer size statically
+        # automatically use that
+        l = data.length
+        if buffer_size is None and l is not None and math.isfinite(l):
+            buffer_size = l
+
+        if buffer_size is None and chunk_size is None:
+            raise RuntimeError("Must specify buffer or chunk size")
+
         if start is None:
             start = data.start
         if buffer_size is not None:

@@ -1,5 +1,6 @@
 from stanza import Partial
 from stanza.util.dataclasses import dataclass, field, replace
+from stanza.util.logging import logger
 from stanza.data import PyTreeData
 
 from jax.random import PRNGKey
@@ -59,6 +60,7 @@ class Trainer:
     @jax.jit
     def _batch_loss_fn(self, loss_fn, fn_state, 
                     rng_key, batch, batch_n, fn_params):
+        logger.trace("Tracing batch loss", only_tracing=True)
         if type(fn_state) == NO_STATE_TYPE:
             batch_loss_fn = jax.vmap(loss_fn,
                                      in_axes=(None, None, 0),
@@ -87,7 +89,9 @@ class Trainer:
         state = replace(state, hook_states=new_hook_states)
         return state
 
+    @jax.jit
     def _train_step(self, state, *, loss_fn, batch_dataset, hooks):
+        logger.trace("Tracing train step", only_tracing=True)
         rng_key, sk = jax.random.split(state.rng_key)
         batch_data = batch_dataset.get(state.batch_iterator)
         batch_iterator = batch_dataset.next(state.batch_iterator)
@@ -113,11 +117,15 @@ class Trainer:
             rng_key=rng_key,
             fn_params=fn_params, fn_state=fn_state, opt_state=opt_state)
         state = self._run_hooks(state, hooks)
+        # Make none after the step
+        # so we keep the same state shape in + out
+        state = replace(state, last_stats=None)
         return state
 
     @partial(jax.jit, static_argnames=("shuffle",))
     def _train_epoch(self, state, *, 
                 loss_fn, dataset, hooks, shuffle):
+        logger.trace("Tracing epoch step", only_tracing=True)
         rng_key, sk = jax.random.split(state.rng_key)
         state = replace(state, rng_key=rng_key)
 
@@ -133,9 +141,7 @@ class Trainer:
                     hooks=hooks)
 
         # call the hooks before each epoch
-        first_step_state = self._run_hooks(first_step_state, hooks)
-
-        step_state = step_fn(first_step_state)
+        step_state = self._run_hooks(first_step_state, hooks)
         if batch_dataset.length > 0:
             step_state = jax.lax.while_loop(cond_fn, step_fn, step_state)
 
@@ -164,6 +170,8 @@ class Trainer:
                 # function
                 epochs=None, max_iterations=None,
                 shuffle=True, hooks=[]):
+        logger.trace("Tracing training", only_tracing=True)
+        logger.trace("Starting training")
         
         # epochs and max_iterations can come from either
         # the trainer parameters or the train parameters
@@ -215,15 +223,13 @@ class Trainer:
         # last_stats=None and (b)
         # to make debugging
         # easier
-        state = epoch_fn(state)
-
+        # state = epoch_fn(state)
         final_state = jax.lax.while_loop(
             lambda s: s.total_iteration < max_iterations,
             epoch_fn, state
         )
-
         final_state = self._run_hooks(final_state, hooks)
-
+        logger.trace("Done tracing training", only_tracing=True)
         results = TrainResults(
             fn_params = final_state.fn_params,
             fn_state = final_state.fn_state,

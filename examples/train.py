@@ -2,6 +2,12 @@ from stanza.data import Data
 from stanza.util.logging import logger
 from jax.random import PRNGKey
 import jax.numpy as jnp
+import logging
+from rich.logging import RichHandler
+FORMAT = "%(message)s"
+logging.basicConfig(
+    level=logging.ERROR, format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
+)
 
 # A dataset of integers
 dataset = Data.from_pytree(
@@ -21,8 +27,6 @@ def net_fn(input):
 net = hk.transform(net_fn)
 
 import optax
-from stanza.train import Trainer
-from stanza.train.rich import RichReporter
 from stanza.util.random import permutation
 
 
@@ -47,11 +51,20 @@ def loss_fn(params, rng_key, sample):
     }
     return loss, stats
 
-with RichReporter(iter_interval=500) as cb:
-    trainer = Trainer(epochs=5000, batch_size=10)
-    init_params = net.init(PRNGKey(7), jnp.ones(()))
-    res = trainer.train(
-        loss_fn, dataset,
-        PRNGKey(42), init_params,
-        hooks=[cb]
-    )
+
+from stanza.train import Trainer
+from stanza.train.rich import RichReporter
+from stanza.train.wandb import WandbReporter
+import wandb
+
+wandb.init(project="train_test")
+
+with WandbReporter() as wb:
+    with RichReporter(iter_interval=500) as cb:
+        trainer = Trainer(epochs=5000, batch_size=10)
+        init_params = net.init(PRNGKey(7), jnp.ones(()))
+        res = trainer.train(
+            loss_fn, dataset,
+            PRNGKey(42), init_params,
+            hooks=[cb, wb]
+        )

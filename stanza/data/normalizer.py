@@ -33,11 +33,11 @@ class LinearNormalizer:
     def from_data(data):
         # For simplicity must be a PyTreeData
         # Convert to PyTreeFormat
-        data = PyTreeData.from_data(data, buffer_size=len(data))
-        min = jax.util.tree_map(
+        data = PyTreeData.from_data(data)
+        min = jax.tree_util.tree_map(
             lambda x: jnp.min(x, axis=0), data.data
         )
-        max = jax.util.tree_map(
+        max = jax.tree_util.tree_map(
             lambda x: jnp.max(x, axis=0), data.data
         )
         return LinearNormalizer(min, max)

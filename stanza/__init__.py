@@ -64,11 +64,12 @@ def _jit(fun, **kwargs):
 
 
 # TODO: Maybe move some of the functions below into separate utils?
+from jax._src.api_util import _shaped_abstractify_handlers
+from jax._src.tree_util import _registry
+from jax._src.core import Tracer, ConcreteArray
 
 # If "t" is a jax type
 def is_jaxtype(t):
-    from jax._src.api_util import _shaped_abstractify_handlers
-    from jax._src.tree_util import _registry
     if t is str:
         return False
     if t is int or t is float or t is bool:
@@ -80,7 +81,6 @@ def is_jaxtype(t):
     return False
 
 def is_concrete(val):
-    from jax._src.core import Tracer, ConcreteArray
     if isinstance(val, Tracer) and \
             not isinstance(val.aval, ConcreteArray):
         return False

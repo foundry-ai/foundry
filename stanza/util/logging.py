@@ -62,7 +62,7 @@ class JaxLogger:
         console.log(f'[{level_color}]{level:6}[/{level_color}] - {msg}', 
             highlight=highlight, _stack_offset=stack_offset)
 
-    def log(self, level, msg, *args, highlight=True, show_tracing=False, **kwargs):
+    def log(self, level, msg, *args, highlight=True, show_tracing=False, only_tracing=False, **kwargs):
         # split the arguments and kwargs
         # based on whether they are jax-compatible types or not
         reg_args = []
@@ -81,15 +81,16 @@ class JaxLogger:
             else:
                 reg_kwargs[k] = v
         tracing = isinstance(jax.numpy.array(0), jax.core.Tracer)
-        if tracing and show_tracing:
+        if tracing and (show_tracing or only_tracing):
             self._log_callback(level, msg, (reg_args, reg_kwargs), (jax_args, jax_kwargs), 
                             tracing=True, stack_offset=3)
 
-        jax.debug.callback(partial(self._log_callback, level, msg,
-                                   (reg_args, reg_kwargs),
-                                   highlight=highlight, stack_offset=10),  
-                                   (args, kwargs),
-                                    ordered=True)
+        if not only_tracing:
+            jax.debug.callback(partial(self._log_callback, level, msg,
+                                    (reg_args, reg_kwargs),
+                                    highlight=highlight, stack_offset=10),  
+                                    (args, kwargs),
+                                        ordered=True)
 
     def trace(self, *args, **kwargs):
         return self.log(TRACE, *args, **kwargs)

@@ -50,10 +50,12 @@ class DDPMSchedule:
     @jax.jit
     def add_noise(self, rng_key, sample, timestep):
         sqrt_alphas_prod = jnp.sqrt(self.alphas_cumprod[timestep])
+        sqrt_one_minus_alphas_prod = jnp.sqrt(1 - self.alphas_cumprod[timestep])
         sample_flat, unflatten = jax.flatten_util.ravel_pytree(sample)
-        noise = jax.random.normal(rng_key, sample_flat.shape)
-        noisy_flat = sqrt_alphas_prod * sample_flat + (1 - sqrt_alphas_prod)*noise
-        return unflatten(noisy_flat), unflatten(noise)
+        noise_flat = jax.random.normal(rng_key, sample_flat.shape)
+        noisy_flat = sqrt_alphas_prod * sample_flat + \
+            sqrt_one_minus_alphas_prod*noise_flat
+        return unflatten(noisy_flat), unflatten(noise_flat)
     
     # This does a reverse process step
     @jax.jit

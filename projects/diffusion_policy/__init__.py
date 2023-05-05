@@ -4,23 +4,31 @@ from stanza.runtime.database import PyTree
 from stanza.train import Trainer
 from stanza.train.ema import EmaHook
 from stanza.train.rich import RichReporter
+from stanza.train.wandb import WandbReporter
 
 from stanza.util.dataclasses import dataclass, field
 from stanza.util.random import PRNGSequence
 from stanza.util.logging import logger
 from stanza.model.unet1d import ConditionalUnet1D
 from stanza.model.diffusion import DDPMSchedule
+
+from stanza.data.trajectory import chunk_trajectory
 from stanza.data.normalizer import LinearNormalizer
+from stanza.data import PyTreeData
+
+from rich.progress import track
 
 from functools import partial
 
 import jax.numpy as jnp
 import jax.random
 
-import stanza.envs as envs
+import stanza.util
 import haiku as hk
 
 import optax
+import time
+import wandb
 
 @dataclass
 class Config:
@@ -36,17 +44,31 @@ def setup_problem(config):
         from stanza.envs.pusht import expert_data
         data = expert_data()
         def model(curr_sample, timestep, cond):
-            model = ConditionalUnet1D(name='net')
-            r = model(curr_sample, timestep, cond)
+            sample_flat, sample_uf = stanza.util.vmap_ravel_pytree(curr_sample)
+            cond_flat, _ = jax.flatten_util.ravel_pytree(cond)
+            model = ConditionalUnet1D(name='net',
+                down_dims=[64, 128, 256], diffusion_step_embed_dim=128)
+            r = model(sample_flat, timestep, cond_flat)
+            r = sample_uf(r)
             return r
         net = hk.transform(model)
-        data_flat = data.flatten()
-        action_norm = LinearNormalizer.from_data(data_flat.map(lambda x: x.action))
-        obs_norm = LinearNormalizer.from_data(data_flat.map(lambda x: x.observation))
+        # Load the data into a PyTree
+        logger.info("Calculating data normalizers")
+        data_flat = PyTreeData.from_data(data.flatten(), chunk_size=4096)
+        action_norm = LinearNormalizer.from_data(
+            data_flat.map(lambda x: x.action)
+        )
+        obs_norm = LinearNormalizer.from_data(
+            data_flat.map(lambda x: x.observation)
+        )
 
         # chunk the data and flatten
-        data = data.chunk(input_chunk_size=2, output_chunk_size=16).flatten()
-
+        logger.info("Chunking trajectories")
+        data = data.map(partial(chunk_trajectory,
+            obs_chunk_size=2, action_chunk_size=16))
+        # Load the data into a PyTree
+        data = PyTreeData.from_data(data.flatten(), chunk_size=4096)
+        logger.info("Data Loaded!")
         return data, net, obs_norm, action_norm
 
 def loss(config, net, diffuser, obs_norm, action_norm,
@@ -54,8 +76,9 @@ def loss(config, net, diffuser, obs_norm, action_norm,
             params, rng, sample):
     t_sk, n_sk, s_sk = jax.random.split(rng, 3)
     timestep = jax.random.randint(t_sk, (), 0, diffuser.num_steps)
-    action = sample.action
-    obs = sample.observation
+    # We do training in the normalized space!
+    action = action_norm.normalize(sample.action)
+    obs = obs_norm.normalize(sample.observation)
 
     if config.smoothing_sigma > 0:
         obs_flat, obs_uf = jax.flatten_util.ravel_pytree(obs)
@@ -78,17 +101,13 @@ def loss(config, net, diffuser, obs_norm, action_norm,
 def train_policy(config, database):
     rng = PRNGSequence(config.rng_seed)
     exp = database.open("diffusion_policy")
-
+    logger.info("Running diffusion policy trainer...")
     # policy_builder
     # takes params
     # and returns a full policy
     # that can be evaluated
     data, net, obs_norm, action_norm = setup_problem(config)
-
-    # flatten the trajectory data
-    data = data.flatten()
-    logger.info("Data length: {}", data.length)
-
+    logger.info("Dataset Size: {} chunks", data.length)
     train_steps = Trainer.total_iterations(data, config.batch_size, config.epochs)
     logger.info("Training for {} steps", train_steps)
     warmup_steps = config.warmup_steps
@@ -107,12 +126,21 @@ def train_policy(config, database):
         batch_size=config.batch_size,
         epochs=config.epochs
     )
-
-    # Initialize the network
-    # parameters
+    # Initialize the network parameters
     sample = data.get(data.start)
+    logger.info("Initializing network")
+    t = time.time()
     init_params = net.init(next(rng), sample.action,
                            jnp.array(1), sample.observation)
+    logger.info(f"Initialization took {time.time() - t}")
+    t = time.time()
+    init_params = net.init(next(rng), sample.action,
+                           jnp.array(1), sample.observation)
+    logger.info(f"Re-initialization took {time.time() - t}")
+
+    params_flat, _ = jax.flatten_util.ravel_pytree(init_params)
+    logger.info("params: {}", params_flat.shape[0])
+    logger.info("Making diffusion schedule")
     diffuser = DDPMSchedule.make_squaredcos_cap_v2(
         100, clip_sample_range=1)
     loss_fn = partial(loss, config, net, diffuser, obs_norm, action_norm)
@@ -120,14 +148,19 @@ def train_policy(config, database):
     ema_hook = EmaHook(
         decay=0.75
     )
-    reporter = RichReporter(iter_interval=5)
-    with reporter as reporter_hook:
-        results = trainer.train(loss_fn, data, init_params,
-                    hooks=[ema_hook, reporter_hook])
+    logger.info("Initialized, starting training...")
+
+    wr = WandbReporter()
+    rr = RichReporter(iter_interval=50, smoothing_epochs=1)
+    wandb.init(project="diffusion_policy")
+
+    with wr as wcb: 
+        with rr as rcb:
+            results = trainer.train(loss_fn, data, next(rng), init_params,
+                        hooks=[ema_hook, rcb, wcb])
     params = results.fn_params
     # get the moving average params
     ema_params = results.hook_states[0]
-
     # save the final checkpoint
-    exp.add('final_checkpoint', PyTree(params))
-    exp.add('final_checkpoint_ema', PyTree(ema_params))
+    # exp.add('final_checkpoint', PyTree(params))
+    # exp.add('final_checkpoint_ema', PyTree(ema_params))

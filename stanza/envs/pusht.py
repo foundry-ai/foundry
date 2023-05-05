@@ -296,8 +296,12 @@ def cairo_to_numpy(surface):
 
 # ----- turn a pretrained network -------
 def load_pretrained_net():
-    obs_scale = {'min': jnp.array([1.3456424e+01, 3.2938293e+01, 5.7471767e+01, 1.0827995e+02, 2.1559125e-04], dtype=jnp.float32), 
-           'max': jnp.array([496.14618, 510.9579, 439.9153, 485.6641, 6.2830877], dtype=jnp.float32)}
+    obs_scale = {'min': jnp.array([1.3456424e+01, 3.2938293e+01, 
+                                   5.7471767e+01, 1.0827995e+02, 
+                                   2.1559125e-04], dtype=jnp.float32), 
+           'max': jnp.array([496.14618, 510.9579,
+                             439.9153, 485.6641,
+                             6.2830877], dtype=jnp.float32)}
     action_scale = {'min': jnp.array([12., 25.], dtype=jnp.float32),
               'max': jnp.array([511., 511.], dtype=jnp.float32)}
     pass
@@ -306,30 +310,6 @@ def make_diffusion_policy(schedule, net, params,
                           obs_scaler, action_scaler):
     from stanza.model.diffusion import DDPMSchedule
     sample_action_trajectory = jnp.zeros((16, 2))
-
-    @jax.jit
-    def high_level_policy(input):
-        obs = input.observation
-        obs = jnp.concatenate(
-            (obs.agent_pos, obs.block_pos, obs.block_rot[:,jnp.newaxis]), 
-            axis=-1
-        )
-        # normalize to [0, 1]
-        obs = (obs - obs_scale['min'])/(obs_scale['max'] - obs_scale['min'])
-        # shift to [-1, 1]
-        obs = obs*2 - 1
-        obs = obs.reshape((-1))
-        model = stanza.Partial(net.apply, params, cond=obs)
-        diffused = schedule.sample(input.rng_key, model,
-            sample_action_trajectory, num_steps=100)
-        traj = diffused[:8]
-        # shift from [-1, 1] to [0, 1]
-        traj = (traj + 1)/2
-        # rescale
-        traj = traj*(action_scale['max'] - action_scale['min']) \
-                    + action_scale['min']
-        return PolicyOutput(traj)
-
     return chain_transforms(
         ChunkTransform(input_chunk_size=2,
                        output_chunk_size=8),
@@ -368,9 +348,10 @@ def expert_data():
     agent_pos = state[:,:2]
     block_pos = state[:,2:4]
     block_rot = state[:,4]
-    states = PushTState(
-        BodyState(agent_pos, z2, z, z),
-        BodyState(block_pos, z2, block_rot, z)
+    states = PushTPositionObs(
+        agent_pos,
+        block_pos,
+        block_rot
     )
     timesteps = Timestep(
         states,
