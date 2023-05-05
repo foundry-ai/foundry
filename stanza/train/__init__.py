@@ -142,13 +142,15 @@ class Trainer:
 
         # call the hooks before each epoch
         step_state = self._run_hooks(first_step_state, hooks)
-        if batch_dataset.length > 0:
-            step_state = jax.lax.while_loop(cond_fn, step_fn, step_state)
+        # run first step separately
+        step_state = step_fn(step_state)
+        step_state = jax.lax.while_loop(cond_fn, step_fn, step_state)
 
         return replace(state,
             epoch=state.epoch+1,
             epoch_iteration=0,
             total_iteration=step_state.total_iteration,
+            hook_states=step_state.hook_states,
             rng_key=step_state.rng_key,
             fn_params=step_state.fn_params,
             fn_state=step_state.fn_state,
@@ -182,10 +184,6 @@ class Trainer:
         if max_iterations is None and epochs is None:
             raise ValueError("Must specify either number of epochs or iterations")
         
-        rng_key, sub_key = jax.random.split(rng_key)
-        if shuffle:
-            dataset = dataset.shuffle(sub_key)
-
         if max_iterations is None:
             num_batches = (dataset.length - 1) // self.batch_size + 1
             max_iterations = num_batches*epochs
@@ -220,10 +218,9 @@ class Trainer:
 
         # do the first epoch
         # by hand (a) to handle
-        # last_stats=None and (b)
-        # to make debugging
-        # easier
-        # state = epoch_fn(state)
+        # the first hook states and (b)
+        # to make debugging easier
+        state = epoch_fn(state)
         final_state = jax.lax.while_loop(
             lambda s: s.total_iteration < max_iterations,
             epoch_fn, state

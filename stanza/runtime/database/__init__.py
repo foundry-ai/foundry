@@ -1,11 +1,25 @@
 import numpy as np
 import jax.numpy as jnp
 import urllib
+import random
 
 from stanza.util.dataclasses import dataclass
 from stanza.util.logging import logger
 from typing import Any
+from pathlib import Path
 
+NOUNS_ = None
+ADJECTIVES_ = None
+def words_():
+    global NOUNS_
+    global ADJECTIVES_
+    if NOUNS_ is None:
+        nouns_path = Path(__file__).parent / "nouns.txt"
+        NOUNS_ = open(nouns_path).read().splitlines()
+    if ADJECTIVES_ is None:
+        adjectives_path = Path(__file__).parent / "adjectives.txt"
+        ADJECTIVES_ = open(adjectives_path).read().splitlines()
+    return ADJECTIVES_, NOUNS_
 
 @dataclass(frozen=True)
 class Figure:
@@ -16,16 +30,48 @@ class Video:
     data: np.array
     fps: int = 28
 
-@dataclass(frozen=True)
-class PyTree:
-    data: Any
-
 class Database:
-    # open a root-level table
-    # name will be auto-generated if None
-    def open(self, name=None):
+    # The name of this database
+    # in the parent (or in case of the
+    # root, a descriptive name)
+    @property
+    def name(self):
+        return None
+
+    # Get the parent database
+    # None for the root
+    @property
+    def parent(self):
+        return None
+
+    # should return a set of
+    # keys
+    @property
+    def children(self):
+        return set()
+
+    def has(self, name):
         pass
 
+    def create(self):
+        length = len(self.children)
+        while True:
+            adjectives, nouns = words_()
+            adjective = random.choice(adjectives)
+            noun = random.choice(nouns)
+            name = f"{adjective}-{noun}-{length + 1}"
+            if self.has(name):
+                continue
+            return self.open(name)
+
+    def open(self, name):
+        pass
+
+    def add(self, name, value):
+        pass
+
+    # open a root-level table
+    # name will be auto-generated if None
     @staticmethod
     def from_url(db_url):
         parsed = urllib.parse.urlparse(db_url)
@@ -41,25 +87,6 @@ class Database:
             return WandbDatabase(entity)
         else:
             raise RuntimeError("Unknown database url")
-
-class TableInfo:
-    def __init__(self, table):
-        self._table = table
-    
-    def __setattr__(self, name: str, value: Any):
-        if name == '_table':
-            super().__setattr__(name, value)
-        else:
-            self._table.set(name, value)
-    
-    def __getattr__(self, name: str) -> Any:
-        return self._table.get(name)
-
-class Table:
-    # open a sub-table
-    # name will be auto-generated if None
-    def open(self, name=None):
-        pass
 
 def remap(obj, type_mapping):
     if isinstance(obj, dict):

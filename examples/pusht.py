@@ -31,7 +31,7 @@ policy = policies.chain_transforms(
     # PositionObs *must* come before
     # PositionControl since PositionControl
     # relies on having the full state as observation
-    # pusht.PositionObsTransform(),
+    pusht.PositionObsTransform(),
     pusht.PositionControlTransform()
 )(policies.Actions(target_pos))
 rollout = policies.rollout(env.step, x0, policy, last_state=False)

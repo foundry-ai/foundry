@@ -329,7 +329,7 @@ class RuntimeParser(ArgParser):
         parser.parse_tokens(opts, tokens)
         # Set defaults
         opts.target = opts.get("target", None) or "poetry://localhost"
-        opts.database = opts.get("database", None) or "dummy://"
+        opts.database = opts.get("database", None) or "local://"
         opts.entrypoint = opts.get("entrypoint", None) or None
         if opts.entrypoint is None:
             raise ArgParseError("Must specify entrypoint")

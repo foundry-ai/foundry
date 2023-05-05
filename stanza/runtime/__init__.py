@@ -30,16 +30,16 @@ class FuncActivity(Activity):
         super().__init__(config_dataclass)
         self._exec = exec
     
-    def run(self, config=None, run=None, *args, **kwargs):
-        if run is None:
-            from stanza.runtime.database.dummy import DummyTable
-            run = DummyTable()
+    def run(self, config=None, database=None, *args, **kwargs):
+        if database is None:
+            from stanza.runtime.database.dummy import DummyDatabase
+            database = DummyDatabase()
         if config is None:
             config = self.config_dataclass()
-        return self._exec(config, run, *args, **kwargs)
+        return self._exec(config, database, *args, **kwargs)
 
-    def __call__(self, config=None, run=None, *args, **kwargs):
-        return self.run(config, *args, **kwargs)
+    def __call__(self, *args, **kwargs):
+        return self.run(*args, **kwargs)
 
 # A decorator version for convenience
 def activity(config_dataclass, f=None):

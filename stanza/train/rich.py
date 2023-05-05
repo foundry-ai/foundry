@@ -22,6 +22,7 @@ _counter = 0
 @dataclass(jax=True)
 class RichCallback:
     iter_interval: int
+    average_window: int
     reporter_id: int
 
     @staticmethod
@@ -47,7 +48,15 @@ class RichCallback:
 
     def __call__(self, hs, state):
         # Don't load the parameter state to the CPU
-        return hs, jax.lax.cond(
+        if hs is not None and state.last_stats is not None:
+            hs = jax.tree_util.tree_map(
+                lambda a, b: 1/self.average_window * b + (1 - 1/self.average_window)*a,
+                hs, state.last_stats
+            )
+        if hs is None and state.last_stats is not None:
+            hs = state.last_stats
+
+        new_state = jax.lax.cond(
             jnp.logical_or(
                 jnp.logical_and(state.total_iteration % self.iter_interval == 0,
                             state.last_stats is not None),
@@ -56,12 +65,14 @@ class RichCallback:
                 state.epoch == state.max_epoch
             ),
             self._do_state_callback,
-            lambda x: x, state
+            lambda x: x, replace(state, last_stats=hs)
         )
+        return hs, replace(new_state, last_stats=state.last_stats)
 
 class RichReporter:
-    def __init__(self, iter_interval):
+    def __init__(self, iter_interval, average_window):
         self.iter_interval = iter_interval
+        self.average_window = average_window
 
         global _counter
         _counter = _counter + 1
@@ -127,7 +138,8 @@ class RichReporter:
     def __enter__(self):
         _REPORTERS[self.reporter_id] = self
         self.live.__enter__()
-        return RichCallback(self.iter_interval, self.reporter_id)
+        return RichCallback(self.iter_interval, self.average_window, 
+                            self.reporter_id)
     
     def __exit__(self, exc_type, exc_value, exc_traceback):
         barrier_wait()

@@ -81,16 +81,21 @@ class JaxLogger:
             else:
                 reg_kwargs[k] = v
         tracing = isinstance(jax.numpy.array(0), jax.core.Tracer)
+
         if tracing and (show_tracing or only_tracing):
             self._log_callback(level, msg, (reg_args, reg_kwargs), (jax_args, jax_kwargs), 
-                            tracing=True, stack_offset=3)
+                            tracing=True, stack_offset=4)
+        if only_tracing:
+            return
 
-        if not only_tracing:
+        if not tracing:
+            self._log_callback(level, msg, (reg_args, reg_kwargs), (jax_args, jax_kwargs), 
+                                stack_offset=4)
+        else:
             jax.debug.callback(partial(self._log_callback, level, msg,
                                     (reg_args, reg_kwargs),
                                     highlight=highlight, stack_offset=10),  
-                                    (args, kwargs),
-                                        ordered=True)
+                                    (args, kwargs), ordered=True)
 
     def trace(self, *args, **kwargs):
         return self.log(TRACE, *args, **kwargs)
