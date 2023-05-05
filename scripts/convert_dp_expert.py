@@ -44,15 +44,10 @@ MOD_NAME_MAP = dict(itertools.chain(
      ('final_conv.1', 'net/final_conv')],
 ))
 
-def get_parameters(name, id):
+def get_parameters(path):
     import gdown
     import os
-    cache = os.path.join(os.getcwd(), '.cache')
-    os.makedirs(cache, exist_ok=True)
-    model_path = os.path.join(cache, f'{name}_model.ckpt.npy')
-    if not os.path.exists(model_path):
-        gdown.download(id=id, output=model_path, quiet=False)
-    tm = np.load(model_path, allow_pickle=True).item()
+    tm = np.load(path, allow_pickle=True).item()["params"]
     mapped_params = {}
     for (k,v) in tm.items():
         v = np.array(v).T
@@ -77,10 +72,9 @@ def get_parameters(name, id):
         d[ext] = v
     return mapped_params
 
-IDS = { 
-    "pusht": "1AMUZvH4mtkCFn4C2MJMgQkfeds2m8dsh&confirm=t"
-}
-
-# save the parameters:
-params = get_parameters("pusht", IDS["pusht"])
-np.save("pusht.ckpt.npy", params)
+if __name__ == "__main__":
+    # save the parameters:
+    input_path = sys.argv[0]
+    output_path = sys.argv[1]
+    params = get_parameters(input_path)
+    np.save(output_path, params)

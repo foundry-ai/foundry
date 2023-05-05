@@ -70,7 +70,7 @@ class RichCallback:
         return hs, replace(new_state, last_stats=state.last_stats)
 
 class RichReporter:
-    def __init__(self, iter_interval, average_window):
+    def __init__(self, iter_interval=20, average_window=20):
         self.iter_interval = iter_interval
         self.average_window = average_window
 

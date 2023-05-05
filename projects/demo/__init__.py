@@ -8,6 +8,7 @@ from functools import partial
 
 from stanza.train import Trainer
 from stanza.train.rich import RichReporter
+from stanza.train.ema import EmaHook
 from stanza.util.random import permutation
 
 import jax.numpy as jnp
@@ -57,11 +58,13 @@ def train(config, database):
         optax.scale(-5e-3)
     )
     loss = partial(loss_fn, net)
+
+    ema = EmaHook()
     with RichReporter(iter_interval=500) as cb:
         trainer = Trainer(epochs=5000, batch_size=10)
         init_params = net.init(PRNGKey(7), jnp.ones(()))
-        trainer.train(
+        res = trainer.train(
             loss, dataset,
             PRNGKey(42), init_params,
-            hooks=[cb]
+            hooks=[ema,cb]
         )

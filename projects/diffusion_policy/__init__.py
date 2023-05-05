@@ -239,7 +239,7 @@ def eval(eval_config, database):
     config = results.get("config")
     obs_norm = results.get("obs_norm")
     action_norm = results.get("action_norm")
-    params = results.get("final_checkpoint")
+    params = results.get("final_checkpoint_ema")
     logger.info("Loaded final checkpoint")
 
     net = make_network(config)
