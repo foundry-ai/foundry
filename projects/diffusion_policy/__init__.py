@@ -46,6 +46,7 @@ class Config:
 
 def make_network(config):
     def model(curr_sample, timestep, cond):
+        logger.trace("Tracing model", only_tracing=True)
         sample_flat, sample_uf = stanza.util.vmap_ravel_pytree(curr_sample)
         cond_flat, _ = jax.flatten_util.ravel_pytree(cond)
         if True:
@@ -163,7 +164,6 @@ def train_policy(config, database):
     )
     # Initialize the network parameters
     sample = data.get(data.start)
-    logger.info("Initializing network")
     logger.info("Instantiating network...")
     # tab = hk.experimental.tabulate(net,
     #         columns=('module', 'owned_params', 
@@ -175,10 +175,6 @@ def train_policy(config, database):
     init_params = net.init(next(rng), sample.action,
                            jnp.array(1), sample.observation)
     logger.info(f"Initialization took {time.time() - t}")
-    t = time.time()
-    init_params = net.init(next(rng), sample.action,
-                           jnp.array(1), sample.observation)
-    logger.info(f"Re-initialization took {time.time() - t}")
 
     params_flat, _ = jax.flatten_util.ravel_pytree(init_params)
     logger.info("params: {}", params_flat.shape[0])

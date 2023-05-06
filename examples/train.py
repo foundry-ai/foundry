@@ -1,3 +1,5 @@
+import jax
+print(jax.devices())
 from stanza.data import Data
 from stanza.util.logging import logger
 from jax.random import PRNGKey
