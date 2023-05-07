@@ -8,13 +8,13 @@ from stanza.train.ema import EmaHook
 from stanza.train.rich import RichReporter
 from stanza.train.wandb import WandbReporter
 
-from stanza.util.dataclasses import dataclass, field
+from stanza.util.dataclasses import dataclass, replace
 from stanza.util.random import PRNGSequence
 from stanza.util.logging import logger
 from stanza.model.unet1d import ConditionalUnet1D
 from stanza.model.diffusion import DDPMSchedule
 
-from stanza.data.trajectory import chunk_trajectory
+from stanza.data.trajectory import chunk_trajectory, Timestep
 from stanza.data.normalizer import LinearNormalizer
 from stanza.data import PyTreeData
 
@@ -39,11 +39,12 @@ import wandb
 @dataclass(frozen=True)
 class Config:
     env: str = "pusht"
-    wandb: str = None # "diffusion_policy"
+    wandb: str = "diffusion_policy"
     rng_seed: int = 42
     epochs: int = 300
     batch_size: int = 256
     warmup_steps: int = 500
+    num_datapoints: int = 200
     smoothing_sigma: float = 0
 
 def make_network(config):
@@ -76,26 +77,40 @@ def setup_data(config):
     if config.env == "pusht":
         from stanza.envs.pusht import expert_data
         data = expert_data()
+        traj = min(200,
+            config.num_datapoints \
+                if config.num_datapoints is not None else 200)
+        val_data = data[200:]
+        data = data[:traj]
         # Load the data into a PyTree
-        logger.info("Calculating data normalizers")
-        data_flat = PyTreeData.from_data(data.flatten(), chunk_size=4096)
-        action_norm = LinearNormalizer.from_data(
-            data_flat.map(lambda x: x.action)
+    logger.info("Calculating data normalizers")
+    data_flat = PyTreeData.from_data(data.flatten(), chunk_size=4096)
+    action_norm = LinearNormalizer.from_data(
+        data_flat.map(lambda x: x.action)
+    )
+    obs_norm = LinearNormalizer.from_data(
+        data_flat.map(lambda x: x.observation)
+    )
+    # chunk the data and flatten
+    logger.info("Chunking trajectories")
+    def slice_chunk(x):
+        return replace(x,
+            observation=jax.tree_util.tree_map(
+                lambda x: x[:2],
+                x.observation
+            )
         )
-        obs_norm = LinearNormalizer.from_data(
-            data_flat.map(lambda x: x.observation)
-        )
+    def chunk(traj):
+        traj = chunk_trajectory(traj, 16, 1, 7)
+        return traj.map(slice_chunk)
+    data = data.map(chunk)
+    val_data = val_data.map(chunk)
 
-        # chunk the data and flatten
-        logger.info("Chunking trajectories")
-        data = data.map(partial(chunk_trajectory,
-            obs_chunk_size=2, action_chunk_size=16,
-            # full overlap with both observations,
-            obs_action_overlap=2))
-        # Load the data into a PyTree
-        data = PyTreeData.from_data(data.flatten(), chunk_size=4096)
-        logger.info("Data Loaded!")
-        return data, obs_norm, action_norm
+    # Load the data into a PyTree
+    data = PyTreeData.from_data(data.flatten(), chunk_size=4096)
+    val_data = PyTreeData.from_data(val_data.flatten(), chunk_size=4096)
+    logger.info("Data Loaded!")
+    return data, val_data, obs_norm, action_norm
 
 def loss(config, net, diffuser, obs_norm, action_norm,
             # these are passed in per training loop:
@@ -128,11 +143,14 @@ def train_policy(config, database):
     rng = PRNGSequence(config.rng_seed)
     exp = database.open("diffusion_policy").create()
     logger.info(f"Running diffusion policy trainer [blue]{exp.name}[/blue]")
-    # policy_builder
-    # takes params
-    # and returns a full policy
-    # that can be evaluated
-    data, obs_norm, action_norm = setup_data(config)
+
+    # load the data to the CPU, then move to the GPU
+    with jax.default_device(jax.devices("cpu")[0]):
+        data, val_data, obs_norm, action_norm = setup_data(config)
+    # move data to GPU:
+    data, val_data, obs_norm, action_norm = \
+        jax.device_put((data, val_data, obs_norm, action_norm),
+                       jax.devices()[0])
     net = make_network(config)
 
     logger.info("Dataset Size: {} chunks", data.length)
@@ -141,7 +159,7 @@ def train_policy(config, database):
     warmup_steps = config.warmup_steps
 
     lr_schedule = optax.join_schedules(
-        [optax.linear_schedule(0, 1e-4, warmup_steps),
+        [optax.linear_schedule(1e-4/500, 1e-4, warmup_steps),
          optax.cosine_decay_schedule(1e-4, 
                     train_steps - warmup_steps)],
         [warmup_steps]
@@ -180,15 +198,15 @@ def train_policy(config, database):
     )
     logger.info("Initialized, starting training...")
 
-    wr = WandbReporter()
+    wr = WandbReporter(iter_interval=5)
     rr = RichReporter(iter_interval=50, average_window=100)
-    if config.wandb is not None:
+    if config.wandb is not None and config.wandb != "none":
         wandb.init(project="diffusion_policy")
 
     with wr as wcb: 
         with rr as rcb:
             hooks = [ema_hook, rcb]
-            if config.wandb is not None:
+            if config.wandb is not None and config.wandb != "none":
                 hooks.append(wcb)
             results = trainer.train(
                         Partial(loss_fn), 

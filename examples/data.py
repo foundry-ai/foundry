@@ -5,9 +5,8 @@ data = pusht.expert_data()
 from stanza.data.trajectory import chunk_trajectory
 from stanza.data import PyTreeData
 from functools import partial
-chunked = data.map(
-    partial(chunk_trajectory, 
-    obs_chunk_size=2, action_chunk_size=16))
+chunked = data.map(partial(chunk_trajectory, 
+                chunk_size=16, start_padding=1, end_padding=7))
 
 traj0 = PyTreeData.from_data(data[0], chunk_size=2048)
 traj0_chunked = PyTreeData.from_data(chunked[0], chunk_size=2048)

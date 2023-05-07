@@ -4,3 +4,12 @@ resolve
 shark
 sky
 champion
+dawn
+fury
+thunder
+endeavour
+enterprise
+discovery
+star
+sunset
+eagle

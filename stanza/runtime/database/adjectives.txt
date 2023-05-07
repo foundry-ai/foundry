@@ -7,6 +7,11 @@ light
 brilliant
 radiant
 silver
+daring
+deep
+hot
+cold
+burning
 gold
 starry
 proximal

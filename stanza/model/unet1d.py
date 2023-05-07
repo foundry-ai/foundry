@@ -5,6 +5,9 @@ from haiku.initializers import VarianceScaling
 
 from typing import Optional
 
+_w_init = VarianceScaling(1.0, "fan_in", "uniform")
+_b_init = VarianceScaling(1.0, "fan_in", "uniform")
+
 class SinusoidalPosEmbed(hk.Module):
     def __init__(self, dim, name=None):
         super().__init__(name=name)
@@ -17,15 +20,15 @@ class SinusoidalPosEmbed(hk.Module):
         emb = x[jnp.newaxis,...] * emb[...,jnp.newaxis]
         emb = jnp.concatenate((jnp.sin(emb), jnp.cos(emb)), axis=0)
         return emb.reshape((-1))
-    
+
 class Downsample1D(hk.Module):
     def __call__(self, x):
         conv = hk.Conv1D(x.shape[-1],
                     kernel_shape=3,
                     stride=2,
                     padding=[(1,1)], 
-                    w_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
-                    b_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+                    w_init=_w_init,
+                    b_init=_b_init,
                     name='conv')
         return conv(x)
 
@@ -34,8 +37,8 @@ class Upsample1D(hk.Module):
         conv = hk.Conv1DTranspose(x.shape[-1],
                     kernel_shape=4,
                     stride=2,
-                    w_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
-                    b_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+                    w_init=_w_init,
+                    b_init=_b_init,
                     padding=[(2,2)],
                     name='conv_transpose')
         return conv(x)
@@ -56,8 +59,8 @@ class Conv1DBlock(hk.Module):
             hk.Conv1D(self.output_channels,
                       kernel_shape=self.kernel_size,
                       padding=(self.kernel_size // 2, self.kernel_size // 2),
-                      w_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
-                      b_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+                      w_init=_w_init,
+                      b_init=_b_init,
                       name="conv"),
             # We have no batch axes in our input
             # so average over all axes
@@ -81,14 +84,12 @@ class CondResBlock1D(hk.Module):
                     self.kernel_size, n_groups=self.n_groups, name='block1')
         residual_conv = hk.Conv1D(
             self.output_channels, 1,
-            w_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
-            b_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+            w_init=_w_init, b_init=_b_init,
             name='residual_conv') \
                 if x.shape[-1] != self.output_channels else (lambda x: x)
         cond_encoder = hk.Sequential(
             [mish, hk.Linear(self.output_channels*2,
-                            w_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
-                            b_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+                            w_init=_w_init, b_init=_b_init,
                             name='cond_encoder')]
         )
         out = block0(x)
@@ -128,14 +129,10 @@ class ConditionalUnet1D(hk.Module):
 
         diffusion_step_encoder = hk.Sequential([
             SinusoidalPosEmbed(dsed, name='diff_embed'),
-            hk.Linear(4*dsed, 
-                      w_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
-                      b_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+            hk.Linear(4*dsed, w_init=_w_init, b_init=_b_init,
                       name='diff_embed_linear_0'),
             mish,
-            hk.Linear(dsed,
-                      w_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
-                      b_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+            hk.Linear(dsed, w_init=_w_init, b_init=_b_init,
                       name='diff_embed_linear_1')
         ])
         # encode a timesteps array
@@ -189,8 +186,8 @@ class ConditionalUnet1D(hk.Module):
             Conv1DBlock(start_dim, kernel_size=kernel_size,
                         name='final_conv_block'),
             hk.Conv1D(sample.shape[-1], 1, 
-                      w_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
-                      b_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+                      w_init=_w_init,
+                      b_init=_b_init,
                       name='final_conv')
         ])
         x = final_conv(x)

@@ -14,6 +14,13 @@ logging.basicConfig(
 dataset = Data.from_pytree(
     (jnp.arange(100), jnp.arange(100)[::-1])
 )
+sdataset = Data.from_pytree(
+    (jnp.arange(10), jnp.arange(10))
+)
+sdataset = sdataset.shuffle(PRNGKey(42))
+logger.info("Data shuffled {}", sdataset.data)
+logger.info("Data batched {}", sdataset.batch(4).data.data)
+
 logger.info("Dataset length: {}", dataset.length)
 batches = dataset.batch(20)
 logger.info("Batched length: {}", batches.length)

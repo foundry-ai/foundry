@@ -149,7 +149,7 @@ class DataSlice(Data):
             # return whichever of dr, r is less
             return jnp.minimum(dr, r)
         else:
-            return self.data.remaining(iterator.slice_idx)
+            return self.data.remaining(iterator.it)
     
     def is_end(self, iterator):
         if self.n is not None:
@@ -271,6 +271,8 @@ class PyTreeData(Data):
                 chunk = jax.tree_util.tree_map(lambda x: x[:sn], chunk)
                 n = n + sn
                 items.append(chunk)
+            if len(items) == 0:
+                return PyTreeData(None, 0)
             data = jax.tree_util.tree_map(
                 lambda *x: jnp.concatenate(x), *items)
             return PyTreeData(data, n)
