@@ -68,11 +68,11 @@ class IndexedTrajectoryData(Data):
         )
 
 def chunk_trajectory(trajectory, obs_chunk_size=None, 
-                        action_chunk_size=None):
+                        action_chunk_size=None, obs_action_overlap=1):
     # Return a dataset that turns each trajectory
     # into a ChunkedTrajectory!
     return ChunkedTrajectory(trajectory,
-            obs_chunk_size, action_chunk_size)
+            obs_chunk_size, action_chunk_size, obs_action_overlap)
 
 @dataclass(jax=True)
 class ChunkIterator:
@@ -84,6 +84,7 @@ class ChunkedTrajectory(Data):
     trajectory: Data
     obs_chunk_size: int = field(default=None, jax_static=True)
     action_chunk_size: int = field(default=None, jax_static=True)
+    obs_action_overlap: int = field(default=1, jax_static=True)
 
     # Chunked iterators are iterators into the
     # trajectory
@@ -91,14 +92,15 @@ class ChunkedTrajectory(Data):
     def start(self):
         i = self.obs_chunk_size \
             if self.obs_chunk_size is not None else 1
-        o = self.action_chunk_size \
+        a = self.action_chunk_size \
             if self.action_chunk_size is not None else 1
+        o = self.obs_action_overlap
 
         start = self.trajectory.start
         def scan_fn(i, _):
             n = self.trajectory.next(i)
             return n, n
-        _, post = jax.lax.scan(scan_fn, start, None, length=o-1)
+        _, post = jax.lax.scan(scan_fn, start, None, length=a-o)
         # stack start i times, followed by *post*
         it = jax.tree_util.tree_map(
             lambda s, p: jnp.concatenate(
@@ -143,11 +145,12 @@ class ChunkedTrajectory(Data):
     def get(self, iterator):
         i = self.obs_chunk_size \
             if self.obs_chunk_size is not None else 1
+        o = self.obs_action_overlap
         input_iterators = jax.tree_util.tree_map(
             lambda x: x[:i], iterator.iterators
         )
         output_iterators = jax.tree_util.tree_map(
-            lambda x: x[i-1:], iterator.iterators
+            lambda x: x[i-o:], iterator.iterators
         )
         vget = jax.vmap(self.trajectory.get)
         input = vget(input_iterators).observation

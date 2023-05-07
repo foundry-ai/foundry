@@ -1,6 +1,7 @@
 import haiku as hk
 import jax.numpy as jnp
 import jax
+from haiku.initializers import VarianceScaling
 
 from typing import Optional
 
@@ -22,7 +23,10 @@ class Downsample1D(hk.Module):
         conv = hk.Conv1D(x.shape[-1],
                     kernel_shape=3,
                     stride=2,
-                    padding=[(1,1)], name='conv')
+                    padding=[(1,1)], 
+                    w_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+                    b_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+                    name='conv')
         return conv(x)
 
 class Upsample1D(hk.Module):
@@ -30,6 +34,8 @@ class Upsample1D(hk.Module):
         conv = hk.Conv1DTranspose(x.shape[-1],
                     kernel_shape=4,
                     stride=2,
+                    w_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+                    b_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
                     padding=[(2,2)],
                     name='conv_transpose')
         return conv(x)
@@ -50,6 +56,8 @@ class Conv1DBlock(hk.Module):
             hk.Conv1D(self.output_channels,
                       kernel_shape=self.kernel_size,
                       padding=(self.kernel_size // 2, self.kernel_size // 2),
+                      w_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+                      b_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
                       name="conv"),
             # We have no batch axes in our input
             # so average over all axes
@@ -72,10 +80,16 @@ class CondResBlock1D(hk.Module):
         block1 = Conv1DBlock(self.output_channels,
                     self.kernel_size, n_groups=self.n_groups, name='block1')
         residual_conv = hk.Conv1D(
-            self.output_channels, 1, name='residual_conv') \
+            self.output_channels, 1,
+            w_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+            b_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+            name='residual_conv') \
                 if x.shape[-1] != self.output_channels else (lambda x: x)
         cond_encoder = hk.Sequential(
-            [mish, hk.Linear(self.output_channels*2,name='cond_encoder')]
+            [mish, hk.Linear(self.output_channels*2,
+                            w_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+                            b_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+                            name='cond_encoder')]
         )
         out = block0(x)
         embed = cond_encoder(cond)
@@ -114,9 +128,15 @@ class ConditionalUnet1D(hk.Module):
 
         diffusion_step_encoder = hk.Sequential([
             SinusoidalPosEmbed(dsed, name='diff_embed'),
-            hk.Linear(4*dsed, name='diff_embed_linear_0'),
+            hk.Linear(4*dsed, 
+                      w_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+                      b_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+                      name='diff_embed_linear_0'),
             mish,
-            hk.Linear(dsed, name='diff_embed_linear_1')
+            hk.Linear(dsed,
+                      w_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+                      b_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+                      name='diff_embed_linear_1')
         ])
         # encode a timesteps array
         # condition on timesteps + global_cond
@@ -168,7 +188,10 @@ class ConditionalUnet1D(hk.Module):
         final_conv = hk.Sequential([
             Conv1DBlock(start_dim, kernel_size=kernel_size,
                         name='final_conv_block'),
-            hk.Conv1D(sample.shape[-1], 1, name='final_conv')
+            hk.Conv1D(sample.shape[-1], 1, 
+                      w_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+                      b_init=VarianceScaling(1.0/3, "fan_in", "uniform"),
+                      name='final_conv')
         ])
         x = final_conv(x)
         return x

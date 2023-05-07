@@ -89,7 +89,9 @@ def setup_data(config):
         # chunk the data and flatten
         logger.info("Chunking trajectories")
         data = data.map(partial(chunk_trajectory,
-            obs_chunk_size=2, action_chunk_size=16))
+            obs_chunk_size=2, action_chunk_size=16,
+            # full overlap with both observations,
+            obs_action_overlap=2))
         # Load the data into a PyTree
         data = PyTreeData.from_data(data.flatten(), chunk_size=4096)
         logger.info("Data Loaded!")
@@ -104,7 +106,6 @@ def loss(config, net, diffuser, obs_norm, action_norm,
     # We do training in the normalized space!
     action = action_norm.normalize(sample.action)
     obs = obs_norm.normalize(sample.observation)
-
     if config.smoothing_sigma > 0:
         obs_flat, obs_uf = jax.flatten_util.ravel_pytree(obs)
         obs_flat = obs_flat + config.smoothing_sigma*jax.random.normal(s_sk, obs_flat.shape)
@@ -140,7 +141,7 @@ def train_policy(config, database):
     warmup_steps = config.warmup_steps
 
     lr_schedule = optax.join_schedules(
-        [optax.constant_schedule(1e-4),
+        [optax.linear_schedule(0, 1e-4, warmup_steps),
          optax.cosine_decay_schedule(1e-4, 
                     train_steps - warmup_steps)],
         [warmup_steps]
@@ -213,6 +214,7 @@ class EvalConfig:
     path: str = None
     rng_key: PRNGKey = PRNGKey(42)
     samples: int = 10
+    rng_seed: int = 42
 
 
 def rollout(env, policy, length, rng):
@@ -246,7 +248,8 @@ def eval(eval_config, database, results=None):
 
     policy = make_diffusion_policy(
         net_fn, diffuser,
-        obs_norm, action_norm, action_sample, 16
+        obs_norm, action_norm, action_sample, 
+        16, 1, 8
     )
 
     # import stanza.envs.pusht as pusht
@@ -262,16 +265,21 @@ def eval(eval_config, database, results=None):
     logger.info("Rolling out policies...")
     rollout_fn = partial(rollout, env, policy, 300*10)
     mapped_rollout_fun = jax.jit(jax.vmap(rollout_fn))
-    rngs = jax.random.split(PRNGKey(42), eval_config.samples)
+    rngs = jax.random.split(PRNGKey(eval_config.rng_seed), eval_config.samples)
     r = mapped_rollout_fun(rngs)
     logger.info("Computing scores...")
-    final_states = jax.tree_util.tree_map(lambda x: x[:,-1], r.states)
-    scores = jax.vmap(env.score)(final_states)
+    eval_states = jax.tree_util.tree_map(lambda x: x[:,::10], r.states)
+    scores = jax.vmap(jax.vmap(env.score))(eval_states)
+    # get the highest coverage over the sample
+    scores = jnp.max(scores,axis=1)
     logger.info("Scores: {}", scores)
     logger.info("Mean scores: {}", scores.mean())
 
-    logger.info(f"Persisting eval data...")
-    vis_states = jax.tree_util.tree_map(lambda x: x[0, ::10], r.states)
-    video = jax.vmap(env.render)(vis_states)
-    results.add("scores", scores)
-    results.add("sample", Video(video, fps=28))
+    logger.info("Persisting eval data...")
+    vis_states = jax.tree_util.tree_map(lambda x: x[:, ::10], r.states)
+    video = jax.vmap(jax.vmap(env.render))(vis_states)
+    scores = results.open("samples")
+    logger.info("Writing videos...")
+    for i in range(video.shape[0]):
+        scores.add(f"sample_{i}", Video(video[i],fps=28))
+    logger.info("Done!")
