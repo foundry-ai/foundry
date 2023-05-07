@@ -13,16 +13,16 @@ class EnvPool:
         self.env_factory = env_factory
         self.envs = {}
         self.env_id = 0
-    
-    def create(self):
+
+    def create(self, rng_key):
         e = self.env_factory()
         self.env_id = self.env_id + 1
         self.envs[self.env_id] = e
         e.reset()
         return self.env_id
     
-    def step(self, env_id, action, rng):
-        e = self.envs[jnp.array(env_id).item()]
+    def step(self, state, action):
+        e = self.envs[jnp.array(state.env_id).item()]
         e.step(action)
 
 @dataclass(jax=True)
@@ -32,13 +32,17 @@ class GymEnv(Environment):
     envs: EnvPool = field(jax_static=True)
 
     def reset(self, rng_key):
-        pass
+        return self.envs.create(rng_key)
+    
+    def step(self, state, action):
+        return self.envs.step(state, action)
 
 @dataclass(jax=True)
 class GymState:
-    t : int
     env_id : int
     obs : Any
+    reward: float
+    terminated: bool
 
 def builder(env_type, *args, **kwargs):
     env_path = env_type.split("/")

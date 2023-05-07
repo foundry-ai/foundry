@@ -22,7 +22,7 @@ dockerpty = "^0.4.1"
 rpyc = "^5.3.0"
 plotly = "^5.13.0"
 pandas = "^1.5.3"
-dm-haiku = "^0.0.9"
+dm-haiku = {git = "https://github.com/deepmind/dm-haiku"}
 trajax = { git = "https://github.com/google/trajax" }
 wandb = "^0.13.11"
 kaleido = "0.2.1"
@@ -35,6 +35,7 @@ zarr = "^2.14.2"
 llvmlite = "^0.39.1"
 robosuite = "^1.4.0"
 gym = "^0.26.2"
+shapely = "1.8.4"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.1"

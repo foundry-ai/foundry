@@ -1,4 +1,5 @@
 import itertools
+import sys
 import gdown
 import numpy as np
 
@@ -17,7 +18,6 @@ def remap_downsample(in_prefix, out_prefix):
 
 def remap_upsample(in_prefix, out_prefix):
     yield f'{in_prefix}.conv', f'{out_prefix}/conv_transpose'
-
 
 MOD_NAME_MAP = dict(itertools.chain(
     remap_diff_step_encoder(),
@@ -74,7 +74,12 @@ def get_parameters(path):
 
 if __name__ == "__main__":
     # save the parameters:
-    input_path = sys.argv[0]
-    output_path = sys.argv[1]
+    input_path = sys.argv[1]
+    output_path = sys.argv[2]
     params = get_parameters(input_path)
-    np.save(output_path, params)
+    import jax
+    params_shape = jax.tree_util.tree_map(lambda x: x.shape, params)
+    for (k,v) in params_shape.items():
+        print(k, v)
+    with open(output_path, 'wb') as f:
+        np.save(f, params)

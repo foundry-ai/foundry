@@ -99,7 +99,7 @@ class ConditionalUnet1D(hk.Module):
                         kernel_size=5, n_groups=8,
                         name=None):
         super().__init__(name=name)
-        self.diffusion_step_embed_dim = 256
+        self.diffusion_step_embed_dim = diffusion_step_embed_dim
         self.down_dims = down_dims
         self.kernel_size = 5
         self.n_groups = 8

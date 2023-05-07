@@ -10,6 +10,7 @@ from stanza.data.trajectory import (
 from stanza.data import Data
 from functools import partial
 
+import shapely.geometry as sg
 import stanza
 import itertools
 import jax.numpy as jnp
@@ -42,6 +43,7 @@ class PushTEnv(Environment):
             jnp.array(jnp.pi/4),
             jnp.array(0)
         ))
+    success_threshold: float = 0.9
 
     def sample_action(self, rng_key):
         pos_agent = jax.random.randint(rng_key, (2,), 50, 450).astype(float)
@@ -77,6 +79,25 @@ class PushTEnv(Environment):
 
     def step(self, state, action, rng_key):
         return jax.pure_callback(PushTEnv._callback_step, state, self, state, action)
+
+    def score(self, state):
+        return jax.pure_callback(
+            PushTEnv._callback_score,
+            jax.ShapeDtypeStruct((), jnp.float32),
+            self, state
+        )
+
+    def _callback_score(self, state):
+        space, _, block = self._setup_space(state.agent, state.block)
+        goal = self._add_tee(space, self.goal_pose, color=(0,1,0), z=-1)
+
+        goal_geom = pymunk_to_shapely(goal)
+        block_geom = pymunk_to_shapely(block)
+        intersection_area = goal_geom.intersection(block_geom).area
+        goal_area = goal_geom.area
+        coverage = intersection_area / goal_area
+        reward = jnp.clip(coverage / self.success_threshold, 0, 1)
+        return reward
     
     def _get_body_state(self, body):
         pos = jnp.array([body.position.x, body.position.y])
@@ -294,35 +315,6 @@ def cairo_to_numpy(surface):
     data = np.transpose(data, (2, 0, 1))
     return data
 
-# ----- turn a pretrained network -------
-def load_pretrained_net():
-    obs_scale = {'min': jnp.array([1.3456424e+01, 3.2938293e+01, 
-                                   5.7471767e+01, 1.0827995e+02, 
-                                   2.1559125e-04], dtype=jnp.float32), 
-           'max': jnp.array([496.14618, 510.9579,
-                             439.9153, 485.6641,
-                             6.2830877], dtype=jnp.float32)}
-    action_scale = {'min': jnp.array([12., 25.], dtype=jnp.float32),
-              'max': jnp.array([511., 511.], dtype=jnp.float32)}
-    pass
-
-def make_diffusion_policy(schedule, net, params,
-                          obs_scaler, action_scaler):
-    from stanza.model.diffusion import DDPMSchedule
-    sample_action_trajectory = jnp.zeros((16, 2))
-    return chain_transforms(
-        ChunkTransform(input_chunk_size=2,
-                       output_chunk_size=8),
-        # Low-level position controller runs 20x higher
-        # frequency than the high-level controller
-        # which outputs target positions
-        SampleRateTransform(control_interval=10),
-        # The low-level controller takes a
-        # target position and runs feedback gains
-        PositionObsTransform(),
-        PositionControlTransform()
-    )(high_level_policy)
-
 # ----- The expert dataset ----
 
 def expert_data():
@@ -365,3 +357,15 @@ def expert_data():
         Data.from_pytree(indices),
         Data.from_pytree(timesteps)
     )
+
+def pymunk_to_shapely(body):
+    geoms = list()
+    for shape in body.shapes:
+        if isinstance(shape, pymunk.shapes.Poly):
+            verts = [body.local_to_world(v) for v in shape.get_vertices()]
+            verts += [verts[0]]
+            geoms.append(sg.Polygon(verts))
+        else:
+            raise RuntimeError(f'Unsupported shape type {type(shape)}')
+    geom = sg.MultiPolygon(geoms)
+    return geom

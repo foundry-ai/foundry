@@ -1,6 +1,7 @@
 from stanza.runtime import activity
 from stanza.runtime.database import Video
 from stanza import Partial
+import stanza
 
 from stanza.train import Trainer
 from stanza.train.ema import EmaHook
@@ -35,9 +36,10 @@ import optax
 import time
 import wandb
 
-@dataclass
+@dataclass(frozen=True)
 class Config:
     env: str = "pusht"
+    wandb: str = None # "diffusion_policy"
     rng_seed: int = 42
     epochs: int = 300
     batch_size: int = 256
@@ -45,20 +47,9 @@ class Config:
     smoothing_sigma: float = 0
 
 def make_network(config):
-    def model(curr_sample, timestep, cond):
-        logger.trace("Tracing model", only_tracing=True)
-        sample_flat, sample_uf = stanza.util.vmap_ravel_pytree(curr_sample)
-        cond_flat, _ = jax.flatten_util.ravel_pytree(cond)
-        if True:
-            model = ConditionalUnet1D(name='net',
-                down_dims=[64, 128, 256], diffusion_step_embed_dim=128)
-            r = model(sample_flat, timestep, cond_flat)
-        else:
-            model = hk.nets.MLP([10,10, sample_flat.shape[0]*sample_flat.shape[1]])
-            r = model(sample_flat.reshape((-1,))).reshape(sample_flat.shape)
-        r = sample_uf(r)
-        return r
-    return hk.transform(model)
+    if config.env == "pusht":
+        from diffusion_policy.networks import pusht_net
+        return pusht_net
 
 def make_policy_transform(config, chunk_size=8):
     if config.env == "pusht":
@@ -149,14 +140,12 @@ def train_policy(config, database):
     warmup_steps = config.warmup_steps
 
     lr_schedule = optax.join_schedules(
-        [optax.constant_schedule(1),
-         optax.cosine_decay_schedule(1, train_steps - warmup_steps)],
+        [optax.constant_schedule(1e-4),
+         optax.cosine_decay_schedule(1e-4, 
+                    train_steps - warmup_steps)],
         [warmup_steps]
     )
-    optimizer = optax.chain(
-        optax.adamw(1e-4, weight_decay=1e-6),
-        optax.scale_by_schedule(lr_schedule)
-    )
+    optimizer = optax.adamw(lr_schedule, weight_decay=1e-6)
     trainer = Trainer(
         optimizer=optimizer,
         batch_size=config.batch_size,
@@ -172,17 +161,17 @@ def train_policy(config, database):
     #                                      sample.observation)
     # print(tab)
     t = time.time()
-    init_params = net.init(next(rng), sample.action,
+    jit_init = jax.jit(net.init)
+    init_params = jit_init(next(rng), sample.action,
                            jnp.array(1), sample.observation)
     logger.info(f"Initialization took {time.time() - t}")
-
     params_flat, _ = jax.flatten_util.ravel_pytree(init_params)
     logger.info("params: {}", params_flat.shape[0])
     logger.info("Making diffusion schedule")
 
     diffuser = make_diffuser(config)
-
-    loss_fn = partial(loss, config, net, diffuser, obs_norm, action_norm)
+    loss_fn = Partial(stanza.partial(loss, config, net),
+                    diffuser, obs_norm, action_norm)
     loss_fn = jax.jit(loss_fn)
 
     ema_hook = EmaHook(
@@ -192,13 +181,19 @@ def train_policy(config, database):
 
     wr = WandbReporter()
     rr = RichReporter(iter_interval=50, average_window=100)
-
-    # wandb.init(project="diffusion_policy")
+    if config.wandb is not None:
+        wandb.init(project="diffusion_policy")
 
     with wr as wcb: 
         with rr as rcb:
-            results = trainer.train(loss_fn, data, next(rng), init_params,
-                        hooks=[ema_hook, rcb])
+            hooks = [ema_hook, rcb]
+            if config.wandb is not None:
+                hooks.append(wcb)
+            results = trainer.train(
+                        Partial(loss_fn), 
+                        data, next(rng), init_params,
+                        hooks=hooks
+                    )
     params = results.fn_params
     # get the moving average params
     ema_params = results.hook_states[0]
@@ -215,7 +210,7 @@ def sweep_train(config, database):
 
 @dataclass
 class EvalConfig:
-    path: str
+    path: str = None
     rng_key: PRNGKey = PRNGKey(42)
     samples: int = 10
 
@@ -229,9 +224,10 @@ def rollout(env, policy, length, rng):
     return r
 
 @activity(EvalConfig)
-def eval(eval_config, database):
-    logger.info(f"Evaluating [blue]{eval_config.path}[/blue]")
-    results = database.open(eval_config.path)
+def eval(eval_config, database, results=None):
+    if results is None:
+        results = database.open(eval_config.path)
+    logger.info(f"Evaluating [blue]{results.name}[/blue]")
     config = results.get("config")
     obs_norm = results.get("obs_norm")
     action_norm = results.get("action_norm")
@@ -252,14 +248,30 @@ def eval(eval_config, database):
         net_fn, diffuser,
         obs_norm, action_norm, action_sample, 16
     )
+
+    # import stanza.envs.pusht as pusht
+    # obs = pusht.PushTPositionObs(
+    #     jnp.array([[200, 200], [202, 202]]),
+    #     jnp.array([[100, 100], [100, 100]]),
+    #     jnp.array([0, 0])
+    # )
+    # logger.info("output {}", 
+    #     policy(policies.PolicyInput(obs, None, PRNGKey(42))).action)
+
     policy = make_policy_transform(config)(policy)
-    logger.info("Rolling out policies")
+    logger.info("Rolling out policies...")
     rollout_fn = partial(rollout, env, policy, 300*10)
-    r = rollout_fn(PRNGKey(42))
+    mapped_rollout_fun = jax.jit(jax.vmap(rollout_fn))
+    rngs = jax.random.split(PRNGKey(42), eval_config.samples)
+    r = mapped_rollout_fun(rngs)
+    logger.info("Computing scores...")
+    final_states = jax.tree_util.tree_map(lambda x: x[:,-1], r.states)
+    scores = jax.vmap(env.score)(final_states)
+    logger.info("Scores: {}", scores)
+    logger.info("Mean scores: {}", scores.mean())
 
-    vis = database.open("diffusion_eval").create()
-    logger.info(f"Persisting eval data to {vis.name}")
-
-    vis_states = jax.tree_util.tree_map(lambda x: x[::10], r.states)
+    logger.info(f"Persisting eval data...")
+    vis_states = jax.tree_util.tree_map(lambda x: x[0, ::10], r.states)
     video = jax.vmap(env.render)(vis_states)
-    vis.add("sample", Video(video, fps=28))
+    results.add("scores", scores)
+    results.add("sample", Video(video, fps=28))

@@ -1,7 +1,7 @@
 from stanza.data import Data
 
 from stanza.util.dataclasses import dataclass, field, replace
-from typing import Any
+from typing import Any, List
 
 import jax
 import jax.numpy as jnp
@@ -75,6 +75,11 @@ def chunk_trajectory(trajectory, obs_chunk_size=None,
             obs_chunk_size, action_chunk_size)
 
 @dataclass(jax=True)
+class ChunkIterator:
+    iterators: List[Any]
+    off_end: int
+
+@dataclass(jax=True)
 class ChunkedTrajectory(Data):
     trajectory: Data
     obs_chunk_size: int = field(default=None, jax_static=True)
@@ -100,40 +105,49 @@ class ChunkedTrajectory(Data):
                 (jnp.repeat(jnp.expand_dims(s, 0), i), p)
             ), start, post
         )
-        return it
+        return ChunkIterator(it, 0)
 
     def remaining(self, iterator):
         i = self.obs_chunk_size \
             if self.obs_chunk_size is not None else 1
         mid_iterator = jax.tree_util.tree_map(
-            lambda s: s[i - 1], iterator)
+            lambda s: s[i - 1], iterator.iterators)
         return self.trajectory.remaining(mid_iterator)
 
     def is_end(self, iterator):
-        last_it = jax.tree_util.tree_map(
-            lambda s: s[-1], iterator)
-        return self.trajectory.is_end(last_it)
-    
+        o = self.action_chunk_size \
+            if self.action_chunk_size is not None else 1
+        return iterator.off_end > o - 1
+
     def next(self, iterator):
+        iterators = iterator.iterators
+
         last_it = jax.tree_util.tree_map(
-            lambda x: x[-1], iterator)
-        new_it = jax.tree_util.tree_map(
-            lambda x: jnp.roll(x, -1, 0), 
-            iterator)
-        new_it = jax.tree_util.tree_map(
-            lambda x, ni: x.at[-1].set(ni),
-            new_it, self.trajectory.next(last_it)
+            lambda x: x[-1], iterators)
+
+        # propagate the last_it, but cap to the
+        # end if necessary
+        new_last = self.trajectory.next(last_it)
+
+        new_last, off_end = jax.lax.cond(
+            self.trajectory.is_end(new_last),
+            lambda: (last_it, iterator.off_end + 1),
+            lambda: (new_last, 0)
         )
-        return new_it
+
+        new_it = jax.tree_util.tree_map(
+            lambda x, n: jnp.roll(x, -1, 0).at[-1].set(n), 
+            iterators, new_last)
+        return ChunkIterator(new_it, off_end)
 
     def get(self, iterator):
         i = self.obs_chunk_size \
             if self.obs_chunk_size is not None else 1
         input_iterators = jax.tree_util.tree_map(
-            lambda x: x[:i], iterator
+            lambda x: x[:i], iterator.iterators
         )
         output_iterators = jax.tree_util.tree_map(
-            lambda x: x[i-1:], iterator
+            lambda x: x[i-1:], iterator.iterators
         )
         vget = jax.vmap(self.trajectory.get)
         input = vget(input_iterators).observation

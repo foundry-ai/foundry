@@ -24,6 +24,9 @@ class Environment:
     # is inherently stochastic, throw an error!
     def step(self, state, action, rng_key):
         raise NotImplementedError("Must impelement step()")
+    
+    def reward(self, states, actions):
+        pass
 
 __ENV_BUILDERS = {}
 

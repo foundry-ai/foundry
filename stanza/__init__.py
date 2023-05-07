@@ -1,4 +1,5 @@
-from functools import partial, wraps
+import functools
+from functools import wraps
 from jax.tree_util import Partial
 import jax.tree_util
 from typing import Callable
@@ -38,6 +39,29 @@ def _unwrap(args):
         return False
     return jax.tree_util.tree_map(_unwrap_arg, args, is_leaf=_unwrap_is_leaf)
 
+from jax._src.tree_util import _HashableCallableShim
+
+# A version of partial() which makes arguments static
+# into the pytree
+# Partial makes them jax-based
+class partial(functools.partial):
+  def __new__(klass, func, *args, **kw):
+    if isinstance(func, functools.partial):
+      original_func = func
+      func = _HashableCallableShim(original_func)
+      out = super().__new__(klass, func, *args, **kw)
+      func.func = original_func.func
+      func.args = original_func.args
+      func.keywords = original_func.keywords
+      return out
+    else:
+      return super().__new__(klass, func, *args, **kw)
+
+jax.tree_util.register_pytree_node(
+    partial,
+    lambda partial_: ((), (partial_.func, partial_.args, partial_.keywords)),
+    lambda func, _: Partial(func[0], *func[1], **func[2]),  # type: ignore[index]
+)
 
 """
     A version of jax.jit which
@@ -46,7 +70,7 @@ def _unwrap(args):
 """
 def jit(fun=None, **kwargs):
     if fun is None:
-        return partial(_jit, **kwargs)
+        return functools.partial(_jit, **kwargs)
     return _jit(fun, **kwargs)
 
 def _jit(fun, **kwargs):

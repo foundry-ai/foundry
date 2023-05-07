@@ -8,7 +8,8 @@ from jax.experimental.host_callback import id_tap, barrier_wait
 
 from rich.progress import (
     Progress, TextColumn, BarColumn,
-    ProgressColumn, TimeRemainingColumn
+    ProgressColumn, TimeRemainingColumn,
+    TimeElapsedColumn
 )
 from rich.console import Group
 from rich.text import Text
@@ -86,7 +87,8 @@ class RichReporter:
             TextColumn("[progress.description]{task.description}"),
             BarColumn(finished_style=Style(color="green")),
             MofNColumn(),
-            TimeRemainingColumn()
+            TimeRemainingColumn(),
+            TimeElapsedColumn()
         )
         self.table = Table()
         self.live = Live(Group(self.table, self.progress))
