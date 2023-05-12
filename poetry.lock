@@ -2391,6 +2391,51 @@ docs = ["sphinx (>=4.0.0)", "sphinx-rtd-theme (>=1.0.0)"]
 ssh = ["paramiko"]
 
 [[package]]
+name = "pot"
+version = "0.9.0"
+description = "Python Optimal Transport Library"
+category = "main"
+optional = false
+python-versions = ">=3.6"
+files = [
+    {file = "POT-0.9.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:7484e1b9cb7852b9fa94c9af7317f9bfafee937be5893d6e12e867098fe6f9d6"},
+    {file = "POT-0.9.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:f670442fc566014792842d8bcb76bb7c734c3578183029b7aa9efd5ec0106fb1"},
+    {file = "POT-0.9.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:6c6d7b7185929fe9c2fe999cda3aa6c00a01cf0e70d9e934f4489223bb318538"},
+    {file = "POT-0.9.0-cp310-cp310-manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:65ccc1de449ae7d935290e86c13b9f76a37938ac726a5e5b70c21e178225f7c8"},
+    {file = "POT-0.9.0-cp310-cp310-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:d755d0208f34df1958bae2c1c98cedf14e1521a45d39d641225829289a5c28b6"},
+    {file = "POT-0.9.0-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:3384cae377d8d90a8dc9055ccba3cedc625b2bcf178d3c5877fcd954a9f83972"},
+    {file = "POT-0.9.0-cp310-cp310-win32.whl", hash = "sha256:e780c2306909900193e84917df7281149fa2ee5ade99d61dbb72af91f859cf08"},
+    {file = "POT-0.9.0-cp310-cp310-win_amd64.whl", hash = "sha256:cb9347361b9baaeafff296829fec71b21e71d2aaa17a8c4a98f15e31719f23a7"},
+    {file = "POT-0.9.0-cp37-cp37m-macosx_10_9_x86_64.whl", hash = "sha256:a448175fcf585b8400f9b4ee0bf14b4816cdeaa494f23fbdf0117358a859d867"},
+    {file = "POT-0.9.0-cp37-cp37m-manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:a43206b10c72052db40ac398ec572b26ed80c6d732d4d9156d20eb4161629ed4"},
+    {file = "POT-0.9.0-cp37-cp37m-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:f9bbebb987cfa591e81c763b3a2d9f142fe93698523342bff18752e96cdda27e"},
+    {file = "POT-0.9.0-cp37-cp37m-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:bffd3dc8bdb013b78ae075aabe22f756d659c5c414f8305177929d17a3c14007"},
+    {file = "POT-0.9.0-cp37-cp37m-win32.whl", hash = "sha256:26466654728525972fdbe791b799eaeff71be323c93f0f3eb4d8fe61168008ea"},
+    {file = "POT-0.9.0-cp37-cp37m-win_amd64.whl", hash = "sha256:d1ed3398cb4765badc51938c3b60d9961d93ac742aaabb1f9c97a79b845289dd"},
+    {file = "POT-0.9.0-cp38-cp38-macosx_10_9_universal2.whl", hash = "sha256:5b46260b9a3194cda694f4f4e0bc4488ad90c7ebe7bdaa8d185a25da90a4b2b0"},
+    {file = "POT-0.9.0-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:27da7e2d8328c7c5e12d9ce177ee0e09bb41427e934925f3136e6a1eca629855"},
+    {file = "POT-0.9.0-cp38-cp38-macosx_11_0_arm64.whl", hash = "sha256:7d7a1ee80072001c434cdf71d38bc38f85b05ead0750ed822388320ab3330536"},
+    {file = "POT-0.9.0-cp38-cp38-manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:61f55e54b842a6750bf3c1d81deaceab92e48956c195ec7be4f3be4287f7aafa"},
+    {file = "POT-0.9.0-cp38-cp38-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:0b59fd547667e237ee88e1a24fdde97097c50300050842f8d54c97c05e068eb4"},
+    {file = "POT-0.9.0-cp38-cp38-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:9eb6dd3e032215a669a93b0cc4f2ace45f4096e25a7f5df4c84819aa30229968"},
+    {file = "POT-0.9.0-cp38-cp38-win32.whl", hash = "sha256:51ade7a80be1866635371df2f59b27191f01299388d71ca24a424bb663501846"},
+    {file = "POT-0.9.0-cp38-cp38-win_amd64.whl", hash = "sha256:54d7c38e78bf3dfe3591619d70f025536f91b59d3b95bc1d59747a92498dae43"},
+    {file = "POT-0.9.0-cp39-cp39-macosx_10_9_universal2.whl", hash = "sha256:5c78f08601c5cc0e70861cd1a1cb25c937de0ca689e791ff7f217ab14a8cf9a7"},
+    {file = "POT-0.9.0-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:f9bcbcf8f0c7c9aeb4010b0ba4f452f1d56d7a843af869121d0cb823ca964d71"},
+    {file = "POT-0.9.0-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:b842fd909ae4511a12946bd4dc35665f46b6e7d4e9ffc16edc03c71573d15001"},
+    {file = "POT-0.9.0-cp39-cp39-manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:bda1f80c35367e365b8e757280fc7bf19524a62907cc706880ead0283af36df1"},
+    {file = "POT-0.9.0-cp39-cp39-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:ec13f663d597fe44e9fc1ed70269efb9946e2a0503d6025665b23886eda7178a"},
+    {file = "POT-0.9.0-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:6337dc81f40830e12044e25752aadd4dfe42187e8be040c88e6c405cb51eef69"},
+    {file = "POT-0.9.0-cp39-cp39-win32.whl", hash = "sha256:470586ff300cc8ff6b731896f37d7add9e4ec11b75c21a23921c4ec5105a20ae"},
+    {file = "POT-0.9.0-cp39-cp39-win_amd64.whl", hash = "sha256:c40e1c771e188c2856702ce7b8a4891afb3f634a6d9abad0488260afa7e28028"},
+    {file = "POT-0.9.0.tar.gz", hash = "sha256:300864ae2b469a7b66155fc610a134961d9d46f1ecde0d85e484d14acd06b215"},
+]
+
+[package.dependencies]
+numpy = ">=1.16"
+scipy = ">=1.0"
+
+[[package]]
 name = "prometheus-client"
 version = "0.16.0"
 description = "Python client for the Prometheus monitoring system."
@@ -3731,4 +3776,4 @@ jupyter = ["ipytree (>=0.2.2)", "ipywidgets (>=8.0.0)", "notebook"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.10,<3.11"
-content-hash = "ca8de2a255f8ba0738c0c975ac390579e48840c929bba3835d732423ba9d747a"
+content-hash = "b1531d4e85ca0bd0d3963a6af100c77cad73d2a075c23ea37fe031ce1ed09123"

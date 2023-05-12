@@ -42,14 +42,8 @@ import jax
 
 logger.info("Permutation test: {}", permutation(PRNGKey(42), 10, n=6))
 
-optimizer = optax.chain(
-    # Set the parameters of Adam. Note the learning_rate is not here.
-    optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-8),
-    # Put a minus sign to *minimise* the loss.
-    optax.scale(-5e-3),
-    optax.scale_by_schedule(optax.cosine_decay_schedule(1.0,
-                            5000*10, alpha=0.1))
-)
+optimizer = optax.adamw(optax.cosine_decay_schedule(1e-3, 5000*10), 
+                        weight_decay=1e-6)
 
 def net_apply(params, rng_key, x):
     params = {m: {k: jnp.array(v) for (k,v) in sp.items()}
@@ -76,17 +70,17 @@ from stanza import Partial
 from stanza.train import Trainer
 from stanza.train.rich import RichReporter
 from stanza.train.wandb import WandbReporter
-# import wandb
-# wandb.init(project="train_test")
+import wandb
+wandb.init(project="train_test")
 
 with WandbReporter() as wb:
     with RichReporter(iter_interval=500) as cb:
-        trainer = Trainer(epochs=5000, batch_size=10)
+        trainer = Trainer(epochs=5000, batch_size=10, optimizer=optimizer)
         init_params = net.init(PRNGKey(7), jnp.ones(()))
         res = trainer.train(
             Partial(loss_fn), dataset,
             PRNGKey(42), init_params,
-            hooks=[cb], jit=True
+            hooks=[cb, wb], jit=True
         )
 
 from stanza.train import _train_jit
@@ -96,7 +90,7 @@ logger.info("Train cache size {}", _train_jit._cache_size())
 logger.info("Training again...jit is cached so now training is fast")
 with WandbReporter() as wb:
     with RichReporter(iter_interval=500) as cb:
-        trainer = Trainer(epochs=5000, batch_size=10)
+        trainer = Trainer(epochs=5000, batch_size=10, optimizer=optimizer)
         init_params = net.init(PRNGKey(7), jnp.ones(()))
         res = trainer.train(
             Partial(loss_fn), dataset,
@@ -104,14 +98,14 @@ with WandbReporter() as wb:
             hooks=[cb], jit=True
         )
 
-logger.info("Training again...but this time without a full JIT loop (sloooow)")
-with WandbReporter() as wb:
-    with RichReporter(iter_interval=500) as cb:
-        trainer = Trainer(epochs=5000, batch_size=10)
-        init_params = net.init(PRNGKey(7), jnp.ones(()))
-        res = trainer.train(
-            Partial(loss_fn), dataset,
-            PRNGKey(42), init_params,
-            hooks=[cb], jit=False
-        )
-logger.info("Train cache size {}", _train_jit._cache_size())
+# logger.info("Training again...but this time without a full JIT loop (sloooow)")
+# with WandbReporter() as wb:
+#     with RichReporter(iter_interval=500) as cb:
+#         trainer = Trainer(epochs=5000, batch_size=10, optimizer=optimizer)
+#         init_params = net.init(PRNGKey(7), jnp.ones(()))
+#         res = trainer.train(
+#             Partial(loss_fn), dataset,
+#             PRNGKey(42), init_params,
+#             hooks=[cb], jit=False
+#         )
+# logger.info("Train cache size {}", _train_jit._cache_size())

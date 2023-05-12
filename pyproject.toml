@@ -36,6 +36,7 @@ llvmlite = "^0.39.1"
 robosuite = "^1.4.0"
 gym = "^0.26.2"
 shapely = "1.8.4"
+pot = "^0.9.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.1"
