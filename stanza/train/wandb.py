@@ -27,13 +27,8 @@ class WandbCallback:
     def __call__(self, hs, state):
         # Don't load the parameter state to the CPU
         return hs, jax.lax.cond(
-            jnp.logical_or(
-                jnp.logical_and(state.total_iteration % self.iter_interval == 0,
-                            state.last_stats is not None),
-                # When we have reached the end, do a callback
-                # so that we can finish the progress bars
-                state.epoch == state.max_epoch
-            ),
+            jnp.logical_and(state.total_iteration % self.iter_interval == 0,
+                        state.last_stats is not None),
             self._do_state_callback,
             lambda x: x, state
         )
