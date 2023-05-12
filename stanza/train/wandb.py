@@ -37,7 +37,8 @@ class WandbCallback:
             hs, state.last_stats
         )
         return hs, jax.lax.cond(
-            (state.total_iteration + 1) % self.iter_interval == 0,
+            jnp.logical_and(state.total_iteration % self.iter_interval == 0,
+                        state.last_stats is not None),
             self._do_state_callback,
             lambda x, _: x, state, hs
         )
