@@ -12,7 +12,7 @@ packages = [{include = "stanza"}]
 activity = "stanza.runtime:launch_activity"
 
 [tool.poetry.dependencies]
-jax = {extras = ["cuda12-pip"], version = "^0.4.8"}
+jax = {version = "0.4.7"}
 python = ">=3.10,<3.11"
 optax = "^0.1.4"
 rich = "^13.3.1"
@@ -20,26 +20,15 @@ cloudpickle = "^2.2.1"
 docker = "^6.0.1"
 dockerpty = "^0.4.1"
 rpyc = "^5.3.0"
-plotly = "^5.13.0"
-pandas = "^1.5.3"
 dm-haiku = {git = "https://github.com/deepmind/dm-haiku"}
 trajax = { git = "https://github.com/google/trajax" }
 wandb = "^0.13.11"
-kaleido = "0.2.1"
-pymunk = "^6.4.0"
-pycairo = "^1.23.0"
 ffmpegio = "^0.8.3"
 gdown = "^4.7.1"
 zarr = "^2.14.2"
-llvmlite = "^0.39.1"
-robosuite = "^1.4.0"
-gym = "^0.26.2"
-shapely = "1.8.4"
-pot = "^0.9.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.1"
-jupyter = "^1.0.0"
 
 [build-system]
 requires = ["poetry-core"]
@@ -47,4 +36,6 @@ build-backend = "poetry.core.masonry.api"
 
 [[tool.poetry.source]]
 name = "private"
-url = "https://storage.googleapis.com/jax-releases/jax_cuda_releases.html"
+url = "https://packages.pfrommer.dev/packages/staging"
+default = false
+secondary = false
