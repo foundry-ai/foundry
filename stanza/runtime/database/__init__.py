@@ -67,8 +67,13 @@ class Database:
     def open(self, name):
         pass
 
-    def add(self, name, value):
+    def add(self, name, value, append=False):
         pass
+
+    # a recursive dictinary of keys
+    def log(self, values):
+        for (k,v) in flat_items(values):
+            self.add(k,v, append=True)
 
     # open a root-level table
     # name will be auto-generated if None
@@ -87,6 +92,13 @@ class Database:
             return WandbDatabase(entity)
         else:
             raise RuntimeError("Unknown database url")
+
+def flat_items(d, prefix=''):
+    for (k,v) in d.items():
+        if isinstance(v, dict):
+            yield from flat_items(v, prefix=f'{prefix}{k}.')
+        else:
+            yield (f'{prefix}{k}',v)
 
 def remap(obj, type_mapping):
     if isinstance(obj, dict):

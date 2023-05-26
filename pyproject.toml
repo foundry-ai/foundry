@@ -12,7 +12,8 @@ packages = [{include = "stanza"}]
 activity = "stanza.runtime:launch_activity"
 
 [tool.poetry.dependencies]
-jax = {version = "0.4.7"}
+jax = {version = "0.4.10"}
+jaxlib = {version = "0.4.10"}
 python = ">=3.10,<3.11"
 optax = "^0.1.4"
 rich = "^13.3.1"
@@ -26,6 +27,9 @@ wandb = "^0.13.11"
 ffmpegio = "^0.8.3"
 gdown = "^4.7.1"
 zarr = "^2.14.2"
+plotly = "^5.14.1"
+pandas = "^2.0.1"
+pycairo = "^1.23.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.1"

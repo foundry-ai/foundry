@@ -26,6 +26,7 @@ class OptaxSolver(IterativeSolver):
             solved=False,
             state=objective.initial_state,
             params=objective.initial_params,
+            cost=None,
             aux=None,
             optimizer_state = self.optimizer.init(objective.initial_params)
         )
@@ -41,8 +42,8 @@ class OptaxSolver(IterativeSolver):
             solver_state = self.init_state(objective)
         def f(p):
             obj_state, cost, obj_aux = objective.eval(solver_state.state, p)
-            return cost, (obj_state, obj_aux)
-        grad, (obj_state, obj_aux) = jax.grad(f, has_aux=True)(solver_state.params)
+            return cost, (obj_state, cost, obj_aux)
+        grad, (obj_state, cost, obj_aux) = jax.grad(f, has_aux=True)(solver_state.params)
         updates, new_opt_state = self.optimizer.update(grad, solver_state.optimizer_state, solver_state.params)
         obj_params = optax.apply_updates(solver_state.params, updates)
         return OptaxState(
@@ -50,6 +51,7 @@ class OptaxSolver(IterativeSolver):
                     solved=False,
                     state=obj_state,
                     params=obj_params,
+                    cost=cost,
                     aux=obj_aux,
                     optimizer_state=new_opt_state
                 )

@@ -10,7 +10,6 @@ from functools import partial
 from stanza.runtime.database import Figure, Video
 
 import math
-import plotly.express as px
 
 class State(NamedTuple):
     angle: jnp.ndarray
@@ -31,8 +30,8 @@ class PendulumEnv(Environment):
     # give a distribution with support over all possible (or reasonable) states
     def sample_state(self, rng_key):
         k1, k2 = jax.random.split(rng_key)
-        angle = 5*jax.random.uniform(k1, shape=(), minval=-1, maxval=math.pi + 1)
-        vel = 5*jax.random.uniform(k2, shape=(), minval=-1, maxval=1)
+        angle = jax.random.uniform(k1, shape=(), minval=-1, maxval=math.pi + 1)
+        vel = jax.random.uniform(k2, shape=(), minval=-1, maxval=1)
         return State(angle, vel)
 
     def reset(self, key):
@@ -62,16 +61,17 @@ class PendulumEnv(Environment):
         return jnp.concatenate(constraints)
 
     def visualize(self, states, actions):
-        traj = px.line(x=jnp.squeeze(states.angle, -1), y=jnp.squeeze(states.vel, -1))
+        import plotly.express as px
+        traj = px.line(x=states.angle, y=states.vel)
         traj.update_layout(xaxis_title="Theta", yaxis_title="Omega", title="State Trajectory")
 
-        theta = px.line(x=jnp.arange(states.angle.shape[0]), y=jnp.squeeze(states.angle, -1))
+        theta = px.line(x=jnp.arange(states.angle.shape[0]), y=states.angle)
         theta.update_layout(xaxis_title="Time", yaxis_title="Theta", title="Angle")
 
-        omega = px.line(x=jnp.arange(states.vel.shape[0]), y=jnp.squeeze(states.vel, -1))
+        omega = px.line(x=jnp.arange(states.vel.shape[0]), y=states.vel)
         omega.update_layout(xaxis_title="Time", yaxis_title="Omega", title="Angular Velocity")
 
-        u = px.line(x=jnp.arange(actions.shape[0]), y=jnp.squeeze(actions, -1))
+        u = px.line(x=jnp.arange(actions.shape[0]), y=actions)
         u.update_layout(xaxis_title="Time", yaxis_title="u")
 
         video = jax.vmap(self.render)(states)

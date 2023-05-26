@@ -1,22 +1,21 @@
 import jax
 import jax.numpy as jnp
-import jinx.envs as envs
-import jinx.random
-
 from jax.random import PRNGKey
 
-from dataclasses import dataclass, field
-from typing import Any, Dict
-from jinx.logging import logger
+import stanza.envs as envs
+import stanza.policies as policies
+import stanza.util.random as random
 
-from jinx.policy.iterative import FeedbackMPC
-from jinx.policy.grad_estimator import IsingEstimator
-from jinx.trainer import Trainer
-
-from jinx.experiment.runtime import activity
-from jinx.experiment import Figure, Video
+from stanza.runtime import activity
+from stanza.solver.optax import OptaxSolver
+from stanza.policies.mpc import MPC
+from stanza.policies.iterative import EstimatorRollout, FeedbackRollout
+from stanza.util.logging import logger
+from stanza.util.grad_estimator import IsingEstimator
 
 from functools import partial
+from dataclasses import dataclass, field
+from typing import Any, Dict
 
 import haiku as hk
 
@@ -42,7 +41,6 @@ class Config:
 
     receed: bool = False
     rng_seed: int = 42
-    traj_seed: int = 42
 
     traj_length: int = None
     horizon_length: int = None
@@ -75,8 +73,10 @@ def set_default(config, attr, default):
     if getattr(config, attr) == None:
         setattr(config, attr, default)
 
-@activity('iterative_learning', Config)
-def iterative_learning(config, exp=None):
+@activity(Config)
+def iterative_learning(config, database):
+    exp = database.open("iterative_learning").create()
+    logger.info(f"Running iterative learning [blue]{exp.name}[/blue]")
     # set the per-env defaults for now
     if config.env_type == "pendulum":
         set_default(config, 'traj_length', 50)
@@ -114,14 +114,11 @@ def iterative_learning(config, exp=None):
 
     if config.trajectories:
         config.iterations = config.trajectories / config.samples
+    logger.info(f"Config: {config}")
 
     env = envs.create(config.env_type)
-    rng_key = jinx.random.key_or_seed(config.rng_seed)
-    traj_key = jinx.random.key_or_seed(config.traj_seed)
-
-    model_fn = env.step
-    cost_fn = env.cost
-    traj_cost_fn = partial(envs.trajectory_cost, env.cost)
+    rng_key = random.key_or_seed(config.rng_seed)
+    rng_key, traj_key = jax.random.split(rng_key)
 
     if not config.receed and config.horizon_length < config.traj_length:
         logger.warn("Receeding horizon disabled, increasing horizon to trajectory length")
@@ -138,63 +135,43 @@ def iterative_learning(config, exp=None):
         # Put a minus sign to *minimise* the loss.
         optax.scale(-config.learning_rate)
     )
-
-    policy = FeedbackMPC(
-        env.reset(PRNGKey(0)),
-        env.sample_action(PRNGKey(0)), 
-        env.cost, model_fn,
-        config.horizon_length,
-        optimizer=optimizer,
-        iterations=config.iterations,
-        use_gains=config.use_gains,
-
-        burn_in=config.burn_in,
-        Q_coef=config.Q_coef,
-        R_coef=config.R_coef,
-
-        receed=config.receed,
-        grad_estimator=est if config.estimate_grad else None,
+    roller = FeedbackRollout(
+        model_fn=env.step,
+        burn_in=config.burn_in, 
+        Q_coef=config.Q_coef, R_coef=config.R_coef
+    ) if config.use_gains else EstimatorRollout(
+        model_fn=env.step, grad_estimator=None
     )
+
+    policy = MPC(
+        action_sample=env.sample_action(PRNGKey(0)), 
+        cost_fn=env.cost, 
+        rollout_fn=roller,
+        horizon_length=config.horizon_length,
+        solver=OptaxSolver(optimizer=optimizer,
+                max_iterations=config.iterations),
+        receed=config.receed,
+        history=True
+    )
+
     x0 = env.reset(traj_key)
-    logger.info(f"Running {config}")
+    def eval(rng_key):
+        rollout = policies.rollout(env.step, x0,
+                                    policy, length=config.traj_length)
+        traj_cost = env.cost(rollout.states, rollout.actions)
+        return rollout, traj_cost
+    keys = jax.random.split(traj_key, config.eval_trajs)
+    rollouts, costs = jax.vmap(eval)(keys)
 
     # Rollout with the true environment dynamics!
-    pol_state, states, us = envs.rollout_policy(env.step, x0,
-                                config.traj_length, policy,
-                                ret_policy_state=True)
-    traj_cost = traj_cost_fn(states, us)
-    logger.info("Final State: {}", jax.tree_map(lambda x: x[-1], states))
-    logger.info("Final Cost: {}", traj_cost)
-    
-    optim_history = pol_state.optim_history
-    cost_history = optim_history.cost
-    est_state_history = optim_history.est_state
-    iterations = optim_history.iteration[-1]
-
-    logger.info("{} iterations", iterations)
+    logger.info("Final Cost: {}", costs)
 
     # output to experiment
-    for i in range(iterations):
-        exp.log({'cost': cost_history[i],
-            'grad_norm': optim_history.grad_norm[i],
-            'samples': est_state_history.total_samples[i] if est_state_history else None,
-        })
+    # exp.log({
+    #     'cost': solver_history.cost[:iterations],
+    #     'samples': est_state_history.total_samples[:iterations] if est_state_history else None,
+    # })
 
-    # make a plot of the trajectory, video of pendulum
-    vis = env.visualize(states, us)
-    exp.log(vis)
-
-    # serialize to results for our own records
-    results = Results(
-        xs=states,
-        us=us,
-        config=config,
-        iterations=iterations,
-        final_cost=cost_history[-1],
-        cost_history=cost_history,
-        sample_history=est_state_history.total_samples if est_state_history is not None else None
-    )
-    if config.save_file is not None:
-        root_dir = os.path.abspath(os.path.join(__file__,'..','..'))
-        with open(os.path.join(root_dir, 'results', config.save_file), 'wb') as f:
-            pickle.dump(results, f)
+    # # make a plot of the trajectory, video of pendulum
+    # vis = env.visualize(rollout.states, rollout.actions)
+    # exp.log(vis)

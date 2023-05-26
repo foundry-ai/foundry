@@ -6,15 +6,18 @@ from typing import Any
 from stanza.util.dataclasses import dataclass, replace
 from stanza.util.logging import logger
 from stanza.runtime import activity
-from stanza.dataset.env import EnvDataset
-from stanza.dataset import PyTreeDataset
+from stanza.data import Data, PyTreeData
 from stanza.train import Trainer
+from stanza.train.rich import RichReporter
 from stanza.solver.optax import OptaxSolver
 from stanza.solver.newton import NewtonSolver
 
 from stanza.policies.mpc import MPC
-from stanza.policies import RandomPolicy
+from stanza.policies import RandomPolicy, Trajectory
 
+import stanza.policies as policies
+
+import stanza
 import stanza.envs
 import stanza.util.random
 
@@ -22,6 +25,7 @@ import jax
 import jax.numpy as jnp
 import haiku as hk
 import optax
+import sys
 
 import plotly.express as px
 
@@ -67,17 +71,17 @@ def set_default(config, attr, default):
         setattr(config, attr, default)
 
 def make_solver(gt=False):
-    if gt:
-        return NewtonSolver()
+    # if gt:
+    #     return NewtonSolver()
     optimizer = optax.chain(
         # Set the parameters of Adam. Note the learning_rate is not here.
         optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-8),
         optax.scale_by_schedule(optax.cosine_decay_schedule(1.0,
                                 5000, alpha=0.01)),
         # Put a minus sign to *minimise* the loss.
-        optax.scale(-0.05)
+        optax.scale(-0.03)
     )
-    return OptaxSolver(optimizer=optimizer, max_iterations=5000)
+    return OptaxSolver(optimizer=optimizer, max_iterations=2000)
 
 def map_fn(traj):
     states, actions = traj.states, traj.actions
@@ -88,7 +92,7 @@ def map_fn(traj):
 def generate_dataset(config, env, curr_model_fn, rng_key, num_traj, prev_data):
     if curr_model_fn is None:
         rng_key, sk = jax.random.split(rng_key)
-        policy = RandomPolicy(sk, env.sample_action)
+        policy = RandomPolicy(env.sample_action)
     else:
         policy = MPC(
             action_sample=env.sample_action(PRNGKey(0)),
@@ -99,20 +103,27 @@ def generate_dataset(config, env, curr_model_fn, rng_key, num_traj, prev_data):
             receed=False
             #replan=True
         )
-    data = EnvDataset(rng_key, env, config.traj_length, policy)[:num_traj]
-    data = PyTreeDataset.from_dataset(data)
-    logger.info("Generated {} trajectories", data.length)
-    traj0 = jax.tree_util.tree_map(lambda x: x[0,...], data.data)
-    logger.info("sample traj: states {}", traj0.states)
-    logger.info("actions {}", traj0.actions)
-    data = data.map(map_fn).flatten()
-    # Actually generate the data
-    data = PyTreeDataset.from_dataset(data)
-    logger.info("Generated {} additional samples", data.length)
+    def rollout(key):
+        traj_key, policy_key = jax.random.split(key)
+        r = policies.rollout(env.step, env.reset(traj_key), policy,
+                                    length=config.traj_length, 
+                                    policy_rng_key=policy_key)
+        return r.states, r.actions
+    rng_key, sk = jax.random.split(rng_key)
+    keys = jax.random.split(sk, num_traj)
+    states, actions = jax.vmap(rollout)(keys)
+    earlier_states = jax.tree_util.tree_map(lambda x: x[:,:-1], states)
+    later_states = jax.tree_util.tree_map(lambda x: x[:,1:], states)
+    data = earlier_states, actions, later_states
+
+    data = jax.tree_util.tree_map(lambda x: jnp.reshape(x,(-1,) + x.shape[2:]), data)
+    data = Data.from_pytree(data)
+    logger.info("Generated {} new datapoints", data.length)
     if prev_data is not None:
-        data = PyTreeDataset(jax.tree_util.tree_map(lambda x,y: jnp.concatenate((x,y)),
+        data = Data.from_pytree(jax.tree_util.tree_map(lambda x,y: jnp.concatenate((x,y)),
                                             data.data, prev_data.data))
     logger.info("Dataset contains {} samples", data.length)
+    data = data.shuffle(rng_key)
     return data
 
 def evaluate_model(config, env, est_model_fn, traj_key, gt=False):
@@ -122,17 +133,19 @@ def evaluate_model(config, env, est_model_fn, traj_key, gt=False):
         model_fn=est_model_fn,
         horizon_length=config.traj_length,
         solver=make_solver(gt=gt),
-        receed=False
+        receed=False,
+        history=True
     )
     def eval(key):
-        r = stanza.policies.rollout(env.step, env.reset(key), policy,
+        r = policies.rollout(env.step, env.reset(key), policy,
                                     length=config.traj_length)
-        return r, env.cost(r.states, r.actions)
+        return r, env.cost(r.states, r.actions), r.final_policy_state
     keys = jax.random.split(traj_key, config.eval_trajs)
-    r, c = jax.vmap(eval)(keys)
+    r, c, _ = jax.vmap(eval)(keys)
     r0 = jax.tree_util.tree_map(lambda x: x[0], r)
-    logger.info("Eval states: {}", r0.states)
-    logger.info("Eval actions: {}", r0.actions)
+    logger.info("Eval states r0: {}", r0.states)
+    logger.info("Eval actions r0: {}", r0.actions)
+    logger.info("Eval costs: {}", c)
     return c
 
 def net_fn(config, x, u):
@@ -171,22 +184,22 @@ def fit_model(config, net, dataset, rng_key):
                                 config.iterations)),
         # Put a minus sign to *minimise* the loss.
         optax.scale(-config.lr))
-
-    loss_fn_f = partial(loss_fn, config, net)
     trainer = Trainer(
-        loss_fn=loss_fn_f,
-        batch_size=config.batch_size,
         max_iterations=config.iterations,
+        batch_size=config.batch_size,
         optimizer=optimizer
     )
-    res = trainer.train(dataset, rng_key, init_params,
-                        log_interval=1000)
-    learned_model = lambda x, u: net.apply(res.fn_params, None, x, u)
-
-    train_loss, train_loss_dict = jax.vmap(partial(loss_fn_f, res.fn_params, None))(dataset.data)
+    loss = stanza.partial(loss_fn, config, net)
+    # hold out 100 datapoints for test
+    train_data, test_data = PyTreeData.from_data(dataset[100:]), PyTreeData.from_data(dataset[:100])
+    with RichReporter(iter_interval=10) as cb:
+        res = trainer.train(loss, train_data, 
+            rng_key, init_params, hooks=[cb], jit=True)
+    learned_model = lambda x, u, rng_key: net.apply(res.fn_params, rng_key, x, u)
+    train_loss, train_loss_dict = jax.vmap(partial(loss, res.fn_params, None))(train_data.data)
     logger.info("Train Loss {}, {}", jnp.mean(train_loss), jax.tree_map(lambda x: jnp.mean(x), train_loss_dict))
-    # test_loss, test_loss_dict = jax.vmap(partial(loss_fn, res.fn_params, None))((xs_eval, us_eval))
-    # logger.info("Test Loss {}, {}", jnp.mean(test_loss), jax.tree_map(lambda x: jnp.mean(x), test_loss_dict))
+    test_loss, test_loss_dict = jax.vmap(partial(loss, res.fn_params, None))(test_data.data)
+    logger.info("Test Loss {}, {}", jnp.mean(test_loss), jax.tree_map(lambda x: jnp.mean(x), test_loss_dict))
     return learned_model
 
 @activity(Config)
@@ -240,7 +253,8 @@ def ilqr_learning(config, db):
 
     # Make a plot from the metrics
     metrics = jnp.array(metrics)
-    fig = px.line(x=metrics[:,0], y=metrics[:,1], log_y=True, error_y=metrics[:,1])
+    fig = px.line(x=metrics[:,0], y=metrics[:,1], log_y=True, error_y=metrics[:,2],
+        template="plotly_dark")
     fig.update_layout(
         xaxis_title="Trajectories",
         yaxis_title="Cost Suboptimality",

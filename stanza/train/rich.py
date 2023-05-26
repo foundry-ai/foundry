@@ -110,7 +110,7 @@ class RichReporter:
             for (k,v) in ss.items():
                 stats.setdefault(k,{})[i] = v.item()
         for (stat, ss) in stats.items():
-            cells = [Text(f"{ss[i]:.4f}") if i in ss else None \
+            cells = [Text(f"{ss[i]:5f}") if i in ss else None \
                      for i in range(len(self.split_stats))]
             self.table.add_row(stat, *cells)
 

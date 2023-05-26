@@ -36,6 +36,7 @@ class NewtonSolver(IterativeSolver):
             state=objective.initial_state,
             params=objective.initial_params,
             aux=None,
+            cost=None,
             nu_dual=jnp.zeros_like(a),
             lambda_dual=jnp.ones_like(b)
         )
@@ -188,6 +189,7 @@ class NewtonSolver(IterativeSolver):
             params=new_params,
             state=new_state,
             aux=aux,
+            cost=f_cost,
             nu_dual=new_nu_dual,
             lambda_dual=new_lambda_dual
         )

@@ -7,12 +7,21 @@ import optax
 from jax.random import PRNGKey
 from stanza.policies import Actions
 from stanza.policies.mpc import MPC, BarrierMPC
+from stanza.policies.iterative import FeedbackRollout
 from stanza.util.logging import logger
 
 from stanza.solver.newton import NewtonSolver
 from stanza.solver.optax import OptaxSolver
 from stanza.solver.ilqr import iLQRSolver
 
+optimizer = optax.chain(
+    # Set the parameters of Adam. Note the learning_rate is not here.
+    optax.scale_by_schedule(optax.cosine_decay_schedule(1.0,
+                            1000, alpha=0.1)),
+    optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-8),
+    # Put a minus sign to *minimise* the loss.
+    optax.scale(-0.05)
+)
 
 # create an environment
 logger.info("Creating environment")
@@ -57,14 +66,6 @@ def rollout_mpc_newton():
     logger.info('actions: {}', rollout.actions)
 
 def rollout_mpc_optax():
-    optimizer = optax.chain(
-        # Set the parameters of Adam. Note the learning_rate is not here.
-        optax.scale_by_schedule(optax.cosine_decay_schedule(1.0,
-                                1000, alpha=0.1)),
-        optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-8),
-        # Put a minus sign to *minimise* the loss.
-        optax.scale(-0.05)
-    )
     rollout = policies.rollout(
         model=env.step,
         state0=env.reset(PRNGKey(0)),
@@ -75,15 +76,43 @@ def rollout_mpc_optax():
             model_fn=env.step,
             # The LSE estimator requires stochastic
             # input for the gradients
-            horizon_length=20,
+            horizon_length=50,
             solver=OptaxSolver(optimizer=optimizer),
-            #receed=False
+            receed=False
         ),
         length=50
     )
     logger.info('MPC Rollout with Optax solver results')
     logger.info('states: {}', rollout.states)
     logger.info('actions: {}', rollout.actions)
+
+def rollout_feedback_optax():
+    roller = FeedbackRollout(env.step,
+        burn_in=10, Q_coef=1, R_coef=1
+    )
+    rollout = policies.rollout(
+        model=env.step,
+        state0=env.reset(PRNGKey(0)),
+        policy=MPC(
+            # Sample action
+            action_sample=env.sample_action(PRNGKey(0)),
+            cost_fn=env.cost, 
+            rollout_fn=roller,
+            # The LSE estimator requires stochastic
+            # input for the gradients
+            horizon_length=50,
+            solver=OptaxSolver(optimizer=optimizer),
+            receed=False,
+            history=True
+            #receed=False
+        ),
+        length=50
+    )
+    logger.info('MPC Rollout with Feedback + Optax solver results')
+    logger.info('states: {}', rollout.states)
+    logger.info('actions: {}', rollout.actions)
+    history = rollout.final_policy_state.history
+    logger.info('history: {}', history.cost)
 
 def rollout_barrier():
     # Barrier-MPC based rollout
@@ -119,7 +148,7 @@ def rollout_gradient():
     grad = jax.grad(roll_cost)(jnp.ones((10,)))
     logger.info("grad: {}", grad)
 
-rollout_mpc_newton()
-# rollout_mpc_optax()
-#rollout_barrier()
+rollout_mpc_optax()
+rollout_feedback_optax()
+# rollout_barrier()
 #rollout_gradient()

@@ -1,5 +1,5 @@
 import os
-from stanza.runtime.database import Database, Video
+from stanza.runtime.database import Database, Video, Figure
 from pathlib import Path
 import jax.numpy as jnp
 
@@ -15,12 +15,13 @@ class LocalDatabase(Database):
     @property
     def name(self):
         return self._name
+
     @property
     def parent(self):
         return self._parent
     @property
     def children(self):
-        return set(self._path.iterdir())
+        return set([os.path.splitext(p)[0] for p in self._path.iterdir()])
     
     def has(self, name):
         path = self._path / name
@@ -29,7 +30,7 @@ class LocalDatabase(Database):
     def open(self, name):
         return LocalDatabase(self, name, self._path / name)
     
-    def add(self, name, value):
+    def add(self, name, value, append=False):
         path = self._path / name
         if path.is_dir():
             raise RuntimeError("This is a sub-database!")
@@ -38,14 +39,22 @@ class LocalDatabase(Database):
             path = self._path / f"{name}.mp4"
             ffmpegio.video.write(path, value.fps, value.data,
                 overwrite=True, loglevel='quiet')
-        else:
+        elif isinstance(value, Figure):
+            path = self._path / f"{name}.npy"
             with open(path, "wb") as f:
                 jnp.save(f, value, allow_pickle=True)
-    
+
     def get(self, name):
-        path = self._path / name
-        if not path.is_file():
+        children = self.children
+        if name not in children:
             return None
+        matches = list(filter(
+            lambda x: os.path.splitext(x)[0] == name,
+            self._path.iterdir()
+        ))
+        if not matches:
+            return None
+        path = self._path / matches[0]
         with open(path, "rb") as f:
             arr = jnp.load(f, allow_pickle=True)
             if arr.dtype == object:

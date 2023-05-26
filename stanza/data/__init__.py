@@ -95,7 +95,7 @@ class Data:
     # ------------------------- Transformations --------------------------------
     def slice(self, start_iter, length):
         return DataSlice(self, start_iter, length)
-
+    
     # Will return the first batch separately.
     # The first batch may be jagged if length % n != 0
     def batch(self, n):
@@ -189,7 +189,7 @@ class PyTreeData(Data):
 
     def get(self, iter):
         return tree_util.tree_map(lambda x: x[iter], self.data)
-
+    
     def batch(self, n):
         dim = tree_util.tree_flatten(self.data)[0][0].shape[0]
         # get the amount of padding we need

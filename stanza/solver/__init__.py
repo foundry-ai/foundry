@@ -72,6 +72,7 @@ class SolverState:
 @dataclass(jax=True)
 class MinimizeState(SolverState):
     # The function state
+    cost: float # the current objective cost
     state: Any
     params: Any
     aux: Any # auxiliary output of the objective
@@ -106,8 +107,8 @@ class IterativeSolver(Solver):
     
     def _scan_fn(self, kwargs, objective, loop_state, _):
         state = jax.lax.cond(loop_state.solved,
-            lambda _0, _1, s: s, kwargs, objective, loop_state,
-            self._do_step)
+            lambda _0, _1, s: s,
+            self._do_step, kwargs, objective, loop_state)
         return state, loop_state
     
     def _solve_scan(self, objective, kwargs, state):

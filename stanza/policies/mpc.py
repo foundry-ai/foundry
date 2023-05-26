@@ -31,8 +31,14 @@ class MinimizeMPC(Objective):
     # Either model_fn or rollout_fn must be specified
     model_fn: Callable = None
     rollout_fn: Callable = None
-    # rollout_fn has a state
-    rollout_has_state: bool = field(default=False, jax_static=True)
+
+@dataclass(jax=True, kw_only=True)
+class MPCState:
+    actions: Any
+    rollout_state: Any
+    t: int
+    cost: float
+    history: Any
 
 # A vanilla MPC controller
 @dataclass(jax=True, kw_only=True)
@@ -46,9 +52,6 @@ class MPC:
     model_fn : Callable = None
     rollout_fn : Callable = None
 
-    # if rollout_fn takes a state as the first parameter
-    rollout_has_state: bool = field(default=False, jax_static=True)
-
     # Horizon is part of the static jax type
     horizon_length : int = field(jax_static=True)
 
@@ -60,14 +63,14 @@ class MPC:
     # if receed=False, you can only rollout horizon_length
     # length trajectories with this MPC
     receed : bool = field(default=True, jax_static=True)
-
+    history : bool = field(default=False, jax_static=True)
     replan : bool = field(default=True, jax_static=True)
 
     # the offset, base_states, base_actions are for
     # when receed=False but replan=True
     def _loss_fn(self, state0, rollout_state, actions):
         if self.rollout_fn:
-            if self.rollout_has_state:
+            if hasattr(self.rollout_fn, 'has_state') and self.rollout_fn.has_state:
                 rollout_state, r = self.rollout_fn(rollout_state, state0, actions)
             else:
                 r = self.rollout_fn(state0, actions)
@@ -83,8 +86,7 @@ class MPC:
         actions = solver_state.params
         roll_state = solver_state.state
         if hasattr(self.rollout_fn, 'update_actions'):
-            actions = self.rollout_fn.update_actions(state0, actions)
-            if self.rollout_has_state:
+            if hasattr(self.rollout_fn, 'has_state') and self.rollout_fn.has_state:
                 roll_state, actions = self.rollout_fn.update_actions(roll_state, state0, actions)
             else:
                 actions = self.rollout_fn.update_actions(state0, actions)
@@ -99,9 +101,8 @@ class MPC:
                 state0=state0,
                 cost_fn=self.cost_fn,
                 model_fn=self.model_fn,
-                rollout_fn=self.rollout_fn,
-                rollout_has_state=self.rollout_has_state
-            ))
+                rollout_fn=self.rollout_fn
+            ), history=self.history)
             return res.actions
         except UnsupportedObectiveError:
             pass
@@ -111,31 +112,40 @@ class MPC:
             initial_params=init_actions,
             initial_state=rollout_state,
             post_step_callback=Partial(self._post_step_cb, state0)
-        ))
+        ), history=self.history)
+        res, history = res if self.history else (res, None)
         _, cost = self._loss_fn(state0, res.state, res.params)
-        return res.state, res.params, cost
+        return res.state, res.params, cost, history
 
     def __call__(self, input):
         if input.policy_state is None:
-            actions = jax.tree_util.tree_map(lambda x: jnp.zeros((self.horizon_length,) + x.shape), self.action_sample)
-            rollout_state = None
-            t = 0
-            rollout_state, actions, cost = self._solve(rollout_state, input.observation, actions)
+            actions = jax.tree_util.tree_map(lambda x: jnp.zeros((self.horizon_length - 1,) + x.shape), self.action_sample)
+            rollout_state, actions, cost, history = self._solve(None, input.observation, actions)
+            policy_state = MPCState(
+                actions=actions, rollout_state=rollout_state,
+                t=0, cost=cost, history=history
+            )
         else:
-            actions = input.policy_state[0]
-            rollout_state = input.policy_state[1]
-            t = input.policy_state[2]
-            cost = input.policy_state[3]
+            policy_state = input.policy_state
 
-        if self.receed and input.policy_state is not None:
-            actions = jax.tree_util.tree_map(lambda x: x.at[:-1].set(x[1:]), actions)
-            rollout_state, actions, cost = self._solve(rollout_state, input.observation, actions)
-            action = jax.tree_util.tree_map(lambda x: x[0], actions)
+        if self.receed:
+            # shift actions and re-solve
+            actions = jax.tree_util.tree_map(lambda x: x.at[:-1].set(x[1:]), policy_state.actions)
+            rollout_state, actions, cost, history = self._solve(rollout_state, input.observation, actions)
+            policy_state = replace(
+                policy_state,
+                actions=actions, roll_state=rollout_state,
+                t=0, cost=c0st, history=history
+            )
+            action = jax.tree_util.tree_map(lambda x: x[policy_state.t], policy_state.actions)
         else:
-            action = jax.tree_util.tree_map(lambda x: x[t], actions)
-        return PolicyOutput(action, 
-                            (actions, rollout_state, t+1, cost),
-                            AttrMap(cost=cost))
+            action = jax.tree_util.tree_map(lambda x: x[policy_state.t], policy_state.actions)
+            policy_state = replace(policy_state,
+                            t=policy_state.t + 1)
+        return PolicyOutput(action=action, 
+                policy_state=policy_state,
+                info=AttrMap(cost=policy_state.cost)
+            )
 
 def log_barrier(barrier_sdf, states, actions):
     sdf = barrier_sdf(states, actions)

@@ -60,7 +60,7 @@ class partial(functools.partial):
 jax.tree_util.register_pytree_node(
     partial,
     lambda partial_: ((), (partial_.func, partial_.args, partial_.keywords)),
-    lambda func, _: Partial(func[0], *func[1], **func[2]),  # type: ignore[index]
+    lambda func, _: partial(func[0], *func[1], **func[2]),  # type: ignore[index]
 )
 
 """
