@@ -260,6 +260,18 @@ class SimpleParser(ArgParser):
                 break
         return ctx
 
+import typing
+
+def parse_type(type, arg):
+    if type == bool:
+        arg = arg.lower()
+        return arg == 't' or arg == 'true'
+    if typing.get_origin(type) == list:
+        args = arg.split(",")
+        st = typing.get_args(type)[0]
+        return list([parse_type(st,v) for v in args])
+    return type(arg)
+
 # Allows for parsing sets of parameters (see Parameters from stanza.util.dataclasses module)
 class ParametersParser(SimpleParser):
     def __init__(self, dataclass, multi_parser=False):
@@ -278,7 +290,7 @@ class ParametersParser(SimpleParser):
     @staticmethod
     def make_field_option(dc, field):
         def setter(cfg, arg):
-            v = field.type(arg)
+            v = parse_type(field.type, arg)
             return cfg.set(field.name, v)
         return OptionParser(field.name, setter, nargs=1)
 
@@ -287,8 +299,8 @@ class ParametersParser(SimpleParser):
         def setter(curr_parameters, *args):
             if len(args) == 0:
                 raise ArgParseError("Expected at least one argument")
-            vs = [field.type(a) for a in args]
-            parameters = {Parameters(**{field.name: v}) for v in vs}
+            vs = [parse_type(field.type, a) for a in args]
+            parameters = [Parameters(**{field.name: v}) for v in vs]
             new_parameters = Parameters.cartesian_product(curr_parameters, parameters)
             # replace curr_parameters with new_parameters
             return new_parameters
@@ -340,9 +352,10 @@ class RuntimeParser(ArgParser):
         cfg.target = opts.target
         cfg.database = opts.database
 
-        dc_parser = ParametersParser(activity.config_dataclass, multi_parser=True)
-        dc_builders = {Parameters()}
+        dc_parser = ParametersParser(activity.config_dataclass, multi_parser=False)
+        dc_builders = Parameters()
         dc_builders = dc_parser.parse_tokens(dc_builders, tokens)
+        dc_builders = [dc_builders]
         cfg.configs = [b(activity.config_dataclass) for b in dc_builders]
 
         # cfg.configs = [activity.config_dataclass()]

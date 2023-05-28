@@ -21,8 +21,8 @@ class LocalDatabase(Database):
         return self._parent
     @property
     def children(self):
-        return set([os.path.splitext(p)[0] for p in self._path.iterdir()])
-    
+        return set([p.stem for p in self._path.iterdir()])
+
     def has(self, name):
         path = self._path / name
         return path.exists()
@@ -34,12 +34,27 @@ class LocalDatabase(Database):
         path = self._path / name
         if path.is_dir():
             raise RuntimeError("This is a sub-database!")
+        if value is None:
+            return
         if isinstance(value, Video):
             import ffmpegio
             path = self._path / f"{name}.mp4"
-            ffmpegio.video.write(path, value.fps, value.data,
+            data = value.data
+            if data.dtype == jnp.float32:
+                data = (255*data).astype(jnp.uint8)
+            if data.shape[-1] == 4:
+                data = data[...,:3]
+            #data = jnp.transpose(data, (0, 3, 1, 2))
+            ffmpegio.video.write(path, value.fps, data,
                 overwrite=True, loglevel='quiet')
         elif isinstance(value, Figure):
+            path = self._path / f"{name}.png"
+            from plotly.graph_objects import Figure as GoFigure
+            if isinstance(value.fig, GoFigure):
+                value.fig.write_image(path)
+            else:
+                value.fig.savefig(path)
+        else:
             path = self._path / f"{name}.npy"
             with open(path, "wb") as f:
                 jnp.save(f, value, allow_pickle=True)
@@ -49,8 +64,7 @@ class LocalDatabase(Database):
         if name not in children:
             return None
         matches = list(filter(
-            lambda x: os.path.splitext(x)[0] == name,
-            self._path.iterdir()
+            lambda x: x.stem == name, self._path.iterdir()
         ))
         if not matches:
             return None

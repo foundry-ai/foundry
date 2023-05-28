@@ -27,6 +27,7 @@ import pickle
 
 @dataclass
 class Config:
+    exp_name: str = None
     # Estimate the gradients or learn
     # the true gradients
     estimate_grad: bool = False
@@ -42,6 +43,7 @@ class Config:
     receed: bool = False
     rng_seed: int = 42
 
+    eval_trajs: int = 10
     traj_length: int = None
     horizon_length: int = None
     iterations: int = None
@@ -75,20 +77,23 @@ def set_default(config, attr, default):
 
 @activity(Config)
 def iterative_learning(config, database):
-    exp = database.open("iterative_learning").create()
+    if config.exp_name is not None:
+        exp = database.open(config.exp_name)
+    else:
+        exp = database.open("iterative_learning").create()
     logger.info(f"Running iterative learning [blue]{exp.name}[/blue]")
     # set the per-env defaults for now
     if config.env_type == "pendulum":
         set_default(config, 'traj_length', 50)
         set_default(config, 'horizon_length', 50)
 
-        set_default(config, 'iterations', 1000)
-        set_default(config, 'learning_rate', 0.2)
+        set_default(config, 'iterations', 2000)
+        set_default(config, 'learning_rate', 0.15)
         set_default(config, 'b1', 0.9)
         set_default(config, 'b2', 0.999)
 
-        set_default(config, 'decay_iterations', 500)
-        set_default(config, 'decay_alpha', 0.1)
+        set_default(config, 'decay_iterations', config.iterations)
+        set_default(config, 'decay_alpha', 0.5)
         set_default(config, 'samples', 30)
         set_default(config, 'sigma', 0.1)
         set_default(config, 'burn_in', 10)
@@ -112,8 +117,6 @@ def iterative_learning(config, database):
         set_default(config, 'Q_coef', 0.1)
         set_default(config, 'R_coef', 1)
 
-    if config.trajectories:
-        config.iterations = config.trajectories / config.samples
     logger.info(f"Config: {config}")
 
     env = envs.create(config.env_type)
@@ -126,7 +129,7 @@ def iterative_learning(config, database):
 
     est = IsingEstimator(
         rng_key, config.samples, config.sigma
-    )
+    ) if config.samples > 0 else None
     optimizer = optax.chain(
         # Set the parameters of Adam. Note the learning_rate is not here.
         optax.scale_by_schedule(optax.cosine_decay_schedule(1.0,
@@ -138,11 +141,11 @@ def iterative_learning(config, database):
     roller = FeedbackRollout(
         model_fn=env.step,
         burn_in=config.burn_in, 
-        Q_coef=config.Q_coef, R_coef=config.R_coef
+        Q_coef=config.Q_coef, R_coef=config.R_coef,
+        grad_estimator=est
     ) if config.use_gains else EstimatorRollout(
-        model_fn=env.step, grad_estimator=None
+        model_fn=env.step, grad_estimator=est
     )
-
     policy = MPC(
         action_sample=env.sample_action(PRNGKey(0)), 
         cost_fn=env.cost, 
@@ -154,24 +157,62 @@ def iterative_learning(config, database):
         history=True
     )
 
-    x0 = env.reset(traj_key)
     def eval(rng_key):
+        x0 = env.reset(rng_key)
         rollout = policies.rollout(env.step, x0,
                                     policy, length=config.traj_length)
         traj_cost = env.cost(rollout.states, rollout.actions)
         return rollout, traj_cost
     keys = jax.random.split(traj_key, config.eval_trajs)
     rollouts, costs = jax.vmap(eval)(keys)
+    rollout = jax.tree_util.tree_map(lambda x: x[0], rollouts)
 
     # Rollout with the true environment dynamics!
+    logger.info("states r0: {}", rollout.states)
+    logger.info("actions r0: {}", rollout.actions)
     logger.info("Final Cost: {}", costs)
+    solver_history = rollouts.final_policy_state.history
+    est_state_history = solver_history.state.est_state if solver_history.state is not None else None
 
+    gt_costs = gt_eval(env, traj_key, config.eval_trajs, config.traj_length)
+    logger.info("Optim cost: {}", gt_costs)
     # output to experiment
-    # exp.log({
-    #     'cost': solver_history.cost[:iterations],
-    #     'samples': est_state_history.total_samples[:iterations] if est_state_history else None,
-    # })
-
+    exp.log({
+        'iterations': solver_history.iteration[:,-1],
+        'cost': solver_history.cost,
+        'gt_cost': gt_costs,
+        'samples': est_state_history.total_samples if est_state_history else None,
+    })
+    exp.add('config', config)
     # # make a plot of the trajectory, video of pendulum
-    # vis = env.visualize(rollout.states, rollout.actions)
-    # exp.log(vis)
+    vis = env.visualize(rollout.states, rollout.actions)
+    exp.log(vis)
+
+def make_solver():
+    iterations = 10000
+    optimizer = optax.chain(
+        # Set the parameters of Adam. Note the learning_rate is not here.
+        optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-8),
+        optax.scale_by_schedule(optax.cosine_decay_schedule(1.0,
+                                iterations, alpha=0)),
+        # Put a minus sign to *minimise* the loss.
+        optax.scale(-0.1)
+    )
+    return OptaxSolver(optimizer=optimizer, max_iterations=iterations)
+
+def gt_eval(env, traj_key, eval_trajs, traj_length):
+    policy = MPC(
+        action_sample=env.sample_action(PRNGKey(0)),
+        cost_fn=env.cost,
+        model_fn=env.step,
+        horizon_length=traj_length,
+        solver=make_solver(),
+        receed=False
+    )
+    def eval(key):
+        r = policies.rollout(env.step, env.reset(key), policy,
+                                    length=traj_length)
+        return env.cost(r.states, r.actions)
+    keys = jax.random.split(traj_key, eval_trajs)
+    costs = jax.vmap(eval)(keys)
+    return costs

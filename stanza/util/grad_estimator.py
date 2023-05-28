@@ -17,13 +17,13 @@ from jax.random import PRNGKey
 from functools import partial, wraps
 from typing import Callable
 
+
+def use_estimator(estimator, fun):
+    pass
+
 @dataclass(jax=True)
 class EstState:
     rng_key: jax.random.PRNGKey
-    ref_old_states: jnp.array
-    ref_old_gains: jnp.array
-    ref_new_states: jnp.array
-    ref_new_gains: jnp.array
     total_samples: int
 
 @dataclass(jax=True)

@@ -8,6 +8,7 @@ import math
 from typing import NamedTuple
 from functools import partial
 from stanza.runtime.database import Figure, Video
+import stanza.graphics.canvas as canvas
 
 import math
 
@@ -53,7 +54,7 @@ class PendulumEnv(Environment):
         x_cost = jnp.sum(diff**2)
         xf_cost = jnp.sum(diff[-1]**2)
         u_cost = jnp.sum(u**2)
-        return 100*xf_cost + x_cost + 0.1*u_cost
+        return 50*xf_cost + x_cost + 0.1*u_cost
 
     def constraints(self, _, us):
         constraints = [jnp.ravel(us - 3),
@@ -75,7 +76,6 @@ class PendulumEnv(Environment):
         u.update_layout(xaxis_title="Time", yaxis_title="u")
 
         video = jax.vmap(self.render)(states)
-
         return {
             'video': Video(video, fps=15),
             'traj': Figure(traj),
@@ -85,52 +85,15 @@ class PendulumEnv(Environment):
         }
 
     def render(self, state, width=256, height=256):
-        return jax.pure_callback(
-            partial(render_pendulum, width=width, height=height),
-            jax.ShapeDtypeStruct((3, width, height), jnp.uint8),
-            state
-        )
-
-
-def render_pendulum(state, width, height):
-    from cairo import ImageSurface, Context, Format
-    surface = ImageSurface(Format.ARGB32, width, height)
-    ctx = Context(surface)
-    ctx.rectangle(0, 0, width, height)
-    ctx.set_source_rgb(0.9, 0.9, 0.9)
-    ctx.fill()
-    ctx.move_to(width/2, height/2)
-
-    radius = 0.7*min(width, height)/2
-    ball_radius = 0.1*min(width, height)/2
-
-    # put theta through a tanh to prevent
-    # wraparound
-    theta = state.angle + math.pi
-
-    x = np.sin(theta)*radius + width/2
-    y = np.cos(theta)*radius + height/2
-
-    ctx.set_source_rgb(0.1, 0.1, 0.1)
-    ctx.set_line_width(1)
-    ctx.line_to(x, y)
-    ctx.stroke()
-
-    ctx.set_source_rgb(0.9, 0, 0)
-    ctx.arc(x, y, ball_radius, 0, 2*math.pi)
-    ctx.fill()
-    img = cairo_to_numpy(surface)[:3,:,:]
-    # we need to make a copy otherwise it may
-    # get overridden the next time we render
-    return np.copy(img)
-
-def cairo_to_numpy(surface):
-    data = np.ndarray(shape=(surface.get_height(), surface.get_width(), 4),
-                    dtype=np.uint8,
-                    buffer=surface.get_data())
-    data[:,:,[0,1,2,3]] = data[:,:,[2,1,0,3]]
-    data = np.transpose(data, (2, 0, 1))
-    return data
+        image = jnp.ones((width, height, 3))
+        x, y = jnp.sin(state.angle), jnp.cos(state.angle)
+        center = jnp.array([width/2, height/2])
+        circle_loc = center + jnp.array([width*2/6, height*2/6])*jnp.stack((x,y))
+        stick = canvas.line(center, circle_loc)
+        circle = canvas.circle(circle_loc, radius=width/24, color=jnp.array([1.,0.,0.]))
+        sdf = canvas.stack(stick, circle)
+        image = canvas.paint(image, sdf) 
+        return image
 
 def builder(name):
     return PendulumEnv()
