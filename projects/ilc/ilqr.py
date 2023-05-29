@@ -9,6 +9,7 @@ from stanza.runtime import activity
 from stanza.data import Data, PyTreeData
 from stanza.train import Trainer
 from stanza.train.rich import RichReporter
+from stanza.solver.ilqr import iLQRSolver
 from stanza.solver.optax import OptaxSolver
 from stanza.solver.newton import NewtonSolver
 
@@ -51,7 +52,7 @@ class Config:
     # This is trajectories *worth* of data
     # not actual rollout trajectories
     trajectories: List[int] = field(default_factory=lambda: [50, 500, 1000, 2000,
-                                        5000, 8000, 10000, 150000, 20000])
+                                        5000, 8000, 10000, 15000, 20000])
 
     rng_seed: int = 69
     traj_length: int = 50
@@ -72,18 +73,23 @@ def set_default(config, attr, default):
         setattr(config, attr, default)
 
 def make_solver(gt=False):
+    return iLQRSolver()
     # if gt:
     #     return NewtonSolver()
-    iterations = 10000 if gt else 5000
-    optimizer = optax.chain(
-        # Set the parameters of Adam. Note the learning_rate is not here.
-        optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-8),
-        optax.scale_by_schedule(optax.cosine_decay_schedule(1.0,
-                                iterations, alpha=0)),
-        # Put a minus sign to *minimise* the loss.
-        optax.scale(-0.1)
-    )
-    return OptaxSolver(optimizer=optimizer, max_iterations=iterations)
+    # use 10000 iterations for the ground truth baseline,
+    # but that takes forever, so for the main dataset use 1500 iterations
+    # which with ground truth dynamics
+    # gets within tiny error of the true solution
+    # iterations = 10000 if gt else 1500
+    # optimizer = optax.chain(
+    #     # Set the parameters of Adam. Note the learning_rate is not here.
+    #     optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-8),
+    #     optax.scale_by_schedule(optax.cosine_decay_schedule(1.0,
+    #                             iterations, alpha=0.1)),
+    #     # Put a minus sign to *minimise* the loss.
+    #     optax.scale(-0.2)
+    # )
+    # return OptaxSolver(optimizer=optimizer, max_iterations=iterations)
 
 def map_fn(traj):
     states, actions = traj.states, traj.actions
@@ -167,16 +173,25 @@ def net_fn(config, x, u):
     x = unflatten(x_flat)
     return x
 
-def loss_fn(config, net, params, rng_key, sample):
+def loss_fn(config, net, model_fn, params, rng_key, sample):
     x, u, x_next = sample
     pred_x = net.apply(params, None, x, u)
 
     x_next_flat, _ = jax.flatten_util.ravel_pytree(x_next)
     x_pred_flat, _ = jax.flatten_util.ravel_pytree(pred_x)
     loss = jnp.sum(jnp.square(x_next_flat - x_pred_flat))
-    return loss, {'loss': loss}
+    stats = {'loss': loss}
+    if config.jacobian_regularization > 0:
+        true_jac = jax.jacrev(lambda x,u: model_fn(x,u,None), argnums=(0,1))(x, u)
+        pred_jac = jax.jacrev(lambda x,u: net.apply(params, None, x, u), argnums=(0,1))(x, u)
+        true_jac_flat, _ = jax.flatten_util.ravel_pytree(true_jac)
+        pred_jac_flat, _ = jax.flatten_util.ravel_pytree(pred_jac)
+        jac_loss = jnp.sum(jnp.square(true_jac_flat - pred_jac_flat))
+        loss = loss + config.jacobian_regularization*jac_loss
+        stats.update({'jac_loss': jac_loss})
+    return loss, stats
 
-def fit_model(config, net, dataset, rng_key):
+def fit_model(config, net, env, dataset, rng_key):
     rng = hk.PRNGSequence(rng_key)
     x_sample, u_sample, _ = dataset.get(dataset.start)
     init_params = net.init(next(rng), x_sample, u_sample)
@@ -194,7 +209,7 @@ def fit_model(config, net, dataset, rng_key):
         batch_size=config.batch_size,
         optimizer=optimizer
     )
-    loss = stanza.partial(loss_fn, config, net)
+    loss = stanza.partial(loss_fn, config, net, env.step)
     # hold out 100 datapoints for test
     train_data, test_data = PyTreeData.from_data(dataset[100:]), PyTreeData.from_data(dataset[:100])
     with RichReporter(iter_interval=50) as cb:
@@ -249,7 +264,7 @@ def ilqr_learning(config, database):
         logger.info("Generating data...")
         data = generate_dataset(config, env, est_model_fn, next(rng), num_trajs, data)
         logger.info("Fitting model...")
-        est_model_fn = fit_model(config, net, data, next(rng))
+        est_model_fn = fit_model(config, net, env, data, next(rng))
         cost = evaluate_model(config, env, est_model_fn, eval_key)
         subopt = (cost - opt_cost)/opt_cost
         logger.info("suboptimality: {}", subopt)

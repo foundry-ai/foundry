@@ -40,10 +40,12 @@ class EstimatorRollout:
         action0 = jax.tree_util.tree_map(lambda x: x[0], actions)
         rollout_ = Partial(self._rollout, state0)
         if self.grad_estimator is not None:
-            rollout = use_estimator(self.grad_estimator, rollout_)
+            roll_state, _, states = self.grad_estimator(rollout_)(
+                roll_state, actions
+            )
         else: 
+            states = rollout_(actions)
             rollout = lambda s, a: (s, rollout_(a))
-        roll_state, states = rollout(roll_state, actions)
         return roll_state, Trajectory(
             states=states,
             actions=actions

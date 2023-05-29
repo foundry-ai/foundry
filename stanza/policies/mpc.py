@@ -103,7 +103,7 @@ class MPC:
                 model_fn=self.model_fn,
                 rollout_fn=self.rollout_fn
             ), history=self.history)
-            return res.actions
+            return None, res.actions, res.cost, None
         except UnsupportedObectiveError:
             pass
         res = self.solver.run(Minimize(

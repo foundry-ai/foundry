@@ -7,6 +7,7 @@ import stanza.policies as policies
 import stanza.util.random as random
 
 from stanza.runtime import activity
+from stanza.solver.ilqr import iLQRSolver
 from stanza.solver.optax import OptaxSolver
 from stanza.policies.mpc import MPC
 from stanza.policies.iterative import EstimatorRollout, FeedbackRollout
@@ -87,15 +88,15 @@ def iterative_learning(config, database):
         set_default(config, 'traj_length', 50)
         set_default(config, 'horizon_length', 50)
 
-        set_default(config, 'iterations', 2000)
-        set_default(config, 'learning_rate', 0.15)
+        set_default(config, 'iterations', 1000)
+        set_default(config, 'learning_rate', 0.35)
         set_default(config, 'b1', 0.9)
         set_default(config, 'b2', 0.999)
 
         set_default(config, 'decay_iterations', config.iterations)
-        set_default(config, 'decay_alpha', 0.5)
+        set_default(config, 'decay_alpha', 0.1)
         set_default(config, 'samples', 30)
-        set_default(config, 'sigma', 0.1)
+        set_default(config, 'sigma', 0.001)
         set_default(config, 'burn_in', 10)
         set_default(config, 'Q_coef', 0.1)
         set_default(config, 'R_coef', 1)
@@ -189,16 +190,17 @@ def iterative_learning(config, database):
     exp.log(vis)
 
 def make_solver():
-    iterations = 10000
-    optimizer = optax.chain(
-        # Set the parameters of Adam. Note the learning_rate is not here.
-        optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-8),
-        optax.scale_by_schedule(optax.cosine_decay_schedule(1.0,
-                                iterations, alpha=0)),
-        # Put a minus sign to *minimise* the loss.
-        optax.scale(-0.1)
-    )
-    return OptaxSolver(optimizer=optimizer, max_iterations=iterations)
+    return iLQRSolver()
+    # iterations = 10000
+    # optimizer = optax.chain(
+    #     # Set the parameters of Adam. Note the learning_rate is not here.
+    #     optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-8),
+    #     optax.scale_by_schedule(optax.cosine_decay_schedule(1.0,
+    #                             iterations, alpha=0)),
+    #     # Put a minus sign to *minimise* the loss.
+    #     optax.scale(-0.1)
+    # )
+    # return OptaxSolver(optimizer=optimizer, max_iterations=iterations)
 
 def gt_eval(env, traj_key, eval_trajs, traj_length):
     policy = MPC(

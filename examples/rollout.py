@@ -45,7 +45,22 @@ def rollout_inputs():
         actions=jnp.ones((10,))
     )
 
-def rollout_mpc_newton():
+def rollout_mpc(solver='newton'):
+    if solver == 'newton':
+        solver_t = NewtonSolver()
+    elif solver == 'optax':
+        iterations = 10000
+        optimizer = optax.chain(
+            # Set the parameters of Adam. Note the learning_rate is not here.
+            optax.scale_by_schedule(optax.cosine_decay_schedule(1.0,
+                                    iterations, alpha=0.1)),
+            optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-8),
+            # Put a minus sign to *minimise* the loss.
+            optax.scale(-0.05)
+        )
+        solver_t = OptaxSolver(optimizer=optimizer, max_iterations=iterations)
+    elif solver == 'ilqr':
+        solver_t = iLQRSolver()
     # An MPC policy
     rollout = policies.rollout(
         model=env.step,
@@ -56,35 +71,16 @@ def rollout_mpc_newton():
             cost_fn=env.cost, 
             model_fn=env.step,
             horizon_length=50,
-            solver=NewtonSolver(),
+            solver=solver_t,
             receed=False
         ),
         length=50
     )
-    logger.info('MPC Rollout with Newton solver results')
+    logger.info(f'MPC Rollout with {solver} solver results')
     logger.info('states: {}', rollout.states)
     logger.info('actions: {}', rollout.actions)
-
-def rollout_mpc_optax():
-    rollout = policies.rollout(
-        model=env.step,
-        state0=env.reset(PRNGKey(0)),
-        policy=MPC(
-            # Sample action
-            action_sample=env.sample_action(PRNGKey(0)),
-            cost_fn=env.cost, 
-            model_fn=env.step,
-            # The LSE estimator requires stochastic
-            # input for the gradients
-            horizon_length=50,
-            solver=OptaxSolver(optimizer=optimizer),
-            receed=False
-        ),
-        length=50
-    )
-    logger.info('MPC Rollout with Optax solver results')
-    logger.info('states: {}', rollout.states)
-    logger.info('actions: {}', rollout.actions)
+    cost = env.cost(rollout.states, rollout.actions)
+    logger.info('cost: {}', cost)
 
 def rollout_feedback_optax():
     roller = FeedbackRollout(env.step,
@@ -114,41 +110,9 @@ def rollout_feedback_optax():
     history = rollout.final_policy_state.history
     logger.info('history: {}', history.cost)
 
-def rollout_barrier():
-    # Barrier-MPC based rollout
-    p = BarrierMPC(
-            # Sample action
-            action_sample=env.sample_action(PRNGKey(0)),
-            barrier_sdf=env.constraints,
-            cost_fn=env.cost, 
-            model_fn=env.step,
-            horizon_length=10,
-        )
-    rollout = policies.rollout(
-        model=env.step,
-        state0=env.reset(PRNGKey(0)),
-        policy=p,
-        length=20
-    )
-    logger.info('MPC Rollout with barrier results')
-    logger.info('states: {}', rollout.states)
-    logger.info('actions: {}', rollout.actions)
-    logger.info('barrier: {}', jnp.max(env.constraints(rollout.states, rollout.actions)))
-    logger.info('cost: {}', env.cost(rollout.states, rollout.actions))
-
-
-def rollout_gradient():
-    def roll_cost(actions):
-        rollout = policies.rollout_inputs(
-            model=env.step,
-            state0=env.reset(PRNGKey(0)),
-            actions=actions
-        )
-        return env.cost(rollout.states, rollout.actions)
-    grad = jax.grad(roll_cost)(jnp.ones((10,)))
-    logger.info("grad: {}", grad)
-
-rollout_mpc_optax()
-rollout_feedback_optax()
+# rollout_mpc(solver='newton')
+rollout_mpc(solver='optax')
+rollout_mpc(solver='ilqr')
+# rollout_feedback_optax()
 # rollout_barrier()
 #rollout_gradient()
