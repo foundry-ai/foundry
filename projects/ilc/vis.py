@@ -56,11 +56,19 @@ def plot_ilqr(exp):
     # y_low, y_high = y - y_std, y + y_std
     y_low = jnp.maximum(y_low, 1e-7)
     if config.jacobian_regularization > 0:
-        color = 'g'
-        label = 'Learning (JacReg) + iLQR'
+        if config.use_random:
+            color = 'cyan'
+            label = 'Learning (Rand,JacReg) + iLQR'
+        else:
+            color = 'g'
+            label = 'Learning (JacReg) + iLQR'
     else:
-        color = 'purple'
-        label = 'Learning + iLQR'
+        if config.use_random:
+            color = 'brown'
+            label = 'Learning (Rand) + iLQR'
+        else:
+            color = 'purple'
+            label = 'Learning + iLQR'
     plt.plot(x, y, '-', color=color, label=label)
     plt.fill_between(x, y_low, y_high, color=color, alpha=0.2)
 

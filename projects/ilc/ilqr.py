@@ -54,8 +54,10 @@ class Config:
     trajectories: List[int] = field(default_factory=lambda: [50, 500, 1000, 2000,
                                         5000, 8000, 10000, 15000, 20000])
 
-    rng_seed: int = 69
+    rng_seed: int = 42
     traj_length: int = 50
+
+    use_random: bool = False
 
     eval_trajs: int = 20
 
@@ -98,7 +100,7 @@ def map_fn(traj):
     return prev_states, actions, next_states
 
 def generate_dataset(config, env, curr_model_fn, rng_key, num_traj, prev_data):
-    if curr_model_fn is None:
+    if curr_model_fn is None or config.use_random:
         rng_key, sk = jax.random.split(rng_key)
         policy = RandomPolicy(env.sample_action)
     else:

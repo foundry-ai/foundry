@@ -51,10 +51,10 @@ class PendulumEnv(Environment):
     def cost(self, x, u):
         x = jnp.stack((x.angle, x.vel), -1)
         diff = (x - jnp.array([math.pi, 0]))
-        x_cost = jnp.sum(diff**2)
+        x_cost = jnp.sum(diff[:-1]**2)
         xf_cost = jnp.sum(diff[-1]**2)
         u_cost = jnp.sum(u**2)
-        return 50*xf_cost + x_cost + 0.1*u_cost
+        return 100*xf_cost + 2*x_cost + u_cost
 
     def constraints(self, _, us):
         constraints = [jnp.ravel(us - 3),

@@ -24,6 +24,10 @@ class FeedbackState:
     est_state: Any
 
 @dataclass(jax=True)
+class ERState:
+    est_state: Any
+
+@dataclass(jax=True)
 class EstimatorRollout:
     model_fn : Callable = None
     grad_estimator : Callable = None
@@ -40,9 +44,11 @@ class EstimatorRollout:
         action0 = jax.tree_util.tree_map(lambda x: x[0], actions)
         rollout_ = Partial(self._rollout, state0)
         if self.grad_estimator is not None:
-            roll_state, _, states = self.grad_estimator(rollout_)(
-                roll_state, actions
+            est_state, _, states = self.grad_estimator(rollout_)(
+                roll_state.est_state if roll_state is not None else None,
+                actions
             )
+            roll_state = ERState(est_state)
         else: 
             states = rollout_(actions)
             rollout = lambda s, a: (s, rollout_(a))

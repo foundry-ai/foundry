@@ -43,6 +43,7 @@ class Config:
 
     receed: bool = False
     rng_seed: int = 42
+    traj_seed: int = 42
 
     eval_trajs: int = 10
     traj_length: int = None
@@ -95,7 +96,7 @@ def iterative_learning(config, database):
 
         set_default(config, 'decay_iterations', config.iterations)
         set_default(config, 'decay_alpha', 0.1)
-        set_default(config, 'samples', 30)
+        set_default(config, 'samples', 50)
         set_default(config, 'sigma', 0.001)
         set_default(config, 'burn_in', 10)
         set_default(config, 'Q_coef', 0.1)
@@ -122,14 +123,15 @@ def iterative_learning(config, database):
 
     env = envs.create(config.env_type)
     rng_key = random.key_or_seed(config.rng_seed)
-    rng_key, traj_key = jax.random.split(rng_key)
+    traj_key = random.key_or_seed(config.traj_seed)
+    _, traj_key = jax.random.split(traj_key)
 
     if not config.receed and config.horizon_length < config.traj_length:
         logger.warn("Receeding horizon disabled, increasing horizon to trajectory length")
         config.horizon_length = config.traj_length
 
     est = IsingEstimator(
-        rng_key, config.samples, config.sigma
+        rng_key, config.sigma, config.samples
     ) if config.samples > 0 else None
     optimizer = optax.chain(
         # Set the parameters of Adam. Note the learning_rate is not here.
@@ -182,7 +184,7 @@ def iterative_learning(config, database):
         'iterations': solver_history.iteration[:,-1],
         'cost': solver_history.cost,
         'gt_cost': gt_costs,
-        'samples': est_state_history.total_samples if est_state_history else None,
+        'samples': est_state_history.total_samples if est_state_history is not None else None,
     })
     exp.add('config', config)
     # # make a plot of the trajectory, video of pendulum

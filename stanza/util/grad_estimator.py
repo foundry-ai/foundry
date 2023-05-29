@@ -26,6 +26,27 @@ class EstState:
     rng_key: jax.random.PRNGKey
     total_samples: int
 
+@jax.custom_vjp
+def _inject_gradient(out, input, jac):
+    return out
+
+def _inject_gradient_fwd(xs, us, jac):
+    return xs, jac
+
+def _inject_gradient_bkw(res, g):
+    jac = res
+    jac_T = jnp.transpose(jac, (0,1,3,2))
+    # (traj_dim, traj_dim, u_dim, x_dim) @ (1, traj_dim, x_dim, 1)
+    grad = jac_T @ jnp.expand_dims(jnp.expand_dims(g, -1),0)
+    # grad: (traj_dim, traj_dim, u_dim, 1)
+    # sum over columns to combine all transitions for a given time
+    grad = jnp.sum(jnp.squeeze(grad,-1), 1)
+    return (None, grad, None)
+
+_inject_gradient.defvjp(_inject_gradient_fwd, _inject_gradient_bkw)
+
+_flatten = jax.vmap(lambda x: jax.flatten_util.ravel_pytree(x)[0])
+
 @dataclass(jax=True)
 class IsingEstimator:
     rng_key: PRNGKey
@@ -34,10 +55,32 @@ class IsingEstimator:
 
     def __call__(self, func):
         @wraps(func)
-        def wrapped(est_state, *args):
-            args_flat, args_uf = jax.flatten_util.ravel_pytree(*args)
-            def unflat_func(args_flat):
-                args = args_uf(args_flat)
+        def wrapped(est_state, us):
+            xs = func(us)
+
+            x0 = jax.tree_map(lambda x: x[0], xs)
+            u0 = jax.tree_map(lambda x: x[0], us)
+            _, x_uf = jax.flatten_util.ravel_pytree(x0)
+            _, u_uf = jax.flatten_util.ravel_pytree(u0)
+
+            us = _flatten(us)
+
+            def flat_func(us_flat):
+                us = jax.vmap(u_uf)(us_flat)
+                xs = func(us)
+                return _flatten(xs)
+
+            xs = flat_func(us)
+            if est_state is None:
+                est_state = EstState(self.rng_key, 0)
+            rng_key, rng = jax.random.split(est_state.rng_key)
+            W = self.sigma*jax.random.choice(rng, jnp.array([-1,1]), (self.num_samples,) + us.shape)
+            perturb_xs = jax.vmap(flat_func)(us + W)
+            x_diff = perturb_xs - xs
+            jac = self.calculate_jacobians(W, x_diff)
+            xs = _inject_gradient(xs, us, jac)
+            return EstState(rng_key, est_state.total_samples + self.num_samples), \
+                jac, jax.vmap(x_uf)(xs)
         return wrapped
 
     # true_jac is for debugging
