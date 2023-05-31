@@ -45,7 +45,7 @@ class Config:
     learned_model: bool = True
     lr: float = None
     iterations: int = 25000
-    batch_size: int = 100
+    batch_size: int = 50
     hidden_dim: int = None
     hidden_layers: int = 3
 
@@ -54,8 +54,9 @@ class Config:
     trajectories: List[int] = field(default_factory=lambda: [50, 500, 1000, 2000,
                                         5000, 8000, 10000, 15000, 20000])
 
-    rng_seed: int = 42
-    traj_length: int = 50
+    rng_seed: int = 69
+    traj_seed: int = 42
+    traj_length: int = 25
 
     use_random: bool = False
 
@@ -76,22 +77,22 @@ def set_default(config, attr, default):
 
 def make_solver(gt=False):
     return iLQRSolver()
-    # if gt:
-    #     return NewtonSolver()
+    if gt:
+        return iLQRSolver()
     # use 10000 iterations for the ground truth baseline,
     # but that takes forever, so for the main dataset use 1500 iterations
     # which with ground truth dynamics
     # gets within tiny error of the true solution
-    # iterations = 10000 if gt else 1500
-    # optimizer = optax.chain(
-    #     # Set the parameters of Adam. Note the learning_rate is not here.
-    #     optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-8),
-    #     optax.scale_by_schedule(optax.cosine_decay_schedule(1.0,
-    #                             iterations, alpha=0.1)),
-    #     # Put a minus sign to *minimise* the loss.
-    #     optax.scale(-0.2)
-    # )
-    # return OptaxSolver(optimizer=optimizer, max_iterations=iterations)
+    iterations = 5000
+    optimizer = optax.chain(
+        # Set the parameters of Adam. Note the learning_rate is not here.
+        optax.scale_by_adam(b1=0.9, b2=0.999, eps=1e-8),
+        optax.scale_by_schedule(optax.cosine_decay_schedule(1.0,
+                                iterations, alpha=0.1)),
+        # Put a minus sign to *minimise* the loss.
+        optax.scale(-0.2)
+    )
+    return OptaxSolver(optimizer=optimizer, max_iterations=iterations)
 
 def map_fn(traj):
     states, actions = traj.states, traj.actions
@@ -100,7 +101,22 @@ def map_fn(traj):
     return prev_states, actions, next_states
 
 def generate_dataset(config, env, curr_model_fn, rng_key, num_traj, prev_data):
-    if curr_model_fn is None or config.use_random:
+    if config.use_random:
+        rng_key, sk1, sk2 = jax.random.split(rng_key, 3)
+        keys1 = jax.random.split(sk1, num_traj*config.traj_length)
+        keys2 = jax.random.split(sk2, num_traj*config.traj_length)
+        xs = jax.vmap(env.sample_state)(keys1)
+        us = jax.vmap(env.sample_action)(keys2)
+        xs_next = jax.vmap(env.step)(xs, us, None)
+        data = xs, us, xs_next
+        data = Data.from_pytree(data)
+        if prev_data is not None:
+            data = Data.from_pytree(jax.tree_util.tree_map(lambda x,y: jnp.concatenate((x,y)),
+                                                data.data, prev_data.data))
+        data = data.shuffle(rng_key)
+        return data
+
+    if curr_model_fn is None:
         rng_key, sk = jax.random.split(rng_key)
         policy = RandomPolicy(env.sample_action)
     else:
@@ -235,15 +251,16 @@ def ilqr_learning(config, database):
     if config.env == "pendulum":
         set_default(config, "lr", 1e-3)
         set_default(config, "hidden_dim", 96)
-        set_default(config, "activation", "swish")  # might want to sweep over gelu/swish
+        set_default(config, "activation", "gelu")  # might want to sweep over gelu/swish
     elif config.env == "quadrotor":
         set_default(config, "lr", 5e-3)
         set_default(config, "hidden_dim", 128)
         set_default(config, "activation", "gelu")  # might want to sweep over gelu/swish
 
     env = stanza.envs.create(config.env)
+    traj_key = stanza.util.random.key_or_seed(config.traj_seed)
+    _, eval_key = jax.random.split(traj_key)
     rng_key = stanza.util.random.key_or_seed(config.rng_seed)
-    rng_key, eval_key = jax.random.split(rng_key)
 
     logger.info("Evaluating optimal cost")
     opt_cost = evaluate_model(config, env, env.step, eval_key, gt=True)

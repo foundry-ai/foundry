@@ -113,7 +113,7 @@ class IsingEstimator:
             B = x_diff[:, t, ...] @ W_T[:, :, :t*u_dim]
             B = jnp.sum(B, 0).T
             # B (t*u_dim, x_dim)
-            X = jsp.linalg.solve(M + 0.00001*jnp.eye(M.shape[0]), B, assume_a='pos')
+            X = jsp.linalg.solve(M + 0.0000001*jnp.eye(M.shape[0]), B, assume_a='pos')
             # X (t*u_dim, x_dim)
             X = X.reshape((t, u_dim, x_dim))
             X = jnp.transpose(X, (0, 2, 1))

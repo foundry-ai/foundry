@@ -70,11 +70,6 @@ async def launch_activity_main():
     except ArgParseError as e:
         rich.print(f"[red]Invalid Arguments:[/red] {e}")
         return
-    if len(runtime_cfg.configs) == 1:
-        activity = functools.partial(activity_sub,
-            runtime_cfg.activity, runtime_cfg.database)
-        activity(runtime_cfg.configs[0])
-        return
     target = await Target.from_url(runtime_cfg.target)
     async with Pool(target) as p:
         activity = functools.partial(activity_sub, runtime_cfg.activity, runtime_cfg.database)

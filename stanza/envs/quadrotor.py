@@ -25,18 +25,18 @@ class QuadrotorEnvironment(Environment):
         self.dt = 0.1
     
     def sample_action(self, rng):
-        return jax.random.uniform(rng, (2,), jnp.float32, -1.5, 1.5)
+        return jax.random.uniform(rng, (2,), jnp.float32, -1, 1)
 
     def sample_state(self, rng_key):
         x_key, z_key, phi_key, xd_key, \
             zd_key, phid_key = jax.random.split(rng_key, 6)
         return State(
-            x=jax.random.uniform(x_key, (), minval=-3, maxval=3),
-            z=jax.random.uniform(z_key, (), minval=-3, maxval=3),
+            x=jax.random.uniform(x_key, (), minval=-2, maxval=2),
+            z=jax.random.uniform(z_key, (), minval=-2, maxval=2),
             phi=jax.random.uniform(phi_key, (), minval=-3, maxval=3),
-            x_dot=jax.random.uniform(xd_key, (), minval=-3, maxval=3),
-            z_dot=jax.random.uniform(zd_key, (), minval=-3, maxval=3),
-            phi_dot=jax.random.uniform(phid_key, (), minval=-3, maxval=3)
+            x_dot=jax.random.uniform(xd_key, (), minval=-2, maxval=2),
+            z_dot=jax.random.uniform(zd_key, (), minval=-2, maxval=2),
+            phi_dot=jax.random.uniform(phid_key, (), minval=-2, maxval=2)
         )
     
     def reset(self, rng_key):

@@ -19,7 +19,7 @@ class State(NamedTuple):
 class PendulumEnv(Environment):
     def __init__(self, sub_steps=1):
         self.sub_steps = sub_steps
-        self.dt = 0.1
+        self.dt = 0.2
 
     def sample_action(self, rng_key):
         return jax.random.uniform(
@@ -31,7 +31,7 @@ class PendulumEnv(Environment):
     # give a distribution with support over all possible (or reasonable) states
     def sample_state(self, rng_key):
         k1, k2 = jax.random.split(rng_key)
-        angle = jax.random.uniform(k1, shape=(), minval=-1, maxval=math.pi + 1)
+        angle = jax.random.uniform(k1, shape=(), minval=-2, maxval=math.pi + 1)
         vel = jax.random.uniform(k2, shape=(), minval=-1, maxval=1)
         return State(angle, vel)
 
@@ -54,7 +54,7 @@ class PendulumEnv(Environment):
         x_cost = jnp.sum(diff[:-1]**2)
         xf_cost = jnp.sum(diff[-1]**2)
         u_cost = jnp.sum(u**2)
-        return 100*xf_cost + 2*x_cost + u_cost
+        return 5*xf_cost + 2*x_cost + u_cost
 
     def constraints(self, _, us):
         constraints = [jnp.ravel(us - 3),

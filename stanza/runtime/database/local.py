@@ -48,12 +48,19 @@ class LocalDatabase(Database):
             ffmpegio.video.write(path, value.fps, data,
                 overwrite=True, loglevel='quiet')
         elif isinstance(value, Figure):
-            path = self._path / f"{name}.png"
+            png_path = self._path / f"{name}.png"
+            pdf_path = self._path / f"{name}.pdf"
             from plotly.graph_objects import Figure as GoFigure
             if isinstance(value.fig, GoFigure):
-                value.fig.write_image(path)
+                value.fig.write_image(png_path)
+                value.fig.write_image(pdf_path)
             else:
-                value.fig.savefig(path)
+                if value.width:
+                    value.fig.set_figwidth(value.width)
+                if value.height:
+                    value.fig.set_figheight(value.height)
+                value.fig.savefig(png_path, bbox_inches='tight')
+                value.fig.savefig(pdf_path, bbox_inches='tight')
         else:
             path = self._path / f"{name}.npy"
             with open(path, "wb") as f:

@@ -24,6 +24,8 @@ def words_():
 @dataclass(frozen=True)
 class Figure:
     fig: Any
+    height: int = None
+    width: int = None
 
 @dataclass(frozen=True)
 class Video:

@@ -42,7 +42,7 @@ class Config:
     b2: float = None
 
     receed: bool = False
-    rng_seed: int = 42
+    rng_seed: int = 69
     traj_seed: int = 42
 
     eval_trajs: int = 10
@@ -86,37 +86,37 @@ def iterative_learning(config, database):
     logger.info(f"Running iterative learning [blue]{exp.name}[/blue]")
     # set the per-env defaults for now
     if config.env_type == "pendulum":
-        set_default(config, 'traj_length', 50)
-        set_default(config, 'horizon_length', 50)
+        set_default(config, 'traj_length', 25)
+        set_default(config, 'horizon_length', 25)
 
         set_default(config, 'iterations', 1000)
-        set_default(config, 'learning_rate', 0.35)
+        set_default(config, 'learning_rate', 0.2)
         set_default(config, 'b1', 0.9)
         set_default(config, 'b2', 0.999)
 
         set_default(config, 'decay_iterations', config.iterations)
-        set_default(config, 'decay_alpha', 0.1)
-        set_default(config, 'samples', 50)
+        set_default(config, 'decay_alpha', 0.01)
+        set_default(config, 'samples', 20)
         set_default(config, 'sigma', 0.001)
-        set_default(config, 'burn_in', 10)
+        set_default(config, 'burn_in', 5)
         set_default(config, 'Q_coef', 0.1)
         set_default(config, 'R_coef', 1)
     elif config.env_type == "quadrotor":
-        set_default(config, 'traj_length', 50)
-        set_default(config, 'horizon_length', 50)
+        set_default(config, 'traj_length', 25)
+        set_default(config, 'horizon_length', 25)
 
         set_default(config, 'iterations', 200)
         set_default(config, 'learning_rate', 0.01)
         # let's screww around with the other adam params
-        set_default(config, 'b1', 0.8)
+        set_default(config, 'b1', 0.9)
         set_default(config, 'b2', 0.999)
 
-        set_default(config, 'decay_iterations', 1000)
-        set_default(config, 'decay_alpha', 0.01)
-        set_default(config, 'samples', 50)
-        set_default(config, 'sigma', 0.1)
-        set_default(config, 'burn_in', 10)
-        set_default(config, 'Q_coef', 0.1)
+        set_default(config, 'decay_iterations', config.iterations)
+        set_default(config, 'decay_alpha', 1)
+        set_default(config, 'samples', 100)
+        set_default(config, 'sigma', 0.0001)
+        set_default(config, 'burn_in', 5)
+        set_default(config, 'Q_coef', 1.5)
         set_default(config, 'R_coef', 1)
 
     logger.info(f"Config: {config}")
