@@ -36,14 +36,3 @@ policy = policies.chain_transforms(
 )(policies.Actions(target_pos))
 rollout = policies.rollout(env.step, x0, policy, last_state=False)
 
-# Load in the data!
-data = pusht.expert_data()
-from stanza.data.trajectory import chunk_trajectory
-from stanza.data import PyTreeData
-from functools import partial
-chunked = data.map(
-    partial(chunk_trajectory, 
-    obs_chunk_size=2, action_chunk_size=16))
-data = PyTreeData.from_data(chunked.flatten(), chunk_size=2048)
-print(jax.tree_util.tree_map(lambda x: x.shape, data.data))
-print(f"Got data {len(data)}")

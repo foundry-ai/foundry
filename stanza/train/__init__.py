@@ -256,7 +256,7 @@ class Trainer:
         )
         train_fn = _train_jit if jit else _train
         state = train_fn(self, 
-            loss_fn, dataset, state, hooks)
+            stanza.Partial(loss_fn), dataset, state, hooks)
         results = TrainResults(
             fn_params = state.fn_params,
             fn_state = state.fn_state,

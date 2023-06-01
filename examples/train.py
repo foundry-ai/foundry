@@ -70,8 +70,8 @@ from stanza import Partial
 from stanza.train import Trainer
 from stanza.train.rich import RichReporter
 from stanza.train.wandb import WandbReporter
-import wandb
-wandb.init(project="train_test")
+# import wandb
+# wandb.init(project="train_test")
 
 with WandbReporter() as wb:
     with RichReporter(iter_interval=500) as cb:
@@ -80,7 +80,7 @@ with WandbReporter() as wb:
         res = trainer.train(
             Partial(loss_fn), dataset,
             PRNGKey(42), init_params,
-            hooks=[cb, wb], jit=True
+            hooks=[cb], jit=True
         )
 
 from stanza.train import _train_jit
@@ -98,14 +98,14 @@ with WandbReporter() as wb:
             hooks=[cb], jit=True
         )
 
-# logger.info("Training again...but this time without a full JIT loop (sloooow)")
-# with WandbReporter() as wb:
-#     with RichReporter(iter_interval=500) as cb:
-#         trainer = Trainer(epochs=5000, batch_size=10, optimizer=optimizer)
-#         init_params = net.init(PRNGKey(7), jnp.ones(()))
-#         res = trainer.train(
-#             Partial(loss_fn), dataset,
-#             PRNGKey(42), init_params,
-#             hooks=[cb], jit=False
-#         )
-# logger.info("Train cache size {}", _train_jit._cache_size())
+logger.info("Training again...but this time without a full JIT loop (sloooow)")
+with WandbReporter() as wb:
+    with RichReporter(iter_interval=500) as cb:
+        trainer = Trainer(epochs=5000, batch_size=10, optimizer=optimizer)
+        init_params = net.init(PRNGKey(7), jnp.ones(()))
+        res = trainer.train(
+            Partial(loss_fn), dataset,
+            PRNGKey(42), init_params,
+            hooks=[cb], jit=False
+        )
+logger.info("Train cache size {}", _train_jit._cache_size())
