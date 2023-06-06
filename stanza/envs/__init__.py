@@ -25,7 +25,14 @@ class Environment:
     def step(self, state, action, rng_key):
         raise NotImplementedError("Must impelement step()")
     
-    def reward(self, states, actions):
+    # The reward should be baked into state
+    def reward(self, state):
+        pass
+
+    def terminated(self, state):
+        return False
+    
+    def teleop_policy(self, interface):
         pass
 
 __ENV_BUILDERS = {}
@@ -52,7 +59,7 @@ register_lazy('pusht', '.pusht')
 register_lazy('pendulum', '.pendulum')
 register_lazy('linear', '.linear')
 register_lazy('quadrotor', '.quadrotor')
-register_lazy('gym', '.gym')
+register_lazy('gym', '.gymnasium')
 register_lazy('robosuite', '.robosuite')
 
 # Takes a cost function and maps it over a trajectory

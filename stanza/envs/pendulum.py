@@ -1,4 +1,5 @@
 from stanza.envs import Environment
+from stanza.policies import PolicyOutput
 
 import jax
 import jax.numpy as jnp
@@ -43,7 +44,7 @@ class PendulumEnv(Environment):
 
     def step(self, state, action, rng_key):
         angle = state.angle + self.dt*state.vel
-        vel = state.vel + self.dt*jnp.sin(state.angle) + self.dt*action
+        vel = 0.99*state.vel - self.dt*self.dt/2*jnp.sin(state.angle) + self.dt*action
         state = State(angle, vel)
         return state
     
@@ -85,8 +86,9 @@ class PendulumEnv(Environment):
         }
 
     def render(self, state, width=256, height=256):
+        angle = jnp.squeeze(state.angle)
         image = jnp.ones((width, height, 3))
-        x, y = jnp.sin(state.angle), jnp.cos(state.angle)
+        x, y = jnp.sin(angle), jnp.cos(angle)
         center = jnp.array([width/2, height/2])
         circle_loc = center + jnp.array([width*2/6, height*2/6])*jnp.stack((x,y))
         stick = canvas.line(center, circle_loc)
@@ -94,6 +96,13 @@ class PendulumEnv(Environment):
         sdf = canvas.stack(stick, circle)
         image = canvas.paint(image, sdf) 
         return image
+    
+    def teleop_policy(self, interface):
+        def policy(_):
+            left =  jnp.array(-0.1)*interface.key_pressed('a')
+            right = jnp.array(0.1)*interface.key_pressed('d')
+            return PolicyOutput(left + right)
+        return policy
 
 def builder(name):
     return PendulumEnv()

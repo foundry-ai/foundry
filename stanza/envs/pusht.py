@@ -7,34 +7,17 @@ from stanza.util.attrdict import AttrMap
 from stanza.data.trajectory import (
     Timestep, IndexedTrajectoryData, TrajectoryIndices
 )
+from stanza.envs.pymunk import PyMunkEnv, SystemDef, BodyState
+
 from stanza.data import Data
 from functools import partial
-
 import shapely.geometry as sg
-import stanza
-import itertools
 import jax.numpy as jnp
 import jax.random
 from jax.random import PRNGKey
-import numpy as np
-
-import pymunk
 
 @dataclass(jax=True)
-class BodyState:
-    position: jnp.array
-    velocity: jnp.array
-    angle: jnp.array
-    angular_velocity: jnp.array
-
-@dataclass(jax=True)
-class PushTState:
-    # for rendering purposes
-    agent: BodyState
-    block: BodyState
-
-@dataclass(jax=True)
-class PushTEnv(Environment):
+class PushTEnv(PyMunkEnv):
     sim_hz: float = 100
     goal_pose : BodyState = field(
         default_factory=lambda: BodyState(
@@ -61,7 +44,7 @@ class PushTEnv(Environment):
         pos_block = jax.random.randint(block_key, (2,), 100, 400).astype(float)
         rot_block = jax.random.uniform(rot_key, minval=-jnp.pi, maxval=jnp.pi)
         block = BodyState(pos_block, z2, rot_block, z)
-        return PushTState(agent, block)
+        return SystemDef(agent=agent, block=block)
 
     def render(self, state, width=500, height=500):
         img = jax.pure_callback(
