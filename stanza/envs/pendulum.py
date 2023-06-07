@@ -54,7 +54,10 @@ class PendulumEnv(Environment):
         diff = (x - jnp.array([math.pi, 0]))
         x_cost = jnp.sum(diff[:-1]**2)
         xf_cost = jnp.sum(diff[-1]**2)
-        u_cost = jnp.sum(u**2)
+        if u == None:
+            u_cost = 0
+        else:
+            u_cost = jnp.sum(u**2)
         return 5*xf_cost + 2*x_cost + u_cost
 
     def constraints(self, _, us):
