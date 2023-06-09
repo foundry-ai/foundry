@@ -9,7 +9,7 @@ def sanitize_color(color):
     return color
 
 def _aa_alpha(dist):
-    return jnp.clip(0.1 - dist, 0, 1)
+    return jnp.clip(- dist, 0, 1)
 
 @jax.jit
 def _aa(dist, color):
@@ -46,37 +46,70 @@ def stack(*sdfs):
     return partial(_stacked, sdfs=sdfs)
 
 @jax.jit
-def _transformed(p, fn, loc=None, theta=None, scale=None):
-    if loc is not None:
-        p = p - loc
+def _transformed(p, fn, translation=None,
+                 rotation=None, scale=None):
     if scale is not None:
         p = p / scale
-    if theta is not None:
-        c, s = np.cos(-theta), np.sin(-theta)
+    if translation is not None:
+        p = p - translation
+    if rotation is not None:
+        c, s = jnp.cos(-rotation), jnp.sin(-rotation)
         M = jnp.array(((c,-s),(s,c)))
         p = M @ p
-    return fn(p)
-
-def transform(fn, loc=None, theta=None, scale=None):
-    return Partial(partial(_transformed, fn=fn),loc=loc, theta=theta, scale=scale)
-
-@jax.jit
-def _circle(x, loc, radius=1, color=None):
-    dist = jnp.linalg.norm(x - loc) - radius
+    dist, color = fn(p)
+    if scale is not None:
+        dist = dist * jnp.sqrt(jnp.prod(jnp.abs(scale)))
     return dist, color
 
-def circle(loc, radius=1, color=jnp.array([0.,0.,0.,1.])):
+def transform(fn, translation=None, rotation=None, scale=None):
+    return Partial(partial(_transformed, fn=fn),
+        translation=translation, rotation=rotation,scale=scale)
+
+
+def _fill(p, sdf, color):
+    return sdf(p), color
+
+def fill(sdf=None, color=jnp.array([0.,0.,0.,1.])):
     color = sanitize_color(color)
-    return Partial(_circle, loc=loc, radius=radius, color=color)
+    return partial(_fill,sdf=sdf, color=color)
+
+# ----- Shapes ------
 
 @jax.jit
-def _line(x, a, b, thickness, color=None):
+def _circle(x, loc, radius=1):
+    dist = jnp.linalg.norm(x - loc) - radius
+    return dist
+
+def circle(loc, radius=1):
+    return Partial(_circle, loc=loc, radius=radius)
+
+@jax.jit
+def _segment(x, a, b, thickness):
     xa = x - a
     ba = b - a
     h = jnp.clip(jnp.dot(xa, ba) / jnp.dot(ba, ba), 0., 1.)
     dist = jnp.linalg.norm(xa - h * ba)
-    return dist - 1, color
+    return dist - 1
 
-def line(a, b, thickness=1., color=jnp.array([0.,0.,0.,1.])):
-    color = sanitize_color(color)
-    return Partial(_line, a=a, b=b, thickness=thickness, color=color)
+def segment(a, b, thickness=1.):
+    return Partial(_segment, a=a, b=b, thickness=thickness)
+
+@jax.jit
+def _polygon(x, rot_edges, corner_dists):
+    dists = rot_edges @ x - corner_dists
+    return jnp.max(dists)
+
+def polygon(corners):
+    edges = jnp.roll(corners,1,axis=0) - corners
+    rot_edges = jnp.stack(
+        (-edges[:,1], edges[:,0]), 
+        axis=-1
+    )
+    rot_edges = rot_edges / jnp.linalg.norm(rot_edges, axis=-1, keepdims=True)
+    corner_dists = jax.vmap(jnp.dot)(rot_edges, corners)
+    fun = Partial(
+        _polygon,
+        rot_edges=rot_edges,
+        corner_dists=corner_dists
+    )
+    return fun

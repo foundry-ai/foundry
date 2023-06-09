@@ -81,7 +81,7 @@ def rollout(model, state0,
             policy_transform=None,
             # either length is an integer or policy.rollout_length is not None
             length=None, last_state=True):
-    if policy_transform is not None:
+    if policy_transform is not None and policy is not None:
         policy, policy_init_state = policy_transform(policy, policy_init_state)
     # Look for a fallback to the rollout length
     # in the policy. This is useful mainly for the Actions policy
@@ -103,14 +103,12 @@ def rollout(model, state0,
             policy_output = policy(input)
             action = policy_output.action
             info = policy_output.info
-
             new_policy_state = policy_output.policy_state
-            new_env_state = model(env_state, action, m_sk)
         else:
             action = None
             info = None
-            new_env_state = model(env_state, None, m_sk)
             new_policy_state = policy_state
+        new_env_state = model(env_state, action, m_sk)
         return (new_env_state, new_policy_state, new_policy_rng, new_model_rng),\
                 (env_state, action, info)
 
