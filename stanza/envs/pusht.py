@@ -99,8 +99,6 @@ class PushTEnv(PyMunkWrapper):
         body.friction = 1
         # self._set_body_state(body, state)
         space.add(body, shape1, shape2)
-        self._set_body_state(body, state)
-        return body
 
 def builder(name):
     return PushTEnv()
