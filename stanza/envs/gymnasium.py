@@ -15,15 +15,17 @@ _GYMS = {}
 # Has a fancy callback-based
 # wrapper for any Gym-based environment
 class GymWrapper(Environment):
-    def _make_env(self):
+    def _make_env(self, rng_key):
         pass
 
-    def _reset_callback(self, seed):
+    def _reset_callback(self, rng_key):
         global _COUNTER
         global _GYMS
         _COUNTER += 1
-        gym = self._make_env()
+        rng_key, sk = jax.random.split(rng_key)
+        gym = self._make_env(sk)
         _GYMS[_COUNTER] = gym
+        seed = jax.random.randint(rng_key, (), 0, 2**30)
         obs, _ = gym.reset(seed=seed.item())
         if obs.dtype == np.float64:
             obs = obs.astype(np.float32)

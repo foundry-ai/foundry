@@ -35,4 +35,3 @@ policy = policies.chain_transforms(
     pusht.PositionControlTransform()
 )(policies.Actions(target_pos))
 rollout = policies.rollout(env.step, x0, policy, last_state=False)
-

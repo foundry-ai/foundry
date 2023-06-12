@@ -36,6 +36,24 @@ class AttrMap:
             return self._dict.get(name)
         except KeyError:
             raise AttributeError("Missing attribute")
+    
+    def set(self, k,v):
+        return AttrMap(self, **{k:v})
+    
+    def items(self):
+        return self._dict.items()
+    
+    def values(self):
+        return self._dict.values()
+
+    def keys(self):
+        return self._dict.keys()
+    
+    def __repr__(self) -> str:
+        return self._dict.__repr__()
+
+    def __str__(self) -> str:
+        return self._dict.__str__()
 
 def attrmap(*args, **kwargs):
     return AttrMap(*args, **kwargs)
