@@ -17,7 +17,7 @@ _KEY_CODES = {
     'e': glfw.KEY_E
 }
 
-class Window:
+class GLFWWindow:
     def __init__(self, title=None):
         global _INIT
         if not _INIT:
@@ -61,6 +61,18 @@ class Window:
     def key_pressed(self, key):
         code = _KEY_CODES[key]
         return glfw.get_key(self.window, code) == glfw.PRESS
+    
+    @property
+    def width(self):
+        pass
+
+    @property
+    def height(self):
+        pass
+    
+    @property
+    def mouse_position(self):
+        pass
 
     def show(self, buffer):
         buffer = np.array(buffer[...,:3])

@@ -11,8 +11,6 @@ from functools import partial
 from stanza.runtime.database import Figure, Video
 import stanza.graphics.canvas as canvas
 
-import math
-
 class State(NamedTuple):
     angle: jnp.ndarray
     vel: jnp.ndarray
@@ -94,9 +92,12 @@ class PendulumEnv(Environment):
         x, y = jnp.sin(angle), jnp.cos(angle)
         center = jnp.array([width/2, height/2])
         circle_loc = center + jnp.array([width*2/6, height*2/6])*jnp.stack((x,y))
-        stick = canvas.line(center, circle_loc)
-        circle = canvas.circle(circle_loc, radius=width/24, color=jnp.array([1.,0.,0.]))
-        sdf = canvas.stack(stick, circle)
+        stick = canvas.segment(center, circle_loc, thickness=2)
+        circle = canvas.circle(circle_loc, radius=width/24)
+        sdf = canvas.stack(
+            canvas.fill(stick, color=jnp.array([0.,0.,0.])),
+            canvas.fill(circle, color=jnp.array([1.,0.,0.]))
+        )
         image = canvas.paint(image, sdf) 
         return image
     

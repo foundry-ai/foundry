@@ -47,5 +47,4 @@ build-backend = "poetry.core.masonry.api"
 [[tool.poetry.source]]
 name = "jax"
 url = "https://storage.googleapis.com/jax-releases/jax_releases.html"
-default = false
-secondary = false
+priority = "explicit"

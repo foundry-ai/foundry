@@ -16,14 +16,6 @@ class BodyState:
     angle: jnp.array
     angular_velocity: jnp.array
 
-@dataclass
-class BodyDef:
-    shapes: List[pymunk.Shape]
-    state: BodyState
-    static: bool = False
-    mass: float = 1.0
-    moment: float = 1.0
-
 class PyMunkState(AttrMap):
     pass
 
@@ -46,8 +38,9 @@ class PyMunkWrapper(Environment):
                 state = state.set(body.name, body_state)
         return state
 
+    @jax.jit
     def reset(self, rng_key):
-        space = self._build_space(rng_key)
+        space = self._build_space(None)
         _state = self._make_state(space)
         return jax.pure_callback(type(self)._reset_callback, 
                                  _state, self, rng_key)
@@ -56,11 +49,12 @@ class PyMunkWrapper(Environment):
         space = self._build_space(rng_key)
         return self._make_state(space)
 
+    @jax.jit
     def step(self, state, action, rng_key):
-        space = self._build_space(PRNGKey(0))
-        sample_state = self._make_state(space)
+        space = self._build_space(None)
+        _state = self._make_state(space)
         return jax.pure_callback(type(self)._step_callback,
-                                 sample_state, self, state, action, rng_key) 
+                                 _state, self, state, action, rng_key) 
 
     def _step_callback(self, state, action, rng_key):
         space = self._build_state(state)
@@ -68,9 +62,10 @@ class PyMunkWrapper(Environment):
         space.step(1/self.sim_hz)
         return self._make_state(space)
     
+    @jax.jit
     def render(self, state, width=256, height=256):
         img = jnp.ones((width, height, 3))
-        space = self._build_state(state)
+        space = self._build_space(None)
 
         shapes = []
         for shape in space.shapes:
@@ -87,32 +82,39 @@ class PyMunkWrapper(Environment):
             elif isinstance(shape, pymunk.Segment):
                 a = jnp.array((shape.a.x, shape.a.y))
                 b = jnp.array((shape.b.x, shape.b.y))
-                sdf = canvas.segment(a, b)
+                sdf = canvas.segment(a, b, thickness=shape.radius)
             color = jnp.array(shape.color) if hasattr(shape, 'color') else jnp.array([0.3, 0.3, 0.3])
             render = canvas.fill(sdf, color)
             # do the body transform
             if shape.body is not None:
                 body = shape.body
+                if hasattr(body, "name") and body.name is not None:
+                    bs = state[body.name]
+                    translation = bs.position
+                    rotation = bs.angle
+                else:
+                    translation = jnp.array(body.position)
+                    rotation = jnp.array(body.angle)
+
                 render = canvas.transform(render,
-                    translation=jnp.array(body.position),
-                    rotation=body.angle,
+                    translation=translation,
+                    rotation=rotation
                 )
             shapes.append(render)
         render = canvas.stack(*shapes)
         # flip y axis
-        render = canvas.transform(render,
-            scale=jnp.array([1, -1]),
-        )
+        # render = canvas.transform(render,
+        #     scale=jnp.array([1, -1]),
+        # )
         # transform
         render = canvas.transform(render,
-            translation=jnp.array([self.width/2, self.height/2]),
             scale=jnp.array([width, height]) / jnp.array([self.width, self.height]),
         )
         img = canvas.paint(img, render)
         return img
     
     def _build_state(self, state):
-        space = self._build_space(PRNGKey(0))
+        space = self._build_space(None)
         for b in space.bodies:
             if hasattr(b, 'name'):
                 bs = state[b.name]

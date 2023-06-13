@@ -9,7 +9,7 @@ def sanitize_color(color):
     return color
 
 def _aa_alpha(dist):
-    return jnp.clip(- dist, 0, 1)
+    return jnp.clip(0.1 - dist, 0, 1)
 
 @jax.jit
 def _aa(dist, color):
@@ -89,7 +89,7 @@ def _segment(x, a, b, thickness):
     ba = b - a
     h = jnp.clip(jnp.dot(xa, ba) / jnp.dot(ba, ba), 0., 1.)
     dist = jnp.linalg.norm(xa - h * ba)
-    return dist - 1
+    return dist - thickness
 
 def segment(a, b, thickness=1.):
     return Partial(_segment, a=a, b=b, thickness=thickness)
