@@ -19,7 +19,7 @@ from stanza.rl_tools.iql_update import update_q, update_v, update_a
 
 
 def target_update(critic: Model, target_critic: Model, tau: float) -> Model:
-    new_target_params = jax.tree_multimap(
+    new_target_params = jax.tree_map(
         lambda p, tp: p * tau + tp * (1 - tau), critic.params,
         target_critic.params)
 

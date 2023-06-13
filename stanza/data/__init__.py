@@ -111,6 +111,12 @@ class Data:
     def shuffle(self, key):
         raise NotImplementedError("Dataset does not implement shuffle()")
     
+    def sample(self, rng_key):
+        raise NotImplementedError("Dataset does not implement sample()")
+
+    def sample_batch(self, n, rng_key):
+        raise NotImplementedError("Dataset does not implement sample_batch()")
+    
     @staticmethod
     def from_pytree(data, n=None):
         nums_tree = tree_util.tree_map(lambda x: jnp.shape(x)[0], data)
@@ -228,13 +234,23 @@ class PyTreeData(Data):
 
     # This dataset type is shuffleable
     def shuffle(self, key):
-        import stanza.util.random
+        from stanza.util.random import permutation
         dim = tree_util.tree_flatten(self.data)[0][0].shape[0]
-        idx = stanza.util.random.permutation(key, dim, self.n)
+        idx = permutation(key, dim, self.n)
         data = jax.tree_util.tree_map(
             lambda x: jnp.take(x, idx, axis=0, unique_indices=True),
         self.data)
         return PyTreeData(data, self.n)
+    
+    def sample(self, key):
+        idx = jax.random.randint(key, (), 0, self.n)
+        x = jax.tree_map(lambda x: x[idx], self.data)
+        return x
+    
+    def sample_batch(self, n, rng_key):
+        idx = jax.random.randint(rng_key, (n,), 0, self.n)
+        x = jax.tree_map(lambda x: x[idx], self.data)
+        return x
 
     @staticmethod
     def from_data(data, start=None, buffer_size=None, chunk_size=None):

@@ -9,3 +9,6 @@ def vmap_ravel_pytree(x):
     flat = jax.vmap(flatten)(x)
     uf = jax.vmap(uf)
     return flat, uf
+
+def shape_tree(x):
+    return jax.tree_util.tree_map(lambda x: x.shape, x)

@@ -67,7 +67,7 @@ class NormalTanhPolicy(nn.Module):
             return base_dist
 
 
-@functools.partial(jax.jit, static_argnames=('actor_def', 'distribution'))
+@functools.partial(jax.jit, static_argnames=('actor_def'))
 def _sample_actions(rng: PRNGKey,
                     actor_def: nn.Module,
                     actor_params: Params,

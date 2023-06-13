@@ -86,7 +86,6 @@ class Model:
     def apply_gradient(self, loss_fn) -> Tuple[Any, 'Model']:
         grad_fn = jax.grad(loss_fn, has_aux=True)
         grads, info = grad_fn(self.params)
-
         updates, new_opt_state = self.tx.update(grads, self.opt_state,
                                                 self.params)
         new_params = optax.apply_updates(self.params, updates)
