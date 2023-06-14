@@ -52,6 +52,12 @@ class Data:
         raise NotImplementedError(
             f"{self.__class__.__name__} must implement is_end"
         )
+    
+    def at(self, idx):
+        i = self.start
+        i = self.advance(i, idx)
+        return self.get(i)
+
 
     # These should NOT be overridden:
 
