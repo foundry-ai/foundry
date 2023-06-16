@@ -9,17 +9,13 @@ import stanza.envs
 import stanza.util.random
 import stanza.policies
 
-from stanza.util.dataclasses import dataclass, field
+from stanza.dataclasses import dataclass, field
 from stanza.util import vmap_ravel_pytree
 
 from jax.random import PRNGKey
 
 from functools import partial, wraps
 from typing import Callable
-
-
-def use_estimator(estimator, fun):
-    pass
 
 @dataclass(jax=True)
 class EstState:

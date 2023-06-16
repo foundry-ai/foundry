@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import urllib
 import random
 
-from stanza.util.dataclasses import dataclass
+from stanza.dataclasses import dataclass
 from stanza.util.logging import logger
 from typing import Any
 from pathlib import Path

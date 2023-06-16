@@ -9,7 +9,7 @@ from stanza import Partial
 
 from stanza.util.logging import logger
 from stanza.util.attrdict import AttrMap
-from stanza.util.dataclasses import dataclass, field, replace
+from stanza.dataclasses import dataclass, field, replace
 from jax.random import PRNGKey
 
 from stanza.solver import Solver, Minimize, UnsupportedObectiveError, Objective, EqConstraint

@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 
-from stanza.util.dataclasses import dataclass
+from stanza.dataclasses import dataclass
 
 @dataclass(jax=True)
 class EmaHook:

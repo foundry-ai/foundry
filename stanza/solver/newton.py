@@ -1,4 +1,4 @@
-from stanza.util.dataclasses import dataclass, replace
+from stanza.dataclasses import dataclass, replace
 from stanza.solver import IterativeSolver, UnsupportedObectiveError, \
         MinimizeState, Minimize, EqConstraint, IneqConstraint
 from stanza import Partial

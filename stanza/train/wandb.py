@@ -2,7 +2,7 @@ import jax.numpy as jnp
 import jax
 import wandb
 
-from stanza.util.dataclasses import dataclass, field, replace
+from stanza.dataclasses import dataclass, field, replace
 from jax.experimental.host_callback import id_tap, barrier_wait
 
 _REPORTERS = {}

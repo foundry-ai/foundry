@@ -1,5 +1,5 @@
 from typing import Any
-from stanza.util.dataclasses import dataclass
+from stanza.dataclasses import dataclass
 from stanza.data import PyTreeData
 
 import jax

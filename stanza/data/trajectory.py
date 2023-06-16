@@ -1,6 +1,6 @@
 from stanza.data import Data
 
-from stanza.util.dataclasses import dataclass, field, replace
+from stanza.dataclasses import dataclass, field, replace
 from typing import Any, List
 
 import jax

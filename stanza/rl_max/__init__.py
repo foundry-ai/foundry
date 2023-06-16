@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from jax.random import PRNGKey
 from typing import Callable, List, Any
 import stanza
-from stanza.util.dataclasses import dataclass, field, replace
+from stanza.dataclasses import dataclass, field, replace
 from stanza.util.attrdict import AttrMap
 
 

@@ -8,7 +8,7 @@ from stanza.dataset.env import EnvDataset
 from stanza.dataset import PyTreeDataset
 
 from stanza.util.logging import logger
-from stanza.util.dataclasses import dataclass, replace
+from stanza.dataclasses import dataclass, replace
 
 import stanza.policies
 import stanza.envs as envs

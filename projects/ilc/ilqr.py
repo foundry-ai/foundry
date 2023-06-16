@@ -3,7 +3,7 @@ from functools import partial
 from jax.random import PRNGKey
 from typing import Any
 
-from stanza.util.dataclasses import dataclass, replace, field
+from stanza.dataclasses import dataclass, replace, field
 from stanza.util.logging import logger
 from stanza.runtime import activity
 from stanza.data import Data, PyTreeData

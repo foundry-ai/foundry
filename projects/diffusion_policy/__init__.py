@@ -8,7 +8,7 @@ from stanza.train.ema import EmaHook
 from stanza.train.rich import RichReporter
 from stanza.train.wandb import WandbReporter
 
-from stanza.util.dataclasses import dataclass, replace
+from stanza.dataclasses import dataclass, replace
 from stanza.util.random import PRNGSequence
 from stanza.util.logging import logger
 from stanza.model.unet1d import ConditionalUnet1D

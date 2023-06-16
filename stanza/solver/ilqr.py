@@ -2,7 +2,7 @@ from typing import Any
 from jax.random import PRNGKey
 
 from stanza.policies import Policy, PolicyOutput
-from stanza.util.dataclasses import dataclass, field
+from stanza.dataclasses import dataclass, field
 from stanza.solver import IterativeSolver, SolverState, UnsupportedObectiveError
 from stanza.policies.mpc import MinimizeMPC
 

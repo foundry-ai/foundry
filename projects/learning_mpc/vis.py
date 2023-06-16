@@ -1,5 +1,5 @@
 from stanza.runtime import activity
-from stanza.util.dataclasses import dataclass
+from stanza.dataclasses import dataclass
 
 import stanza.envs as envs
 import stanza.policies as policies

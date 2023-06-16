@@ -6,7 +6,7 @@ import sys
 import stanza.policies as policies
 from stanza.policies import PolicyOutput, Trajectory
 
-from stanza.util.dataclasses import dataclass, field, replace
+from stanza.dataclasses import dataclass, field, replace
 from typing import NamedTuple, Callable, Any
 from functools import partial
 from stanza import Partial

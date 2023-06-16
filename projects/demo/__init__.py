@@ -1,5 +1,4 @@
-from stanza.runtime import activity
-from stanza.util.dataclasses import dataclass
+from stanza.runtime import activity, config
 from stanza.util.logging import logger
 
 from stanza.data import Data
@@ -15,7 +14,7 @@ import jax.numpy as jnp
 import haiku as hk
 import optax
 
-@dataclass(frozen=True)
+@config
 class Config:
     seed: int = 42
     param: float = 0.1

@@ -1,4 +1,4 @@
-from stanza.util.dataclasses import dataclass, field, replace
+from stanza.dataclasses import dataclass, field, replace
 
 import functools
 import jax

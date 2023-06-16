@@ -5,7 +5,7 @@ import jax.numpy as jnp
 from stanza.train import Trainer
 from typing import NamedTuple, Any, Tuple
 
-from stanza.util.dataclasses import dataclass
+from stanza.dataclasses import dataclass
 from stanza.util.logging import logger
 
 # Behavior cloning trainer

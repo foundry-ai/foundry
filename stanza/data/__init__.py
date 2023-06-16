@@ -7,7 +7,7 @@ import numpy as np
 
 from jax.tree_util import register_pytree_node_class
 from stanza.util.logging import logger
-from stanza.util.dataclasses import dataclass, field
+from stanza.dataclasses import dataclass, field
 
 from typing import Callable, Any
 

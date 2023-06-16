@@ -5,7 +5,7 @@ import jax.numpy as jnp
 
 from typing import Callable, Any
 from functools import partial
-from stanza.util.dataclasses import dataclass, field, replace
+from stanza.dataclasses import dataclass, field, replace
 
 import jax.experimental.host_callback
 

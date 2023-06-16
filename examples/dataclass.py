@@ -1,10 +1,7 @@
-# Demonstrates the stanza dataclass
-# and jit utilities
 import stanza
-from stanza.util.dataclasses import dataclass, field
+from stanza.dataclasses import dataclass, field
 import jax.numpy as jnp
 from functools import partial
-
 
 # jax=True registers the type and enables frozen=True
 @dataclass(jax=True)

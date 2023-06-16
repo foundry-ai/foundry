@@ -1,7 +1,7 @@
 from stanza.envs import Environment
 from stanza.policies import PolicyOutput
 
-from stanza.util.dataclasses import dataclass, field
+from stanza.dataclasses import dataclass, field
 from typing import Any, Callable
 
 import jax.numpy as jnp

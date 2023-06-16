@@ -1,5 +1,4 @@
 from typing import Any
-
 import jax.tree_util
 
 class AttrDict(dict):

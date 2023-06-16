@@ -1,7 +1,7 @@
 from stanza.envs import Environment
 import stanza.policies as policies
 from stanza.policies import Policy, PolicyOutput, PolicyTransform
-from stanza.util.dataclasses import dataclass, field, replace
+from stanza.dataclasses import dataclass, field, replace
 from stanza.util.attrdict import AttrMap
 from stanza.data.trajectory import (
     Timestep, IndexedTrajectoryData, TrajectoryIndices

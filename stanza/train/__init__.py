@@ -1,5 +1,5 @@
 from stanza import Partial
-from stanza.util.dataclasses import dataclass, field, replace
+from stanza.dataclasses import dataclass, field, replace
 from stanza.util.logging import logger
 from stanza.data import PyTreeData
 

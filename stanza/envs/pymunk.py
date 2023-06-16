@@ -1,5 +1,5 @@
 from stanza.envs import Environment
-from stanza.util.dataclasses import dataclass, field, replace
+from stanza.dataclasses import dataclass, field, replace
 from stanza.util.attrdict import AttrMap
 from typing import Callable, List
 from jax.random import PRNGKey
