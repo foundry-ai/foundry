@@ -12,7 +12,7 @@ def _download(url, path, quiet=False):
     path.parent.mkdir(parents=True, exist_ok=True)
     response = requests.get(url, stream=True)
     total_size_in_bytes = int(response.headers.get('content-length', 0))
-    block_size = 1024 #1 Kibibyte
+    block_size = 1024*10 #10 Kibibyte
     if quiet:
         with open(path, "wb") as f:
             for data in response.iter_content(block_size):
@@ -37,7 +37,8 @@ def _read_batch(path):
         dict = pickle.load(fo, encoding="bytes")
     data = jnp.array(dict[b"data"])
     labels = jnp.array(dict[b"labels"])
-    data = data.reshape((-1, 32, 32, 1))
+    data = data.reshape((-1, 3, 32, 32))
+    data = data.transpose((0, 2, 3, 1))
     return data, labels
 
 def cifar10(quiet=False):

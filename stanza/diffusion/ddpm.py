@@ -44,7 +44,6 @@ class DDPMSchedule:
     def num_steps(self):
         return self.betas.shape[0]
 
-
     # This will do the noising
     # forward process
     @jax.jit

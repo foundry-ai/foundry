@@ -8,33 +8,36 @@ import jax
 
 # Tools for auto wrapping and unwrapping
 # function arguments
-class _FuncWrapper:
+class _func:
     def __init__(self, func):
         self.func = func
+    
+    def __hash__(self):
+        return hash(self.func)
 
 def _wrapper_flatten(v):
     return (), v.func
 
 def _wrapper_unflatten(aux, children):
-    return _FuncWrapper(aux)
+    return _func(aux)
 
-jax.tree_util.register_pytree_node(_FuncWrapper, _wrapper_flatten, _wrapper_unflatten)
+jax.tree_util.register_pytree_node(_func,
+        _wrapper_flatten, _wrapper_unflatten)
 
-def _wrap(args):
+def _wrap_functions(args):
     def _wrap_arg(node):
         if callable(node) and not is_jaxtype(type(node)):
-            node = _FuncWrapper(node)
+            node = _func(node)
         return node
     return jax.tree_util.tree_map(_wrap_arg, args)
 
-def _unwrap(args):
+def _unwrap_functions(args):
     def _unwrap_arg(node):
-        if isinstance(node, _FuncWrapper):
+        if isinstance(node, _func):
             node = node.func
         return node
-
     def _unwrap_is_leaf(node):
-        if isinstance(node, _FuncWrapper):
+        if isinstance(node, _func):
             return True
         return False
     return jax.tree_util.tree_map(_unwrap_arg, args, is_leaf=_unwrap_is_leaf)

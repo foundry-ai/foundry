@@ -58,7 +58,6 @@ class Data:
         i = self.advance(i, idx)
         return self.get(i)
 
-
     # These should NOT be overridden:
 
     @property
@@ -124,11 +123,8 @@ class Data:
         raise NotImplementedError("Dataset does not implement sample_batch()")
     
     @staticmethod
-    def from_pytree(data, n=None):
-        nums_tree = tree_util.tree_map(lambda x: jnp.shape(x)[0], data)
-        all_nums = tree_util.tree_flatten(nums_tree)[0]
-        num = all_nums[0]
-        return PyTreeData(data, num if n is None else n)
+    def from_pytree(data):
+        return PyTreeData(data)
 
 # Type alias for iterators
 Iterator = Any
@@ -178,20 +174,18 @@ class DataSlice(Data):
 @dataclass(jax=True)
 class PyTreeData(Data):
     data: jnp.array
-    # n can be less than the data shape!
-    # This allows PyTreeData to represent
-    # uneven size batches
-    n: int
 
     @property
     def start(self):
         return 0
 
     def remaining(self, iter):
-        return self.n - iter
+        n = tree_util.tree_flatten(self.data)[0][0].shape[0]
+        return n - iter
     
     def is_end(self, iter):
-        return iter >= self.n
+        n = tree_util.tree_flatten(self.data)[0][0].shape[0]
+        return iter >= n
 
     def next(self, iter):
         return iter + 1
@@ -205,25 +199,17 @@ class PyTreeData(Data):
     def batch(self, n):
         dim = tree_util.tree_flatten(self.data)[0][0].shape[0]
         # get the amount of padding we need
-        pdim = (((n - dim) % n) + n) % n
-        batches = (dim + pdim)//n
+        rem = dim % n
         def make_batches(x):
-            # print('x', x.shape)
-            last = jnp.expand_dims(x[-1], 0)
-            # print('last', last.shape)
-            padding = jnp.repeat(last, pdim, axis=0)
-            # print('padding', padding.shape)
-            padded = jnp.concatenate((x,padding), axis=0)
-            return padded.reshape((-1,n) + padded.shape[1:])
+            if rem > 0:
+                x = jax.tree_util.tree_map(lambda x: x[:-rem], x)
+            x = x.reshape((-1,n) + x.shape[1:])
+            return x
         batched = jax.tree_util.tree_map(
             make_batches, self.data
         )
-        batch_sizes = n*jnp.ones((batches,))
-        # modify the last batch size
-        batch_sizes = batch_sizes.at[-1].set(n - pdim)
         return PyTreeData(
-            PyTreeData(batched, batch_sizes),
-            batches
+            PyTreeData(batched),
         )
 
     def flatten(self):
@@ -233,20 +219,18 @@ class PyTreeData(Data):
             data = jax.tree_util.tree_map(
                 lambda x: x.reshape((-1,) + x.shape[2:]),
                 self.data.data)
-            # sum all of the sub-sizes
-            n = self.data.n.sum()
-            return PyTreeData(data, n)
+            return PyTreeData(data)
         return super().flatten()
 
     # This dataset type is shuffleable
     def shuffle(self, key):
         from stanza.util.random import permutation
         dim = tree_util.tree_flatten(self.data)[0][0].shape[0]
-        idx = permutation(key, dim, self.n)
+        idx = jax.random.permutation(key, dim)
         data = jax.tree_util.tree_map(
             lambda x: jnp.take(x, idx, axis=0, unique_indices=True),
         self.data)
-        return PyTreeData(data, self.n)
+        return PyTreeData(data)
     
     def sample(self, key):
         idx = jax.random.randint(key, (), 0, self.n)
@@ -265,7 +249,7 @@ class PyTreeData(Data):
                 buf = jax.tree_util.tree_map(
                     lambda x: x[:buffer_size], data.data
                 )
-                return PyTreeData(buf, jnp.minimum(data.n, buffer_size))
+                return PyTreeData(buf)
             # If we were supposed to chunk, just
             # read in all of the data anyways...
             return data
@@ -282,7 +266,8 @@ class PyTreeData(Data):
             start = data.start
         if buffer_size is not None:
             data, n, _ = PyTreeData._data_chunk(data, start, buffer_size)
-            return PyTreeData(data, n)
+            data = jax.tree_util.tree_map(lambda x: x[:n], data)
+            return PyTreeData(data)
         else:
             items = []
             n = 0
@@ -297,7 +282,8 @@ class PyTreeData(Data):
                 return PyTreeData(None, 0)
             data = jax.tree_util.tree_map(
                 lambda *x: jnp.concatenate(x), *items)
-            return PyTreeData(data, n)
+            data = jax.tree_util.tree_map(lambda x: x[:n], data)
+            return PyTreeData(data)
     
     # Returns
     @staticmethod

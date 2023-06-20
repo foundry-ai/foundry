@@ -38,40 +38,17 @@ class TrainResults:
     opt_state: Any
     hook_states: List[Any]
 
-# A sentinel for not passing in state
-# to the loss function
-@dataclass(jax=True)
-class NoState:
-    pass
-
-NO_STATE_TYPE=NoState
-NO_STATE=NO_STATE_TYPE()
-
-# TODO: This batched loss function
-# does not handle the state properly
-# since masked-out entries can influence the state.
 @jax.jit
 def _batch_loss_fn(loss_fn, fn_state,
-                   rng_key, batch, batch_n, fn_params):
+                   rng_key, batch, fn_params):
     logger.trace("Tracing batch loss", only_tracing=True)
-    if type(fn_state) == NO_STATE_TYPE:
-        batch_loss_fn = jax.vmap(loss_fn,
-                                    in_axes=(None, None, 0),
-                                    axis_name='batch')
-        loss, stats = batch_loss_fn(fn_params, rng_key, batch)
-    else:
-        batch_loss_fn = jax.vmap(loss_fn,
-                                    in_axes=(None, None, None, 0),
-                                    axis_name='batch')
-        fn_state, loss, stats = batch_loss_fn(fn_params, fn_state,
-                                                rng_key, batch)
-
-    sample_mask = jnp.arange(loss.shape[0]) < batch_n
-    def mean(x):
-        x = jnp.where(sample_mask, x, 0)
-        return jnp.sum(x, axis=0)/batch_n
-    loss = mean(loss)
-    stats = jax.tree_util.tree_map(mean, stats)
+    batch_loss_fn = jax.vmap(loss_fn,
+                    in_axes=(None, None, None, 0),
+                    axis_name='batch')
+    fn_state, loss, stats = batch_loss_fn(fn_params, fn_state,
+                                            rng_key, batch)
+    loss = jnp.mean(loss)
+    stats = jax.tree_util.tree_map(jnp.mean, stats)
     return loss, (stats, fn_state)
 
 @jax.jit
@@ -93,23 +70,19 @@ class Trainer:
     epochs : int = field(default=None)
     max_iterations : int = field(default=None)
 
-    @staticmethod
-    def total_iterations(dataset, batch_size, epochs):
-        num_batches = (dataset.length - 1) // batch_size + 1
-        return num_batches * epochs
-
     @jax.jit
     def train_step(self, state, *,
                         loss_fn, batch_dataset):
         logger.trace("Tracing train step", only_tracing=True)
         rng_key, sk = jax.random.split(state.rng_key)
+        from stanza.util import shape_tree
         batch_data = batch_dataset.get(state.batch_iterator)
         batch_iterator = batch_dataset.next(state.batch_iterator)
         # Specify a buffer size!
         batch = PyTreeData.from_data(batch_data,
                             buffer_size=self.batch_size)
         batch_fn = Partial(_batch_loss_fn, loss_fn, state.fn_state, sk, 
-                                batch.data, batch.n)
+                                batch.data)
         grads, (stats, fn_state) = jax.grad(batch_fn, has_aux=True)(state.fn_params)
         updates, opt_state = self.optimizer.update(grads, 
                                     state.opt_state, state.fn_params)
@@ -203,7 +176,7 @@ class Trainer:
         return state
     
     def train(self, loss_fn, dataset, rng_key,
-                init_fn_params, init_fn_state=NO_STATE,
+                init_fn_params, init_fn_state=None,
                 *,
                 init_opt_state=None,
                 # can specify epochs either through
@@ -221,7 +194,7 @@ class Trainer:
             raise ValueError("Must specify either number of epochs or iterations")
         
         if max_iterations is None:
-            num_batches = (dataset.length - 1) // self.batch_size + 1
+            num_batches = dataset.length // self.batch_size
             max_iterations = num_batches*epochs
 
         state = TrainState(
@@ -245,8 +218,8 @@ class Trainer:
         )
         train_fn = jax.jit(type(self)._train_loop) if jit else \
                     partial(type(self)._train_loop,jit=False)
-        state = train_fn(self, 
-            stanza.Partial(loss_fn), dataset, state, hooks)
+        from stanza.util import shape_tree
+        state = train_fn(self, loss_fn, dataset, state, hooks)
         results = TrainResults(
             fn_params = state.fn_params,
             fn_state = state.fn_state,
@@ -278,7 +251,7 @@ class SAMTrainer(Trainer):
         batch = PyTreeData.from_data(batch_data,
                             buffer_size=self.batch_size)
         batch_fn = Partial(_batch_loss_fn, loss_fn, state.fn_state, sk, 
-                                batch.data, batch.n)
+                                batch.data)
         batch_fn_grad = jax.grad(batch_fn, has_aux=True)
         grads, (stats, fn_state) = batch_fn_grad(state.fn_params)
         # take the sub-step
@@ -302,7 +275,7 @@ class SAMTrainer(Trainer):
         return state
 
     def train(self, loss_fn, dataset, rng_key,
-                init_fn_params, init_fn_state=NO_STATE,
+                init_fn_params, init_fn_state=None,
                 *,
                 init_opt_state=None,
                 init_sub_opt_state=None,

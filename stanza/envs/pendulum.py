@@ -3,7 +3,6 @@ from stanza.policies import PolicyOutput
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 import math
 
 from typing import NamedTuple
@@ -58,33 +57,8 @@ class PendulumEnv(Environment):
             u_cost = jnp.sum(u**2)
         return 5*xf_cost + 2*x_cost + u_cost
 
-    def constraints(self, _, us):
-        constraints = [jnp.ravel(us - 3),
-                       jnp.ravel(-3 - us)]
-        return jnp.concatenate(constraints)
-
-    def visualize(self, states, actions):
-        import plotly.express as px
-        traj = px.line(x=states.angle, y=states.vel)
-        traj.update_layout(xaxis_title="Theta", yaxis_title="Omega", title="State Trajectory")
-
-        theta = px.line(x=jnp.arange(states.angle.shape[0]), y=states.angle)
-        theta.update_layout(xaxis_title="Time", yaxis_title="Theta", title="Angle")
-
-        omega = px.line(x=jnp.arange(states.vel.shape[0]), y=states.vel)
-        omega.update_layout(xaxis_title="Time", yaxis_title="Omega", title="Angular Velocity")
-
-        u = px.line(x=jnp.arange(actions.shape[0]), y=actions)
-        u.update_layout(xaxis_title="Time", yaxis_title="u")
-
-        video = jax.vmap(self.render)(states)
-        return {
-            'video': Video(video, fps=15),
-            'traj': Figure(traj),
-            'theta': Figure(theta),
-            'omega': Figure(omega),
-            'u': Figure(u)
-        }
+    def reward(self, state, action, next_state):
+        return -self.cost(state, action)
 
     def render(self, state, width=256, height=256):
         angle = jnp.squeeze(state.angle)
@@ -100,6 +74,7 @@ class PendulumEnv(Environment):
         )
         image = canvas.paint(image, sdf) 
         return image
+    
     
     def teleop_policy(self, interface):
         def policy(_):

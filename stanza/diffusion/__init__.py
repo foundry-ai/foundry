@@ -1,0 +1,3 @@
+
+class Diffuser:
+    pass

@@ -2,10 +2,9 @@ from dataclasses import dataclass as _dataclass, is_dataclass, \
             fields, replace, field as _field
 from functools import partial
 from typing import Any
+from stanza import _wrap_functions, _unwrap_functions
 import types
 from itertools import chain
-
-from stanza import _wrap, _unwrap
 
 def dataclass(cls=None, frozen : bool = False, jax : bool = True, kw_only: bool = False):
     frozen = frozen or jax
@@ -24,36 +23,36 @@ def _make_dataclass(cls=None, jax=False, **kwargs):
         )
     return dcls
 
-def field(*, default=None, default_factory=None, jax_static=False, **kwargs):
+NoArg = object()
+def field(*, default=NoArg, default_factory=NoArg, jax_static=False, **kwargs):
     kwargs['jax_static'] = jax_static
     args = {}
-    if default is not None:
+    if default is not NoArg:
         args['default'] = default
-    if default_factory is not None:
+    if default_factory is not NoArg:
         args['default_factory'] = default_factory
-    f = _field(*args,
+    f = _field(**args,
                metadata=kwargs)
     return f
 
 def _partition(pred, iterable):
     a, b = [], []
     for item in iterable:
-        s, i = pred(item)
+        s = pred(item)
         l = a if s else b
-        l.append(i)
+        l.append(item)
     return a, b
 
 def _dataclass_flatten(dcls, do):
     import jax.util
     def is_static(p):
         # Make functions automatically static
-        if isinstance(p[1], types.FunctionType):
-            return True, p
         f = dcls.__dataclass_fields__[p[0]]
-        return (f.metadata.get('jax_static') if f.metadata else False), p
+        return f.metadata.get('jax_static') if f.metadata else False
     static_items, dyn_items = _partition(is_static, sorted(do.__dict__.items()))
     static_keys, static_values = jax.util.unzip2(static_items)
     dyn_keys, dyn_values = jax.util.unzip2(dyn_items)
+    dyn_values = _wrap_functions(dyn_values)
     children = dyn_values
     aux = dyn_keys, static_keys, static_values
     return children, aux
@@ -62,7 +61,7 @@ def _dataclass_unflatten(dcls, aux, children):
     do = dcls.__new__(dcls)
     dyn_keys, static_keys, static_values = aux
     dyn_values = children
-    dyn_values = [_unwrap(v) for v in dyn_values]
+    dyn_values = _unwrap_functions(dyn_values)
 
     attrs = dict(chain(zip(dyn_keys, dyn_values), zip(static_keys, static_values)))
     # fill in the fields from the children

@@ -11,8 +11,8 @@ from stanza.train.wandb import WandbReporter
 from stanza.dataclasses import dataclass, replace
 from stanza.util.random import PRNGSequence
 from stanza.util.logging import logger
-from stanza.model.unet1d import ConditionalUnet1D
-from stanza.model.diffusion import DDPMSchedule
+from stanza.nets.unet1d import ConditionalUnet1D
+from stanza.diffusion.ddpm import DDPMSchedule
 
 from stanza.data.trajectory import chunk_trajectory, Timestep
 from stanza.data.normalizer import LinearNormalizer

@@ -57,14 +57,14 @@ jit_apply(orig_init_params, None, jnp.ones(()))
 jit_apply(orig_init_params, None, jnp.ones(()))
 logger.info("Done testing JIT apply")
 
-def loss_fn(params, rng_key, sample):
+def loss_fn(params, _state, rng_key, sample):
     x, y = sample
     out = jit_apply(params, rng_key, x)
     loss = jnp.square(out - y)
     stats = {
         "loss": loss
     }
-    return loss, stats
+    return _state, loss, stats
 
 from stanza import Partial
 from stanza.train import Trainer
@@ -83,10 +83,6 @@ with WandbReporter() as wb:
             hooks=[cb], jit=True
         )
 
-from stanza.train import _train_jit
-
-logger.info("Train cache size {}", _train_jit._cache_size())
-
 logger.info("Training again...jit is cached so now training is fast")
 with WandbReporter() as wb:
     with RichReporter(iter_interval=500) as cb:
@@ -97,15 +93,3 @@ with WandbReporter() as wb:
             PRNGKey(42), init_params,
             hooks=[cb], jit=True
         )
-
-logger.info("Training again...but this time without a full JIT loop (sloooow)")
-with WandbReporter() as wb:
-    with RichReporter(iter_interval=500) as cb:
-        trainer = Trainer(epochs=5000, batch_size=10, optimizer=optimizer)
-        init_params = net.init(PRNGKey(7), jnp.ones(()))
-        res = trainer.train(
-            Partial(loss_fn), dataset,
-            PRNGKey(42), init_params,
-            hooks=[cb], jit=False
-        )
-logger.info("Train cache size {}", _train_jit._cache_size())

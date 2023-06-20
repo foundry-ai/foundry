@@ -25,8 +25,9 @@ class Environment:
     def step(self, state, action, rng_key):
         raise NotImplementedError("Must impelement step()")
     
-    # The reward should be baked into state
-    def reward(self, state):
+    # reward is a function of the state, action, 
+    # and subsequent next_state
+    def reward(self, state, action, next_state):
         pass
 
     def terminated(self, state):

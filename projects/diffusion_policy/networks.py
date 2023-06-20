@@ -1,5 +1,5 @@
 from stanza.util.logging import logger
-from stanza.model.unet1d import ConditionalUnet1D
+from stanza.nets.unet1d import ConditionalUnet1D
 
 import stanza
 import haiku as hk
