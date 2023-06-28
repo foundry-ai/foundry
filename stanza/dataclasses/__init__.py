@@ -24,7 +24,9 @@ def _make_dataclass(cls=None, jax=False, **kwargs):
     return dcls
 
 NoArg = object()
-def field(*, default=NoArg, default_factory=NoArg, jax_static=False, **kwargs):
+
+def field(*, default=NoArg, default_factory=NoArg, 
+            jax_static=False, **kwargs):
     kwargs['jax_static'] = jax_static
     args = {}
     if default is not NoArg:

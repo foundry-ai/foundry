@@ -10,5 +10,10 @@ def vmap_ravel_pytree(x):
     uf = jax.vmap(uf)
     return flat, uf
 
+def extract_shifted(xs):
+    earlier_xs = jax.tree_map(lambda x: x[:-1], xs)
+    later_xs = jax.tree_map(lambda x: x[1:], xs)
+    return earlier_xs, later_xs
+
 def shape_tree(x):
     return jax.tree_util.tree_map(lambda x: x.shape, x)

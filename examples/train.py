@@ -27,14 +27,23 @@ logger.info("Batched length: {}", batches.length)
 
 import haiku as hk
 
-def net_fn(input):
-    logger.info("Tracing model", only_tracing=True)
-    input = jnp.atleast_1d(input)
-    y = hk.nets.MLP([10, 1])(input)
-    return jnp.squeeze(y, -1)
+import flax.linen as nn
+from typing import Sequence
 
-net = hk.transform(net_fn)
-orig_init_params = net.init(PRNGKey(7), jnp.ones(()))
+class MLP(nn.Module):
+  features: Sequence[int]
+
+  @nn.compact
+  def __call__(self, x):
+    x = jnp.atleast_1d(x)
+    for feat in self.features[:-1]:
+      x = nn.relu(nn.Dense(feat)(x))
+    x = nn.Dense(self.features[-1])(x)
+    return x
+
+model = MLP([10, 1])
+
+orig_init_params = model.init(PRNGKey(7), jnp.ones(()))
 
 import optax
 from stanza.util.random import permutation
@@ -42,19 +51,19 @@ import jax
 
 logger.info("Permutation test: {}", permutation(PRNGKey(42), 10, n=6))
 
-optimizer = optax.adamw(optax.cosine_decay_schedule(1e-3, 5000*10), 
-                        weight_decay=1e-6)
+optimizer = optax.adamw(
+    optax.cosine_decay_schedule(1e-3, 5000*10), 
+    weight_decay=1e-6
+)
 
 def net_apply(params, rng_key, x):
-    params = {m: {k: jnp.array(v) for (k,v) in sp.items()}
-                for (m,sp) in params.items()}
-    return net.apply(params, rng_key, x)
+    y = model.apply(params, x)
+    y = jnp.squeeze(y, -1)
+    return y
 
 logger.info("Testing JIT apply")
 jit_apply = jax.jit(net_apply)
-jit_apply(orig_init_params, None, jnp.ones(()))
-jit_apply(orig_init_params, None, jnp.ones(()))
-jit_apply(orig_init_params, None, jnp.ones(()))
+jit_apply(orig_init_params, PRNGKey(42), jnp.ones(()))
 logger.info("Done testing JIT apply")
 
 def loss_fn(params, _state, rng_key, sample):
@@ -76,7 +85,7 @@ from stanza.train.wandb import WandbReporter
 with WandbReporter() as wb:
     with RichReporter(iter_interval=500) as cb:
         trainer = Trainer(epochs=5000, batch_size=10, optimizer=optimizer)
-        init_params = net.init(PRNGKey(7), jnp.ones(()))
+        init_params = model.init(PRNGKey(7), jnp.ones(()))
         res = trainer.train(
             Partial(loss_fn), dataset,
             PRNGKey(42), init_params,
@@ -87,7 +96,7 @@ logger.info("Training again...jit is cached so now training is fast")
 with WandbReporter() as wb:
     with RichReporter(iter_interval=500) as cb:
         trainer = Trainer(epochs=5000, batch_size=10, optimizer=optimizer)
-        init_params = net.init(PRNGKey(7), jnp.ones(()))
+        init_params = model.init(PRNGKey(7), jnp.ones(()))
         res = trainer.train(
             Partial(loss_fn), dataset,
             PRNGKey(42), init_params,

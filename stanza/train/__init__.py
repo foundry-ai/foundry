@@ -218,7 +218,6 @@ class Trainer:
         )
         train_fn = jax.jit(type(self)._train_loop) if jit else \
                     partial(type(self)._train_loop,jit=False)
-        from stanza.util import shape_tree
         state = train_fn(self, loss_fn, dataset, state, hooks)
         results = TrainResults(
             fn_params = state.fn_params,
