@@ -7,17 +7,20 @@ import math
 
 from typing import NamedTuple
 from functools import partial
+
 from stanza.runtime.database import Figure, Video
+from stanza.dataclasses import dataclass, field
+
 import stanza.graphics.canvas as canvas
 
 class State(NamedTuple):
     angle: jnp.ndarray
     vel: jnp.ndarray
 
+@dataclass(jax=True)
 class PendulumEnv(Environment):
-    def __init__(self, sub_steps=1):
-        self.sub_steps = sub_steps
-        self.dt = 0.2
+    sub_steps : int = field(default=1, jax_static=True)
+    dt : float = 0.2
 
     def sample_action(self, rng_key):
         return jax.random.uniform(
@@ -75,6 +78,8 @@ class PendulumEnv(Environment):
         image = canvas.paint(image, sdf) 
         return image
     
+    def done(self, state):
+        return False
     
     def teleop_policy(self, interface):
         def policy(_):

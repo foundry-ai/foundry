@@ -151,7 +151,6 @@ class Trainer:
 
     def _train_loop(self, loss_fn, dataset, state, hooks, jit=True):
         logger.trace("Tracing training", only_tracing=True)
-        logger.trace("Starting training")
         # do the first epoch by hand (a) to handle
         # the first hook states and (b) to make debugging easier
         if jit:

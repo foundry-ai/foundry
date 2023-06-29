@@ -17,3 +17,9 @@ def extract_shifted(xs):
 
 def shape_tree(x):
     return jax.tree_util.tree_map(lambda x: x.shape, x)
+
+def shape_dtypes(x):
+    return jax.tree_util.tree_map(
+        lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype),
+        x
+    )

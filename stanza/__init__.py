@@ -79,13 +79,13 @@ def jit(fun=None, **kwargs):
 def _jit(fun, **kwargs):
     @wraps(fun)
     def internal_fun(*fargs, **fkwargs):
-        (fargs, fkwargs) = _unwrap((fargs, fkwargs))
+        (fargs, fkwargs) = _unwrap_functions((fargs, fkwargs))
         return fun(*fargs, **fkwargs)
     jfun = jax.jit(internal_fun, **kwargs)
 
     @wraps(fun)
     def wrapped_fun(*fargs, **fkwargs):
-        (fargs, fkwargs) = _wrap((fargs, fkwargs))
+        (fargs, fkwargs) = _wrap_functions((fargs, fkwargs))
         return jfun(*fargs, **fkwargs)
     return wrapped_fun
 

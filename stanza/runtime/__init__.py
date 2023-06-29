@@ -58,7 +58,6 @@ async def launch_activity_main():
     parser = ArgParser(ActivityConfig)
     activity_info, = parser.parse(sys.argv[1:], ignore_unknown=True)
     entrypoint = activity_info.entrypoint
-    print(entrypoint)
     entrypoint = _load_entrypoint(entrypoint)
     if not hasattr(entrypoint, "__config__"):
         raise ArgParseError("Entrypoint must be decorated with @activity")
@@ -69,7 +68,7 @@ async def launch_activity_main():
     if activity_info.help:
         parser.print_help()
         return
-    print(config)
+    entrypoint(config, None)
 
 # Entrypoint for launching activities, sweeps
 def launch_activity():
