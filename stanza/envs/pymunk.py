@@ -103,12 +103,13 @@ class PyMunkWrapper(Environment):
             shapes.append(render)
         render = canvas.stack(*shapes)
         # flip y axis
-        # render = canvas.transform(render,
-        #     scale=jnp.array([1, -1]),
-        # )
         # transform
         render = canvas.transform(render,
             scale=jnp.array([width, height]) / jnp.array([self.width, self.height]),
+        )
+        render = canvas.transform(render,
+            scale=jnp.array([1, -1]),
+            translation=jnp.array([0, -height])
         )
         img = canvas.paint(img, render)
         return img
