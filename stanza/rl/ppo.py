@@ -30,6 +30,11 @@ class PPOState:
 
     env: Environment
     env_states: Any
+    
+    # the current timestep
+    last_transitions: Any
+    last_gaes: Any
+    last_targets: Any
 
 @dataclass(jax=True)
 class Transition:
@@ -175,6 +180,13 @@ class PPO:
                             init_opt_state=state.opt_state,
                             epochs=self.update_epochs)
         opt_state, ac_params = result.opt_state, result.fn_params
+
+        rep_state = replace(
+            state,
+            last_transitions=transitions,
+            last_advantages=advantages,
+            last_targets=targets
+        )
 
         state = replace(
             state,

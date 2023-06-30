@@ -8,7 +8,7 @@ from stanza.train.ema import EmaHook
 from stanza.train.rich import RichReporter
 from stanza.train.wandb import WandbReporter
 
-from stanza.dataclasses import dataclass, replace
+from stanza.dataclasses import dataclass, replace, field
 from stanza.util.random import PRNGSequence
 from stanza.util.logging import logger
 from stanza.nets.unet1d import ConditionalUnet1D
@@ -36,7 +36,7 @@ import optax
 import time
 import wandb
 
-@dataclass(frozen=True)
+@dataclass
 class Config:
     env: str = "pusht"
     wandb: str = "diffusion_policy"
@@ -114,7 +114,7 @@ def setup_data(config):
 
 def loss(config, net, diffuser, obs_norm, action_norm,
             # these are passed in per training loop:
-            params, rng, sample):
+            params, state, rng, sample):
     logger.trace("Tracing loss function", only_tracing=True)
     t_sk, n_sk, s_sk = jax.random.split(rng, 3)
     timestep = jax.random.randint(t_sk, (), 0, diffuser.num_steps)
@@ -136,7 +136,7 @@ def loss(config, net, diffuser, obs_norm, action_norm,
     stats = {
         "loss": loss
     }
-    return loss, stats
+    return state, loss, stats
 
 @activity(Config)
 def train_policy(config, database):
@@ -154,7 +154,7 @@ def train_policy(config, database):
     net = make_network(config)
 
     logger.info("Dataset Size: {} chunks", data.length)
-    train_steps = Trainer.total_iterations(data, config.batch_size, config.epochs)
+    train_steps = (data.length // config.batch_size) * config.epochs
     logger.info("Training for {} steps", train_steps)
     warmup_steps = config.warmup_steps
 
@@ -230,7 +230,7 @@ def sweep_train(config, database):
 @dataclass
 class EvalConfig:
     path: str = None
-    rng_key: PRNGKey = PRNGKey(42)
+    rng_key: PRNGKey = field(default_factory=lambda:PRNGKey(42))
     samples: int = 10
     rng_seed: int = 42
 

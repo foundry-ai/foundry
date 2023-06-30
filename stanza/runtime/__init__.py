@@ -25,7 +25,7 @@ class ActivityConfig:
     help: bool = field(nargs=0, default=False,
             arg_help="Prints this help message",
             arg_builder=flag())
-    database: str = None
+    database: str = "local://"
     target: str = None
     py_config: str = None
     json_config: str = None
@@ -49,7 +49,7 @@ def _load_entrypoint(entrypoint_string):
     module = importlib.import_module(module)
     return getattr(module, attr)
 
-async def launch_activity_main():
+def launch_activity():
     import sys
     import os
     # Add projects to python path
@@ -68,13 +68,5 @@ async def launch_activity_main():
     if activity_info.help:
         parser.print_help()
         return
-    entrypoint(config, None)
-
-# Entrypoint for launching activities, sweeps
-def launch_activity():
-    try:
-        asyncio.run(launch_activity_main())
-    except ArgParseError as e:
-        print(e)
-    except KeyboardInterrupt:
-        sys.exit(0)
+    db = Database.from_url(activity_info.database)
+    entrypoint(config, db)

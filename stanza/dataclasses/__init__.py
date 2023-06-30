@@ -26,9 +26,11 @@ def _make_dataclass(cls=None, jax=False, **kwargs):
 NoArg = object()
 
 def field(*, default=NoArg, default_factory=NoArg, 
-            jax_static=False, **kwargs):
+            jax_static=False, init=NoArg, **kwargs):
     kwargs['jax_static'] = jax_static
     args = {}
+    if init is not NoArg:
+        args['init'] = init
     if default is not NoArg:
         args['default'] = default
     if default_factory is not NoArg:
