@@ -5,7 +5,11 @@ description = "A batteries-included ML toolkit"
 authors = ["Daniel Pfrommer <dan.pfrommer@gmail.com>"]
 license = "MIT"
 readme = "README.md"
-packages = [{include = "stanza"}]
+packages = [
+    {include = "stanza"},
+    {include = "diffusion_policy", from = "projects"},
+    {include = "demo", from = "projects"}
+]
 
 
 [tool.poetry.scripts]

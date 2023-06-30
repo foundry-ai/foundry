@@ -50,11 +50,6 @@ def _load_entrypoint(entrypoint_string):
     return getattr(module, attr)
 
 def launch_activity():
-    import sys
-    import os
-    # Add projects to python path
-    sys.path.append(os.path.abspath(os.path.join(__file__, "..","..","..", "projects")))
-
     parser = ArgParser(ActivityConfig)
     activity_info, = parser.parse(sys.argv[1:], ignore_unknown=True)
     entrypoint = activity_info.entrypoint
