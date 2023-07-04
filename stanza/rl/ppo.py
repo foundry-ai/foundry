@@ -176,18 +176,17 @@ class PPO:
         data = Data.from_pytree((transitions, advantages, targets))
         # reset the train state
         # to make it continue training
+        train_state = state.train_state
         train_state = replace(state.train_state,
             iteration=0,
-            max_iterations=None,
-            epoch_iteration=0,
-            max_epochs=self.update_epochs,
-            epoch=0)
+            max_iterations=self.update_epochs * data.length // self.trainer.batch_size,
+            epoch_iteration=0, epoch=0)
         with jax.profiler.StepTraceAnnotation("train", step_num=state.iteration):
             train_state = self.trainer.run(train_state, data)
         state = replace(
             state,
             iteration=state.iteration + 1,
-            #train_state=train_state,
+            train_state=train_state,
             last_stats=self.calculate_stats(state)
         )
         with jax.profiler.StepTraceAnnotation("hooks", step_num=state.iteration):
@@ -217,7 +216,7 @@ class PPO:
 
         train_state = self.trainer.init(loss_fn, sample, 0,
                                         tk, init_params, init_opt_state=init_opt_state,
-                                        hooks=train_hooks)
+                                        hooks=train_hooks, epochs=self.update_epochs)
         state = PPOState(
             iteration=0,
             max_iterations=num_updates,

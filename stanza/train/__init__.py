@@ -113,15 +113,9 @@ class Trainer:
         else:
             epoch_fn = Partial(self.train_epoch,
                                dataset=dataset, jit=False)
-        needs_iters = state.max_iterations is None and state.max_epochs is not None
-        if needs_iters:
-            max_iterations = len(dataset) * state.max_epochs // self.batch_size
-            state = replace(state, max_iterations=max_iterations)
         # populate the last_stats if necessary
         state = stanza.util.loop(epoch_fn, state, jit=jit)
         state = run_hooks(state)
-        if needs_iters:
-            state = replace(state, max_iterations=None)
         logger.trace("Done tracing training", only_tracing=True)
         return state
     
