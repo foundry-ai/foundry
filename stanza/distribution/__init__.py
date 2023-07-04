@@ -1,0 +1,1 @@
+from stanza.distribution.mvn import MultivariateNormalDiag

@@ -2,7 +2,7 @@ import functools
 from functools import wraps
 from jax.tree_util import Partial
 import jax.tree_util
-from typing import Callable
+from typing import List, Any
 import types
 import jax
 

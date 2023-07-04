@@ -59,7 +59,7 @@ class RichCallback:
 
         new_state = jax.lax.cond(
             jnp.logical_or(
-                jnp.logical_and(state.total_iteration % self.iter_interval == 0,
+                jnp.logical_and(state.iteration % self.iter_interval == 0,
                             state.last_stats is not None),
                 # When we have reached the end, do a callback
                 # so that we can finish the progress bars
@@ -115,8 +115,8 @@ class RichReporter:
             self.table.add_row(stat, *cells)
 
     def _handle_state(self, state):
-        iteration = state.total_iteration.item()
-        max_iter = state.max_iteration.item()
+        iteration = state.iteration.item()
+        max_iter = state.max_iterations.item()
         epoch = state.epoch.item()
         max_epoch = state.max_epoch.item() if state.max_epoch else None
         # clear the table

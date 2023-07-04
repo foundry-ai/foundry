@@ -9,7 +9,6 @@ import asyncio
 from stanza.dataclasses import dataclass, field
 from stanza.runtime.database import Database
 from stanza.runtime.container import Target
-from stanza.runtime.pool import Pool
 from stanza.dataclasses.arg import \
     ArgParser, ArgParseError, flag
 

@@ -1,6 +1,7 @@
 from stanza import Partial
 from stanza.dataclasses import dataclass, field, replace
 from stanza.util.logging import logger
+from stanza.util import LoopState
 from stanza.data import PyTreeData
 
 from jax.random import PRNGKey
@@ -15,17 +16,11 @@ import jax
 import jax.numpy as jnp
 
 @dataclass(jax=True)
-class TrainState:
+class TrainState(LoopState):
     epoch: int
     max_epoch: int
-    total_iteration: int
     epoch_iteration: int
-    max_iteration: int
-
     batch_iterator: Any
-    last_stats : Any
-    hook_states : List[Any]
-
     rng_key: PRNGKey
     fn_params: Any
     fn_state: Any
@@ -90,7 +85,7 @@ class Trainer:
 
         state = replace(state,
             epoch_iteration=state.epoch_iteration + 1,
-            total_iteration=state.total_iteration + 1,
+            iteration=state.iteration+ 1,
             batch_iterator=batch_iterator,
             last_stats=stats,
             rng_key=rng_key,
@@ -112,8 +107,8 @@ class Trainer:
         state = replace(state, last_stats=None)
         return state
 
-    def train_epoch(self, state, *,
-                        loss_fn, dataset, hooks, jit=True):
+    def train_epoch(self, state, *, loss_fn, 
+                    dataset, hooks, jit=True):
         logger.trace("Tracing epoch step", only_tracing=True)
         rng_key, sk = jax.random.split(state.rng_key)
         state = replace(state, rng_key=rng_key)
@@ -129,7 +124,7 @@ class Trainer:
         # step_state = _run_hooks(first_step_state, hooks)
         # run first step separately
         step_state = replace(state, batch_iterator=batch_dataset.start)
-        cond_fn = lambda s: jnp.logical_and(s.total_iteration < s.max_iteration,
+        cond_fn = lambda s: jnp.logical_and(s.iteration < s.max_iterations,
                                 jnp.logical_not(batch_dataset.is_end(s.batch_iterator)))
         if jit:
             step_state = step_fn(step_state)
@@ -141,7 +136,7 @@ class Trainer:
         return replace(state,
             epoch=state.epoch+1,
             epoch_iteration=0,
-            total_iteration=step_state.total_iteration,
+            iteration=step_state.iteration,
             hook_states=step_state.hook_states,
             rng_key=step_state.rng_key,
             fn_params=step_state.fn_params,
@@ -160,14 +155,14 @@ class Trainer:
                             hooks=hooks)
             state = epoch_fn(state)
             state = jax.lax.while_loop(
-                lambda s: s.total_iteration < s.max_iteration,
+                lambda s: s.iteration < s.max_iterations,
                 epoch_fn, state
             )
         else:
             epoch_fn = Partial(self.train_epoch,
                         loss_fn=loss_fn, dataset=dataset,
                         hooks=hooks, jit=False)
-            while state.total_iteration < state.max_iteration:
+            while state.iteration < state.max_iterations:
                 state = epoch_fn(state)
         # Run the hooks after finishing
         state = _run_hooks(state, hooks)
@@ -197,18 +192,17 @@ class Trainer:
             max_iterations = num_batches*epochs
 
         state = TrainState(
+            iteration=0,
+            max_iterations=max_iterations,
+            hook_states=[None]*len(hooks),
             epoch=0, 
             max_epoch=epochs,
             epoch_iteration=0,
-            total_iteration=0,
-            max_iteration=max_iterations,
 
             # Used at the step level
             # not the state level
             batch_iterator=None,
-
             last_stats=None,
-            hook_states=[None]*len(hooks),
 
             rng_key=rng_key, 
             fn_params=init_fn_params,

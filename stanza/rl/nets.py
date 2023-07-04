@@ -5,8 +5,7 @@ import jax.numpy as jnp
 import jax
 
 from typing import Any
-
-import distrax
+from stanza.distribution import MultivariateNormalDiag
 
 
 class MLPActorCritic(nn.Module):
@@ -40,7 +39,7 @@ class MLPActorCritic(nn.Module):
             bias_init=constant(0.0)
         )(actor_mean)
         actor_logtstd = self.param("log_std", nn.initializers.zeros, (action_flat.shape[0],))
-        pi = distrax.MultivariateNormalDiag(action_uf(actor_mean), action_uf(jnp.exp(actor_logtstd)))
+        pi = MultivariateNormalDiag(action_uf(actor_mean), action_uf(jnp.exp(actor_logtstd)))
 
         critic = nn.Dense(
             256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)

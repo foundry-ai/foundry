@@ -1,15 +1,15 @@
 from typing import Any
 from stanza.dataclasses import dataclass, field, replace
 
-
 from jax.random import PRNGKey
 from stanza.util.random import PRNGSequence
-from stanza.train import Trainer
+from stanza.train import Trainer, TrainResults
 
 import jax
 import jax.numpy as jnp
 
 import stanza.policies as policies
+import stanza.util
 
 from stanza.rl import ACPolicy
 from stanza.envs import Environment
@@ -19,9 +19,10 @@ from stanza.data import Data
 from stanza import Partial
 from typing import Callable
 from stanza.util.logging import logger
+from stanza.util import LoopState, loop
 
 @dataclass(jax=True)
-class PPOState:
+class PPOState(LoopState):
     rng_key : PRNGKey
     ac_apply : Callable
     ac_params : Any
@@ -30,11 +31,6 @@ class PPOState:
 
     env: Environment
     env_states: Any
-    
-    # the current timestep
-    last_transitions: Any
-    last_gaes: Any
-    last_targets: Any
 
 @dataclass(jax=True)
 class Transition:
@@ -164,7 +160,7 @@ class PPO:
             "total_loss": total_loss
         }
 
-    def update(self, state, _):
+    def update(self, state, train_hooks=[]):
         state, transitions = self.rollout_batch(state)
         advantages, targets = self.calculate_gae(state, transitions)
         transitions, advantages, targets = jax.tree_map(
@@ -178,40 +174,49 @@ class PPO:
         result = self.trainer.train(loss_fn, data, sk,
                             state.ac_params, None,
                             init_opt_state=state.opt_state,
-                            epochs=self.update_epochs)
+                            epochs=self.update_epochs,
+                            hooks=train_hooks)
         opt_state, ac_params = result.opt_state, result.fn_params
 
-        rep_state = replace(
-            state,
-            last_transitions=transitions,
-            last_advantages=advantages,
-            last_targets=targets
-        )
-
+        loss_fn = Partial(loss_fn, ac_params, None, None)
+        # calculate across whole data
+        _, _, stats = jax.vmap(loss_fn)(data.data)
+        stats = jax.tree_map(lambda x: jnp.mean(x), stats)
         state = replace(
             state,
+            last_stats=stats,
             rng_key=rng_key,
             ac_params=ac_params,
             opt_state=opt_state
         )
-        return state, _
+        return state
 
     def train(self, rng_key, env, actor_critic_apply, init_params, *,
-              init_opt_state=None):
-        if init_opt_state is None:
-            init_opt_state = self.trainer.optimizer.init(init_params)
-
+              init_opt_state=None,
+              rl_hooks=[], train_hooks=[]):
         rngs = jax.random.split(rng_key, self.num_envs)
         env_states = jax.vmap(env.reset)(rngs)
+        num_updates = self.total_timesteps // self.timesteps // self.num_envs
+
         state = PPOState(
+            iteration=0,
+            max_iterations=num_updates,
+            hook_states=None,
+            last_stats=None,
+
             rng_key=rng_key,
+            env=env,
             ac_apply=Partial(actor_critic_apply),
             ac_params=init_params,
-            env=env,
             env_states=env_states,
             opt_state=init_opt_state
         )
-        update = Partial(type(self).update, self)
-        num_updates = self.total_timesteps // self.timesteps // self.num_envs
-        state, _ = jax.lax.scan(update, state, (), length=num_updates)
-        return state.ac_params
+        update = Partial(type(self).update, self, train_hooks=train_hooks)
+        print(rl_hooks)
+        state = stanza.util.loop(update, state, hooks=rl_hooks)
+        return TrainResults(
+            fn_params=state.ac_params,
+            fn_state=None,
+            opt_state=state.opt_state,
+            hook_states=None
+        )
