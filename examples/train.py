@@ -66,7 +66,7 @@ jit_apply = jax.jit(net_apply)
 jit_apply(orig_init_params, PRNGKey(42), jnp.ones(()))
 logger.info("Done testing JIT apply")
 
-def loss_fn(params, _state, rng_key, sample):
+def loss_fn(_state, params, rng_key, sample):
     x, y = sample
     out = jit_apply(params, rng_key, x)
     loss = jnp.square(out - y)
@@ -82,15 +82,18 @@ from stanza.train.wandb import WandbReporter
 # import wandb
 # wandb.init(project="train_test")
 
+loss_fn = Partial(loss_fn)
+
 with WandbReporter() as wb:
     with RichReporter(iter_interval=500) as cb:
         trainer = Trainer(epochs=5000, batch_size=10, optimizer=optimizer)
         init_params = model.init(PRNGKey(7), jnp.ones(()))
         res = trainer.train(
-            Partial(loss_fn), dataset,
+            loss_fn, dataset,
             PRNGKey(42), init_params,
             hooks=[cb], jit=True
         )
+
 
 logger.info("Training again...jit is cached so now training is fast")
 with WandbReporter() as wb:
@@ -98,7 +101,7 @@ with WandbReporter() as wb:
         trainer = Trainer(epochs=5000, batch_size=10, optimizer=optimizer)
         init_params = model.init(PRNGKey(7), jnp.ones(()))
         res = trainer.train(
-            Partial(loss_fn), dataset,
+            loss_fn, dataset,
             PRNGKey(42), init_params,
             hooks=[cb], jit=True
         )

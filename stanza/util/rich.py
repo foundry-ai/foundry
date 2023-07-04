@@ -53,7 +53,7 @@ class RichHook:
                                 state.iteration == state.max_iterations)
             state = jax.lax.cond(do_cb, cb, lambda x: x, state)
             new_hook_state[interval] = hs
-        return new_hook_state, state
+        return None, state
     
     def __getattr__(self, name: str) -> Any:
         if name in ["id", "extractors"]:

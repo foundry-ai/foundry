@@ -16,10 +16,11 @@ def _make_dataclass(cls=None, jax=False, **kwargs):
     dcls = _dataclass(cls, **kwargs)
     if jax:
         import jax.tree_util
-        jax.tree_util.register_pytree_node(
+        jax.tree_util.register_pytree_with_keys(
             dcls,
-            partial(_dataclass_flatten, dcls),
-            partial(_dataclass_unflatten, dcls)
+            partial(_dataclass_flatten_with_keys, dcls),
+            partial(_dataclass_unflatten, dcls),
+            partial(_dataclass_flatten, dcls)
         )
     return dcls
 
@@ -60,6 +61,20 @@ def _dataclass_flatten(dcls, do):
     children = dyn_values
     aux = dyn_keys, static_keys, static_values
     return children, aux
+
+def _dataclass_flatten_with_keys(dcls, do):
+    import jax.util
+    def is_static(p):
+        # Make functions automatically static
+        f = dcls.__dataclass_fields__[p[0]]
+        return f.metadata.get('jax_static') if f.metadata else False
+    static_items, dyn_items = _partition(is_static, sorted(do.__dict__.items()))
+    static_keys, static_values = jax.util.unzip2(static_items)
+    dyn_keys, dyn_values = jax.util.unzip2(dyn_items)
+    dyn_values = _wrap_functions(dyn_values)
+    children = dyn_values
+    aux = dyn_keys, static_keys, static_values
+    return zip(dyn_keys, children), aux
 
 def _dataclass_unflatten(dcls, aux, children):
     do = dcls.__new__(dcls)

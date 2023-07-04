@@ -1,16 +1,17 @@
 from stanza import Partial
 from stanza.dataclasses import dataclass, field, replace
 from stanza.util.logging import logger
-from stanza.util import LoopState
-from stanza.data import PyTreeData
+from stanza.util import LoopState, run_hooks, init_hooks as _init_hooks
+from stanza.data import Data, Iterator, PyTreeData
 
 from jax.random import PRNGKey
 
-from typing import Any, List
+from typing import Any, List, Callable
 from collections import namedtuple
 from functools import partial
 
 import stanza
+import stanza.util
 import optax
 import jax
 import jax.numpy as jnp
@@ -18,9 +19,11 @@ import jax.numpy as jnp
 @dataclass(jax=True)
 class TrainState(LoopState):
     epoch: int
-    max_epoch: int
+    max_epochs: int
     epoch_iteration: int
-    batch_iterator: Any
+
+    loss_fn: Callable
+
     rng_key: PRNGKey
     fn_params: Any
     fn_state: Any
@@ -40,25 +43,15 @@ def _batch_loss_fn(loss_fn, fn_state,
     batch_loss_fn = jax.vmap(loss_fn,
                     in_axes=(None, None, None, 0),
                     axis_name='batch')
-    fn_state, loss, stats = batch_loss_fn(fn_params, fn_state,
+    fn_state, loss, stats = batch_loss_fn(fn_state, fn_params,
                                             rng_key, batch)
     loss = jnp.mean(loss)
-    stats = jax.tree_util.tree_map(jnp.mean, stats)
+    stats = jax.tree_map(jnp.mean, stats)
     return loss, (stats, fn_state)
-
-@jax.jit
-def _run_hooks(state, hooks):
-    new_hook_states = []
-    for h, hs in zip(hooks, state.hook_states):
-        hs, state = h(hs, state)
-        new_hook_states.append(hs)
-    state = replace(state, hook_states=new_hook_states)
-    return state
 
 @dataclass(jax=True, kw_only=True)
 class Trainer:
     optimizer: optax.GradientTransformation = optax.adam(1e-3)
-
     batch_size: int = field(default=32, jax_static=True)
     # optional, if not set
     # must be passed into train()
@@ -66,152 +59,121 @@ class Trainer:
     max_iterations : int = field(default=None)
 
     @jax.jit
-    def train_step(self, state, *,
-                        loss_fn, batch_dataset):
+    def train_step(self, state, batch):
         logger.trace("Tracing train step", only_tracing=True)
         rng_key, sk = jax.random.split(state.rng_key)
-        from stanza.util import shape_tree
-        batch_data = batch_dataset.get(state.batch_iterator)
-        batch_iterator = batch_dataset.next(state.batch_iterator)
-        # Specify a buffer size!
-        batch = PyTreeData.from_data(batch_data,
-                            buffer_size=self.batch_size)
-        batch_fn = Partial(_batch_loss_fn, loss_fn, state.fn_state, sk, 
-                                batch.data)
-        grads, (stats, fn_state) = jax.grad(batch_fn, has_aux=True)(state.fn_params)
+        batch = PyTreeData.from_data(batch,
+                    buffer_size=self.batch_size)
+        batch_fn = Partial(_batch_loss_fn, 
+                state.loss_fn, state.fn_state, 
+                sk, batch.data)
+        batch_grad_fn = jax.grad(batch_fn, has_aux=True)
+        grads, (stats, fn_state) = batch_grad_fn(state.fn_params)
         updates, opt_state = self.optimizer.update(grads, 
-                                    state.opt_state, state.fn_params)
+                            state.opt_state, state.fn_params)
         fn_params = optax.apply_updates(state.fn_params, updates)
-
         state = replace(state,
             epoch_iteration=state.epoch_iteration + 1,
             iteration=state.iteration+ 1,
-            batch_iterator=batch_iterator,
-            last_stats=stats,
-            rng_key=rng_key,
-            fn_params=fn_params, fn_state=fn_state, opt_state=opt_state)
+            last_stats=stats, rng_key=rng_key,
+            fn_params=fn_params, 
+            fn_state=fn_state, opt_state=opt_state)
+        return state
+    
+    def train_step_with_hooks(self, state, batch):
+        state = self.train_step(state, batch)
+        state = run_hooks(state)
         return state
 
-    @jax.jit
-    def _step_with_hooks(self, state, loss_fn, batch_dataset, hooks):
-        # get rid of the hook state 
-        # to avoid recompiling the training step
-        hook_states = state.hook_states
-        state = replace(state, hook_states=None)
-        state = self.train_step(state,
-            loss_fn=loss_fn, batch_dataset=batch_dataset)
-        # put in the hook state, call the hooks
-        # and get rid of the last stats
-        state = replace(state, hook_states=hook_states)
-        state = _run_hooks(state, hooks)
-        state = replace(state, last_stats=None)
-        return state
-
-    def train_epoch(self, state, *, loss_fn, 
-                    dataset, hooks, jit=True):
+    def train_epoch(self, state, dataset, *, jit=True):
         logger.trace("Tracing epoch step", only_tracing=True)
         rng_key, sk = jax.random.split(state.rng_key)
         state = replace(state, rng_key=rng_key)
-        dataset = dataset.shuffle(sk)
-        batch_dataset = dataset.batch(self.batch_size)
 
-        step_fn = Partial(type(self)._step_with_hooks,
-                    self,
-                    loss_fn=loss_fn,
-                    batch_dataset=batch_dataset,
-                    hooks=hooks)
+        shuffled_dataset = dataset.shuffle(sk)
+        batch_dataset = shuffled_dataset.batch(self.batch_size)
+
+        step_fn = Partial(type(self).train_step_with_hooks, self)
         # call the hooks before each epoch
-        # step_state = _run_hooks(first_step_state, hooks)
         # run first step separately
-        step_state = replace(state, batch_iterator=batch_dataset.start)
-        cond_fn = lambda s: jnp.logical_and(s.iteration < s.max_iterations,
-                                jnp.logical_not(batch_dataset.is_end(s.batch_iterator)))
-        if jit:
-            step_state = step_fn(step_state)
-            step_state = jax.lax.while_loop(cond_fn, step_fn, step_state)
-        else:
-            while cond_fn(step_state):
-                step_state = step_fn(step_state)
-
+        state = run_hooks(state)
+        state = batch_dataset.scan(step_fn, state, jit=jit,
+                limit=state.max_iterations - state.iteration)
         return replace(state,
             epoch=state.epoch+1,
             epoch_iteration=0,
-            iteration=step_state.iteration,
-            hook_states=step_state.hook_states,
-            rng_key=step_state.rng_key,
-            fn_params=step_state.fn_params,
-            fn_state=step_state.fn_state,
-            opt_state=step_state.opt_state
         )
 
-    def _train_loop(self, loss_fn, dataset, state, hooks, jit=True):
+    def run(self, state, dataset, jit=True):
         logger.trace("Tracing training", only_tracing=True)
-        # do the first epoch by hand (a) to handle
-        # the first hook states and (b) to make debugging easier
         if jit:
             train_epoch = jax.jit(type(self).train_epoch)
             epoch_fn = Partial(train_epoch, self,
-                            loss_fn=loss_fn, dataset=dataset,
-                            hooks=hooks)
-            state = epoch_fn(state)
-            state = jax.lax.while_loop(
-                lambda s: s.iteration < s.max_iterations,
-                epoch_fn, state
-            )
+                               dataset=dataset)
         else:
             epoch_fn = Partial(self.train_epoch,
-                        loss_fn=loss_fn, dataset=dataset,
-                        hooks=hooks, jit=False)
-            while state.iteration < state.max_iterations:
-                state = epoch_fn(state)
-        # Run the hooks after finishing
-        state = _run_hooks(state, hooks)
+                               dataset=dataset, jit=False)
+        needs_iters = state.max_iterations is None and state.max_epochs is not None
+        if needs_iters:
+            max_iterations = len(dataset) * state.max_epochs // self.batch_size
+            state = replace(state, max_iterations=max_iterations)
+        # populate the last_stats if necessary
+        state = stanza.util.loop(epoch_fn, state, jit=jit)
+        state = run_hooks(state)
+        if needs_iters:
+            state = replace(state, max_iterations=None)
         logger.trace("Done tracing training", only_tracing=True)
         return state
     
-    def train(self, loss_fn, dataset, rng_key,
-                init_fn_params, init_fn_state=None,
-                *,
-                init_opt_state=None,
-                # can specify epochs either through
-                # constructor or override in train() 
-                # function
-                epochs=None, max_iterations=None, hooks=[],
-                jit=True, **kwargs):
-        # epochs and max_iterations can come from either
-        # the trainer parameters or the train parameters
+    def init(self, loss_fn, data_sample, max_iterations, rng_key, 
+             init_fn_params, init_fn_state=None,
+             *,
+             init_opt_state=None, epochs=None, hooks=[],
+             init_hooks=True):
         epochs = self.epochs if epochs is None else epochs
         max_iterations = self.max_iterations if max_iterations is None else max_iterations
         if init_opt_state is None:
             init_opt_state = self.optimizer.init(init_fn_params)
-        if max_iterations is None and epochs is None:
-            raise ValueError("Must specify either number of epochs or iterations")
-        
-        if max_iterations is None:
-            num_batches = dataset.length // self.batch_size
-            max_iterations = num_batches*epochs
+        assert max_iterations is not None
+
+        _, _, stats = loss_fn(init_fn_state, init_fn_params, 
+                            PRNGKey(42), data_sample)
+        stats = jax.tree_map(jnp.mean, stats)
+        stats = jax.tree_map(jnp.zeros_like, stats)
 
         state = TrainState(
             iteration=0,
             max_iterations=max_iterations,
+            hooks=hooks,
             hook_states=[None]*len(hooks),
+
             epoch=0, 
-            max_epoch=epochs,
+            max_epochs=epochs,
             epoch_iteration=0,
 
-            # Used at the step level
-            # not the state level
-            batch_iterator=None,
-            last_stats=None,
+            loss_fn=loss_fn,
+            last_stats=stats,
 
             rng_key=rng_key, 
             fn_params=init_fn_params,
             fn_state=init_fn_state,
             opt_state=init_opt_state
         )
-        train_fn = jax.jit(type(self)._train_loop) if jit else \
-                    partial(type(self)._train_loop,jit=False)
-        state = train_fn(self, loss_fn, dataset, state, hooks)
+        if init_hooks:
+            state = _init_hooks(state)
+        return state
+    
+    def train(self, loss_fn, dataset, *args,
+                epochs=None, max_iterations=None, jit=True, **kwargs):
+        epochs = self.epochs if epochs is None else epochs
+        max_iterations = self.max_iterations if max_iterations is None else max_iterations
+        if max_iterations is None and epochs is not None:
+            max_iterations = len(dataset) * epochs // self.batch_size
+
+        state = self.init(loss_fn, dataset[0], max_iterations, *args, epochs=epochs, **kwargs)
+        run = jax.jit(type(self).run) if jit else \
+                    partial(type(self).run, jit=False)
+        state = run(self, state, dataset)
         results = TrainResults(
             fn_params = state.fn_params,
             fn_state = state.fn_state,

@@ -57,6 +57,25 @@ class Data:
         i = self.start
         i = self.advance(i, idx)
         return self.get(i)
+    
+
+    def scan(self, scan_fn, state, limit=None, jit=True):
+        start = self.start
+        state = (start, 0, state)
+        def cond_fn(state):
+            i, n, _ = state
+            return jnp.logical_and(self.is_end(i), 
+                    n < limit if limit is not None else True)
+        def step_fn(state):
+            data = self.get(state[0])
+            ns = scan_fn(state[2], data)
+            return (self.next(state[0]), state[1] + 1, ns)
+        if jit:
+            state = jax.lax.while_loop(cond_fn, step_fn, state)
+        else:
+            while not cond_fn(state):
+                state = step_fn(state)
+        return state[2]
 
     # These should NOT be overridden:
 
@@ -195,6 +214,21 @@ class PyTreeData(Data):
 
     def get(self, iter):
         return tree_util.tree_map(lambda x: x[iter], self.data)
+    
+    def scan(self, scan_fn, state, limit=None, jit=True):
+        if not jit:
+            return super().scan(scan_fn, state, limit, jit)
+        carry = (0, state)
+        def scan(carry, data):
+            if limit is not None:
+                ns = jax.lax.cond(carry[0] < limit, 
+                        scan_fn, lambda x, _: x, carry[1], data)
+            else:
+                ns = scan_fn(carry[1], data)
+            carry = (carry[0] + 1, ns)
+            return carry, None
+        carry, _ = jax.lax.scan(scan, carry, self.data)
+        return carry[1]
     
     def batch(self, n):
         dim = tree_util.tree_flatten(self.data)[0][0].shape[0]

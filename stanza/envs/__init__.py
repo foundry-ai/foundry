@@ -61,6 +61,7 @@ register_lazy('pendulum', '.pendulum')
 register_lazy('linear', '.linear')
 register_lazy('quadrotor', '.quadrotor')
 register_lazy('gym', '.gymnasium')
+register_lazy('gymnax', '.gymnax')
 register_lazy('robosuite', '.robosuite')
 
 # Takes a cost function and maps it over a trajectory

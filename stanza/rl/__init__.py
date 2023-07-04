@@ -7,9 +7,14 @@ from typing import Callable
 @dataclass(jax=True)
 class ACPolicy:
     actor_critic: Callable
+    observation_normalizer: Callable = None
+    action_normalizer: Callable = None
 
     def __call__(self, input: PolicyInput) -> PolicyOutput:
-        pi, value = self.actor_critic(input.observation)
+        observation = input.observation
+        if self.observation_normalizer is not None:
+            observation = self.observation_normalizer.normalize(observation)
+        pi, value = self.actor_critic(observation)
         action = pi.sample(input.rng_key)
         log_prob = pi.log_prob(action)
         return PolicyOutput(

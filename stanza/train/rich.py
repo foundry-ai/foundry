@@ -49,26 +49,18 @@ class RichCallback:
 
     def __call__(self, hs, state):
         # Don't load the parameter state to the CPU
-        if hs is not None and state.last_stats is not None:
-            hs = jax.tree_util.tree_map(
-                lambda a, b: 1/self.average_window * b + (1 - 1/self.average_window)*a,
-                hs, state.last_stats
-            )
-        if hs is None and state.last_stats is not None:
-            hs = state.last_stats
-
-        new_state = jax.lax.cond(
+        state = jax.lax.cond(
             jnp.logical_or(
                 jnp.logical_and(state.iteration % self.iter_interval == 0,
                             state.last_stats is not None),
                 # When we have reached the end, do a callback
                 # so that we can finish the progress bars
-                state.epoch == state.max_epoch
+                state.epoch == state.max_epochs
             ),
             self._do_state_callback,
-            lambda x: x, replace(state, last_stats=hs)
+            lambda x: x, state
         )
-        return hs, replace(new_state, last_stats=state.last_stats)
+        return hs, state
 
 class RichReporter:
     def __init__(self, iter_interval=20, average_window=20):
@@ -96,7 +88,7 @@ class RichReporter:
     
     def update_stats(self, stats, split="Train"):
         self.split_stats[split] = stats
-    
+   
     def _update_table(self):
         if not self.split_stats:
             return
@@ -118,7 +110,7 @@ class RichReporter:
         iteration = state.iteration.item()
         max_iter = state.max_iterations.item()
         epoch = state.epoch.item()
-        max_epoch = state.max_epoch.item() if state.max_epoch else None
+        max_epoch = state.max_epochs.item() if state.max_epochs else None
         # clear the table
         if state.last_stats is not None:
             self.split_stats['Train'] = state.last_stats

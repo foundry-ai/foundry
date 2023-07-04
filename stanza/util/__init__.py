@@ -1,5 +1,5 @@
 import jax
-import chex
+import jax.numpy as jnp
 from stanza.dataclasses import dataclass, replace
 from typing import List, Any
 
@@ -19,7 +19,7 @@ def extract_shifted(xs):
     return earlier_xs, later_xs
 
 def shape_tree(x):
-    return jax.tree_util.tree_map(lambda x: x.shape, x)
+    return jax.tree_util.tree_map(lambda x: jnp.array(x).shape, x)
 
 def shape_dtypes(x):
     return jax.tree_util.tree_map(
@@ -34,31 +34,45 @@ def shape_dtypes(x):
 class LoopState:
     iteration: int
     max_iterations: int
+
+    hooks : List[Any]
     hook_states: List[Any]
+
     last_stats: Any
 
+def loop(step_fn, state, jit=True):
+    if jit:
+        state = jax.lax.while_loop(
+            lambda s: (s.iteration < s.max_iterations) \
+                if s.max_iterations is not None else True,
+            step_fn, state)
+    elif state.max_iterations is not None:
+        while state.iteration < state.max_iterations:
+            state = step_fn(state)
+    else:
+        while True:
+            state = step_fn(state)
+    return state
+
 @jax.jit
-def _run_hooks(state, hooks):
+def init_hooks(state):
+    new_hook_states = []
+    for h in state.hooks:
+        if hasattr(h, 'init'):
+            new_hook_states.append(h.init(state))
+        else:
+            new_hook_states.append(None)
+    state = replace(state, hook_states=new_hook_states)
+    return state
+
+@jax.jit
+def run_hooks(state):
     new_hook_states = []
     if state.hook_states is None:
         state = replace(state,
-            hook_states=[None] * len(hooks))
-    for h, hs in zip(hooks, state.hook_states):
+            hook_states=[None] * len(state.hooks))
+    for h, hs in zip(state.hooks, state.hook_states):
         hs, state = h(hs, state)
         new_hook_states.append(hs)
     state = replace(state, hook_states=new_hook_states)
     return state
-
-def loop(update_fn, loop_state, hooks=[], auto_increment=True):
-    chex.assert_scalar_positive(loop_state.max_iterations)
-    def loop_body(x):
-        x = update_fn(x)
-        if auto_increment:
-            x = replace(x, iteration=x.iteration + 1)
-        _run_hooks(x, hooks)
-        return x
-    loop_state = _run_hooks(loop_state, hooks)
-    loop_state = loop_body(loop_state)
-    loop_state = jax.lax.while_loop(lambda x: x.iteration < x.max_iterations,
-                                loop_body, loop_state)
-    return loop_state
