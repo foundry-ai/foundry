@@ -73,8 +73,8 @@ class Database:
         pass
 
     # a recursive dictinary of keys
-    def log(self, values):
-        for (k,v) in flat_items(values):
+    def log(self, data):
+        for (k,v) in flat_items(data):
             self.add(k,v, append=True)
 
     # open a root-level table

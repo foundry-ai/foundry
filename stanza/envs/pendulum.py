@@ -79,8 +79,11 @@ class PendulumEnv(Environment):
         return image
     
     def done(self, state):
-        return False
-    
+        return jnp.logical_and(
+            jnp.abs(state.angle - math.pi) < 0.03,
+            jnp.abs(state.vel) < 0.03
+        )
+
     def teleop_policy(self, interface):
         def policy(_):
             left =  jnp.array(-0.1)*interface.key_pressed('a')

@@ -59,7 +59,8 @@ def init_hooks(state):
     new_hook_states = []
     for h in state.hooks:
         if hasattr(h, 'init'):
-            new_hook_states.append(h.init(state))
+            hs, state = h.init(state)
+            new_hook_states.append(hs)
         else:
             new_hook_states.append(None)
     state = replace(state, hook_states=new_hook_states)

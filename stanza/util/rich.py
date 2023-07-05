@@ -177,10 +177,11 @@ class ConsoleDisplay:
         if self.live is not None:
             raise ValueError("Cannot make display active recursively")
         _DISPLAYS[self.display_id] = self
+        from stanza.util.logging import console
 
-        self.live = RichLive(RichGroup(
-            *[r.widget for r in self.elements]
-        ))
+        self.live = RichLive(
+            RichGroup(*[r.widget for r in self.elements]),
+            console=console)
         self.live.__enter__()
         extractors = {
             group_name: {

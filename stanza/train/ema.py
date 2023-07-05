@@ -7,10 +7,11 @@ from stanza.dataclasses import dataclass
 class EmaHook:
     decay: float = 0.75
 
+    def init(self, state):
+        return state.fn_params, state
+
     def __call__(self, hs, state):
-        if hs is None:
-            hs = state.fn_params
-        curr_value = (1 + state.total_iteration)/(10 + state.total_iteration)
+        curr_value = (1 + state.iteration)/(10 + state.iteration)
         decay = jnp.minimum(self.decay, curr_value)
         omd = 1 - decay
         hs = jax.tree_util.tree_map(lambda x, y:  omd*y + decay*x, 

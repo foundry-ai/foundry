@@ -77,31 +77,30 @@ def loss_fn(_state, params, rng_key, sample):
 
 from stanza import Partial
 from stanza.train import Trainer
-from stanza.train.rich import RichReporter
-from stanza.train.wandb import WandbReporter
+from stanza.util.rich import ConsoleDisplay, StatisticsTable, LoopProgress
 # import wandb
 # wandb.init(project="train_test")
 
 loss_fn = Partial(loss_fn)
 
-with WandbReporter() as wb:
-    with RichReporter(iter_interval=500) as cb:
-        trainer = Trainer(epochs=5000, batch_size=10, optimizer=optimizer)
-        init_params = model.init(PRNGKey(7), jnp.ones(()))
-        res = trainer.train(
-            loss_fn, dataset,
-            PRNGKey(42), init_params,
-            hooks=[cb], jit=True
-        )
+display = ConsoleDisplay()
+display.add("train", StatisticsTable())
+display.add("train", LoopProgress())
 
+with display as w:
+    trainer = Trainer(epochs=5000, batch_size=10, optimizer=optimizer)
+    init_params = model.init(PRNGKey(7), jnp.ones(()))
+    res = trainer.train(
+        loss_fn, dataset,
+        PRNGKey(42), init_params,
+        hooks=[w], jit=True
+    )
 
-logger.info("Training again...jit is cached so now training is fast")
-with WandbReporter() as wb:
-    with RichReporter(iter_interval=500) as cb:
-        trainer = Trainer(epochs=5000, batch_size=10, optimizer=optimizer)
-        init_params = model.init(PRNGKey(7), jnp.ones(()))
-        res = trainer.train(
-            loss_fn, dataset,
-            PRNGKey(42), init_params,
-            hooks=[cb], jit=True
-        )
+with display as w:
+    trainer = Trainer(epochs=5000, batch_size=10, optimizer=optimizer)
+    init_params = model.init(PRNGKey(7), jnp.ones(()))
+    res = trainer.train(
+        loss_fn, dataset,
+        PRNGKey(42), init_params,
+        hooks=[w], jit=True
+    )

@@ -11,7 +11,7 @@ import jax.numpy as jnp
 import stanza.policies as policies
 import stanza.util
 
-from stanza.rl import ACPolicy
+from stanza.rl import ACPolicy, EpisodicEnvironment
 from stanza.envs import Environment
 from stanza.util import extract_shifted
 from stanza.data import Data
@@ -38,13 +38,6 @@ class Transition:
     prev_state: Any
     prev_action: Any
     state: Any
-
-def step_with_reset_(env, state, action, rng):
-    d = env.done(state)
-    state = jax.lax.cond(d,
-        lambda: env.reset(rng),
-        lambda: env.step(state, action, rng))
-    return state
 
 @dataclass(jax=True)
 class PPO:
@@ -74,9 +67,7 @@ class PPO:
 
         def rollout(rng_key, x0):
             rng = PRNGSequence(rng_key)
-            # resets the environment when done
-            step = Partial(step_with_reset_, state.env)
-            roll = policies.rollout(step, x0, ac_policy,
+            roll = policies.rollout(state.env.step, x0, ac_policy,
                             model_rng_key=next(rng),
                             policy_rng_key=next(rng),
                             length=self.timesteps)
@@ -99,7 +90,7 @@ class PPO:
         transitions = jax.vmap(rollout)(rngs, state.env_states)
         # extract the final states to use as the new env_states
         env_states = jax.tree_map(lambda x: x[:,-1], transitions.state)
-        
+
         return replace(state,
             rng_key=next_key, 
             env_states=env_states

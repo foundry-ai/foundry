@@ -1,11 +1,16 @@
 import stanza.envs as envs
-import jax
+import optax
 from jax.random import PRNGKey
 from stanza.rl.ppo import PPO
+from stanza.train import Trainer
+from stanza.rl import EpisodicEnvironment
 from stanza.rl.nets import MLPActorCritic
 from stanza.util.rich import StatisticsTable, ConsoleDisplay, LoopProgress
 
 env = envs.create("pendulum")
+# will automatically reset when done
+# or when 1000 timesteps have been reached
+env = EpisodicEnvironment(env, 1000)
 
 net = MLPActorCritic(
     env.sample_action(PRNGKey(0))
@@ -16,12 +21,19 @@ display = ConsoleDisplay()
 display.add("ppo", StatisticsTable(), interval=1)
 display.add("ppo", LoopProgress("RL"), interval=1)
 
-with jax.profiler.trace("/tmp/jax-trace"):
-    with display as dh:
-        ppo = PPO()
-        trained_params = ppo.train(
-            PRNGKey(42),
-            env, net.apply,
-            params,
-            rl_hooks=[dh.ppo]
+ppo = PPO(
+    trainer = Trainer(
+        optimizer=optax.chain(
+            optax.clip_by_global_norm(0.5),
+            optax.adam(3e-4, eps=1e-5)
         )
+    )
+)
+
+with display as dh:
+    trained_params = ppo.train(
+        PRNGKey(42),
+        env, net.apply,
+        params,
+        rl_hooks=[dh.ppo]
+    )

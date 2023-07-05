@@ -30,7 +30,7 @@ class Environment:
     def reward(self, state, action, next_state):
         pass
 
-    def terminated(self, state):
+    def done(self, state):
         return False
     
     def teleop_policy(self, interface):
@@ -62,6 +62,7 @@ register_lazy('linear', '.linear')
 register_lazy('quadrotor', '.quadrotor')
 register_lazy('gym', '.gymnasium')
 register_lazy('gymnax', '.gymnax')
+register_lazy('brax', '.brax')
 register_lazy('robosuite', '.robosuite')
 
 # Takes a cost function and maps it over a trajectory

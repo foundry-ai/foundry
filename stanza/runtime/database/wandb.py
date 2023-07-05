@@ -15,12 +15,27 @@ class WandbDatabase(Database):
     def open(self, name=None):
         run = wandb.init(entity=self.entity, project=self.project, name=name)
         return WandbRun(run)
+    
+    def add(self, name, value, append=False):
+        # TODO: Make automatically open some default name run
+        # if adding to the top level database
+        raise RuntimeError("Cannot add to root-level wandb database!")
 
-class WandbRun(Table):
+class WandbRun(Database):
     def __init__(self, run, prefix=''):
         self.run = run
         self.prefix = prefix
-   
+
+    def open(self, name):
+        n = f"{self.prefix}.{name}"
+        return WandbRun(self.run, n)
+
+    def add(self, name, value, append=False):
+        pass
+
+    def flush(self):
+        pass
+
     def log(self, data):
         data = remap(data, {
                 Figure: lambda f: f.fig,

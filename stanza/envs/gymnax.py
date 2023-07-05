@@ -5,6 +5,7 @@ from gymnax.environments import environment
 from typing import Any
 
 import jax.numpy as jnp
+import gymnax
 
 @dataclass(jax=True)
 class GymnaxState:
@@ -14,7 +15,7 @@ class GymnaxState:
     done : jnp.array
 
 @dataclass(jax=True)
-class Gymnax(Environment):
+class GymnaxEnv(Environment):
     gymnax_env : environment.Environment = field(jax_static=True)
     env_params : Any
 
@@ -41,3 +42,12 @@ class Gymnax(Environment):
     
     def done(self, state):
         return state.done
+
+def builder(env_type):
+    env_path = env_type.split("/")
+    if len(env_path) < 2:
+        raise RuntimeError("Must specify gym environment")
+    en = env_path[1]
+
+    gym, gym_params = gymnax.make(en)
+    return GymnaxEnv(gym, gym_params)

@@ -5,12 +5,11 @@ import stanza
 
 from stanza.train import Trainer
 from stanza.train.ema import EmaHook
-from stanza.train.rich import RichReporter
-from stanza.train.wandb import WandbReporter
 
 from stanza.dataclasses import dataclass, replace, field
 from stanza.util.random import PRNGSequence
 from stanza.util.logging import logger
+from stanza.util.rich import ConsoleDisplay
 from stanza.nets.unet1d import ConditionalUnet1D
 from stanza.diffusion.ddpm import DDPMSchedule
 
@@ -34,7 +33,6 @@ import haiku as hk
 
 import optax
 import time
-import wandb
 
 @dataclass
 class Config:
@@ -114,7 +112,7 @@ def setup_data(config):
 
 def loss(config, net, diffuser, obs_norm, action_norm,
             # these are passed in per training loop:
-            params, state, rng, sample):
+            state, params, rng, sample):
     logger.trace("Tracing loss function", only_tracing=True)
     t_sk, n_sk, s_sk = jax.random.split(rng, 3)
     timestep = jax.random.randint(t_sk, (), 0, diffuser.num_steps)
@@ -198,21 +196,15 @@ def train_policy(config, database):
     )
     logger.info("Initialized, starting training...")
 
-    wr = WandbReporter(iter_interval=5)
-    rr = RichReporter(iter_interval=50, average_window=100)
-    if config.wandb is not None and config.wandb != "none":
-        wandb.init(project="diffusion_policy")
+    rr = ConsoleDisplay()
 
-    with wr as wcb: 
-        with rr as rcb:
-            hooks = [ema_hook, rcb]
-            if config.wandb is not None and config.wandb != "none":
-                hooks.append(wcb)
-            results = trainer.train(
-                        Partial(loss_fn), 
-                        data, next(rng), init_params,
-                        hooks=hooks
-                    )
+    with rr as rcb:
+        hooks = [ema_hook, rcb]
+        results = trainer.train(
+                    Partial(loss_fn), 
+                    data, next(rng), init_params,
+                    hooks=hooks
+                )
     params = results.fn_params
     # get the moving average params
     ema_params = results.hook_states[0]

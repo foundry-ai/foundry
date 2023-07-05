@@ -1,5 +1,5 @@
 from typing import Any
-from stanza.dataclasses import dataclass
+from stanza.dataclasses import dataclass, field
 from stanza.data import PyTreeData
 
 import jax
@@ -41,3 +41,43 @@ class LinearNormalizer:
             lambda x: jnp.max(x, axis=0), data.data
         )
         return LinearNormalizer(min, max)
+
+
+@dataclass(jax=True, kw_only=True)
+class StdNormalizer:
+    mean: Any = None
+    var: Any = None
+    total: int = 0
+    std: Any = field(init=False)
+
+    def __post_init__(self):
+        std = jax.tree_map(lambda x: jnp.sqrt(x + 1e-8), self.var)
+        object.__setattr__(self, 'std', std)
+
+    def normalize(self, data):
+        if self.mean is not None:
+            return jax.tree_map(
+                lambda d, m, s: (d - m) / s,
+                data, self.mean, self.std
+            )
+        else:
+            return jax.tree_map(
+                lambda d, s: d / s,
+                data, self.std
+            )
+
+    def unnormalize(self, data):
+        if self.mean is not None:
+            return jax.tree_map(
+                lambda d, m, s: d*s + m,
+                data, self.mean, self.std
+            )
+        else:
+            return jax.tree_map(
+                lambda d, s: d * s,
+                data, self.std
+            )
+    
+    def update(self, batch):
+        # get the batch dimension size
+        n = jax.tree_util.tree_flatten(batch)[0][0].shape[0]
