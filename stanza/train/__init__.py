@@ -216,17 +216,26 @@ class SAMTrainer(Trainer):
                 state.loss_fn, state.fn_state, 
                 sk, batch.data)
         batch_grad_fn = jax.grad(batch_fn, has_aux=True)
-        grads, (fn_state, stats) = batch_grad_fn(state.fn_params)
+        grads, (_, _) = batch_grad_fn(state.fn_params)
+
+
+        updates, sub_opt_state = self.sub_optimizer.update(grads, 
+                            state.sub_opt_state, state.fn_params)
+        sub_fn_params = optax.apply_updates(state.fn_params, updates)
+
+        grads, (fn_state, stats) = batch_grad_fn(sub_fn_params)
 
         chex.assert_trees_all_equal_shapes_and_dtypes(fn_state, state.fn_state)
 
         updates, opt_state = self.optimizer.update(grads, 
                             state.opt_state, state.fn_params)
         fn_params = optax.apply_updates(state.fn_params, updates)
+
         state = replace(state,
             epoch_iteration=state.epoch_iteration + 1,
             iteration=state.iteration + 1,
             last_stats=stats, rng_key=rng_key,
             fn_params=fn_params, 
-            fn_state=fn_state, opt_state=opt_state)
+            fn_state=fn_state,
+            opt_state=opt_state, sub_opt_state=sub_opt_state)
         return state
