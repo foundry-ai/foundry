@@ -6,7 +6,7 @@ os.environ["XLA_FLAGS"] = '--xla_force_host_platform_device_count=10'
 
 import sys
 import asyncio
-from stanza.dataclasses import dataclass, field
+from stanza.dataclasses import dataclass, field, is_dataclass
 from stanza.runtime.database import Database
 from stanza.runtime.container import Target
 from stanza.dataclasses.arg import \
@@ -31,6 +31,8 @@ class ActivityConfig:
 
 # Labels a function with a config
 def activity(config_class, f=None):
+    if not is_dataclass(config_class):
+        raise ValueError("Must specify dataclass")
     if f is not None:
         f.__config__ = config_class
         return f

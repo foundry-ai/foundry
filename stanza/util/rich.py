@@ -58,6 +58,8 @@ class RichHook:
     def __getattr__(self, name: str) -> Any:
         if name in ["id", "extractors"]:
             super().__getattribute__(name)
+        if not name in self.extractors:
+            raise AttributeError(f"hook {name} not defined!")
         hook = partial(Partial(type(self).hook, self), name)
         return hook
     
@@ -95,9 +97,7 @@ class Progress(Element):
             ]
         self.task_name = task_name
         self.widget = RichProgress(*columns)
-        self.task = self.widget.add_task(
-            task_name
-        )
+        self.task = None
 
 class LoopProgress(Progress):
     def __init__(self, task_name="", columns=None):
@@ -105,6 +105,9 @@ class LoopProgress(Progress):
 
     def update(self, updates):
         completed, total = updates
+        if self.task is None:
+            self.task = self.widget.add_task(self.task_name,
+                completed=completed, total=total)
         self.widget.update(self.task,
             completed=completed,
             total=total)

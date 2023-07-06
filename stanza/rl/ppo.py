@@ -140,8 +140,8 @@ class PPO:
                 1.0 + self.clip_eps
             ) * gae )
         loss_actor = -jnp.minimum(loss_actor1, loss_actor2)
-        loss_actor = loss_actor.mean()
-        entropy = 0 #pi.entropy().mean()
+        loss_actor = loss_actor
+        entropy = pi.entropy()
 
         total_loss = (
             loss_actor

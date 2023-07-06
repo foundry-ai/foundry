@@ -3,13 +3,17 @@ from stanza.data import Data
 from stanza.util.logging import logger
 from jax.random import PRNGKey
 import jax.numpy as jnp
+import optax
+import jax
+import flax.linen as nn
+from typing import Sequence
 import logging
 from rich.logging import RichHandler
+
 FORMAT = "%(message)s"
 logging.basicConfig(
     level=logging.ERROR, format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
 )
-
 # A dataset of integers
 dataset = Data.from_pytree(
     (jnp.arange(100), jnp.arange(100)[::-1])
@@ -18,17 +22,7 @@ sdataset = Data.from_pytree(
     (jnp.arange(10), jnp.arange(10))
 )
 sdataset = sdataset.shuffle(PRNGKey(42))
-logger.info("Data shuffled {}", sdataset.data)
-logger.info("Data batched {}", sdataset.batch(4).data.data)
 
-logger.info("Dataset length: {}", dataset.length)
-batches = dataset.batch(20)
-logger.info("Batched length: {}", batches.length)
-
-import haiku as hk
-
-import flax.linen as nn
-from typing import Sequence
 
 class MLP(nn.Module):
   features: Sequence[int]
@@ -44,12 +38,6 @@ class MLP(nn.Module):
 model = MLP([10, 1])
 
 orig_init_params = model.init(PRNGKey(7), jnp.ones(()))
-
-import optax
-from stanza.util.random import permutation
-import jax
-
-logger.info("Permutation test: {}", permutation(PRNGKey(42), 10, n=6))
 
 optimizer = optax.adamw(
     optax.cosine_decay_schedule(1e-3, 5000*10), 
@@ -76,16 +64,16 @@ def loss_fn(_state, params, rng_key, sample):
     return _state, loss, stats
 
 from stanza import Partial
-from stanza.train import Trainer
+from stanza.train import Trainer, batch_loss
 from stanza.util.rich import ConsoleDisplay, StatisticsTable, LoopProgress
 # import wandb
 # wandb.init(project="train_test")
 
-loss_fn = Partial(loss_fn)
+loss_fn = batch_loss(Partial(loss_fn))
 
 display = ConsoleDisplay()
-display.add("train", StatisticsTable())
-display.add("train", LoopProgress())
+display.add("train", StatisticsTable(), interval=100)
+display.add("train", LoopProgress(), interval=100)
 
 with display as w:
     trainer = Trainer(epochs=5000, batch_size=10, optimizer=optimizer)
@@ -93,7 +81,7 @@ with display as w:
     res = trainer.train(
         loss_fn, dataset,
         PRNGKey(42), init_params,
-        hooks=[w], jit=True
+        hooks=[w.train], jit=True
     )
 
 with display as w:
@@ -102,5 +90,5 @@ with display as w:
     res = trainer.train(
         loss_fn, dataset,
         PRNGKey(42), init_params,
-        hooks=[w], jit=True
+        hooks=[w.train], jit=True
     )

@@ -272,7 +272,8 @@ class PyTreeData(Data):
         return x
     
     def sample_batch(self, n, rng_key):
-        idx = jax.random.randint(rng_key, (n,), 0, self.n)
+        dim = tree_util.tree_flatten(self.data)[0][0].shape[0]
+        idx = jax.random.randint(rng_key, (n,), 0, dim)
         x = jax.tree_map(lambda x: x[idx], self.data)
         return x
 
