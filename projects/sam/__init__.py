@@ -17,9 +17,11 @@ class Config:
     net: str = "resnet18"
     skip_connections: bool = True
     normalize: bool = True
-    use_sam: bool = False
-    epochs: int = 100
+    use_sam: bool = True
+    epochs: int = 20
     batch_size: int = 128
+    lr: float = 1e-3
+    alpha: float = 0.05
 
 def accuracy(model, vars, sample):
     x, y = sample
@@ -57,8 +59,9 @@ def train(config, db):
 
     loss = batch_loss(partial(loss_fn, model))
 
-    optimizer = optax.adam(1e-3)
-    sub_optimizer = optax.scale(1e-3)
+    steps = config.epochs * (train_data.length // config.batch_size)
+    optimizer = optax.adam(optax.cosine_decay_schedule(config.lr, steps))
+    sub_optimizer = optax.scale(config.alpha)
 
     if config.use_sam:
         trainer = SAMTrainer(
@@ -74,8 +77,8 @@ def train(config, db):
             optimizer=optimizer)
 
     display = ConsoleDisplay()
-    display.add("train", StatisticsTable(), interval=1)
-    display.add("train", LoopProgress(), interval=1)
+    display.add("train", StatisticsTable(), interval=100)
+    display.add("train", LoopProgress(), interval=100)
 
     with display as w:
         res = trainer.train(
@@ -92,8 +95,8 @@ def train(config, db):
         "params": params,
         "batch_stats": stats
     }
-    accuracy = jnp.mean(jax.vmap(accuracy, in_axes=(None, None, 0))(model, vars, test_data.data))
-    logger.info("Test Accuracy: {}", accuracy)
+    acc = jnp.mean(jax.vmap(accuracy, in_axes=(None, None, 0))(model, vars, test_data.data))
+    logger.info("Test Accuracy: {}", acc)
 
 @dataclass
 class SweepConfig:

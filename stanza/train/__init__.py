@@ -1,5 +1,5 @@
 from stanza import Partial
-from stanza.dataclasses import dataclass, field, replace
+from stanza.dataclasses import dataclass, field, replace, unpack
 from stanza.util.logging import logger
 from stanza.util import LoopState, run_hooks, init_hooks as _init_hooks
 from stanza.data import Data, Iterator, PyTreeData
@@ -205,6 +205,7 @@ class SAMTrainResults(TrainResults):
 @dataclass(jax=True)
 class SAMTrainer(Trainer):
     sub_optimizer: optax.GradientTransformation = optax.sgd(1e-5)
+    normalize: bool = field(default=True, jax_static=True)
 
     @jax.jit
     def train_step(self, state, batch):
@@ -218,6 +219,9 @@ class SAMTrainer(Trainer):
         batch_grad_fn = jax.grad(batch_fn, has_aux=True)
         grads, (_, _) = batch_grad_fn(state.fn_params)
 
+        if self.normalize:
+            global_norm = optax.global_norm(grads)
+            grads = jax.tree_map(lambda x: x / global_norm, grads)
 
         updates, sub_opt_state = self.sub_optimizer.update(grads, 
                             state.sub_opt_state, state.fn_params)
@@ -238,4 +242,13 @@ class SAMTrainer(Trainer):
             fn_params=fn_params, 
             fn_state=fn_state,
             opt_state=opt_state, sub_opt_state=sub_opt_state)
+        return state
+
+    def init(self, *args, init_sub_opt_state=None, **kwargs):
+        state = super().init(*args, **kwargs)
+        if init_sub_opt_state is None:
+            init_sub_opt_state = self.sub_optimizer.init(state.fn_params)
+        state = unpack(state)
+        state = SAMTrainState(**state,
+                      sub_opt_state=init_sub_opt_state)
         return state
