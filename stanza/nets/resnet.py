@@ -107,6 +107,8 @@ class ResNet(nn.Module):
         x = jnp.asarray(x, self.dtype)
         return x
 
+ResNet9 = partial(ResNet, stage_sizes=[2, 2],
+                block_cls=ResNetBlock)
 ResNet18 = partial(ResNet, stage_sizes=[2, 2, 2, 2],
                 block_cls=ResNetBlock)
 ResNet34 = partial(ResNet, stage_sizes=[3, 4, 6, 3],

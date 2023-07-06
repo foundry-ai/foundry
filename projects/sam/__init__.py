@@ -16,12 +16,15 @@ from stanza.util.rich import ConsoleDisplay, LoopProgress, StatisticsTable
 class Config:
     net: str = "resnet18"
     skip_connections: bool = True
+    sam_epochs: int = None
     normalize: bool = True
     use_sam: bool = True
     epochs: int = 20
+    seed: int = 42
     batch_size: int = 128
     lr: float = 1e-3
-    alpha: float = 0.05
+    weight_decay: float = 1e-4
+    rho: float = 0.05
 
 def accuracy(model, vars, sample):
     x, y = sample
@@ -46,8 +49,13 @@ def loss_fn(model, batch_stats, params, rng_key, sample):
 
 @activity(Config)
 def train(config, db):
+    logger.info("Running: {}", config)
     train_data, test_data = make_data(config)
-    rng = PRNGSequence(42)
+    rng = PRNGSequence(config.seed)
+
+    sam_iterations = (config.sam_epochs * \
+                 (train_data.length // config.batch_size)) \
+                if config.sam_epochs is not None else None
 
     model = make_net(config)
     # use first sample to initialize model
@@ -60,8 +68,9 @@ def train(config, db):
     loss = batch_loss(partial(loss_fn, model))
 
     steps = config.epochs * (train_data.length // config.batch_size)
-    optimizer = optax.adam(optax.cosine_decay_schedule(config.lr, steps))
-    sub_optimizer = optax.scale(config.alpha)
+    optimizer = optax.adamw(optax.cosine_decay_schedule(config.lr, steps),
+                            weight_decay=config.weight_decay)
+    sub_optimizer = optax.scale(config.rho)
 
     if config.use_sam:
         trainer = SAMTrainer(
@@ -69,6 +78,7 @@ def train(config, db):
             batch_size=config.batch_size,
             optimizer=optimizer,
             sub_optimizer=sub_optimizer,
+            sam_iterations=sam_iterations,
             normalize=config.normalize)
     else:
         trainer = Trainer(
@@ -119,12 +129,17 @@ def make_data(config):
 
 def make_net(config):
     from stanza.nets.resnet import \
-        ResNet18, ResNet34, ResNet50
-    if config.net == "resnet18":
+        ResNet9, ResNet18, ResNet34, ResNet50
+    if config.net == "resnet9":
+        net = ResNet9
+        net = partial(net, skip_connections=config.skip_connections)
+    elif config.net == "resnet18":
         net = ResNet18
+        net = partial(net, skip_connections=config.skip_connections)
     elif config.net == "resnet34":
         net = ResNet34
+        net = partial(net, skip_connections=config.skip_connections)
     elif config.net == "resnet50":
         net = ResNet50
-    net = partial(net, skip_connections=config.skip_connections)
+        net = partial(net, skip_connections=config.skip_connections)
     return net(num_classes=10)

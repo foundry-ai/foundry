@@ -206,6 +206,8 @@ class SAMTrainResults(TrainResults):
 class SAMTrainer(Trainer):
     sub_optimizer: optax.GradientTransformation = optax.sgd(1e-5)
     normalize: bool = field(default=True, jax_static=True)
+    # Number of iterations to run SAM for
+    sam_iterations: int = field(default=None)
 
     @jax.jit
     def train_step(self, state, batch):
@@ -217,31 +219,50 @@ class SAMTrainer(Trainer):
                 state.loss_fn, state.fn_state, 
                 sk, batch.data)
         batch_grad_fn = jax.grad(batch_fn, has_aux=True)
-        grads, (_, _) = batch_grad_fn(state.fn_params)
 
-        if self.normalize:
-            global_norm = optax.global_norm(grads)
-            grads = jax.tree_map(lambda x: x / global_norm, grads)
+        def sam_update(state):
+            grads, (_, _) = batch_grad_fn(state.fn_params)
+            if self.normalize:
+                global_norm = optax.global_norm(grads)
+                grads = jax.tree_map(lambda x: x / global_norm, grads)
 
-        updates, sub_opt_state = self.sub_optimizer.update(grads, 
-                            state.sub_opt_state, state.fn_params)
-        sub_fn_params = optax.apply_updates(state.fn_params, updates)
+            updates, sub_opt_state = self.sub_optimizer.update(grads, 
+                                state.sub_opt_state, state.fn_params)
+            sub_fn_params = optax.apply_updates(state.fn_params, updates)
+            grads, (fn_state, stats) = batch_grad_fn(sub_fn_params)
+            chex.assert_trees_all_equal_shapes_and_dtypes(fn_state, state.fn_state)
+            updates, opt_state = self.optimizer.update(grads, 
+                                state.opt_state, state.fn_params)
+            fn_params = optax.apply_updates(state.fn_params, updates)
+            state = replace(state,
+                epoch_iteration=state.epoch_iteration + 1,
+                iteration=state.iteration + 1,
+                last_stats=stats, rng_key=rng_key,
+                fn_params=fn_params, 
+                fn_state=fn_state,
+                opt_state=opt_state, sub_opt_state=sub_opt_state)
+            return state
 
-        grads, (fn_state, stats) = batch_grad_fn(sub_fn_params)
+        def regular_update(state):
+            grads, (fn_state, stats) = batch_grad_fn(state.fn_params)
 
-        chex.assert_trees_all_equal_shapes_and_dtypes(fn_state, state.fn_state)
+            if fn_state is not None or state.fn_state is not None:
+                chex.assert_trees_all_equal_shapes_and_dtypes(fn_state, state.fn_state)
 
-        updates, opt_state = self.optimizer.update(grads, 
-                            state.opt_state, state.fn_params)
-        fn_params = optax.apply_updates(state.fn_params, updates)
-
-        state = replace(state,
-            epoch_iteration=state.epoch_iteration + 1,
-            iteration=state.iteration + 1,
-            last_stats=stats, rng_key=rng_key,
-            fn_params=fn_params, 
-            fn_state=fn_state,
-            opt_state=opt_state, sub_opt_state=sub_opt_state)
+            updates, opt_state = self.optimizer.update(grads, 
+                                state.opt_state, state.fn_params)
+            fn_params = optax.apply_updates(state.fn_params, updates)
+            state = replace(state,
+                epoch_iteration=state.epoch_iteration + 1,
+                iteration=state.iteration+ 1,
+                last_stats=stats, rng_key=rng_key,
+                fn_params=fn_params, 
+                fn_state=fn_state, opt_state=opt_state)
+            return state
+        if self.sam_iterations is None:
+            state = sam_update(state)
+        else:
+            state = jax.lax.cond(state.iteration < self.sam_iterations,sam_update,regular_update,state)
         return state
 
     def init(self, *args, init_sub_opt_state=None, **kwargs):

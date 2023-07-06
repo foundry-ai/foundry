@@ -20,6 +20,13 @@ class Arg:
 class SimpleArg(Arg):
     def __init__(self, parser, name, short=None, positional=False, help=False):
         super().__init__(name, short, positional, help)
+        if parser == bool:
+            parser = lambda x: (
+                x.lower() == "true" or
+                x.lower() == "t" or
+                x.lower() == "yes" or
+                x.lower() == "y"
+            )
         self.parser = parser
     
     def add_to_parser(self, parser, prefix=""):
