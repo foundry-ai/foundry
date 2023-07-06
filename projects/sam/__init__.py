@@ -24,6 +24,7 @@ class Config:
 def accuracy(model, vars, sample):
     x, y = sample
     y_logits = model.apply(vars, x, train=False)
+    y_logits = jax.nn.log_softmax(y_logits)
     y_pred = jnp.argmax(y_logits, axis=-1)
     y_true = jnp.argmax(y, axis=-1)
     return 1*(y_pred == y_true)
@@ -35,6 +36,7 @@ def loss_fn(model, batch_stats, params, rng_key, sample):
         "params": params
     }
     y_logits, updates = model.apply(vars, x, mutable=['batch_stats'])
+    y_logits = jax.nn.log_softmax(y_logits)
     batch_stats = updates["batch_stats"]
     loss = -jnp.mean(jnp.sum(y_logits * y, axis=-1))
     stats = {"loss": loss}
