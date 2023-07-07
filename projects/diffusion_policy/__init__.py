@@ -3,17 +3,17 @@ from stanza.runtime.database import Video
 from stanza import Partial
 import stanza
 
-from stanza.train import Trainer
+from stanza.train import Trainer, batch_loss
 from stanza.train.ema import EmaHook
 
 from stanza.dataclasses import dataclass, replace, field
 from stanza.util.random import PRNGSequence
 from stanza.util.logging import logger
-from stanza.util.rich import ConsoleDisplay
-from stanza.nets.unet1d import ConditionalUnet1D
+from stanza.util.rich import ConsoleDisplay, \
+    LoopProgress, StatisticsTable, EpochProgress
 from stanza.diffusion.ddpm import DDPMSchedule
 
-from stanza.data.trajectory import chunk_trajectory, Timestep
+from stanza.data.trajectory import chunk_trajectory
 from stanza.data.normalizer import LinearNormalizer
 from stanza.data import PyTreeData
 
@@ -29,7 +29,6 @@ import jax.numpy as jnp
 import jax.random
 
 import stanza.util
-import haiku as hk
 
 import optax
 import time
@@ -168,15 +167,8 @@ def train_policy(config, database):
         batch_size=config.batch_size,
         epochs=config.epochs
     )
-    # Initialize the network parameters
     sample = data.get(data.start)
     logger.info("Instantiating network...")
-    # tab = hk.experimental.tabulate(net,
-    #         columns=('module', 'owned_params', 
-    #                     'input', 'output', 'params_size', 
-    #                     'params_bytes'))(sample.action, jnp.array(1),
-    #                                      sample.observation)
-    # print(tab)
     t = time.time()
     jit_init = jax.jit(net.init)
     init_params = jit_init(next(rng), sample.action,
@@ -196,12 +188,15 @@ def train_policy(config, database):
     )
     logger.info("Initialized, starting training...")
 
-    rr = ConsoleDisplay()
+    display = ConsoleDisplay()
+    display.add("train", StatisticsTable(), interval=100)
+    display.add("train", LoopProgress(), interval=100)
+    display.add("train", EpochProgress(), interval=100)
 
-    with rr as rcb:
-        hooks = [ema_hook, rcb]
+    with display as rcb:
+        hooks = [ema_hook, rcb.train]
         results = trainer.train(
-                    Partial(loss_fn), 
+                    batch_loss(loss_fn), 
                     data, next(rng), init_params,
                     hooks=hooks
                 )

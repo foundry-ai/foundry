@@ -117,34 +117,6 @@ class FeedbackRollout:
         _, (gains_est, Ps) = jax.lax.scan(gains_recurse, Q, (As_est, Bs_est), reverse=True)
         gains_est = -gains_est
         new_gains = prev_gains.at[self.burn_in:].set(gains_est)
-
-        if DEBUG:
-            def print_fun(args, _):
-                prev_gains, new_gains, As_cl, As_est, Bs_est, C_k, Ps, jac = args
-                # if jnp.any(jnp.isnan(new_gains)) \
-                #         or not jnp.all(jnp.isfinite(new_gains)):
-                if True:
-                    s = jnp.linalg.svd(C_k, compute_uv=False)
-                    sv = lambda s: jnp.max(jnp.linalg.svd(s, compute_uv=False))
-                    eig = lambda s: jnp.max(jnp.linalg.eig(s)[0])
-
-                    As_cl_sv = jnp.linalg.svd(As_cl, compute_uv=False)
-                    As_sv = jnp.linalg.svd(As_est, compute_uv=False)
-
-                    max_eig = jnp.mean(jax.vmap(eig)(As_cl))
-                    # if max_eig > 1:
-                    if True:
-                        print('gain_sv', jax.vmap(sv)(new_gains))
-                        print('As_cl_eig', jax.vmap(eig)(As_cl))
-                        print('As_eig', jax.vmap(eig)(As_est))
-                        print('As_cl_sv', jax.vmap(sv)(As_cl))
-                        print('As_sv', jax.vmap(sv)(As_est))
-                        print('Ps_sv', jax.vmap(sv)(Ps))
-                        print('s_diff_full', As_cl_sv - As_sv)
-                        # sys.exit(0)
-            As_cl = As_est + Bs_est @ gains_est
-            jax.experimental.host_callback.id_tap(print_fun, (prev_gains, new_gains, \
-                As_cl, As_est, Bs_est, C_k, Ps, jac))
         return new_gains
 
     # rollout new nominal trajectory with the stepped actions

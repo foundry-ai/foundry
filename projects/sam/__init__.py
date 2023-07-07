@@ -10,7 +10,7 @@ from stanza.train import Trainer, SAMTrainer, batch_loss
 from stanza import partial
 from stanza.util.logging import logger
 from stanza.util.random import PRNGSequence
-from stanza.util.rich import ConsoleDisplay, LoopProgress, StatisticsTable
+from stanza.util.rich import ConsoleDisplay, LoopProgress, EpochProgress, StatisticsTable
 
 @dataclass
 class Config:
@@ -50,6 +50,7 @@ def loss_fn(model, batch_stats, params, rng_key, sample):
 @activity(Config)
 def train(config, db):
     logger.info("Running: {}", config)
+    logger.info("Loading data...")
     train_data, test_data = make_data(config)
     rng = PRNGSequence(config.seed)
 
@@ -59,8 +60,9 @@ def train(config, db):
 
     model = make_net(config)
     # use first sample to initialize model
+    logger.info("Initializing model...")
     sample_batch = train_data.sample_batch(config.batch_size, next(rng))
-    init_vars = model.init(next(rng), sample_batch[0])
+    init_vars = jax.jit(model.init)(next(rng), sample_batch[0])
 
     init_params = init_vars["params"]
     batch_stats = init_vars["batch_stats"]
@@ -89,7 +91,9 @@ def train(config, db):
     display = ConsoleDisplay()
     display.add("train", StatisticsTable(), interval=100)
     display.add("train", LoopProgress(), interval=100)
+    display.add("train", EpochProgress(), interval=100)
 
+    logger.info("Training...")
     with display as w:
         res = trainer.train(
             loss,

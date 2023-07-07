@@ -135,7 +135,7 @@ class MPC:
             policy_state = replace(
                 policy_state,
                 actions=actions, roll_state=rollout_state,
-                t=0, cost=c0st, history=history
+                t=0, cost=cost, history=history
             )
             action = jax.tree_util.tree_map(lambda x: x[policy_state.t], policy_state.actions)
         else:

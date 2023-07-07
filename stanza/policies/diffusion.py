@@ -8,13 +8,6 @@ import flax.linen as nn
 
 from stanza.policies import PolicyOutput
 
-class DiffusionPolicy:
-    model: Callable
-    schedule: Diffuser
-
-    def __init__(input):
-        pass
-
 def make_diffusion_policy(net_fn, diffuser, obs_norm, action_norm, 
                           action_sample, action_chunk_length,
                           action_horizon_offset, action_horizon_length):

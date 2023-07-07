@@ -52,7 +52,7 @@ def _batch_loss_fn(loss_fn, fn_state, fn_params,
     return fn_state, loss, stats
 
 def batch_loss(loss_fn):
-    return Partial(_batch_loss_fn, loss_fn)
+    return Partial(_batch_loss_fn, Partial(loss_fn))
 
 def _trainer_loss_fn(loss_fn, fn_state, rng_key, batch, fn_params):
     fn_state, loss, stats = loss_fn(fn_state, fn_params, rng_key, batch)
@@ -144,7 +144,7 @@ class Trainer:
         assert max_iterations is not None
 
         batch_sample = jax.tree_map(
-            lambda x: jnp.repeat(x[jnp.newaxis, ...], self.batch_size, axis=0),
+            lambda x: jnp.repeat(jnp.array(x)[jnp.newaxis, ...], self.batch_size, axis=0),
             data_sample
         )
         _, _, stats = loss_fn(init_fn_state, init_fn_params, 

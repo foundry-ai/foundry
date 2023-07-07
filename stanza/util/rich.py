@@ -100,7 +100,7 @@ class Progress(Element):
         self.task = None
 
 class LoopProgress(Progress):
-    def __init__(self, task_name="", columns=None):
+    def __init__(self, task_name="Iteration", columns=None):
         super().__init__(task_name, columns)
 
     def update(self, updates):
@@ -114,6 +114,22 @@ class LoopProgress(Progress):
 
     def extract(self, element_state, state):
         return element_state, (state.iteration, state.max_iterations)
+
+class EpochProgress(Progress):
+    def __init__(self, task_name="Epoch", columns=None):
+        super().__init__(task_name, columns)
+
+    def update(self, updates):
+        completed, total = updates
+        if self.task is None:
+            self.task = self.widget.add_task(self.task_name,
+                completed=completed, total=total)
+        self.widget.update(self.task,
+            completed=completed,
+            total=total)
+
+    def extract(self, element_state, state):
+        return element_state, (state.epoch, state.max_epochs)
     
 
 def _flatten(d):

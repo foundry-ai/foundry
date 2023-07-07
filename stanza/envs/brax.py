@@ -1,4 +1,4 @@
-from stanza.envs import Environment
+from stanza.env import Environment
 import brax.envs as envs
 
 from stanza.dataclasses import dataclass, field
@@ -24,6 +24,9 @@ class BraxEnv(Environment):
     def step(self, state, action, rng_key):
         next_state = self.env.step(state, action)
         return next_state
+    
+    def observe(self, state):
+        return state.obs
 
     def reward(self, state, action, next_state):
         return next_state.reward

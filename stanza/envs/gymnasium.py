@@ -1,4 +1,4 @@
-from stanza.envs import Environment
+from stanza.env import Environment
 from stanza.policies import PolicyOutput
 
 from stanza.dataclasses import dataclass, field

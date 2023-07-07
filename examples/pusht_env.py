@@ -1,5 +1,5 @@
 import stanza.envs as envs
-import stanza.policies as policies
+import stanza.policy as policy
 import stanza.envs.pusht as pusht
 from stanza.util.logging import logger
 
@@ -26,12 +26,12 @@ target_pos = jnp.array([
 # Create a policy which uses
 # the low-level feedback gains
 # and runs the target_pos at 20 hz
-policy = policies.chain_transforms(
-    policies.SampleRateTransform(50),
+policy = policy.chain_transforms(
+    policy.SampleRateTransform(50),
     # PositionObs *must* come before
     # PositionControl since PositionControl
     # relies on having the full state as observation
     pusht.PositionObsTransform(),
     pusht.PositionControlTransform()
-)(policies.Actions(target_pos))
-rollout = policies.rollout(env.step, x0, policy, last_state=False)
+)(policy.Actions(target_pos))
+rollout = policy.rollout(env.step, x0, policy, last_state=False)

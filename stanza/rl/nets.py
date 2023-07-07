@@ -15,7 +15,6 @@ class MLPActorCritic(nn.Module):
     @nn.compact
     def __call__(self, x):
         action_flat, action_uf = jax.flatten_util.ravel_pytree(self.action_sample)
-
         x_flat, _ = jax.flatten_util.ravel_pytree(x)
         if self.activation == "relu":
             activation = nn.relu

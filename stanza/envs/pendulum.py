@@ -61,7 +61,11 @@ class PendulumEnv(Environment):
         return 5*xf_cost + 2*x_cost + u_cost
 
     def reward(self, state, action, next_state):
-        return -self.cost(state, action)
+        angle_diff = next_state.angle - state.angle
+        vel_diff = next_state.vel - state.vel
+        angle_rew = 32 * angle_diff * jnp.sign(math.pi - next_state.angle)
+        vel_rew = vel_diff * jnp.sign(-next_state.vel)
+        return angle_rew + vel_rew
 
     def render(self, state, width=256, height=256):
         angle = jnp.squeeze(state.angle)
