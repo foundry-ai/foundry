@@ -9,6 +9,7 @@ from itertools import chain
 def unpack(dc) -> dict:
     return { field.name : getattr(dc, field.name) for field in fields(dc) }
 
+
 def dataclass(cls=None, frozen : bool = False, jax : bool = True, kw_only: bool = False):
     frozen = frozen or jax
     if cls is None:
