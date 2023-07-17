@@ -75,15 +75,15 @@ def roll_in_sampler(traj : Data,
         chex.assert_trees_all_equal_shapes_and_dtypes(loop_state,new_loop_state)
         
     init_state = (curr_state, start, noise_rng_key, env_rng_key, 0)
+    end_loop_state = jax.lax.fori_loop(0,roll_len,step,init_state)
+    start_state, idx =  end_loop_state[0], end_loop_state[0]
+    return start_state, traj.get(idx).action
 
-    start_state = jax.lax.fori_loop(0,roll_len,step,init_state)[0]
-    return start_state
 
-
-    
 
 def roll_in_goal_state_sampler(trajs):
     return #returns a GCState
 
 
     
+

@@ -14,6 +14,7 @@ Action = Any
 class GCState:
     goal: Goal
     env_state: EnvState
+    act_target : Action = None
 
 @dataclass(jax = True)
 class StartEndGoal:
@@ -25,7 +26,6 @@ class GCObs:
     goal: Goal
     env_obs: Any
 
-GoalSampler = Callable[[PRNGKey], Goal]
 GoalAndStateSampler = Callable[[PRNGKey], GCState]
 GoalReward = Callable[[GCState,Action,EnvState],float]
 GoalDoneFunc = Callable[[GCState],bool]
