@@ -10,7 +10,7 @@ from typing import Any
 from stanza.distribution import MultivariateNormalDiag
 
 # TODO: typing for Gaussian Actor Critic
-
+# TODO: real FLAX for call
 
 class MLPActorCritic(nn.Module):
     action_sample: Any
@@ -59,30 +59,21 @@ class MLPActorCritic(nn.Module):
         return pi, jnp.squeeze(critic, axis=-1)
 
 
+def transform_ac_to_mean(base_ac_apply):
+    def new_apply(*args,**kwargs):
+        return base_ac_apply(*args,**kwargs)[0].mean
+    return new_apply
 
-# BC losses for pre-training ac_net
-
-def mean_loss(ac_net, state, action, loss_weight : jnp.array = None):
-    pi, _ = ac_net(state)
-    
-    mean_flat, _ = jax.flatten_util.ravel_pytree(pi.mean)
-    act_flat, _ = jax.flatten_util.ravel_pytree(action)
-    if loss_weight is None:
-        return jnp.linalg.norm(mean_flat - act_flat)
-    else:
-        return jnp.linalg.norm(jnp.multiply((mean_flat - act_flat),jnp.sqrt(loss_weight)))
-
+"""
 _mvn_logpdf = jax.vmap(norm.logpdf)
 #is this efficient
 _mvn_inv_prec = jax.vmap(lambda x: 1/x)
 _mvn_unit_reg = jax.vmap(lambda x: (x-1)**2)
 
 def mle_loss(ac_net, state, action, barrier_reg = 0, to_unit_reg = 0):
-    """ MLE loss for BC 
-    Loss is given by - log likelihood + sum_i regularizer /sigma_i
-    """
+    
     pi, _ = ac_net(state)
-    mean_flat, _ = jax.flatten_util.ravel_pytree(pi.mean)
+    v
     scale_diag_flat, _ = jax.flatten_util.ravel_pytree(pi.scale_diag)
     value_flat, _ = jax.flatten_util.ravel_pytree(action)
     log_pdf = _mvn_logpdf(value_flat, mean_flat, scale_diag_flat)
@@ -90,3 +81,4 @@ def mle_loss(ac_net, state, action, barrier_reg = 0, to_unit_reg = 0):
     b_reg = barrier_reg * _mvn_inv_prec(scale_diag_flat)
     u_reg = to_unit_reg * _mvn_unit_reg(scale_diag_flat)
     return jnp.sum(b_reg + u_reg - log_pdf, -1)
+    """

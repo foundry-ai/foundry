@@ -14,7 +14,7 @@ Action = Any
 class GCState:
     goal: Goal
     env_state: EnvState
-    act_target : Action = None
+    
 
 @dataclass(jax = True)
 class StartEndGoal:
