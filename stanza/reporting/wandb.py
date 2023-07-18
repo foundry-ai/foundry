@@ -1,6 +1,7 @@
 import wandb
+import jax
 
-from stanza.runtime.database import Database, \
+from stanza.reporting import Database, \
                             Video, Figure, remap
 
 import numpy as np
@@ -36,12 +37,23 @@ class WandbRun(Database):
     def flush(self):
         pass
 
-    def log(self, data):
+    def log(self, data, batch=False):
+        from stanza.util import shape_tree
         data = remap(data, {
                 Figure: lambda f: f.fig,
                 Video: lambda v: wandb.Video(np.array(v.data), fps=v.fps)
             })
-        if self.prefix != '':
-            self.run.log({self.prefix: data})
+        if batch:
+            dim = jax.tree_util.tree_leaves(data)[0].shape[0]
+            for i in range(dim):
+                x = jax.tree_map(lambda x: x[i], data)
+                if self.prefix != '':
+                    self.run.log({self.prefix: x})
+                else:
+                    self.run.log(x)
+                self.run.log(x)
         else:
-            self.run.log(data)
+            if self.prefix != '':
+                self.run.log({self.prefix: data})
+            else:
+                self.run.log(data)

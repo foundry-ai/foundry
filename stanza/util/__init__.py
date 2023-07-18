@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from stanza.dataclasses import dataclass, replace
+from stanza.dataclasses import dataclass, replace, field
 from typing import List, Any
 
 def vmap_ravel_pytree(x):
@@ -54,6 +54,16 @@ def loop(step_fn, state, jit=True):
             state = step_fn(state)
     return state
 
+def host_callback(func):
+    def host_fn(arg, transforms):
+        args, kwargs = arg
+        func(*args, **kwargs)
+    def wrapped(*args, **kwargs):
+        from jax.experimental.host_callback import id_tap
+        arg = (args, kwargs)
+        id_tap(host_fn, arg)
+    return wrapped
+
 @jax.jit
 def init_hooks(state):
     new_hook_states = []
@@ -77,3 +87,11 @@ def run_hooks(state):
         new_hook_states.append(hs)
     state = replace(state, hook_states=new_hook_states)
     return state
+
+@dataclass(jax=True)
+class StatsLogger:
+    interval: int = field(jax_static=True)
+    log_fn: Any = field(jax_static=True)
+
+    def __call__(self, *args: Any, **kwds: Any) -> Any:
+        pass

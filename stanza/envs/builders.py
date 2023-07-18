@@ -5,7 +5,7 @@ import jax
 import jax.tree_util
 import jax.numpy as jnp
 
-from stanza.env import Environment
+from stanza.envs import Environment
 from typing import Any
 
 __ENV_BUILDERS = {}

@@ -7,7 +7,7 @@ os.environ["XLA_FLAGS"] = '--xla_force_host_platform_device_count=10'
 import sys
 import asyncio
 from stanza.dataclasses import dataclass, field, is_dataclass
-from stanza.runtime.database import Database
+from stanza.reporting import Database
 from stanza.runtime.container import Target
 from stanza.dataclasses.arg import \
     ArgParser, ArgParseError, flag

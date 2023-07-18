@@ -65,6 +65,7 @@ def loss_fn(_state, params, rng_key, sample):
 
 from stanza import Partial
 from stanza.train import Trainer, batch_loss
+from stanza.reporting.jax import log_every_kth_iteration
 from stanza.util.rich import ConsoleDisplay, StatisticsTable, LoopProgress
 # import wandb
 # wandb.init(project="train_test")
@@ -75,13 +76,24 @@ display = ConsoleDisplay()
 display.add("train", StatisticsTable(), interval=100)
 display.add("train", LoopProgress(), interval=100)
 
-with display as w:
+from stanza.reporting.wandb import WandbDatabase
+db = WandbDatabase("dpfrommer-projects/examples")
+db = db.open("train")
+
+from stanza.reporting.jax import JaxDBScope
+db = JaxDBScope(db)
+
+with display as w, db as db:
     trainer = Trainer(epochs=5000, batch_size=10, optimizer=optimizer)
     init_params = model.init(PRNGKey(7), jnp.ones(()))
+
+    wb_logger = db.log_hook(
+       log_cond=log_every_kth_iteration(100),
+       buffer=100)
     res = trainer.train(
         loss_fn, dataset,
         PRNGKey(42), init_params,
-        hooks=[w.train], jit=True
+        hooks=[w.train, wb_logger], jit=True
     )
 
 with display as w:

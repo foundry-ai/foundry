@@ -85,6 +85,7 @@ class PPO(RLAlgorithm):
         )
         ratio = jnp.exp(log_prob - transition.policy_info.log_prob)
         gae = (gae - gae.mean()) / (gae.std() + 1e-8)
+
         loss_actor1 = ratio * gae
         loss_actor2 = (
             jnp.clip(
@@ -190,7 +191,7 @@ class PPO(RLAlgorithm):
             state = self.run(state)
         return TrainResults(
             fn_params=state.train_state.fn_params,
-            fn_state=state.train_state.fn_params,
+            fn_state=state.train_state.fn_state,
             opt_state=state.train_state.opt_state,
             hook_states=None
         )

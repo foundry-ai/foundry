@@ -1,5 +1,6 @@
 import math
 import math
+import chex
 import jax
 import jax.tree_util as tree_util
 import jax.numpy as jnp

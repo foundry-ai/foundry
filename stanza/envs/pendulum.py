@@ -8,7 +8,7 @@ import math
 from typing import NamedTuple
 from functools import partial
 
-from stanza.runtime.database import Figure, Video
+from stanza.reporting import Figure, Video
 from stanza.dataclasses import dataclass, field
 
 import stanza.graphics.canvas as canvas

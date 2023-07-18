@@ -8,18 +8,18 @@ from stanza.util.logging import logger
 from typing import Any
 from pathlib import Path
 
-NOUNS_ = None
-ADJECTIVES_ = None
-def words_():
-    global NOUNS_
-    global ADJECTIVES_
-    if NOUNS_ is None:
+_NOUNS = None
+_ADJECTIVES = None
+def _words():
+    global _NOUNS
+    global _ADJECTIVES
+    if _NOUNS is None:
         nouns_path = Path(__file__).parent / "nouns.txt"
-        NOUNS_ = open(nouns_path).read().splitlines()
-    if ADJECTIVES_ is None:
+        _NOUNS = open(nouns_path).read().splitlines()
+    if _ADJECTIVES is None:
         adjectives_path = Path(__file__).parent / "adjectives.txt"
-        ADJECTIVES_ = open(adjectives_path).read().splitlines()
-    return ADJECTIVES_, NOUNS_
+        _ADJECTIVES = open(adjectives_path).read().splitlines()
+    return _ADJECTIVES, _NOUNS
 
 @dataclass(frozen=True)
 class Figure:
@@ -58,7 +58,7 @@ class Database:
     def create(self):
         length = len(self.children)
         while True:
-            adjectives, nouns = words_()
+            adjectives, nouns = _words()
             adjective = random.choice(adjectives)
             noun = random.choice(nouns)
             name = f"{adjective}-{noun}-{length + 1}"
@@ -69,13 +69,17 @@ class Database:
     def open(self, name):
         pass
 
-    def add(self, name, value, append=False):
+    # must have stream=True
+    # to log over steps
+    def add(self, name, value, 
+            stream=False, batch=False):
         pass
 
-    # a recursive dictinary of keys
-    def log(self, data):
+    # if batch=True, this is a whole 
+    # batch of steps which we should log
+    def log(self, data, batch=False):
         for (k,v) in flat_items(data):
-            self.add(k,v, append=True)
+            self.add(k,v, stream=True, batch=batch)
 
     # open a root-level table
     # name will be auto-generated if None
@@ -83,14 +87,14 @@ class Database:
     def from_url(db_url):
         parsed = urllib.parse.urlparse(db_url)
         if parsed.scheme == 'dummy':
-            from stanza.runtime.database.dummy import DummyDatabase
+            from stanza.reporting.dummy import DummyDatabase
             return DummyDatabase()
         elif parsed.scheme == 'local':
-            from stanza.runtime.database.local import LocalDatabase
+            from stanza.reporting.local import LocalDatabase
             return LocalDatabase()
         elif parsed.scheme == 'wandb':
             entity = parsed.path.lstrip('/')
-            from stanza.runtime.database.wandb import WandbDatabase
+            from stanza.reporting.wandb import WandbDatabase
             return WandbDatabase(entity)
         else:
             raise RuntimeError("Unknown database url")
