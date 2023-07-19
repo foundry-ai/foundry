@@ -29,3 +29,4 @@ class MultivariateNormalDiag(Distribution):
         a = jnp.sum(jnp.log(scale_diag_flat))/2
         b = scale_diag_flat.shape[-1]/2 * (1 + jnp.log(2*jnp.pi))
         return a + b
+    

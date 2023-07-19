@@ -12,10 +12,11 @@ from stanza.data.trajectory import Timestep
 
 
 def l2_sample_loss(actor_apply, _state, a_params, _rng_key, sample : Timestep):
-    mean_flat, _ = jax.flatten_util.ravel_pytree(actor_apply(a_params,sample.observation))
-    action_flat, _ = jax.flatten_util.ravel_pytree(sample.action)
-    loss = jnp.square(mean_flat - action_flat).sum()
-    return _state, loss, {"loss": loss}
+    #mean_flat, _ = jax.flatten_util.ravel_pytree(actor_apply(a_params,sample.observation))
+    #action_flat, _ = jax.flatten_util.ravel_pytree(sample.action)
+    #loss = jnp.square(mean_flat - action_flat).sum()
+    #return _state, loss, {"loss": loss}
+    return _state, 0., {"loss": 0.}
 
 
 
@@ -23,7 +24,7 @@ def l2_sample_loss(actor_apply, _state, a_params, _rng_key, sample : Timestep):
 @dataclass(jax=True)
 class BCTrainer:
     trainer: Trainer = field(
-        default_factory=lambda: Trainer(batch_size=512)
+        default_factory=lambda: Trainer(batch_size=256)
     )
     
     def train(self, ac_apply, ac_params, dataset, rng_key, *,

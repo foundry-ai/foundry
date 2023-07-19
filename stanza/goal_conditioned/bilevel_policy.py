@@ -38,7 +38,7 @@ class BiPolicy(Policy):
     #turn this off to aid in debuggin
 
     def compute_goal(self,input,hl_rng_key):
-        print('uno')
+
         policy_state = input.policy_state
         hl_input = PolicyInput(
             observation=input.observation,
@@ -46,9 +46,9 @@ class BiPolicy(Policy):
             policy_state=policy_state.state_high_level \
             if policy_state is not None else None
         )
-        print('dos')
+
         hl_output = self.policy_high(hl_input)
-        print('tres')
+ 
         goal = hl_output.action
         return goal, hl_output.policy_state, hl_output.info
         
@@ -68,7 +68,6 @@ class BiPolicy(Policy):
         if policy_state is None:
             goal, hl_policy_state, hl_info = self.compute_goal(input,hl_rng_key)
             t = 0
-            print('yay')
         else: 
             t, (goal, hl_policy_state, hl_info) = jax.lax.cond(
                 self.is_update_time(policy_state),
@@ -78,7 +77,6 @@ class BiPolicy(Policy):
                           policy_state.state_high_level,
                           get_hl_info())),
                 operand=None)
-            print('double shit')
         # make the goal conditioned input
         # to the low level policy
         ll_input = PolicyInput(
@@ -98,7 +96,6 @@ class BiPolicy(Policy):
             info_high_level = hl_info)
         new_policy_info = AttrMap(high=hl_info, low = ll_output.info)
 
-        print('ll_act', ll_output.action)
         return PolicyOutput(
             action=ll_output.action,
             policy_state=new_policy_state,
@@ -127,11 +124,8 @@ class IdentityPolicy(Policy):
     is_gc : bool = True
     def __call__(self, input):
         action=input.observation
-        print('action:', action)
         if self.is_gc:
-            print('hi')
             action = action.goal
-        print('action:', action)
         return PolicyOutput(action = action,
             policy_state=input.policy_state)
 
