@@ -23,7 +23,7 @@ def l2_sample_loss(actor_apply, _state, a_params, _rng_key, sample : Timestep):
 @dataclass(jax=True)
 class BCTrainer:
     trainer: Trainer = field(
-        default_factory=lambda: Trainer(batch_size=512)
+        default_factory=lambda: Trainer(batch_size=256)
     )
     
     def train(self, ac_apply, ac_params, dataset, rng_key, *,

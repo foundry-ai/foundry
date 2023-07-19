@@ -54,17 +54,9 @@ class MixtureEnvironment(Environment):
         return self.base_env.render(state.env_state, **kwargs)
 
 
-class ScheduleItem:
-    env : MixtureEnvironment # need a discrete distribution
-    optimizer : Any = optax.chain(
-                        optax.clip_by_global_norm(0.5),
-                        optax.adam(3e-4, eps=1e-5)
-                    )
-    RL_trainer : Any # need an RL trainer
-
-
 # runs ppo from inital params, a net, 
 # and an environment, episode length, and optimizer
+# TODO test this
 def ppo_train(rng_key : PRNGKey, env : Environment, episode_length, net, 
               init_params,
               optimizer = optax.chain(
@@ -90,6 +82,14 @@ def ppo_train(rng_key : PRNGKey, env : Environment, episode_length, net,
     return trained_params, new_key
     
 
+
+class ScheduleItem:
+    env : MixtureEnvironment # need a discrete distribution
+    optimizer : Any = optax.chain(
+                        optax.clip_by_global_norm(0.5),
+                        optax.adam(3e-4, eps=1e-5)
+                    )
+    episode_length : int = 1000
 
 class TrainingSchedule:
     init_params : Any

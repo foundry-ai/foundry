@@ -45,6 +45,8 @@ def roll_in_sampler(traj : Data,
     @param target_time time of state we wish to sample for goal
     @param roll_len  rollout_length till we hit that time
     """
+    
+
     if action_noiser is not None or process_noiser is not None:
         assert noise_rng_key is not None
     if action_noiser is None and process_noiser is None:
@@ -56,6 +58,9 @@ def roll_in_sampler(traj : Data,
     start_index = traj.advance(traj.start, start_time)
     start = traj.get(start_index)
     curr_state = start.observation 
+
+    
+    
 
     def step(timestep,loop_state):
         env_state, idx, noise_rng, env_rng = loop_state
