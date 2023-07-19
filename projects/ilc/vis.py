@@ -1,7 +1,7 @@
 import plotly.graph_objects as go
 
 from stanza.runtime import activity
-from stanza.runtime.database import Figure
+from stanza.runtime.reporting import Figure
 from stanza.util.logging import logger
 
 from dataclasses import dataclass

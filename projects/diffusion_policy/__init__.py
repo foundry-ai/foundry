@@ -1,5 +1,5 @@
 from stanza.runtime import activity
-from stanza.runtime.database import Video
+from stanza.runtime.reporting import Video
 from stanza import Partial
 import stanza
 

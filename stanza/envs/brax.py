@@ -1,4 +1,4 @@
-from stanza.env import Environment
+from stanza.envs import Environment
 import brax.envs as envs
 
 from stanza.dataclasses import dataclass, field

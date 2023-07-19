@@ -1,4 +1,4 @@
-from stanza.env import Environment
+from stanza.envs import Environment
 from stanza.dataclasses import dataclass, field
 
 from gymnax.environments import environment
