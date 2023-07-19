@@ -32,7 +32,8 @@ class PendulumEnv(Environment):
     # give a distribution with support over all possible (or reasonable) states
     def sample_state(self, rng_key):
         k1, k2 = jax.random.split(rng_key)
-        angle = jax.random.uniform(k1, shape=(), minval=-2, maxval=math.pi + 1)
+        angle = jax.random.uniform(k1, shape=(), 
+                    minval=-2, maxval=math.pi + 1)
         vel = jax.random.uniform(k2, shape=(), minval=-1, maxval=1)
         return State(angle, vel)
 
@@ -65,7 +66,8 @@ class PendulumEnv(Environment):
         vel_diff = next_state.vel - state.vel
         angle_rew = 32 * angle_diff * jnp.sign(math.pi - next_state.angle)
         vel_rew = vel_diff * jnp.sign(-next_state.vel)
-        return angle_rew + vel_rew
+        action_penalty = 0.1 * jnp.sum(action**2)
+        return angle_rew + vel_rew - action_penalty
 
     def render(self, state, width=256, height=256):
         angle = jnp.squeeze(state.angle)
