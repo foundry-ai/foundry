@@ -8,9 +8,10 @@ train_data, test_data = cifar10()
 
 train_data = train_data.batch(128)
 
-# import stanza.envs.pusht as pusht
+import stanza.envs.pusht as pusht
+data = pusht.expert_data()
 
-# data = pusht.expert_data()
+
 # from stanza.data.trajectory import chunk_trajectory
 # from stanza.data import PyTreeData
 # from functools import partial

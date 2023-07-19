@@ -1,5 +1,5 @@
 import os
-from stanza.runtime.database import Database, Video, Figure
+from stanza.reporting import Database, Video, Figure
 from pathlib import Path
 import jax.numpy as jnp
 

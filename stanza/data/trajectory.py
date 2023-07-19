@@ -74,6 +74,7 @@ def chunk_trajectory(trajectory, chunk_size=1,
     return ChunkedTrajectory(trajectory, chunk_size, 
                             start_padding, end_padding)
 
+
 @dataclass(jax=True)
 class ChunkIterator:
     iterators: List[Any]

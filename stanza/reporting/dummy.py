@@ -1,4 +1,4 @@
-from stanza.runtime.database import Database
+from stanza.reporting import Database
 
 class DummyDatabase(Database):
     def __init__(self, name=None, parent=None):
