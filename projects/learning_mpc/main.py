@@ -1,5 +1,5 @@
 from stanza.runtime import activity
-from stanza.runtime.database import Figure
+from stanza.runtime.reporting import Figure
 
 from stanza.policies.mpc import BarrierMPC
 from stanza.policies.imitation_learning import ImitationLearning

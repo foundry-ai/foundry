@@ -51,7 +51,6 @@ class WandbRun(Database):
                     self.run.log({self.prefix: x})
                 else:
                     self.run.log(x)
-                self.run.log(x)
         else:
             if self.prefix != '':
                 self.run.log({self.prefix: data})

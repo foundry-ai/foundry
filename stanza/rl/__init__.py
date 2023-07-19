@@ -190,7 +190,7 @@ class RLAlgorithm:
             env_states=env_states,
             env_total_rewards=jnp.zeros(self.num_envs),
             total_episodes=0,
-            average_reward=0,
+            average_reward=0.,
             last_stats=None
         )
         return state

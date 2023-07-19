@@ -13,8 +13,12 @@ _HANDLES = {}
 _counter = 0
 
 def _log_cb(args, transforms, batch=False):
-    handle, data = args
+    handle, data, batch_n = args
     db = _HANDLES[handle.item()]
+    # if there is an limit to the batch, get the last batch_n
+    # from the buffer
+    if batch and batch_n is not None:
+        data = jax.tree_map(lambda x: x[-batch_n:], data)
     db.log(data, batch=batch)
 
 def log_every_kth_iteration(k):
@@ -41,9 +45,9 @@ class JaxDBHandle(Database):
         return LoggingHook(self, stat_fn, 
                     log_cond, buffer)
 
-    def log(self, data, batch=False):
+    def log(self, data, batch=False, batch_n=None):
         jax.experimental.host_callback.id_tap(
-            partial(_log_cb, batch=batch), (self.id, data))
+            partial(_log_cb, batch=batch), (self.id, data, batch_n))
 
 @dataclass(jax=True)
 class LoggingHook:
@@ -78,7 +82,7 @@ class LoggingHook:
 
         should_log = jnp.logical_and(self.condition_fn(state),
                         state.iteration != prev_iteration)
-        stat_buffer, new_elems = jax.lax.cond(should_log,
+        stat_buffer, elems = jax.lax.cond(should_log,
             update_buffer, lambda x, y: (x, y), stat_buffer, elems)
 
         done = jnp.logical_and(
@@ -86,11 +90,11 @@ class LoggingHook:
             state.iteration == state.max_iterations
         )
         def do_log():
-            self.handle.log(stat_buffer, batch=True)
+            self.handle.log(stat_buffer, batch=True, batch_n=elems)
             return 0
         elems = jax.lax.cond(
             jnp.logical_or(elems >= self.buffer, done),
-            do_log, lambda: new_elems)
+            do_log, lambda: elems)
         new_hook_state = (stat_buffer, elems, state.iteration)
         return new_hook_state, state
 

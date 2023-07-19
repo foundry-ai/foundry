@@ -25,6 +25,12 @@ display = ConsoleDisplay()
 display.add("ppo", StatisticsTable(), interval=1)
 display.add("ppo", LoopProgress("RL"), interval=1)
 
+from stanza.reporting.wandb import WandbDatabase
+db = WandbDatabase("dpfrommer-projects/examples")
+db = db.open("ppo")
+from stanza.reporting.jax import JaxDBScope
+db = JaxDBScope(db)
+
 ppo = PPO(
     trainer = Trainer(
         optimizer=optax.chain(
@@ -34,12 +40,13 @@ ppo = PPO(
     )
 )
 
-with display as dh:
+with display as dh, db as db:
+    wb_logger = db.log_hook(buffer=10)
     trained_params = ppo.train(
         PRNGKey(42),
         env, net.apply,
         params,
-        rl_hooks=[dh.ppo]
+        rl_hooks=[dh.ppo, wb_logger]
     )
 
 ac_apply = Partial(net.apply, trained_params.fn_params)

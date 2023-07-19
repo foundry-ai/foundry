@@ -130,7 +130,7 @@ class PPO(RLAlgorithm):
         # reset the train state
         # to make it continue training
         train_state = state.train_state
-        train_state = replace(state.train_state,
+        train_state = replace(train_state,
             iteration=0,
             max_iterations=self.update_epochs * data.length // self.trainer.batch_size,
             epoch_iteration=0, epoch=0)
@@ -140,6 +140,8 @@ class PPO(RLAlgorithm):
             state,
             iteration=state.iteration + 1,
             train_state=train_state,
+        )
+        state = replace(state,
             last_stats=self.compute_stats(state)
         )
         state = stanza.util.run_hooks(state)
