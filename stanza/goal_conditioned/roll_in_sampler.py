@@ -8,6 +8,9 @@ import jax.numpy as jnp
 from stanza.goal_conditioned import GCState
 from stanza.data import Data
 import chex
+from stanza.util.random import PRNGSequence
+from stanza.goal_conditioned import EndGoal
+from stanza.data.trajectory import Timestep
 
 Action = Any
 EnvState = Any 
@@ -32,7 +35,7 @@ def last_state_sampler(traj : Data,
 
 
 from stanza.util import shape_tree
-def roll_in_sampler(traj : Data, 
+def roll_in_sample(traj : Data, 
                     target_time : int,
                     noise_rng_key: PRNGKey, 
                     roll_len : int, 
@@ -96,4 +99,62 @@ def roll_in_goal_state_sampler(trajs):
 
 
     
+@dataclass(jax=True)
+class RollInSampler:
+    action_noiser : Noiser = None
+    process_noiser : Noiser = None
+    traj_data : Any = None
+    delta_t_min : int = 3
+    delta_t_max : int = 8
+    roll_len_min : int = 3
+    roll_len_max : int = 8
+    env : Environment = None
 
+
+    def sample_goal_state_action(self, key : PRNGKey):
+        rng = PRNGSequence(key)
+        rand_traj = self.traj_data.sample(next(rng))
+        traj_len = rand_traj.length
+
+        delta_t = jax.random.randint(next(rng), (), minval = self.delta_t_min,
+                                     maxval = self.delta_t_max)
+        delta_t = jax.lax.cond(delta_t <= traj_len - 1, lambda x: x, lambda x: traj_len - 1, operand = delta_t) 
+
+        start_t = jax.random.randint(next(rng), (), minval = 1,
+                                 maxval = traj_len - delta_t)
+        roll_len = jax.random.randint(next(rng), (), minval = self.roll_len_min,
+                                      maxval = self.roll_len_max)
+    
+        roll_len = jax.lax.cond(roll_len < start_t + 1, 
+                                lambda x: x, lambda x: start_t, operand = roll_len)
+        
+        start_state, start_action =  roll_in_sample(traj = rand_traj,
+                    target_time = start_t,
+                    noise_rng_key = next(rng), 
+                    roll_len = roll_len, 
+                    env = self.env, 
+                    env_rng_key = next(rng),
+                    action_noiser=self.action_noiser, 
+                    process_noiser=self.process_noiser)
+        
+        end_state = rand_traj.get(start_t + delta_t).observation
+        return start_state, end_state, start_action
+    
+    #@partial(jax.jit, static_argnames=['encode_start'])
+    def sample_gc_state(self, key : PRNGKey):
+        return self.sample_gc_timestep(key).observation
+
+    def sample_gc_timestep(self, key : PRNGKey):
+        start_state, end_state, start_action = self.sample_goal_state_action(key)
+        #goal = end_state 
+        #EndGoal(start_state=None, end_state=end_state)
+        #goal = StartEndGoal(start_state = None, end_state = end_state)
+        return Timestep(observation=GCState(goal=EndGoal(end_state), 
+                                           env_state=start_state),
+                                           action=start_action)
+
+    def sample_gc_timestep_high_level(self, key : PRNGKey):
+        start_state, end_state, start_action = self.sample_goal_state_action()
+        return Timestep(observation=GCState, action=end_state)
+
+        

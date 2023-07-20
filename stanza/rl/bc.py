@@ -1,6 +1,7 @@
 from stanza import Partial
 from stanza.train import Trainer,  batch_loss, TrainState, TrainResults
 from stanza.dataclasses import dataclass, field, replace, unpack
+import optax
 @dataclass(jax=True)
 class BCState:
     ac_apply: callable
@@ -23,9 +24,10 @@ def l2_sample_loss(actor_apply, _state, a_params, _rng_key, sample : Timestep):
 @dataclass(jax=True)
 class BCTrainer:
     trainer: Trainer = field(
-        default_factory=lambda: Trainer(batch_size=256)
+        default_factory=lambda: Trainer(
+        optimizer = optax.adam(optax.cosine_decay_schedule(1e-3, 10000, 1e-5))
+        )
     )
-    
     def train(self, ac_apply, ac_params, dataset, rng_key, *,
               epochs=None, max_iterations=None, jit=True,
               init_opt_state=None, hooks=[]):

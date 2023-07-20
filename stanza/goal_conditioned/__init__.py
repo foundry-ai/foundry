@@ -17,9 +17,9 @@ class GCState:
     
 
 @dataclass(jax = True)
-class StartEndGoal:
-    start_state: EnvState
+class EndGoal:
     end_state: EnvState
+    other_info: Any = None
 
 @dataclass(jax = True)
 class GCObs:
