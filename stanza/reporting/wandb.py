@@ -37,22 +37,18 @@ class WandbRun(Database):
     def flush(self):
         pass
 
-    def log(self, data, batch=False):
+    def log(self, data, step=None, batch=False):
         from stanza.util import shape_tree
-        data = remap(data, {
-                Figure: lambda f: f.fig,
-                Video: lambda v: wandb.Video(np.array(v.data), fps=v.fps)
-            })
         if batch:
             dim = jax.tree_util.tree_leaves(data)[0].shape[0]
             for i in range(dim):
                 x = jax.tree_map(lambda x: x[i], data)
-                if self.prefix != '':
-                    self.run.log({self.prefix: x})
-                else:
-                    self.run.log(x)
+                self.log(x, step=(step + i) if step is not None else step, batch=False)
         else:
+            data = remap(data, {
+                    Figure: lambda f: f.fig,
+                    Video: lambda v: wandb.Video(np.array(v.data), fps=v.fps)
+                })
             if self.prefix != '':
-                self.run.log({self.prefix: data})
-            else:
-                self.run.log(data)
+                data = {self.prefix: data}
+            self.run.log(data, step=step)

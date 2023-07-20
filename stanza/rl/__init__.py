@@ -154,25 +154,23 @@ class RLAlgorithm:
             lambda x: jnp.swapaxes(x, 0, 1), transitions
         )
         # compute new reward totals
-        def total_reward_scan(total_reward, transition):
-            total_reward = total_reward + transition.reward
-            carry = transition.done * total_reward
-            return carry, total_reward
-        env_total_rewards, total_rewards = jax.lax.scan(total_reward_scan, 
-                                        state.env_total_rewards, transitions_reshaped)
+        # def total_reward_scan(total_reward, transition):
+        #     total_reward = total_reward + transition.reward
+        #     carry = transition.done * total_reward
+        #     return carry, total_reward
+        # env_total_rewards, total_rewards = jax.lax.scan(total_reward_scan, 
+        #                                 state.env_total_rewards, transitions_reshaped)
         finished_episodes = jnp.count_nonzero(transitions_reshaped.done)
-        new_rewards = jnp.sum(total_rewards*transitions_reshaped.done)
+        # new_rewards = jnp.sum(total_rewards*transitions_reshaped.done)
 
-        avg = new_rewards / jnp.maximum(1, finished_episodes)
+        # avg = new_rewards / jnp.maximum(1, finished_episodes)
 
-        frac = state.total_episodes / (jnp.maximum(state.total_episodes, 1) + finished_episodes)
+        # frac = state.total_episodes / (jnp.maximum(state.total_episodes, 1) + finished_episodes)
 
-        average_reward = frac*state.average_reward + avg * (1 - frac)
         # update the average reward
         state = replace(state, 
             rng_key=next_key, 
-            env_total_rewards=env_total_rewards,
-            average_reward=average_reward,
+            average_reward=jnp.mean(transitions.reward),
             total_episodes=state.total_episodes + finished_episodes,
             env_states=env_states)
         return state, transitions
