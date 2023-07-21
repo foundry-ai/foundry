@@ -15,6 +15,7 @@ from stanza.distribution import MultivariateNormalDiag
 class MLPActorCritic(nn.Module):
     action_sample: Any
     activation: str = "tanh"
+    min_var : float = 0
 
     @nn.compact
     def __call__(self, x):
@@ -42,7 +43,7 @@ class MLPActorCritic(nn.Module):
             bias_init=constant(0.0)
         )(actor_mean)
         actor_logtstd = self.param("log_std", nn.initializers.zeros, (action_flat.shape[0],))
-        pi = MultivariateNormalDiag(action_uf(actor_mean), action_uf(jnp.exp(actor_logtstd)))
+        pi = MultivariateNormalDiag(action_uf(actor_mean), action_uf(self.min_var + jnp.exp(actor_logtstd)))
 
         critic = nn.Dense(
             256, kernel_init=orthogonal(jnp.sqrt(2)), bias_init=constant(0.0)
@@ -59,7 +60,13 @@ class MLPActorCritic(nn.Module):
         return pi, jnp.squeeze(critic, axis=-1)
 
 
-def transform_ac_to_mean(base_ac_apply):
+def transform_ac_to_a(base_ac_apply):
+    def new_apply(*args,**kwargs):
+        return base_ac_apply(*args,**kwargs)[0]
+    return new_apply
+
+
+def transform_ac_to_a_mean(base_ac_apply):
     def new_apply(*args,**kwargs):
         return base_ac_apply(*args,**kwargs)[0].mean
     return new_apply

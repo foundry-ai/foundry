@@ -5,13 +5,15 @@ from stanza.dataclasses import dataclass, field, replace
 from stanza.dataclasses import dataclass, field, replace
 import jax
 import jax.numpy as jnp
-from stanza.goal_conditioned import GCState
+from stanza.goal_conditioned import GCState, GCObs
 from stanza.data import Data
 import chex
 from stanza.util.random import PRNGSequence
 from stanza.goal_conditioned import EndGoal
 from stanza.data.trajectory import Timestep
 
+
+State = Any
 Action = Any
 EnvState = Any 
 Noiser = Callable[[PRNGKey, Any, int],Any]
@@ -93,9 +95,15 @@ def roll_in_sample(traj : Data,
     return start_state, traj.get(idx).action
 
 
-
-def roll_in_goal_state_sampler(trajs):
-    return #returns a GCState
+#TODO throw away
+@dataclass(jax=True)
+class GCSampler:
+    def sample_gc_state(self, key : PRNGKey):
+        raise NotImplementedError("Must impelement sample_gc_state()")
+    def sample_gc_timestep(self, key : PRNGKey):
+        raise NotImplementedError("Must impelement sample_gc_timestep()")
+    def sample_gc_timestep_high_level(self, key : PRNGKey):
+        raise NotImplementedError("Must impelement sample_gc_state()")
 
 
     
@@ -109,6 +117,7 @@ class RollInSampler:
     roll_len_min : int = 3
     roll_len_max : int = 8
     env : Environment = None
+    fixed_goal : State = None
 
 
     def sample_goal_state_action(self, key : PRNGKey):
@@ -117,11 +126,14 @@ class RollInSampler:
         traj_len = rand_traj.length
 
         delta_t = jax.random.randint(next(rng), (), minval = self.delta_t_min,
-                                     maxval = self.delta_t_max)
+                                     maxval = self.delta_t_max+1)
         delta_t = jax.lax.cond(delta_t <= traj_len - 1, lambda x: x, lambda x: traj_len - 1, operand = delta_t) 
-
+        #print('delta_t', delta_t, 'min', self.delta_t_min, 'max', self.delta_t_max)
+        
         start_t = jax.random.randint(next(rng), (), minval = 1,
                                  maxval = traj_len - delta_t)
+        
+        #print('start_t', start_t)
         roll_len = jax.random.randint(next(rng), (), minval = self.roll_len_min,
                                       maxval = self.roll_len_max)
     
@@ -137,24 +149,37 @@ class RollInSampler:
                     action_noiser=self.action_noiser, 
                     process_noiser=self.process_noiser)
         
-        end_state = rand_traj.get(start_t + delta_t).observation
-        return start_state, end_state, start_action
+        
+        if self.fixed_goal is None:
+            end_state = rand_traj.get(start_t + delta_t).observation
+        else:
+            end_state = self.fixed_goal
+        goal = EndGoal(end_state)
+        return start_state, goal, start_action
     
     #@partial(jax.jit, static_argnames=['encode_start'])
     def sample_gc_state(self, key : PRNGKey):
-        return self.sample_gc_timestep(key).observation
+        start_state, goal, _ = self.sample_goal_state_action(key)
+        return GCState(goal=goal, 
+                            env_state=start_state)
 
     def sample_gc_timestep(self, key : PRNGKey):
-        start_state, end_state, start_action = self.sample_goal_state_action(key)
+        start_state, goal, start_action = self.sample_goal_state_action(key)
+        start_obs = self.env.observe(start_state)
         #goal = end_state 
         #EndGoal(start_state=None, end_state=end_state)
         #goal = StartEndGoal(start_state = None, end_state = end_state)
-        return Timestep(observation=GCState(goal=EndGoal(end_state), 
-                                           env_state=start_state),
+        return Timestep(observation=(GCObs(goal=goal, 
+                                           env_obs=start_obs)),
                                            action=start_action)
 
-    def sample_gc_timestep_high_level(self, key : PRNGKey):
-        start_state, end_state, start_action = self.sample_goal_state_action()
-        return Timestep(observation=GCState, action=end_state)
+    def sample_gc_state_high_level(self, key : PRNGKey):
+        start_state, goal, _ = self.sample_goal_state_action(key)
+        return Timestep(observation=start_state, action=goal)
 
-        
+    def sample_gc_timestep_high_level(self, key : PRNGKey):
+        start_state, goal, _ = self.sample_goal_state_action(key)
+        start_obs = self.env.observe(start_state)
+        return Timestep(observation=start_obs, action=goal)
+
+    

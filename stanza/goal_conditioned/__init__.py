@@ -14,7 +14,7 @@ Action = Any
 class GCState:
     goal: Goal
     env_state: EnvState
-    
+
 
 @dataclass(jax = True)
 class EndGoal:
@@ -66,7 +66,28 @@ class GCEnvironment(Environment):
         return self.env.render(state.env_state, **kwargs)
 
 
+# notice that most methods go unimplemented
+@dataclass(jax=True)
+class GCHighLevelEnvironment(Environment):
+    gs_sampler: GoalAndStateSampler   
+    base_env : Environment  = None #for rendering   
+    
+    def sample_action(self, rng_key : PRNGKey):
+        return self.gs_sampler(rng_key).goal
 
+    def sample_state(self, rng_key : PRNGKey):
+        # note, we use the state_high_level method because its observation is the state
+        return self.gs_sampler(rng_key).env_state
+    
+    # the step in the high level just goes to the 
+    #target
+    def step(self, state, action, rng_key):
+        # requires thats action is a goal
+        return action.end_state
+    
+    def render(self, state, width=256, height=256):
+        return self.base_env.render(state, width, height)
+    
+    #notice state space is equal to state space of original env
 
-
-
+    #default observe: returns the state
