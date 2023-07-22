@@ -21,7 +21,8 @@ Noiser = Callable[[PRNGKey, Any, int],Any]
 GC_Ind_Sampler = Callable[[PRNGKey, ], tuple]
 
 
-
+def identity_noiser(key : PRNGKey, x, t: int):
+    return x
 
 def last_state_sampler(traj : Data, 
                        target_time : int, 
@@ -62,35 +63,42 @@ def roll_in_sample(traj : Data,
     start_time = target_time - roll_len
     start_index = traj.advance(traj.start, start_time)
     start = traj.get(start_index)
-    curr_state = start.observation 
+    print('start_index', start_index, 'start_time', start_time)
+    print(start)
+    print('hi')
+    start_state = start.observation 
 
     
-    
-
+    my_list = jnp.zeros(roll_len)
+    print(roll_len)
     def step(timestep,loop_state):
-        env_state, idx, noise_rng, env_rng = loop_state
+        env_state, idx, noise_rng, env_rng, test_list = loop_state
+        print('hi')
 
+        print(idx)
         action = traj.get(idx).action
         idx = traj.next(idx)
+        test_list.at[timestep].set(timestep)
         action_rng, state_rng, noise_rng = jax.random.split(noise_rng, 3) \
             if noise_rng is not None else (None, None, None)
         
         step_rng, env_rng = jax.random.split(env_rng) \
             if env_rng is not None else (None, None)
 
+        
         action = action_noiser(action_rng, action, timestep) \
             if action_noiser is not None else action
         env_state = env.step(env_state, action, step_rng)
         env_state =  process_noiser(state_rng, env_state, timestep) \
             if process_noiser is not None else env_state
-        new_loop_state = (env_state, idx, noise_rng, env_rng)
+        new_loop_state = (env_state, idx, noise_rng, env_rng,test_list)
         # checks consistency of object type
         chex.assert_trees_all_equal_shapes_and_dtypes(loop_state,new_loop_state)
         return new_loop_state
-
         
-    init_state = (curr_state, start, noise_rng_key, env_rng_key, 0)
+    init_state = (start_state, start_index, noise_rng_key, env_rng_key,my_list)
     end_loop_state = jax.lax.fori_loop(0,roll_len,step,init_state)
+    print(end_loop_state[4])
     start_state, idx =  end_loop_state[0], end_loop_state[1]
     return start_state, traj.get(idx).action
 
@@ -123,11 +131,16 @@ class RollInSampler:
     def sample_goal_state_action(self, key : PRNGKey):
         rng = PRNGSequence(key)
         rand_traj = self.traj_data.sample(next(rng))
+        print('rand_traj',rand_traj)
         traj_len = rand_traj.length
 
         delta_t = jax.random.randint(next(rng), (), minval = self.delta_t_min,
                                      maxval = self.delta_t_max+1)
         delta_t = jax.lax.cond(delta_t <= traj_len - 1, lambda x: x, lambda x: traj_len - 1, operand = delta_t) 
+        
+        print('delta_t',delta_t)
+        print('traj_len',delta_t)
+
         #print('delta_t', delta_t, 'min', self.delta_t_min, 'max', self.delta_t_max)
         
         start_t = jax.random.randint(next(rng), (), minval = 1,
@@ -136,10 +149,12 @@ class RollInSampler:
         #print('start_t', start_t)
         roll_len = jax.random.randint(next(rng), (), minval = self.roll_len_min,
                                       maxval = self.roll_len_max)
-    
+        print('some roll_len 1', roll_len)
         roll_len = jax.lax.cond(roll_len < start_t + 1, 
                                 lambda x: x, lambda x: start_t, operand = roll_len)
         
+        print('some roll_len 2', roll_len)
+
         start_state, start_action =  roll_in_sample(traj = rand_traj,
                     target_time = start_t,
                     noise_rng_key = next(rng), 
@@ -183,3 +198,18 @@ class RollInSampler:
         return Timestep(observation=start_obs, action=goal)
 
     
+"""
+Methods for testing
+"""
+
+def make_no_noise_roll_in(env : Environment, traj_data : Any, delta_t = 0,roll_in_len=4):
+    return RollInSampler(env=env,traj_data=traj_data,delta_t_min=delta_t,delta_t_max =delta_t,
+                         roll_len_min = roll_in_len, roll_len_max = roll_in_len)
+
+#should agree with make_no_noise_roll_in()
+#here we test that the loop with the "identity noiser"
+#gives the same result as setting both noisers to 1
+def make_no_noise_roll_in_v2(env : Environment, traj_data : Any, delta_t = 0,roll_in_len=4):
+    return RollInSampler(env=env,traj_data=traj_data,delta_t_min=delta_t,delta_t_max =delta_t,
+                         roll_len_min = roll_in_len, roll_len_max = roll_in_len,
+                         action_noiser = identity_noiser, process_noiser = identity_noiser)
