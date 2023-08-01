@@ -42,7 +42,8 @@ class L2BCLoss(BCLoss):
 class MleBCLoss(BCLoss):
     #TODO: allow for reweighting the loss in diff ways
     def loss(actor_apply, _state, a_params, _rng_key : PRNGKey, sample : Timestep):
-        return -1 * actor_apply(a_params, sample.observation).log_prob(sample.action)
+        loss = -1 * actor_apply(a_params, sample.observation).log_prob(sample.action)
+        return _state, loss, {"loss": loss}
     
 def l2_loss(actor_apply, _state, a_params, _rng_key : PRNGKey, sample : Timestep):
         mean_flat, _ = jax.flatten_util.ravel_pytree(actor_apply(a_params,sample.observation).mean)

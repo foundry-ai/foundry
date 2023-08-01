@@ -112,40 +112,31 @@ class GCSampler:
     def sample_gc_timestep_high_level(self, key : PRNGKey):
         raise NotImplementedError("Must impelement sample_gc_state()")
 
-
-    
 @dataclass(jax=True)
-class RollInSampler:
-    action_noiser : Noiser = None
-    process_noiser : Noiser = None
-    traj_data : Any = None
+class RollInHelper():
+    def get_rollin_inds(): 
+        raise NotImplementedError("Must impelement get_rollin_inds()")
+
+@dataclass(jax=True)
+class UniformRollinHelper(): 
     delta_t_min : int = 3
     delta_t_max : int = 8
     roll_len_min : int = 3
     roll_len_max : int = 8
     min_start_t : int = 1
-    env : Environment = None
-    fixed_goal : State = None
 
-
-    def sample_goal_state_action(self, key : PRNGKey):
-        rng = PRNGSequence(key)
-        rand_traj = self.traj_data.sample(next(rng))
+    def get_rollin_inds(self, key : PRNGKey, rand_traj):
         traj_len = rand_traj.length
+        rng = PRNGSequence(key)
 
         delta_t = jax.random.randint(next(rng), (), minval = self.delta_t_min,
                                      maxval = self.delta_t_max+1)
         delta_t = jax.lax.cond(delta_t <= traj_len - 1, lambda x: x, lambda x: traj_len - 1, operand = delta_t) 
         
-        #print('delta_t',delta_t)    
-        #print('traj_len',rand_traj.length)
-
-        #print('delta_t', delta_t, 'min', self.delta_t_min, 'max', self.delta_t_max)
         
         start_t = jax.random.randint(next(rng), (), minval = self.min_start_t,
                                  maxval = traj_len - delta_t)
         
-        print('start_t', start_t)
         roll_len = jax.random.randint(next(rng), (), minval = self.roll_len_min,
                                       maxval = self.roll_len_max)
         print('some roll_len 1', roll_len)
@@ -153,7 +144,25 @@ class RollInSampler:
                                 lambda x: x, lambda x: start_t, operand = roll_len)
         
         print('some roll_len 2', roll_len)
+        return next(rng), start_t, delta_t, roll_len
 
+
+    
+@dataclass(jax=True)
+class RollInSampler:
+    action_noiser : Noiser = None
+    process_noiser : Noiser = None
+    rollin_helper : RollInHelper = field(default_factory=UniformRollinHelper)
+    traj_data : Any = None
+    env : Environment = None
+    fixed_goal : State = None
+
+
+    def sample_goal_state_action(self, key : PRNGKey):
+        rng = PRNGSequence(key)
+        rand_traj = self.traj_data.sample(next(rng))
+       
+        key, start_t, delta_t, roll_len = self.rollin_helper.get_rollin_inds(key, rand_traj)
         start_state, start_action, info =  roll_in_sample(traj = rand_traj,
                     target_time = start_t,
                     noise_rng_key = next(rng), 
