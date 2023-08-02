@@ -95,7 +95,6 @@ with display as w, db as db:
         PRNGKey(42), init_params,
         hooks=[w.train, wb_logger], jit=True
     )
-
 with display as w:
     trainer = Trainer(epochs=5000, batch_size=10, optimizer=optimizer)
     init_params = model.init(PRNGKey(7), jnp.ones(()))

@@ -58,7 +58,6 @@ class Data:
         i = self.start
         i = self.advance(i, idx)
         return self.get(i)
-    
 
     def scan(self, scan_fn, state, limit=None, jit=True):
         start = self.start
