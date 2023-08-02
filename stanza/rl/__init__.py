@@ -17,13 +17,18 @@ class ACPolicy:
     actor_critic: Callable
     observation_normalizer: Callable = None
     action_normalizer: Callable = None
+    use_mean : bool = field(default=False, jax_static=True)
+    
 
     def __call__(self, input: PolicyInput) -> PolicyOutput:
         observation = input.observation
         if self.observation_normalizer is not None:
             observation = self.observation_normalizer.normalize(observation)
         pi, value = self.actor_critic(observation)
-        action = pi.sample(input.rng_key)
+        if self.use_mean:
+            action = pi.mean
+        else:
+            action = pi.sample(input.rng_key)
         log_prob = pi.log_prob(action)
         return PolicyOutput(
             action, log_prob, 

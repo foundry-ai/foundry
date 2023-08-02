@@ -17,13 +17,14 @@ import optax
 import jax
 import jax.numpy as jnp
 
+
 @dataclass(jax=True)
 class TrainState(LoopState):
     epoch: int
     max_epochs: int
     epoch_iteration: int
 
-    loss_fn: Callable
+    loss_fn: Callable #takes in (fn_fn_state, fn_params, rng_key, batch)
 
     rng_key: PRNGKey
     fn_params: Any
