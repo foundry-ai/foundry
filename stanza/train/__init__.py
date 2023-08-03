@@ -1,7 +1,7 @@
 from stanza import Partial
 from stanza.dataclasses import dataclass, field, replace, unpack
 from stanza.util.logging import logger
-from stanza.train.util import LoopState, run_hooks, init_hooks as _init_hooks, loop
+from stanza.util.loop import LoopState, run_hooks, init_hooks as _init_hooks, loop
 from stanza.data import Data, Iterator, PyTreeData
 
 from jax.random import PRNGKey

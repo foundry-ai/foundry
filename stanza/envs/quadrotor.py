@@ -77,8 +77,8 @@ class QuadrotorEnvironment(Environment):
                 10*state.phi**2 + \
                 0.1*(state.x_dot**2 + state.z_dot**2 + \
                 state.phi_dot**2)
-        u_cost = jnp.sum(action**2)
-        cost = jnp.sum(x_cost) + 0.1*u_cost + 10*x_cost[-1]
+        u_cost = jnp.mean(action**2)
+        cost = jnp.mean(x_cost) + 0.1*u_cost + x_cost[-1]
         return cost
     
     def visualize(self, states, actions):

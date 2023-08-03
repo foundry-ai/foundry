@@ -71,15 +71,15 @@ class Database:
 
     # must have stream=True
     # to log over steps
-    def add(self, name, value, 
-            stream=False, batch=False):
-        pass
+    def add(self, name, value, *,
+            append=False, step=None, batch=False):
+        raise NotImplementedError()
 
     # if batch=True, this is a whole 
     # batch of steps which we should log
-    def log(self, data, batch=False):
+    def log(self, data, *, step=None, batch=False):
         for (k,v) in flat_items(data):
-            self.add(k,v, stream=True, batch=batch)
+            self.add(k,v, append=True, step=step, batch=batch)
 
     # open a root-level table
     # name will be auto-generated if None

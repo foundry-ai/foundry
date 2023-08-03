@@ -1,7 +1,10 @@
 from stanza.dataclasses import dataclass, replace, field
-from typing import List, Any
+from stanza.reporting import flat_items
+from stanza.util.logging import logger
+from typing import List, Any, Callable
 
 import jax
+import jax.numpy as jnp
 
 # Loop tools,
 # forms the basis of the while loop
@@ -51,3 +54,31 @@ def run_hooks(state):
         new_hook_states.append(hs)
     state = replace(state, hook_states=new_hook_states)
     return state
+
+def every_kth_iteration(k):
+    def cond(state):
+        return state.iteration % k == 0
+    return cond
+every_iteration = lambda state: True
+
+def every_kth_epoch(k):
+    def cond(state):
+        return jnp.logical_and(state.epoch % k == 0,
+                state.epoch_iteration == 0)
+    return cond
+every_epoch = every_kth_epoch(1)
+
+@dataclass
+class LoggerHook:
+    condition_fn: Any
+    stat_fn: Callable = lambda state: state.last_stats
+
+    def __call__(self, hs, state):
+        def log():
+            stats = self.stat_fn(state)
+            flat_stats = dict(flat_items(stats))
+            s = [f"{k}: {{}}" for k in flat_stats.keys()]
+            fmt = ",".join(s)
+            logger.info(fmt, *flat_stats.values())
+        jax.lax.cond(self.condition_fn(state), log, lambda: None)
+        return hs, state

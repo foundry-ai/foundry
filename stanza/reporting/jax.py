@@ -1,6 +1,7 @@
 from stanza.dataclasses import dataclass, field, replace
 from stanza.reporting import Database
 from stanza import partial
+from stanza.util.loop import every_iteration
 
 from jax.experimental.host_callback import barrier_wait
 from typing import Any, Callable
@@ -21,59 +22,20 @@ def _log_cb(args, transforms, batch=False):
         data = jax.tree_map(lambda x: x[-batch_n:], data)
     db.log(data, step=iteration, batch=batch)
 
-def log_every_kth_iteration(k):
-    def cond(state):
-        return state.iteration % k == 0
-    return cond
-log_every_iteration = lambda state: True
-
-def log_every_kth_epoch(k):
-    def cond(state):
-        return jnp.logical_and(state.epoch % k == 0,
-                state.epoch_iteration == 0)
-    return cond
-log_every_epoch = log_every_kth_epoch(1)
-
 @dataclass(jax=True)
 class JaxDBHandle(Database):
     id: int
 
-    def stat_logger(self, 
+    def statistic_logging_hook(self, 
             stat_fn=lambda stat_state, state: (stat_state, state.last_stats),
-            log_cond=log_every_iteration,
+            log_cond=every_iteration,
             *, buffer=100):
         return StatHook(self, stat_fn, 
                     log_cond, buffer)
-    
-    def logger_hook(self, log_fn,
-            log_cond=log_every_iteration):
-        pass
 
     def log(self, data, step=None, batch=False, batch_n=None):
         jax.experimental.host_callback.id_tap(
             partial(_log_cb, batch=batch), (self.id, data, step, batch_n))
-
-# A generic log callback
-@dataclass(jax=True)
-class LogHook:
-    handle: JaxDBHandle
-    log_fn: Callable
-    condition_fn: Callable
-
-    def init(self, state):
-        if hasattr(self.stat_fn, "init"):
-            log_fn_state = self.stat_fn.init(state)
-        else:
-            log_fn_state = None
-        return log_fn_state, state
-    
-    def __call__(self, hook_state, state):
-        def do_log():
-            return self.log_fn(hook_state, state, self.handle)
-        hook_state = jax.lax.cond(
-            self.condition_fn(hook_state, state)
-        )
-        pass
 
 @dataclass(jax=True)
 class StatHook:
