@@ -23,7 +23,6 @@ sdataset = Data.from_pytree(
 )
 sdataset = sdataset.shuffle(PRNGKey(42))
 
-
 class MLP(nn.Module):
   features: Sequence[int]
 
@@ -65,7 +64,7 @@ def loss_fn(_state, params, rng_key, sample):
 
 from stanza import Partial
 from stanza.train import Trainer, batch_loss
-from stanza.reporting.jax import log_every_kth_iteration
+from stanza.util.loop import every_kth_iteration, LoggerHook
 from stanza.util.rich import ConsoleDisplay, StatisticsTable, LoopProgress
 # import wandb
 # wandb.init(project="train_test")
@@ -76,31 +75,58 @@ display = ConsoleDisplay()
 display.add("train", StatisticsTable(), interval=100)
 display.add("train", LoopProgress(), interval=100)
 
-from stanza.reporting.wandb import WandbDatabase
-db = WandbDatabase("dpfrommer-projects/examples")
-db = db.open("train")
+from stanza.reporting.local import LocalDatabase
+db = LocalDatabase().create()
+logger.info(f"Logging to [blue]{db.name}[/blue]")
+# from stanza.reporting.wandb import WandbDatabase
+# db = WandbDatabase("dpfrommer-projects/examples")
+# db = db.open("train")
 
 from stanza.reporting.jax import JaxDBScope
 db = JaxDBScope(db)
+print_hook = LoggerHook(every_kth_iteration(1000))
 
 with display as w, db as db:
     trainer = Trainer(epochs=5000, batch_size=10, optimizer=optimizer)
     init_params = model.init(PRNGKey(7), jnp.ones(()))
 
-    wb_logger = db.log_hook(
-       log_cond=log_every_kth_iteration(100),
-       buffer=100)
+    logger_hook = db.statistic_logging_hook(
+       log_cond=every_kth_iteration(100), buffer=100)
+
     res = trainer.train(
         loss_fn, dataset,
         PRNGKey(42), init_params,
-        hooks=[w.train, wb_logger], jit=True
+        hooks=[w.train, logger_hook, print_hook], jit=True
     )
 
-with display as w:
-    trainer = Trainer(epochs=5000, batch_size=10, optimizer=optimizer)
-    init_params = model.init(PRNGKey(7), jnp.ones(()))
-    res = trainer.train(
-        loss_fn, dataset,
-        PRNGKey(42), init_params,
-        hooks=[w.train], jit=True
+# run manually and compare...
+optimizer = trainer.optimizer
+from stanza.util.random import PRNGSequence
+rng = PRNGSequence(42)
+batch_size = 10
+params = init_params
+opt_state = optimizer.init(params)
+
+def loss(params, batch):
+   _, loss, stats = loss_fn(None, params, None, batch)
+   return loss, stats
+
+loss_grad = jax.jit(jax.grad(loss, argnums=0, has_aux=True))
+for e in range(trainer.epochs):
+    data = dataset.data
+    idx = jax.random.permutation(next(rng), dataset.length)
+    shuffled_data = jax.tree_map(
+      lambda x: jnp.take(x, idx, axis=0, unique_indices=True),
+      data)
+    batched = jax.tree_map(
+       lambda x: jnp.reshape(x, (-1, batch_size) + x.shape[1:]),
+        shuffled_data
     )
+    batches = dataset.length // 10
+    for i in range(batches):
+        batch = jax.tree_map(lambda x: x[i], batched)
+        grad, stats = loss_grad(params, batch)
+        updates, opt_state = optimizer.update(grad, opt_state, params)
+        params = optax.apply_updates(params, updates)
+    if e % 100 == 0:
+        logger.info("{}", stats)

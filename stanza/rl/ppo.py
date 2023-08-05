@@ -27,7 +27,6 @@ class PPOState(RLState):
     ac_apply : Callable
     train_state : TrainState
 
-
 @dataclass(jax=True)
 class PPO(RLAlgorithm):
     gamma: float = 0.99

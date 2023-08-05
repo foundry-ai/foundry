@@ -1,10 +1,15 @@
 from stanza.runtime import activity
-from stanza.runtime.reporting import Video
+from stanza.reporting import Video
 from stanza import Partial
 import stanza
 
+from stanza.data.trajectory import Timestep
+from stanza.data import Data
 from stanza.train import Trainer, batch_loss
 from stanza.train.ema import EmaHook
+
+from stanza.policies.mpc import MPC
+from stanza.solver.ilqr import iLQRSolver
 
 from stanza.dataclasses import dataclass, replace, field
 from stanza.util.random import PRNGSequence
@@ -48,6 +53,9 @@ def make_network(config):
     if config.env == "pusht":
         from diffusion_policy.networks import pusht_net
         return pusht_net
+    elif config.env == "quadrotor":
+        from diffusion_policy.networks import quadrotor_net
+        return quadrotor_net
 
 def make_policy_transform(config, chunk_size=8):
     if config.env == "pusht":
@@ -70,7 +78,7 @@ def make_diffuser(config):
     return DDPMSchedule.make_squaredcos_cap_v2(
         100, clip_sample_range=1)
 
-def setup_data(config):
+def setup_data(config, rng_key):
     if config.env == "pusht":
         from stanza.envs.pusht import expert_data
         data = expert_data()
@@ -80,6 +88,27 @@ def setup_data(config):
         val_data = data[200:]
         data = data[:traj]
         # Load the data into a PyTree
+    elif config.env == "quadrotor":
+        env = envs.create("quadrotor")
+        # rollout a bunch of trajectories
+        mpc = MPC(
+            action_sample=env.sample_action(PRNGKey(0)),
+            cost_fn=env.cost,
+            model_fn=env.step,
+            horizon_length=100,
+            receed=False,
+            solver=iLQRSolver()
+        )
+        def rollout(rng_key):
+            rng = PRNGSequence(rng_key)
+            x0 = env.reset(next(rng))
+            rollout = policies.rollout(env.step, x0, mpc,
+                            length=100, last_state=False)
+            return Data.from_pytree(Timestep(rollout.states, rollout.actions))
+        data = jax.vmap(rollout)(jax.random.split(rng_key, 100))
+        data = Data.from_pytree(data)
+        val_data = data[-10:]
+        data = data[:-10]
     logger.info("Calculating data normalizers")
     data_flat = PyTreeData.from_data(data.flatten(), chunk_size=4096)
     action_norm = LinearNormalizer.from_data(
@@ -143,7 +172,7 @@ def train_policy(config, database):
 
     # load the data to the CPU, then move to the GPU
     with jax.default_device(jax.devices("cpu")[0]):
-        data, val_data, obs_norm, action_norm = setup_data(config)
+        data, val_data, obs_norm, action_norm = setup_data(config, next(rng))
     # move data to GPU:
     data, val_data, obs_norm, action_norm = \
         jax.device_put((data, val_data, obs_norm, action_norm),

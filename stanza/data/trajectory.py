@@ -1,6 +1,7 @@
 from stanza.data import Data
 
 from stanza.dataclasses import dataclass, field, replace
+from stanza.util.attrdict import AttrMap
 from typing import Any, List
 
 import jax
@@ -10,6 +11,10 @@ import jax.numpy as jnp
 class Timestep:
     observation: Any
     action: Any
+    # The full state (may also be the observation)
+    state: Any = None
+    # Any additional per-timestep info
+    info: AttrMap = field(default_factory=AttrMap)
 
 # A dataset of Trajectories
 # has a get() method which

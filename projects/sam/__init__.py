@@ -19,6 +19,7 @@ class Config:
     sam_epochs: int = None
     normalize: bool = True
     use_sam: bool = True
+    sam_resample: bool = True
     epochs: int = 20
     seed: int = 42
     batch_size: int = 128
@@ -54,6 +55,11 @@ def train(config, db):
     train_data, test_data = make_data(config)
     rng = PRNGSequence(config.seed)
 
+    if config.sam_resample:
+        batch_size = config.batch_size * 2
+    else:
+        batch_size = config.batch_size
+
     sam_iterations = (config.sam_epochs * \
                  (train_data.length // config.batch_size)) \
                 if config.sam_epochs is not None else None
@@ -61,7 +67,7 @@ def train(config, db):
     model = make_net(config)
     # use first sample to initialize model
     logger.info("Initializing model...")
-    sample_batch = train_data.sample_batch(config.batch_size, next(rng))
+    sample_batch = train_data.sample_batch(batch_size, next(rng))
     init_vars = jax.jit(model.init)(next(rng), sample_batch[0])
 
     init_params = init_vars["params"]
@@ -69,7 +75,7 @@ def train(config, db):
 
     loss = batch_loss(partial(loss_fn, model))
 
-    steps = config.epochs * (train_data.length // config.batch_size)
+    steps = config.epochs * (train_data.length // batch_size)
     optimizer = optax.adamw(optax.cosine_decay_schedule(config.lr, steps),
                             weight_decay=config.weight_decay)
     sub_optimizer = optax.scale(config.rho)
@@ -77,15 +83,16 @@ def train(config, db):
     if config.use_sam:
         trainer = SAMTrainer(
             epochs=config.epochs,
-            batch_size=config.batch_size,
+            batch_size=batch_size,
             optimizer=optimizer,
             sub_optimizer=sub_optimizer,
             sam_iterations=sam_iterations,
+            resample=config.sam_resample,
             normalize=config.normalize)
     else:
         trainer = Trainer(
             epochs=config.epochs,
-            batch_size=config.batch_size,
+            batch_size=batch_size,
             optimizer=optimizer)
 
     display = ConsoleDisplay()

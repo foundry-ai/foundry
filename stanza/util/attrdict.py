@@ -53,6 +53,9 @@ class AttrMap:
 
     def __str__(self) -> str:
         return self._dict.__str__()
+    
+    def __hash__(self) -> int:
+        return self._dict.__hash__()
 
 def attrmap(*args, **kwargs):
     return AttrMap(*args, **kwargs)
