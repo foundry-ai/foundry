@@ -9,6 +9,9 @@ from stanza.data import Data
 Goal = Any
 EnvState = Any
 Action = Any
+Noiser = Callable[[PRNGKey, Any, int],Any]
+
+
 # a (goal,state tuple).
 # wraps a goal
 @dataclass(jax = True)

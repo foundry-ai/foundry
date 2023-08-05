@@ -11,12 +11,11 @@ import chex
 from stanza.util.random import PRNGSequence
 from stanza.goal_conditioned import EndGoal
 from stanza.data.trajectory import Timestep
-
+from stanza.goal_conditioned import Noiser
 
 State = Any
 Action = Any
 EnvState = Any 
-Noiser = Callable[[PRNGKey, Any, int],Any]
 #array of ints
 GC_Ind_Sampler = Callable[[PRNGKey, ], tuple]
 
@@ -75,8 +74,8 @@ def roll_in_sample(traj : Data,
     print(roll_len)
     def step(timestep, loop_state):
         env_state, idx, noise_rng, env_rng, info = loop_state
-        print('hi')
-        print('timestep',timestep)
+        #print('hi')
+        #print('timestep',timestep)
         action = traj.get(idx).action
         idx = traj.next(idx)
         info = timestep

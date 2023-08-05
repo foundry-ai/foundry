@@ -3,14 +3,13 @@ from stanza.envs import Environment
 import jax.numpy as jnp
 import jax
 import jax.random as random
-from stanza.goal_conditioned.curriculum import ScheduleItem, ScheduleItemMaker, CurriculumInfo
+from stanza.goal_conditioned.rollin.curriculum import ScheduleItem, ScheduleItemMaker, CurriculumInfo
 from typing import Any, Callable, List
 from stanza.goal_conditioned import GCEnvironment
-from stanza.goal_conditioned.roll_in_sampler import Noiser, RollInHelper, RollInSampler
+from stanza.goal_conditioned.rollin.rollin_sampler import Noiser, RollInHelper, RollInSampler
 from stanza.data import Data
 from jax.tree_util import Partial  
-from stanza.distribution.mvn import MultivariateNormalDiag
-
+from stanza.goal_conditioned.noisers import ProportionFunction1d,ProportionFunction2d,NoiserGetter
 
 """
 ToDo: Allow schedule Item to vary the rollin lengths
@@ -22,10 +21,11 @@ Makes the Mixture Environemnts
 
 
 # first int is the epoch, second is the index of the env
-ProportionFunction = Callable[[int,int],float]
 EnvMaker = Callable[[Environment,Any],GCEnvironment]
-NoiserGetter = Callable[[int],Noiser]
 RollinHelperGetter = Callable[[int],RollInHelper]
+
+
+
 
 
 
@@ -33,38 +33,6 @@ def even_proportions(i : int , j : int):
     return 1.
 
 
-def make_gaussian_noiser_scalar_variance(sigma):
-    """
-    @param sample : a function that takes a PRNGKey and returns a sample
-    @param scale_diag : a scalar
-    @return a noiser that takes a PRNGKey and a value and returns a noised value
-    """
-    #sample_flat, sample_uf = jax.flatten_util.ravel_pytree(sample)
-    #zero_flat = jnp.zeros(sample.shape[0],)
-    #var_flat = jnp.ones(sample.shape[0],) * sigma
-    #mvn_dist = MultivariateNormalDiag(sample_uf(zero_flat), sample_uf(var_flat))
-    def noiser(rng, value, timestep = 0):
-        sigs = jax.tree_map(lambda x: sigma*jnp.ones_like(x), value)
-        print(sigs)
-        mvn = MultivariateNormalDiag(value, sigs)
-        return mvn.sample(rng)
-
-        noise = mvn_dist.sample(rng)
-        noise_flat, _ = jax.flatten_util.ravel_pytree(noise)
-        value_flat, _ = jax.flatten_util.ravel_pytree(value)
-        return sample_uf(value_flat + noise_flat)
-    return noiser
-
-
-"""
-creates_gaussian noiser of shape @sample
-using a function to specialize the scedule 
-"""
-
-def make_gaussian_noiser_getter(var_fn : Callable[[int],float],sample):
-    def noiser_getter(epoch_num: int):
-        return make_gaussian_noiser_scalar_variance(sample, var_fn(epoch_num))
-    return noiser_getter
 
 
 @dataclass(jax=True)
@@ -149,13 +117,14 @@ class MixtureEnvironment(Environment):
         new_probs = jax.vmap(prob_fn, in_axes=(0))(jnp.arange(len(new_envs)))
         return replace(self, envs_list=new_envs, probs_list=new_probs)
 # assumes schedule environments are mixtures
+
 class GCScheduleItemMaker(ScheduleItemMaker):
     base_env : Environment 
     gc_env_maker : Any 
     gc_base_env : Environment = None
     action_noiser_getter : NoiserGetter = None
     process_noiser_getter : NoiserGetter = None
-    prob_fn  : ProportionFunction = even_proportions
+    prob_fn  : ProportionFunction2d = even_proportions
     rollin_helper_getter : RollinHelperGetter = None
     zero_init_noise : bool = field(default=False,jax_static=True)
    
