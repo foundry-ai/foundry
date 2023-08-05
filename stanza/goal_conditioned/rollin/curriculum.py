@@ -67,7 +67,7 @@ class ScheduleItem:
     episode_length : int = 1000
 
 
-
+@dataclass(jax = True)
 class ScheduleItemMaker:
     def make_schedule_item(epoch_num : int,
                                 data : Data,
@@ -76,7 +76,7 @@ class ScheduleItemMaker:
         raise NotImplementedError
 
 
-    
+@dataclass(jax = True)
 class TrainingSchedule:
     init_params : Any
     num_epochs : int

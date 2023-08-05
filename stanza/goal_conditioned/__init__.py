@@ -61,8 +61,8 @@ def remove_goal_from_timestep_data(data : Data):
 class GCEnvironment(Environment):
     env: Environment
     gs_sampler: GoalAndStateSampler
-    gc_reward: GoalReward
-    g_done: GoalDoneFunc
+    gc_reward: GoalReward = None
+    g_done: GoalDoneFunc = None
     gc_cost : GoalCost = None
 
    
@@ -84,15 +84,21 @@ class GCEnvironment(Environment):
         env_obvs = self.env.observe(state.env_state)
         return GCObs(state.goal, env_obvs)
     
+    def render(self,state,**kwargs):
+        return self.env.render(state.env_state, **kwargs)
+    
+
+    ### may not be defined
     def reward(self,state,action,next_state):
+        if self.gc_reward is None:
+            raise(NotImplementedError("no reward specified"))
         return self.gc_reward(state,action,next_state.env_state)
 
     def done(self,state):
+        if self.g_done is None:
+            raise(NotImplementedError("no reward specified"))
         return jnp.logical_or(self.env.done(state.env_state),
                               self.g_done(state))
-
-    def render(self,state,**kwargs):
-        return self.env.render(state.env_state, **kwargs)
     
     def cost(self,x,u):
         if self.gc_cost is None:

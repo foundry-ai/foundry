@@ -58,15 +58,18 @@ def roll_in_sample(traj : Data,
     if action_noiser is not None or process_noiser is not None:
         assert noise_rng_key is not None
     if action_noiser is None and process_noiser is None:
+        
         obs = traj.get(target_time).observation
         act = traj.get(target_time).action
+        #print(obs)
         return obs, act, info
     # we should set the environment state appropriate
     start_time = target_time - roll_len
     start_index = traj.advance(traj.start, start_time)
     start = traj.get(start_index)
     start_state = start.observation 
-    print('start_index', start_index)
+    #print('start_index', start_index)
+    #print('obs', start.observation)
 
     
     print(roll_len)
@@ -93,10 +96,10 @@ def roll_in_sample(traj : Data,
         # checks consistency of object type
         chex.assert_trees_all_equal_shapes_and_dtypes(loop_state,new_loop_state)
         return new_loop_state
-    print('roll len',roll_len)
+    #print('roll len',roll_len)
     init_state = (start_state, start_index, noise_rng_key, env_rng_key, info)
     end_loop_state = jax.lax.fori_loop(0,roll_len,step,init_state)
-    print('end_loop_state',end_loop_state)
+    #print('end_loop_state',end_loop_state)
     start_state, idx, info=  end_loop_state[0], end_loop_state[1], end_loop_state[4]
     return start_state, traj.get(idx).action,  info 
 
@@ -128,22 +131,26 @@ class UniformRollinHelper():
     def get_rollin_inds(self, key : PRNGKey, rand_traj):
         traj_len = rand_traj.length
         rng = PRNGSequence(key)
-
-        delta_t = jax.random.randint(next(rng), (), minval = self.delta_t_min,
-                                     maxval = self.delta_t_max+1)
+        del_key  = next(rng)
+        #print('del_key,' , del_key)
+        #print('min', self.delta_t_min)
+        delta_t = jax.random.randint(del_key, (), minval = self.delta_t_min,
+              
+                               maxval = self.delta_t_max+1)
+        #print('DEL', delta_t)
         delta_t = jax.lax.cond(delta_t <= traj_len - 1, lambda x: x, lambda x: traj_len - 1, operand = delta_t) 
-        
+        #print('DEL', delta_t)
         
         start_t = jax.random.randint(next(rng), (), minval = self.min_start_t,
                                  maxval = traj_len - delta_t)
         
         roll_len = jax.random.randint(next(rng), (), minval = self.roll_len_min,
-                                      maxval = self.roll_len_max)
-        print('some roll_len 1', roll_len)
+                                      maxval = self.roll_len_max+1)
+        #print('some roll_len 1', roll_len)
         roll_len = jax.lax.cond(roll_len < start_t + 1, 
                                 lambda x: x, lambda x: start_t, operand = roll_len)
         
-        print('some roll_len 2', roll_len)
+        #print('some roll_len 2', roll_len)
         return next(rng), start_t, delta_t, roll_len
 
 
@@ -161,8 +168,9 @@ class RollInSampler:
     def sample_goal_state_action(self, key : PRNGKey):
         rng = PRNGSequence(key)
         rand_traj = self.traj_data.sample(next(rng))
-       
-        key, start_t, delta_t, roll_len = self.rollin_helper.get_rollin_inds(key, rand_traj)
+        
+        key, start_t, delta_t, roll_len = self.rollin_helper.get_rollin_inds(next(rng), rand_traj)
+        #print('hi')
         start_state, start_action, info =  roll_in_sample(traj = rand_traj,
                     target_time = start_t,
                     noise_rng_key = next(rng), 
@@ -178,6 +186,7 @@ class RollInSampler:
         else:
             end_state = self.fixed_goal
         goal = EndGoal(end_state)
+        info = {'start_t:' : start_t, 'delta_t': delta_t, 'roll_len': roll_len}
         return start_state, goal, start_action, info
     
     #@partial(jax.jit, static_argnames=['encode_start'])
