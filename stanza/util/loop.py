@@ -73,12 +73,18 @@ class LoggerHook:
     condition_fn: Any
     stat_fn: Callable = lambda state: state.last_stats
 
+    def init(self, state):
+        return state.iteration, state
+
     def __call__(self, hs, state):
         def log():
             stats = self.stat_fn(state)
             flat_stats = dict(flat_items(stats))
             s = [f"{k}: {{}}" for k in flat_stats.keys()]
-            fmt = ",".join(s)
-            logger.info(fmt, *flat_stats.values())
-        jax.lax.cond(self.condition_fn(state), log, lambda: None)
-        return hs, state
+            fmt = "\n".join(s)
+            logger.info("Iteration {}:\n" + fmt, state.iteration, *flat_stats.values())
+        jax.lax.cond(jnp.logical_and(
+            self.condition_fn(state),
+            state.iteration != hs
+        ), log, lambda: None)
+        return state.iteration, state

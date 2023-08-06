@@ -1,5 +1,5 @@
 from dataclasses import dataclass as _dataclass, is_dataclass, \
-            fields, replace, field as _field, asdict
+            fields, replace as _replace, field as _field, asdict
 from functools import partial
 from typing import Any
 from stanza import _wrap_functions, _unwrap_functions
@@ -9,6 +9,10 @@ from itertools import chain
 def unpack(dc) -> dict:
     return { field.name : getattr(dc, field.name) for field in fields(dc) }
 
+def replace(__obj, **changes):
+    if isinstance(__obj, dict):
+        return { **__obj, **changes }
+    return _replace(__obj, **changes)
 
 def dataclass(cls=None, frozen : bool = False, jax : bool = True, kw_only: bool = False):
     frozen = frozen or jax

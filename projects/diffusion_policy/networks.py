@@ -26,7 +26,7 @@ def quadrotor_model_fn(curr_sample, timestep, cond):
     # flatten the observations along the time axis
     cond_flat = cond_flat.reshape((-1))
     model = ConditionalUnet1D(name='net',
-        down_dims=[8, 16, 32], diffusion_step_embed_dim=32)
+        down_dims=[32, 64, 128], diffusion_step_embed_dim=64)
     r = model(sample_flat, timestep, cond_flat)
     r = sample_uf(r)
     return r

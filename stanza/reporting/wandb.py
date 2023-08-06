@@ -27,6 +27,10 @@ class WandbRun(Database):
         self.run = run
         self.prefix = prefix
 
+    @property
+    def name(self):
+        return self.run.name
+
     def open(self, name):
         n = f"{self.prefix}.{name}"
         return WandbRun(self.run, n)
@@ -43,7 +47,8 @@ class WandbRun(Database):
             dim = jax.tree_util.tree_leaves(data)[0].shape[0]
             for i in range(dim):
                 x = jax.tree_map(lambda x: x[i], data)
-                self.log(x, step=(step + i) if step is not None else step, batch=False)
+                s = step[i] if step is not None else None
+                self.log(x, step=s, batch=False)
         else:
             data = remap(data, {
                     Figure: lambda f: f.fig,

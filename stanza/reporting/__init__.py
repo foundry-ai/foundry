@@ -8,18 +8,6 @@ from stanza.util.logging import logger
 from typing import Any
 from pathlib import Path
 
-_NOUNS = None
-_ADJECTIVES = None
-def _words():
-    global _NOUNS
-    global _ADJECTIVES
-    if _NOUNS is None:
-        nouns_path = Path(__file__).parent / "nouns.txt"
-        _NOUNS = open(nouns_path).read().splitlines()
-    if _ADJECTIVES is None:
-        adjectives_path = Path(__file__).parent / "adjectives.txt"
-        _ADJECTIVES = open(adjectives_path).read().splitlines()
-    return _ADJECTIVES, _NOUNS
 
 @dataclass(frozen=True)
 class Figure:
@@ -55,19 +43,12 @@ class Database:
     def has(self, name):
         pass
 
-    def create(self):
-        length = len(self.children)
-        while True:
-            adjectives, nouns = _words()
-            adjective = random.choice(adjectives)
-            noun = random.choice(nouns)
-            name = f"{adjective}-{noun}-{length + 1}"
-            if self.has(name):
-                continue
-            return self.open(name)
 
     def open(self, name):
         pass
+
+    def create(self):
+        return self.open(name=None)
 
     # must have stream=True
     # to log over steps

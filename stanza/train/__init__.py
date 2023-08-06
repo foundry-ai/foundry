@@ -89,7 +89,10 @@ class Trainer:
         state = replace(state,
             epoch_iteration=state.epoch_iteration + 1,
             iteration=state.iteration+ 1,
-            last_stats=stats, rng_key=rng_key,
+            last_stats=replace(
+                state.last_stats,
+                train=stats
+            ), rng_key=rng_key,
             fn_params=fn_params, 
             fn_state=fn_state, opt_state=opt_state)
         return state
@@ -163,7 +166,7 @@ class Trainer:
             epoch_iteration=0,
 
             loss_fn=loss_fn,
-            last_stats=stats,
+            last_stats={"train":stats},
 
             rng_key=rng_key, 
             fn_params=init_fn_params,

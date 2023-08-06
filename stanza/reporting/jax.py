@@ -57,39 +57,41 @@ class StatHook:
             lambda x: jnp.repeat(jnp.expand_dims(x,0), self.buffer, axis=0),
             stats
         )
-        return (stat_buffer, jnp.array(0), state.iteration, stat_fn_state), state
+        iters = jnp.zeros((self.buffer,), dtype=jnp.int32)
+        return (stat_buffer, jnp.array(0), iters, state.iteration, stat_fn_state), state
 
     def __call__(self, hook_state, state):
         if state.last_stats is None:
             return hook_state, state
-        stat_buffer, elems, prev_iteration, stat_fn_state = hook_state
+        stat_buffer, elems, iters, prev_iteration, stat_fn_state = hook_state
 
         # add the last stats to the buffer
-        def update_buffer(stat_buffer, elems, stat_fn_state):
+        def update_buffer(stat_buffer, elems, iters, stat_fn_state):
             stat_fn_state, stats = self.stat_fn(stat_fn_state, state)
             stat_buffer = jax.tree_map(
                 lambda x, y: jnp.roll(x, -1, axis=0).at[-1, ...].set(y), 
                 stat_buffer, stats)
+            iters = jnp.roll(iters, -1, axis=0).at[-1].set(state.iteration)
             return stat_buffer, \
-                jnp.minimum(elems + 1, self.buffer), stat_fn_state
+                jnp.minimum(elems + 1, self.buffer), iters, stat_fn_state
 
         should_log = jnp.logical_and(self.condition_fn(state),
                         state.iteration != prev_iteration)
-        stat_buffer, elems, stat_fn_state = jax.lax.cond(should_log,
-            update_buffer, lambda x, y, z: (x, y, z),
-            stat_buffer, elems, stat_fn_state)
+        stat_buffer, elems, iters, stat_fn_state = jax.lax.cond(should_log,
+            update_buffer, lambda x, y, z, w: (x, y, z, w),
+            stat_buffer, elems, iters, stat_fn_state)
 
         done = jnp.logical_and(
             should_log, 
             state.iteration == state.max_iterations
         )
         def do_log():
-            self.handle.log(stat_buffer, state.iteration, batch=True, batch_n=elems)
+            self.handle.log(stat_buffer, iters, batch=True, batch_n=elems)
             return 0
         elems = jax.lax.cond(
             jnp.logical_or(elems >= self.buffer, done),
             do_log, lambda: elems)
-        new_hook_state = (stat_buffer, elems, state.iteration, stat_fn_state)
+        new_hook_state = (stat_buffer, elems, iters, state.iteration, stat_fn_state)
         return new_hook_state, state
 
 class JaxDBScope:

@@ -7,12 +7,14 @@ from stanza.data.trajectory import Timestep
 from stanza.data import Data
 from stanza.train import Trainer, batch_loss
 from stanza.train.ema import EmaHook
+from stanza.train.validate import Validator
 
 from stanza.policies.mpc import MPC
 from stanza.solver.ilqr import iLQRSolver
 
 from stanza.dataclasses import dataclass, replace, field
 from stanza.util.random import PRNGSequence
+from stanza.util.loop import LoggerHook, every_kth_epoch, every_kth_iteration
 from stanza.util.logging import logger
 from stanza.util.rich import ConsoleDisplay, \
     LoopProgress, StatisticsTable, EpochProgress
@@ -28,6 +30,7 @@ from functools import partial
 from jax.random import PRNGKey
 
 import stanza.policies as policies
+import stanza.policies.transforms as transforms
 import stanza.envs as envs
 
 import jax.numpy as jnp
@@ -43,7 +46,7 @@ class Config:
     env: str = "pusht"
     wandb: str = "diffusion_policy"
     rng_seed: int = 42
-    epochs: int = 300
+    epochs: int = 500
     batch_size: int = 256
     warmup_steps: int = 500
     num_datapoints: int = 200
@@ -60,17 +63,24 @@ def make_network(config):
 def make_policy_transform(config, chunk_size=8):
     if config.env == "pusht":
         import stanza.envs.pusht as pusht
-        return policies.chain_transforms(
-            policies.ChunkTransform(input_chunk_size=2,
+        return transforms.chain_transforms(
+            transforms.ChunkTransform(input_chunk_size=2,
                         output_chunk_size=chunk_size),
             # Low-level position controller runs 20x higher
             # frequency than the high-level controller
             # which outputs target positions
-            policies.SampleRateTransform(control_interval=10),
+            transforms.SampleRateTransform(control_interval=10),
             # The low-level controller takes a
             # target position and runs feedback gains
             pusht.PositionObsTransform(),
             pusht.PositionControlTransform()
+        )
+    elif config.env == "quadrotor":
+        return transforms.chain_transforms(
+            transforms.ChunkTransform(
+                input_chunk_size=2,
+                output_chunk_size=chunk_size
+            ),
         )
     raise RuntimeError("Unknown env")
 
@@ -217,13 +227,30 @@ def train_policy(config, database):
     )
     logger.info("Initialized, starting training...")
 
+    from stanza.reporting.wandb import WandbDatabase
+    db = WandbDatabase("dpfrommer-projects/diffusion_policy")
+    db = db.create()
+    logger.info(f"Logging to [blue]{db.name}[/blue]")
+    from stanza.reporting.jax import JaxDBScope
+    db = JaxDBScope(db)
+    print_hook = LoggerHook(every_kth_iteration(500))
+
     display = ConsoleDisplay()
     display.add("train", StatisticsTable(), interval=100)
     display.add("train", LoopProgress(), interval=100)
     display.add("train", EpochProgress(), interval=100)
 
-    with display as rcb:
-        hooks = [ema_hook, rcb.train]
+    validator = Validator(
+        condition=every_kth_epoch(1),
+        rng_key=next(rng),
+        dataset=val_data,
+        batch_size=config.batch_size)
+
+    with display as rcb, db as db:
+        stat_logger = db.statistic_logging_hook(
+            log_cond=every_kth_iteration(1), buffer=100)
+        hooks = [ema_hook, validator, rcb.train, 
+                    stat_logger, print_hook]
         results = trainer.train(
                     batch_loss(loss_fn), 
                     data, next(rng), init_params,
@@ -259,6 +286,38 @@ def rollout(env, policy, length, rng):
                     length=length, last_state=True)
     return r
 
+def compute_scores(config, env, results, states, actions):
+    if config.env == "quadrotor":
+        mpc = MPC(
+            action_sample=env.sample_action(PRNGKey(0)),
+            cost_fn=env.cost,
+            model_fn=env.step,
+            horizon_length=100,
+            receed=False,
+            solver=iLQRSolver()
+        )
+        def expert_cost(x0):
+            rollout = policies.rollout(env.step, x0, mpc,
+                            length=100, last_state=False)
+            return env.cost(rollout.states, rollout.actions)
+        
+        x0s = jax.tree_map(lambda x: x[:,0], states)
+        s1 = jax.vmap(expert_cost)(x0s)
+        s2 = jax.vmap(env.cost)(states, actions)
+        subopt = (s2 - s1)/s1
+        logger.info("Expert costs: {}", s1)
+        logger.info("Policy costs: {}", s2)
+        logger.info("Subopt: {}", subopt)
+        logger.info("Subopt mean: {}", subopt.mean())
+    else:
+        logger.info("Computing scores...")
+        eval_states = jax.tree_util.tree_map(lambda x: x[:,::10], states)
+        scores = jax.vmap(jax.vmap(env.score))(eval_states)
+        # get the highest coverage over the sample
+        scores = jnp.max(scores,axis=1)
+        logger.info("Scores: {}", scores)
+        logger.info("Mean scores: {}", scores.mean())
+
 @activity(EvalConfig)
 def eval(eval_config, database, results=None):
     if results is None:
@@ -286,34 +345,21 @@ def eval(eval_config, database, results=None):
         16, 1, 8
     )
 
-    # import stanza.envs.pusht as pusht
-    # obs = pusht.PushTPositionObs(
-    #     jnp.array([[200, 200], [202, 202]]),
-    #     jnp.array([[100, 100], [100, 100]]),
-    #     jnp.array([0, 0])
-    # )
-    # logger.info("output {}", 
-    #     policy(policies.PolicyInput(obs, None, PRNGKey(42))).action)
-
     policy = make_policy_transform(config)(policy)
     logger.info("Rolling out policies...")
     rollout_fn = partial(rollout, env, policy, 300*10)
     mapped_rollout_fun = jax.jit(jax.vmap(rollout_fn))
     rngs = jax.random.split(PRNGKey(eval_config.rng_seed), eval_config.samples)
     r = mapped_rollout_fun(rngs)
-    logger.info("Computing scores...")
-    eval_states = jax.tree_util.tree_map(lambda x: x[:,::10], r.states)
-    scores = jax.vmap(jax.vmap(env.score))(eval_states)
-    # get the highest coverage over the sample
-    scores = jnp.max(scores,axis=1)
-    logger.info("Scores: {}", scores)
-    logger.info("Mean scores: {}", scores.mean())
 
-    logger.info("Persisting eval data...")
-    vis_states = jax.tree_util.tree_map(lambda x: x[:, ::10], r.states)
-    video = jax.vmap(jax.vmap(env.render))(vis_states)
-    scores = results.open("samples")
-    logger.info("Writing videos...")
-    for i in range(video.shape[0]):
-        scores.add(f"sample_{i}", Video(video[i],fps=28))
-    logger.info("Done!")
+    logger.info("Computing statistics")
+    compute_scores(config, env, results, r.states, r.actions)
+
+    # logger.info("Persisting eval data...")
+    # vis_states = jax.tree_util.tree_map(lambda x: x[:, ::10], r.states)
+    # video = jax.vmap(jax.vmap(env.render))(vis_states)
+    # scores = results.open("samples")
+    # logger.info("Writing videos...")
+    # for i in range(video.shape[0]):
+    #     scores.add(f"sample_{i}", Video(video[i],fps=28))
+    # logger.info("Done!")

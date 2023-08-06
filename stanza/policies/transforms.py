@@ -90,7 +90,7 @@ class ChunkedPolicyState:
     t: int = 0
 
 @dataclass(jax=True)
-class Chunker(PolicyTransform):
+class ChunkTransform(PolicyTransform):
     # If None, no input/output batch dimension
     input_chunk_size: int = field(default=None, jax_static=True)
     output_chunk_size: int = field(default=None, jax_static=True)
