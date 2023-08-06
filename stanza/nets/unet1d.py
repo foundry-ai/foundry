@@ -120,6 +120,7 @@ class ConditionalUnet1D(hk.Module):
         self.n_groups = 8
 
     def __call__(self, sample, timestep, global_cond=None):
+        # flatten the sample into (timestep, channels)
         down_dims = self.down_dims
         start_dim = down_dims[0]
         kernel_size = self.kernel_size
