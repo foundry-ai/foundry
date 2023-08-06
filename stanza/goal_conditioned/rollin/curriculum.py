@@ -8,7 +8,7 @@ from stanza.envs import Environment
 from stanza.dataclasses import dataclass, replace, field
 from stanza.envs.goal_conditioned_envs.gc_pendulum import make_gc_pendulum_env
 from stanza.goal_conditioned import GCEnvironment
-from stanza.goal_conditioned.roll_in_sampler import Noiser, RollInSampler
+from stanza.goal_conditioned.rollin.rollin_sampler import Noiser, RollInSampler
 from stanza.rl.ppo import PPO
 from stanza.train import Trainer
 import optax
@@ -67,7 +67,7 @@ class ScheduleItem:
     episode_length : int = 1000
 
 
-
+@dataclass(jax = True)
 class ScheduleItemMaker:
     def make_schedule_item(epoch_num : int,
                                 data : Data,
@@ -76,7 +76,7 @@ class ScheduleItemMaker:
         raise NotImplementedError
 
 
-    
+@dataclass(jax = True)
 class TrainingSchedule:
     init_params : Any
     num_epochs : int

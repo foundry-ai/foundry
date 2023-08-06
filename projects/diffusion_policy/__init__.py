@@ -13,6 +13,7 @@ from stanza.policies.mpc import MPC
 from stanza.solver.ilqr import iLQRSolver
 
 from stanza.dataclasses import dataclass, replace, field
+from stanza.util.attrdict import AttrMap
 from stanza.util.random import PRNGSequence
 from stanza.util.loop import LoggerHook, every_kth_epoch, every_kth_iteration
 from stanza.util.logging import logger
@@ -106,27 +107,28 @@ def setup_data(config, rng_key):
             cost_fn=env.cost,
             model_fn=env.step,
             horizon_length=100,
-            receed=False,
+            receed=True,
             solver=iLQRSolver()
         )
+        from stanza.solver.ilqr import linearize
         def rollout(rng_key):
             rng = PRNGSequence(rng_key)
             x0 = env.reset(next(rng))
             rollout = policies.rollout(env.step, x0, mpc,
                             length=100, last_state=False)
-            return Data.from_pytree(Timestep(rollout.states, rollout.actions))
+            As, Bs = jax.vmap(linearize(env.step))(rollout.states, rollout.actions, None)
+            return Data.from_pytree(Timestep(
+                rollout.states, rollout.actions,
+                info=AttrMap(A=As, B=Bs)
+            ))
         data = jax.vmap(rollout)(jax.random.split(rng_key, 100))
         data = Data.from_pytree(data)
         val_data = data[-10:]
         data = data[:-10]
     logger.info("Calculating data normalizers")
     data_flat = PyTreeData.from_data(data.flatten(), chunk_size=4096)
-    action_norm = LinearNormalizer.from_data(
-        data_flat.map(lambda x: x.action)
-    )
-    obs_norm = LinearNormalizer.from_data(
-        data_flat.map(lambda x: x.observation)
-    )
+
+    normalizer = LinearNormalizer.from_data(data_flat)
     # chunk the data and flatten
     logger.info("Chunking trajectories")
     def slice_chunk(x):
@@ -146,29 +148,39 @@ def setup_data(config, rng_key):
     data = PyTreeData.from_data(data.flatten(), chunk_size=4096)
     val_data = PyTreeData.from_data(val_data.flatten(), chunk_size=4096)
     logger.info("Data Loaded!")
-    return data, val_data, obs_norm, action_norm
+    return data, val_data, normalizer
 
-def loss(config, net, diffuser, obs_norm, action_norm,
+def loss(config, net, diffuser, normalizer,
             # these are passed in per training loop:
             state, params, rng, sample):
     logger.trace("Tracing loss function", only_tracing=True)
-    t_sk, n_sk, s_sk = jax.random.split(rng, 3)
-    timestep = jax.random.randint(t_sk, (), 0, diffuser.num_steps)
+    rng = PRNGSequence(rng)
+    timestep = jax.random.randint(next(rng), (), 0, diffuser.num_steps)
     # We do training in the normalized space!
-    action = action_norm.normalize(sample.action)
-    obs = obs_norm.normalize(sample.observation)
+    normalized_sample = normalizer.normalize(sample)
+
+    # the state/action chunks
+    actions = normalized_sample.action
+    states = normalized_sample.state
+    # the observation chunks (truncated)
+    obs = normalized_sample.observation
+
     if config.smoothing_sigma > 0:
         obs_flat, obs_uf = jax.flatten_util.ravel_pytree(obs)
-        obs_flat = obs_flat + config.smoothing_sigma*jax.random.normal(s_sk, obs_flat.shape)
+        obs_flat = obs_flat + config.smoothing_sigma*jax.random.normal(next(rng), obs_flat.shape)
         obs = obs_uf(obs_flat)
 
-    noisy_action, noise = diffuser.add_noise(n_sk, action, timestep)
-    pred_noise = net.apply(params, rng, noisy_action, timestep, obs)
+    if config.use_gains:
+        input = actions, states, normalized_sample.info.A, normalized_sample.info.B
+    else:
+        input = actions, None, None, None
 
+    noisy, noise = diffuser.add_noise(next(rng), action, timestep)
+    pred_noise = net.apply(params, next(rng), noisy, timestep, obs)
     pred_flat, _ = jax.flatten_util.ravel_pytree(pred_noise)
     noise_flat, _ = jax.flatten_util.ravel_pytree(noise)
-
     loss = jnp.mean(jnp.square(pred_flat - noise_flat))
+
     stats = {
         "loss": loss
     }
@@ -182,7 +194,7 @@ def train_policy(config, database):
 
     # load the data to the CPU, then move to the GPU
     with jax.default_device(jax.devices("cpu")[0]):
-        data, val_data, obs_norm, action_norm = setup_data(config, next(rng))
+        data, val_data, normalizer = setup_data(config, next(rng))
     # move data to GPU:
     data, val_data, obs_norm, action_norm = \
         jax.device_put((data, val_data, obs_norm, action_norm),
