@@ -8,7 +8,7 @@ from stanza.envs import Environment
 from stanza.dataclasses import dataclass, replace, field
 from stanza.envs.goal_conditioned_envs.gc_pendulum import make_gc_pendulum_env
 from stanza.goal_conditioned import GCEnvironment
-from stanza.goal_conditioned.roll_in_sampler import Noiser, RollInSampler
+from stanza.goal_conditioned.rollin.rollin_sampler import Noiser, RollInSampler
 from stanza.rl.ppo import PPO
 from stanza.train import Trainer
 import optax

@@ -19,7 +19,6 @@ class SequentialNoisingPolicyBuilder:
     wrap_in_logging_policy : field(default=True,jax_static=True)
 
 
-
 @dataclass(jax=True)
 class RolloutCollectorFromSettings:
     base_policy : Policy

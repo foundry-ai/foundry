@@ -9,7 +9,7 @@ from stanza.goal_conditioned import GCEnvironment
 from stanza.goal_conditioned.rollin.rollin_sampler import Noiser, RollInHelper, RollInSampler
 from stanza.data import Data
 from jax.tree_util import Partial  
-from stanza.goal_conditioned.noisers import ProportionFunction1d,ProportionFunction2d,NoiserGetter
+from stanza.goal_conditioned.noisers import ProportionFunction1d,ProportionFunction2d,NoiserGetter, even_proportions2d
 
 """
 ToDo: Allow schedule Item to vary the rollin lengths
@@ -23,15 +23,6 @@ Makes the Mixture Environemnts
 # first int is the epoch, second is the index of the env
 EnvMaker = Callable[[Environment,Any],GCEnvironment]
 RollinHelperGetter = Callable[[int],RollInHelper]
-
-
-
-
-
-
-def even_proportions(i : int , j : int):
-    return 1.
-
 
 
 
@@ -124,7 +115,7 @@ class GCScheduleItemMaker(ScheduleItemMaker):
     gc_base_env : Environment = None
     action_noiser_getter : NoiserGetter = None
     process_noiser_getter : NoiserGetter = None
-    prob_fn  : ProportionFunction2d = even_proportions
+    prob_fn  : ProportionFunction2d = even_proportions2d
     rollin_helper_getter : RollinHelperGetter = None
     zero_init_noise : bool = field(default=False,jax_static=True)
    

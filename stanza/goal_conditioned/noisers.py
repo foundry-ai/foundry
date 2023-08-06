@@ -56,3 +56,6 @@ def even_proportions2d(i : int , j : int):
 def choose_from_prop_fn(rng_key : PRNGKey, prop_function : ProportionFunction1d, num_choices : int):
     probs = jax.vmap(prop_function, in_axes=(0))(jnp.arange(num_choices))
     return jax.random.choice(rng_key, num_choices, p = probs)
+
+def none_getter(epoch_num : int):
+    return None

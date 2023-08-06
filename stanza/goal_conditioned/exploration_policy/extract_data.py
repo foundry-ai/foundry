@@ -4,6 +4,8 @@ extracts training data from rollouts
 
 #TODO negative examples 
 
+
+#TODO ask Dan to go through this
 import jax
 from typing import Callable, Any
 import chex
