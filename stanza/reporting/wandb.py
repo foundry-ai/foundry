@@ -5,6 +5,7 @@ from stanza.reporting import Database, \
                             Video, Figure, remap
 
 import numpy as np
+import os
 
 class WandbDatabase(Database):
     def __init__(self, path):
@@ -14,7 +15,10 @@ class WandbDatabase(Database):
         self.project = project
     
     def open(self, name=None):
-        run = wandb.init(entity=self.entity, project=self.project, name=name)
+        if 'WANDB_SWEEP_ID' in os.environ:
+            run = wandb.init()
+        else:
+            run = wandb.init(entity=self.entity, project=self.project, name=name)
         return WandbRun(run)
     
     def add(self, name, value, append=False):

@@ -128,10 +128,10 @@ def setup_data(config, rng_key):
                 rollout.states, rollout.actions, rollout.states,
                 info=AttrMap(K=Ks)
             ))
-        data = jax.vmap(rollout)(jax.random.split(rng_key, 100))
+        data = jax.vmap(rollout)(jax.random.split(rng_key, config.num_datapoints + 20))
         data = Data.from_pytree(data)
-        val_data = data[-10:]
-        data = data[:-10]
+        val_data = data[-20:]
+        data = data[:-20]
     logger.info("Calculating data normalizers")
     data_flat = PyTreeData.from_data(data.flatten(), chunk_size=4096)
 
