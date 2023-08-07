@@ -82,9 +82,9 @@ class StatHook:
             stat_buffer, elems, iters, stat_fn_state)
 
         done = jnp.logical_and(
-            should_log, 
-            state.iteration == state.max_iterations
-        )
+            state.iteration == state.max_iterations,
+            state.iteration != prev_iteration)
+
         def do_log():
             self.handle.log(stat_buffer, iters, batch=True, batch_n=elems)
             return 0

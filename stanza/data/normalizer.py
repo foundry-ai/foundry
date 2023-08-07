@@ -11,6 +11,10 @@ class LinearNormalizer:
     min: Any
     max: Any
 
+    @property
+    def instance(self):
+        return self.min
+
     def map(self, fun):
         return LinearNormalizer(
             fun(self.min), fun(self.max)
@@ -18,7 +22,7 @@ class LinearNormalizer:
 
     def normalize(self, data):
         def norm(x, nmin, nmax):
-            scaled = (x - nmin)/(nmax - nmin)
+            scaled = (x - nmin)/(nmax - nmin + 1e-6)
             # shift to [-1, 1]
             return 2*scaled - 1
         return jax.tree_util.tree_map(
@@ -54,6 +58,10 @@ class StdNormalizer:
     var: Any = None
     total: int = 0
     std: Any = field(init=False)
+
+    @property
+    def instance(self):
+        return self.mean
 
     def __post_init__(self):
         std = jax.tree_map(lambda x: jnp.sqrt(x + 1e-8), self.var)

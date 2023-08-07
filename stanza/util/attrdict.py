@@ -31,6 +31,8 @@ class AttrMap:
         super().__setattr__(name, value)
 
     def __getattr__(self, name: str):
+        if name == '_dict':
+            return None
         try:
             return self._dict.get(name)
         except KeyError:

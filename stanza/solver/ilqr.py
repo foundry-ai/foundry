@@ -45,7 +45,7 @@ def tvlqr(As, Bs, Qs, Rs):
         M = A.T @ P @ B
         F = jnp.linalg.inv(R + B.T @ P @ B) @ M.T
         P_prev = A @ P @ A.T - M @ F + Q
-        return P_prev, F
+        return P_prev, -F
     _, gains = jax.lax.scan(lqr_step, Qs[-1],
         (As, Bs, Qs[:-1], Rs),
         reverse=True

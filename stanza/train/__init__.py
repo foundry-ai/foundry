@@ -43,9 +43,11 @@ def _batch_loss_fn(loss_fn, fn_state, fn_params,
                         rng_key, batch):
     logger.trace("Tracing batch loss", only_tracing=True)
     batch_loss_fn = jax.vmap(loss_fn,
-                    in_axes=(None, None, None, 0),
+                    in_axes=(None, None, 0, 0),
                     out_axes=(None, 0, 0),
                     axis_name='batch')
+    n = jax.tree_util.tree_flatten(batch)[0][0].shape[0]
+    rng_key = jax.random.split(rng_key, n)
     fn_state, loss, stats = batch_loss_fn(fn_state, fn_params,
                                             rng_key, batch)
     loss = jnp.mean(loss)

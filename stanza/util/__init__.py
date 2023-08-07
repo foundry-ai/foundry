@@ -18,8 +18,25 @@ def extract_shifted(xs):
     later_xs = jax.tree_map(lambda x: x[1:], xs)
     return earlier_xs, later_xs
 
+def check_nan(name, x, cb=None):
+    def _cb(x, has_nans):
+        if has_nans:
+            print(f"Nans detected {name}:", x, has_nans)
+            if cb is not None:
+                cb(x)
+            import sys
+            sys.exit(1)
+    flat, _ = jax.flatten_util.ravel_pytree(x)
+    has_nans = jnp.any(jnp.isnan(flat))
+    jax.debug.callback(_cb, x, has_nans, ordered=True),
 
 def l2_norm_squared(x, y=None):
+    if y is not None:
+        x = jax.tree_map(lambda x, y: x - y, x, y)
+    flat, _ = jax.flatten_util.ravel_pytree(x)
+    return jnp.sum(jnp.square(flat))
+
+def mse_loss(x, y=None):
     if y is not None:
         x = jax.tree_map(lambda x, y: x - y, x, y)
     flat, _ = jax.flatten_util.ravel_pytree(x)

@@ -127,6 +127,7 @@ class MPC:
             )
         else:
             policy_state = input.policy_state
+            rollout_state = policy_state.rollout_state
 
         if self.receed:
             # shift actions and re-solve
@@ -134,7 +135,7 @@ class MPC:
             rollout_state, actions, cost, history = self._solve(rollout_state, input.observation, actions)
             policy_state = replace(
                 policy_state,
-                actions=actions, roll_state=rollout_state,
+                actions=actions, rollout_state=rollout_state,
                 t=0, cost=cost, history=history
             )
             action = jax.tree_util.tree_map(lambda x: x[policy_state.t], policy_state.actions)

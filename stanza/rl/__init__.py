@@ -2,7 +2,8 @@ from stanza.dataclasses import dataclass, field, replace
 from stanza.util.attrdict import AttrMap
 from stanza.policies import PolicyInput, PolicyOutput
 from stanza.envs import Environment
-from stanza.util import LoopState, extract_shifted
+from stanza.util.loop import LoopState
+from stanza.util import extract_shifted
 from stanza.util.random import PRNGSequence
 
 from typing import Callable, Any
