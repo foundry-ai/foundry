@@ -40,11 +40,10 @@ class QuadrotorEnvironment(Environment):
         )
     
     def reset(self, rng_key):
-        x_key, z_key, phi_key, xd_key, \
-            zd_key, phid_key = jax.random.split(rng_key, 6)
+        x_key, z_key = jax.random.split(rng_key, 2)
         return State(
-            x=jax.random.uniform(x_key, (), jnp.float32, -0.5, 0.5),
-            z=jax.random.uniform(z_key, (), jnp.float32, -0.5, 0.5),
+            x=jax.random.uniform(x_key, (), jnp.float32, -1., 1.),
+            z=jax.random.uniform(z_key, (), jnp.float32, -1., 1),
             phi=jnp.zeros(()),
             x_dot=jnp.zeros(()),
             z_dot=jnp.zeros(()),

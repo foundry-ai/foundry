@@ -37,10 +37,10 @@ def make_diffusion_policy(net_fn, diffuser, normalizer,
 
         norm_flat, norm_uf = jax.flatten_util.ravel_pytree(norm)
         if noise > 0:
-            norm_flat = norm_flat + noise * jax.random.normal(smooth_rng, norm_flat.shape)
-        norm = norm_uf(norm_flat)
+            norm_flat = norm_flat + noise*jax.random.normal(smooth_rng, norm_flat.shape)
+        noised_norm = norm_uf(norm_flat)
 
-        model_fn = Partial(net_fn, cond=norm)
+        model_fn = Partial(net_fn, cond=noised_norm)
         sample = action_sample_traj, states_sample_traj, gain_sample_traj
         sample = diffuser.sample(sample_rng, model_fn,
                 sample, 

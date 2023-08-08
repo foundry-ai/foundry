@@ -52,7 +52,7 @@ class Config:
     epochs: int = 500
     batch_size: int = 256
     warmup_steps: int = 500
-    num_datapoints: int = 200
+    num_datapoints: int = 100
     smoothing_sigma: float = 0
 
 def make_network(config):
@@ -292,6 +292,8 @@ def train_policy(config, database):
     noise_res, no_noise_res  = eval(EvalConfig(), database, results=exp)
     db.run.summary["replica_error"] = noise_res
     db.run.summary["deconv_error"] = no_noise_res
+    db.run.summary["replica_error_mean"] = jnp.mean(noise_res)
+    db.run.summary["deconv_error_mean"] = jnp.mean(no_noise_res)
 
 @activity(Config)
 def sweep_train(config, database):
@@ -301,12 +303,11 @@ def sweep_train(config, database):
 class EvalConfig:
     path: str = None
     rng_key: PRNGKey = field(default_factory=lambda:PRNGKey(42))
-    samples: int = 10
+    samples: int = 25
     rng_seed: int = 42
 
 
-def rollout(env, policy, length, rng):
-    x0_rng, policy_rng = jax.random.split(rng)
+def rollout(env, policy, length, x0_rng, policy_rng):
     x0 = env.reset(x0_rng)
     r = policies.rollout(env.step, x0, policy,
                     policy_rng_key=policy_rng,
@@ -336,7 +337,7 @@ def compute_scores(config, env, results, noise_states, no_noise_states):
         )
         noise_diff = jnp.sum(noise_diff, axis=-1)
         no_noise_diff = jax.vmap(jax.vmap(l2_norm_squared))(
-            expert_states, noise_states
+            expert_states, no_noise_states
         )
         no_noise_diff = jnp.sum(no_noise_diff, axis=-1)
         logger.info("deconv error: {}", no_noise_diff)
@@ -396,8 +397,12 @@ def eval(eval_config, database, results=None):
     logger.info("Rolling out policies...")
     mapped_deconv_fun = jax.jit(jax.vmap(deconv_rollout_fn))
     mapped_replica_fun = jax.jit(jax.vmap(replica_rollout_fn))
-    rngs = jax.random.split(PRNGKey(eval_config.rng_seed), eval_config.samples)
-    replica_rollouts = mapped_replica_fun(rngs)
-    deconv_rollouts = mapped_deconv_fun(rngs)
+
+    x0_rng, deconv_rng, replica_rng = jax.random.split(eval_config.rng_key, 3)
+    x0_rngs = jax.random.split(x0_rng, eval_config.samples)
+    deconv_rngs = jax.random.split(deconv_rng, eval_config.samples)
+    replica_rngs = jax.random.split(replica_rng, eval_config.samples)
+    deconv_rollouts = mapped_deconv_fun(x0_rngs, deconv_rngs)
+    replica_rollouts = mapped_replica_fun(x0_rngs, replica_rngs)
     logger.info("Computing statistics")
     return compute_scores(config, env, results, replica_rollouts.states, deconv_rollouts.states)
