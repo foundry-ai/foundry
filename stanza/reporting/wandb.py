@@ -5,6 +5,7 @@ from stanza.reporting import Database, \
                             Video, Figure, remap
 
 import numpy as np
+import os
 
 class WandbDatabase(Database):
     def __init__(self, path):
@@ -14,7 +15,10 @@ class WandbDatabase(Database):
         self.project = project
     
     def open(self, name=None):
-        run = wandb.init(entity=self.entity, project=self.project, name=name)
+        if 'WANDB_SWEEP_ID' in os.environ:
+            run = wandb.init()
+        else:
+            run = wandb.init(entity=self.entity, project=self.project, name=name)
         return WandbRun(run)
     
     def add(self, name, value, append=False):
@@ -27,6 +31,10 @@ class WandbRun(Database):
         self.run = run
         self.prefix = prefix
 
+    @property
+    def name(self):
+        return self.run.name
+
     def open(self, name):
         n = f"{self.prefix}.{name}"
         return WandbRun(self.run, n)
@@ -37,22 +45,19 @@ class WandbRun(Database):
     def flush(self):
         pass
 
-    def log(self, data, batch=False):
+    def log(self, data, step=None, batch=False):
         from stanza.util import shape_tree
-        data = remap(data, {
-                Figure: lambda f: f.fig,
-                Video: lambda v: wandb.Video(np.array(v.data), fps=v.fps)
-            })
         if batch:
             dim = jax.tree_util.tree_leaves(data)[0].shape[0]
             for i in range(dim):
                 x = jax.tree_map(lambda x: x[i], data)
-                if self.prefix != '':
-                    self.run.log({self.prefix: x})
-                else:
-                    self.run.log(x)
+                s = step[i] if step is not None else None
+                self.log(x, step=s, batch=False)
         else:
+            data = remap(data, {
+                    Figure: lambda f: f.fig,
+                    Video: lambda v: wandb.Video(np.array(v.data), fps=v.fps)
+                })
             if self.prefix != '':
-                self.run.log({self.prefix: data})
-            else:
-                self.run.log(data)
+                data = {self.prefix: data}
+            self.run.log(data, step=step)

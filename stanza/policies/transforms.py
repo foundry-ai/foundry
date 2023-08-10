@@ -90,7 +90,7 @@ class ChunkedPolicyState:
     t: int = 0
 
 @dataclass(jax=True)
-class Chunker(PolicyTransform):
+class ChunkTransform(PolicyTransform):
     # If None, no input/output batch dimension
     input_chunk_size: int = field(default=None, jax_static=True)
     output_chunk_size: int = field(default=None, jax_static=True)
@@ -184,7 +184,7 @@ class ChunkedPolicy(Policy):
 # gets replicated control_interval number of times
 
 @dataclass(jax=True)
-class ActinRepeater(PolicyTransform):
+class ActionRepeater(PolicyTransform):
     repeats : int = field(default=1, jax_static=True)
 
     def transform_policy(self, policy):
@@ -232,3 +232,29 @@ class RepeatingPolicy(Policy):
         output = replace(sub_output,
             policy_state=RepeatingState(sub_output, t))
         return output
+
+@dataclass(jax=True)
+class FeedbackTransform(PolicyTransform):
+    def transform_policy(self, policy):
+        return FeedbackPolicy(policy)
+    
+    def transform_policy_state(self, policy_state):
+        return policy_state
+
+@dataclass(jax=True)
+class FeedbackPolicy(Policy):
+    policy: Policy = None
+    
+    @property
+    def rollout_length(self):
+        return self.policy.rollout_length
+
+    def __call__(self, input):
+        out = self.policy(input)
+        action, ref_state, ref_gain = out.action
+        action_flat, action_uf = jax.flatten_util.ravel_pytree(action)
+        obs_flat, _ = jax.flatten_util.ravel_pytree(input.observation)
+        ref_flat, _ = jax.flatten_util.ravel_pytree(ref_state)
+        action_mod = 0. # ref_gain @ (obs_flat - ref_flat)
+        action = action_uf(action_flat + action_mod)
+        return replace(out, action=action)

@@ -2,7 +2,8 @@ from stanza.dataclasses import dataclass, field, replace
 from stanza.util.attrdict import AttrMap
 from stanza.policies import PolicyInput, PolicyOutput
 from stanza.envs import Environment
-from stanza.util import LoopState, extract_shifted
+from stanza.util.loop import LoopState
+from stanza.util import extract_shifted
 from stanza.util.random import PRNGSequence
 
 from typing import Callable, Any
@@ -17,13 +18,18 @@ class ACPolicy:
     actor_critic: Callable
     observation_normalizer: Callable = None
     action_normalizer: Callable = None
+    use_mean : bool = field(default=False, jax_static=True)
+    
 
     def __call__(self, input: PolicyInput) -> PolicyOutput:
         observation = input.observation
         if self.observation_normalizer is not None:
             observation = self.observation_normalizer.normalize(observation)
         pi, value = self.actor_critic(observation)
-        action = pi.sample(input.rng_key)
+        if self.use_mean:
+            action = pi.mean
+        else:
+            action = pi.sample(input.rng_key)
         log_prob = pi.log_prob(action)
         return PolicyOutput(
             action, log_prob, 
@@ -154,25 +160,23 @@ class RLAlgorithm:
             lambda x: jnp.swapaxes(x, 0, 1), transitions
         )
         # compute new reward totals
-        def total_reward_scan(total_reward, transition):
-            total_reward = total_reward + transition.reward
-            carry = transition.done * total_reward
-            return carry, total_reward
-        env_total_rewards, total_rewards = jax.lax.scan(total_reward_scan, 
-                                        state.env_total_rewards, transitions_reshaped)
+        # def total_reward_scan(total_reward, transition):
+        #     total_reward = total_reward + transition.reward
+        #     carry = transition.done * total_reward
+        #     return carry, total_reward
+        # env_total_rewards, total_rewards = jax.lax.scan(total_reward_scan, 
+        #                                 state.env_total_rewards, transitions_reshaped)
         finished_episodes = jnp.count_nonzero(transitions_reshaped.done)
-        new_rewards = jnp.sum(total_rewards*transitions_reshaped.done)
+        # new_rewards = jnp.sum(total_rewards*transitions_reshaped.done)
 
-        avg = new_rewards / jnp.maximum(1, finished_episodes)
+        # avg = new_rewards / jnp.maximum(1, finished_episodes)
 
-        frac = state.total_episodes / (jnp.maximum(state.total_episodes, 1) + finished_episodes)
+        # frac = state.total_episodes / (jnp.maximum(state.total_episodes, 1) + finished_episodes)
 
-        average_reward = frac*state.average_reward + avg * (1 - frac)
         # update the average reward
         state = replace(state, 
             rng_key=next_key, 
-            env_total_rewards=env_total_rewards,
-            average_reward=average_reward,
+            average_reward=jnp.mean(transitions.reward),
             total_episodes=state.total_episodes + finished_episodes,
             env_states=env_states)
         return state, transitions

@@ -1,10 +1,25 @@
 import os
 from stanza.reporting import Database, Video, Figure
 from pathlib import Path
+import jax
 import jax.numpy as jnp
+import random
+
+_NOUNS = None
+_ADJECTIVES = None
+def _words():
+    global _NOUNS
+    global _ADJECTIVES
+    if _NOUNS is None:
+        nouns_path = Path(__file__).parent / "nouns.txt"
+        _NOUNS = open(nouns_path).read().splitlines()
+    if _ADJECTIVES is None:
+        adjectives_path = Path(__file__).parent / "adjectives.txt"
+        _ADJECTIVES = open(adjectives_path).read().splitlines()
+    return _ADJECTIVES, _NOUNS
 
 class LocalDatabase(Database):
-    def __init__(self, parent=None, name=None, path=None):
+    def __init__(self, *, parent=None, name=None, path=None):
         self._name = name
         self._parent = parent
         if path is None:
@@ -19,6 +34,7 @@ class LocalDatabase(Database):
     @property
     def parent(self):
         return self._parent
+
     @property
     def children(self):
         return set([p.stem for p in self._path.iterdir()])
@@ -27,16 +43,26 @@ class LocalDatabase(Database):
         path = self._path / name
         return path.exists()
 
-    def open(self, name):
-        return LocalDatabase(self, name, self._path / name)
-    
-    def add(self, name, value, append=False):
+    def open(self, name=None):
+        if name is None:
+            length = len(self.children)
+            while True:
+                adjectives, nouns = _words()
+                adjective = random.choice(adjectives)
+                noun = random.choice(nouns)
+                name = f"{adjective}-{noun}-{length + 1}"
+                if not self.has(name):
+                    break
+        return LocalDatabase(parent=self, name=name, path=self._path / name)
+
+    def add(self, name, value, *, append=False, step=None, batch=False):
         path = self._path / name
         if path.is_dir():
             raise RuntimeError("This is a sub-database!")
         if value is None:
             return
         if isinstance(value, Video):
+            assert append == False
             import ffmpegio
             path = self._path / f"{name}.mp4"
             data = value.data
@@ -48,6 +74,7 @@ class LocalDatabase(Database):
             ffmpegio.video.write(path, value.fps, data,
                 overwrite=True, loglevel='quiet')
         elif isinstance(value, Figure):
+            assert append == False
             png_path = self._path / f"{name}.png"
             pdf_path = self._path / f"{name}.pdf"
             from plotly.graph_objects import Figure as GoFigure
@@ -63,6 +90,15 @@ class LocalDatabase(Database):
                 value.fig.savefig(pdf_path, bbox_inches='tight')
         else:
             path = self._path / f"{name}.npy"
+            if append and path.is_file():
+                with open(path, "rb") as f:
+                    d = jnp.load(f)
+                    value = jnp.expand_dims(value, 0) \
+                        if not batch else value
+                    value = jnp.concatenate(
+                        (d, value),
+                        axis=0
+                    )
             with open(path, "wb") as f:
                 jnp.save(f, value, allow_pickle=True)
 

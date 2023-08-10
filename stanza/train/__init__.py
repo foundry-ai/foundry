@@ -1,7 +1,7 @@
 from stanza import Partial
 from stanza.dataclasses import dataclass, field, replace, unpack
 from stanza.util.logging import logger
-from stanza.util import LoopState, run_hooks, init_hooks as _init_hooks
+from stanza.util.loop import LoopState, run_hooks, init_hooks as _init_hooks, loop
 from stanza.data import Data, Iterator, PyTreeData
 
 from jax.random import PRNGKey
@@ -17,13 +17,14 @@ import optax
 import jax
 import jax.numpy as jnp
 
+
 @dataclass(jax=True)
 class TrainState(LoopState):
     epoch: int
     max_epochs: int
     epoch_iteration: int
 
-    loss_fn: Callable
+    loss_fn: Callable #takes in (fn_fn_state, fn_params, rng_key, batch)
 
     rng_key: PRNGKey
     fn_params: Any
@@ -42,9 +43,11 @@ def _batch_loss_fn(loss_fn, fn_state, fn_params,
                         rng_key, batch):
     logger.trace("Tracing batch loss", only_tracing=True)
     batch_loss_fn = jax.vmap(loss_fn,
-                    in_axes=(None, None, None, 0),
+                    in_axes=(None, None, 0, 0),
                     out_axes=(None, 0, 0),
                     axis_name='batch')
+    n = jax.tree_util.tree_flatten(batch)[0][0].shape[0]
+    rng_key = jax.random.split(rng_key, n)
     fn_state, loss, stats = batch_loss_fn(fn_state, fn_params,
                                             rng_key, batch)
     loss = jnp.mean(loss)
@@ -88,7 +91,10 @@ class Trainer:
         state = replace(state,
             epoch_iteration=state.epoch_iteration + 1,
             iteration=state.iteration+ 1,
-            last_stats=stats, rng_key=rng_key,
+            last_stats=replace(
+                state.last_stats,
+                train=stats
+            ), rng_key=rng_key,
             fn_params=fn_params, 
             fn_state=fn_state, opt_state=opt_state)
         return state
@@ -127,7 +133,7 @@ class Trainer:
             epoch_fn = Partial(self.train_epoch,
                                dataset=dataset, jit=False)
         # populate the last_stats if necessary
-        state = stanza.util.loop(epoch_fn, state, jit=jit)
+        state = loop(epoch_fn, state, jit=jit)
         state = run_hooks(state)
         logger.trace("Done tracing training", only_tracing=True)
         return state
@@ -155,14 +161,14 @@ class Trainer:
             iteration=0,
             max_iterations=max_iterations,
             hooks=hooks,
-            hook_states=[None]*len(hooks),
+            hook_states=None,
 
             epoch=0, 
             max_epochs=epochs,
             epoch_iteration=0,
 
             loss_fn=loss_fn,
-            last_stats=stats,
+            last_stats={"train":stats},
 
             rng_key=rng_key, 
             fn_params=init_fn_params,
@@ -178,7 +184,8 @@ class Trainer:
         epochs = self.epochs if epochs is None else epochs
         max_iterations = self.max_iterations if max_iterations is None else max_iterations
         if max_iterations is None and epochs is not None:
-            max_iterations = len(dataset) * epochs // self.batch_size
+            iter_per_epoch = len(dataset) // self.batch_size
+            max_iterations = iter_per_epoch * epochs
         if max_iterations is None:
             raise RuntimeError("Either epochs or max_iterations must be set")
 
@@ -208,6 +215,7 @@ class SAMTrainer(Trainer):
     normalize: bool = field(default=True, jax_static=True)
     # Number of iterations to run SAM for
     sam_iterations: int = field(default=None)
+    resample: bool = field(default=False, jax_static=True)
 
     @jax.jit
     def train_step(self, state, batch):
@@ -215,17 +223,31 @@ class SAMTrainer(Trainer):
         rng_key, sk = jax.random.split(state.rng_key)
         batch = PyTreeData.from_data(batch,
                     buffer_size=self.batch_size)
-        batch_fn = Partial(_trainer_loss_fn, 
-                state.loss_fn, state.fn_state, 
-                sk, batch.data)
-        batch_grad_fn = jax.grad(batch_fn, has_aux=True)
+        if self.resample:
+            sam_batch = Data.from_pytree(
+                jax.tree_map(lambda x: x[:self.batch_size//2], batch.data),
+            )
+            batch = Data.from_pytree(
+                jax.tree_map(lambda x: x[self.batch_size//2:], batch.data),
+            )
+            gen_batch_fn = Partial(_trainer_loss_fn, 
+                    state.loss_fn, state.fn_state, 
+                    sk)
+            gen_batch_grad_fn = jax.grad(gen_batch_fn, has_aux=True, argnums=1)
+            batch_grad_fn = Partial(gen_batch_grad_fn, batch.data)
+            sam_batch_grad_fn = Partial(gen_batch_grad_fn, sam_batch.data)
+        else:
+            batch_fn = Partial(_trainer_loss_fn, 
+                    state.loss_fn, state.fn_state, 
+                    sk, batch.data)
+            batch_grad_fn = jax.grad(batch_fn, has_aux=True)
+            sam_batch_grad_fn = batch_grad_fn
 
         def sam_update(state):
-            grads, (_, _) = batch_grad_fn(state.fn_params)
+            grads, (_, _) = sam_batch_grad_fn(state.fn_params)
             if self.normalize:
                 global_norm = optax.global_norm(grads)
                 grads = jax.tree_map(lambda x: x / global_norm, grads)
-
             updates, sub_opt_state = self.sub_optimizer.update(grads, 
                                 state.sub_opt_state, state.fn_params)
             sub_fn_params = optax.apply_updates(state.fn_params, updates)

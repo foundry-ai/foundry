@@ -5,6 +5,7 @@ from jax.random import PRNGKey
 from stanza.util.random import PRNGSequence
 from stanza.train import Trainer, TrainState, TrainResults
 from stanza.util.attrdict import AttrMap
+import stanza.util.loop as loop
 
 import jax
 import jax.numpy as jnp
@@ -26,7 +27,6 @@ from stanza.rl import RLState, Transition, RLAlgorithm
 class PPOState(RLState):
     ac_apply : Callable
     train_state : TrainState
-
 
 @dataclass(jax=True)
 class PPO(RLAlgorithm):
@@ -144,7 +144,7 @@ class PPO(RLAlgorithm):
         state = replace(state,
             last_stats=self.compute_stats(state)
         )
-        state = stanza.util.run_hooks(state)
+        state = loop.run_hooks(state)
         return state
 
     def init(self, rng_key, env,
@@ -174,13 +174,13 @@ class PPO(RLAlgorithm):
             train_state=train_state
         )
         state = replace(state, last_stats=self.compute_stats(state))
-        state = stanza.util.init_hooks(state)
+        state = stanza.util.loop.init_hooks(state)
         return state
     
     def run(self, state):
         update = Partial(type(self).update, self)
-        state = stanza.util.run_hooks(state)
-        state = stanza.util.loop(update, state)
+        state = loop.run_hooks(state)
+        state = loop.loop(update, state)
         return state
 
     def train(self, rng_key, env, actor_critic_apply, init_params, *,

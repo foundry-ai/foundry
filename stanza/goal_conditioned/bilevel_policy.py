@@ -6,6 +6,7 @@ from stanza.dataclasses import dataclass, replace, field
 from stanza.goal_conditioned import GCState, GCObs
 from jax.random import PRNGKey, split
 from stanza.util.attrdict import AttrMap
+from stanza import Partial
 
 Goal = Any
 
@@ -25,15 +26,22 @@ class BLPolicyState:
     info_high_level : Any = None
 
 
-def true_func(x : Any):
+def always_update(state : BLPolicyState):
     return True 
 
+# do i need to jit this?
+def fixed_time_update(state : BLPolicyState, t_max = 2):
+    return state.chunk_time > t_max
+
+
+#TODO add default constructor things?
 @dataclass(jax=True)
 class BiPolicy(Policy):
     policy_low : Policy # is goal conditioned
     policy_high : Policy
-    is_update_time : Callable[[Any],bool] \
-          = true_func
+    t_max : int = 2
+    is_update_time : Callable[[BLPolicyState],bool] \
+          = Partial(fixed_time_update,t_max=1)
     split_keys : bool = field(default=True,jax_static=True)
     #turn this off to aid in debuggin
 
@@ -131,7 +139,7 @@ class IdentityPolicy(Policy):
 
 
 
-def make_trivial_bi_policy(policy):
+def make_trivial_bi_policy(policy, t_max = -1):
     return BiPolicy(policy_low=IdentityPolicy(), 
                     policy_high = policy,
-                    split_keys = False)
+                    split_keys = False, t_max=t_max)

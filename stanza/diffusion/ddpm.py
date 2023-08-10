@@ -5,6 +5,7 @@ import jax.numpy as jnp
 import jax.flatten_util
 import jax
 import stanza
+import chex
 
 @dataclass(jax=True)
 class DDPMSchedule:
@@ -59,6 +60,7 @@ class DDPMSchedule:
     # This does a reverse process step
     @jax.jit
     def step(self, rng_key, sample, timestep, delta_steps, model_output):
+        chex.assert_trees_all_equal_shapes_and_dtypes(sample, model_output)
         t = timestep
         prev_t = t - delta_steps
         alpha_prod_t = self.alphas_cumprod[t]
@@ -94,24 +96,27 @@ class DDPMSchedule:
         noise = sigma*jax.random.normal(rng_key, pred_prev_sample.shape)
         return unflatten(pred_prev_sample + noise)
 
-    @jax.jit
-    def _sample_step(self, model, delta_steps, carry, timestep):
+    def _sample_step(self, model, delta_steps, carry, timestep,
+                     trajectory=False):
         rng_key, sample = carry
         rng_key, model_rng, step_rng = jax.random.split(rng_key, 3)
         with jax.named_scope("eval_model"):
             model_output = model(model_rng, sample, timestep)
         with jax.named_scope("step"):
-            next_sample = self.step(step_rng, sample, timestep, delta_steps, model_output)
-        return (rng_key, next_sample), None
+            next_sample = self.step(step_rng, sample, timestep,
+                                    delta_steps, model_output)
+        out = next_sample if trajectory else None
+        return (rng_key, next_sample), out
 
     # model is a map from rng_key, sample, timestep --> model_output
-    @stanza.jit(static_argnames='num_steps')
-    def sample(self, rng_key, model, example_sample, *, num_steps=None):
+    @stanza.jit(static_argnames=('num_steps','trajectory'))
+    def sample(self, rng_key, model, example_sample, *, num_steps=None,
+                        trajectory=False):
         if num_steps is None:
             num_steps = self.num_steps
 
         step_ratio = self.num_steps // num_steps
-        step = partial(self._sample_step, model, step_ratio)
+        step = partial(self._sample_step, model, step_ratio, trajectory=trajectory)
 
         timesteps = (jnp.arange(0, num_steps) * step_ratio).round()[::-1] \
                 .copy().astype(jnp.int32)
@@ -121,6 +126,12 @@ class DDPMSchedule:
         random_sample = unflatten(jax.random.normal(rng_key, sample_flat.shape))
 
         carry = (rng_key, random_sample)
-        carry, _ = jax.lax.scan(step, carry, timesteps)
+        carry, out = jax.lax.scan(step, carry, timesteps)
         _, sample = carry
-        return sample
+        if trajectory:
+            out = jax.tree_map(lambda x, y: jnp.concatenate(
+                                [jnp.expand_dims(x,axis=0), y], axis=0
+                            ), random_sample, out)
+            return sample, out
+        else:
+            return sample

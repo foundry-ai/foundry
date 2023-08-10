@@ -10,17 +10,27 @@ from functools import partial
 
 from stanza.reporting import Figure, Video
 from stanza.dataclasses import dataclass, field
-
+from stanza.goal_conditioned import GCEnvironment, EndGoal
 import stanza.graphics.canvas as canvas
 
 class State(NamedTuple):
     angle: jnp.ndarray
     vel: jnp.ndarray
 
+
+# I added some weird  abstractions
+# maybe ill remove them later
+def get_goal(params):
+    if params is None:
+        return None
+    else:
+        return params.goal
+
 @dataclass(jax=True)
 class PendulumEnv(Environment):
     sub_steps : int = field(default=1, jax_static=True)
     dt : float = 0.2
+    target_goal : EndGoal = EndGoal(end_state=State(angle=jnp.array(math.pi), vel=jnp.array(0)))
 
     def sample_action(self, rng_key):
         return jax.random.uniform(
@@ -32,7 +42,8 @@ class PendulumEnv(Environment):
     # give a distribution with support over all possible (or reasonable) states
     def sample_state(self, rng_key):
         k1, k2 = jax.random.split(rng_key)
-        angle = jax.random.uniform(k1, shape=(), minval=-2, maxval=math.pi + 1)
+        angle = jax.random.uniform(k1, shape=(), 
+                    minval=-2, maxval=math.pi + 1)
         vel = jax.random.uniform(k2, shape=(), minval=-1, maxval=1)
         return State(angle, vel)
 
@@ -49,9 +60,12 @@ class PendulumEnv(Environment):
         return state
     
     # If u is None, this is the terminal cost
-    def cost(self, x, u):
+    def cost(self, x, u, params = None):
+        goal = get_goal(params)
+        end_state = self.target_goal.end_state if goal == None else goal.end_state
+    
         x = jnp.stack((x.angle, x.vel), -1)
-        diff = (x - jnp.array([math.pi, 0]))
+        diff = (x - jnp.array([end_state.angle, end_state.vel]))
         x_cost = jnp.sum(diff[:-1]**2)
         xf_cost = jnp.sum(diff[-1]**2)
         if u == None:
@@ -60,12 +74,15 @@ class PendulumEnv(Environment):
             u_cost = jnp.sum(u**2)
         return 5*xf_cost + 2*x_cost + u_cost
 
-    def reward(self, state, action, next_state):
+    def reward(self, state, action, next_state, params = None):
+        goal = get_goal(params)
+        end_state = self.target_goal.end_state if goal == None else goal.end_state
         angle_diff = next_state.angle - state.angle
         vel_diff = next_state.vel - state.vel
-        angle_rew = 32 * angle_diff * jnp.sign(math.pi - next_state.angle)
-        vel_rew = vel_diff * jnp.sign(-next_state.vel)
-        return angle_rew + vel_rew
+        angle_rew = 32 * angle_diff * jnp.sign(end_state.angle - next_state.angle)
+        vel_rew = vel_diff * jnp.sign(end_state.vel-next_state.vel)
+        action_penalty = 0.1 * jnp.sum(action**2)
+        return angle_rew + vel_rew - action_penalty
 
     def render(self, state, width=256, height=256):
         angle = jnp.squeeze(state.angle)
@@ -82,10 +99,13 @@ class PendulumEnv(Environment):
         image = canvas.paint(image, sdf) 
         return image
     
-    def done(self, state):
+    def done(self, state, params = None):
+        goal = get_goal(params)
+        end_state = self.target_goal.end_state if goal == None else goal.end_state
+
         return jnp.logical_and(
-            jnp.abs(state.angle - math.pi) < 0.03,
-            jnp.abs(state.vel) < 0.03
+            jnp.abs(state.angle - end_state.angle) < 0.03,
+            jnp.abs(state.vel - end_state.vel) < 0.03
         )
 
     def teleop_policy(self, interface):

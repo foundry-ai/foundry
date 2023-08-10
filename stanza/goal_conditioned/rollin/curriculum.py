@@ -1,10 +1,14 @@
-from typing import Any
+from typing import Any, Callable, List
 import jax
 from jax.random import PRNGKey
 from jax import random
 from jax import numpy as jnp
+from stanza.data import Data
 from stanza.envs import Environment
 from stanza.dataclasses import dataclass, replace, field
+from stanza.envs.goal_conditioned_envs.gc_pendulum import make_gc_pendulum_env
+from stanza.goal_conditioned import GCEnvironment
+from stanza.goal_conditioned.rollin.rollin_sampler import Noiser, RollInSampler
 from stanza.rl.ppo import PPO
 from stanza.train import Trainer
 import optax
@@ -15,43 +19,14 @@ from stanza.rl import EpisodicEnvironment
 # each sampled with a given probability
 # for resets
 # transitions 
-@dataclass(jax=True)
-class MixtureEnvironment(Environment):
 
-    envs_list : list = []
-    probs_list : list = []
-    split_in_sample : field(default=True,jax_static=True)
-    base_env : Environment = None
 
-    def sample_env(self, rng_key):
-        key1, key2 = random.split(rng_key)
-        env, env_str = random.choice(key1, self.envs_list, p = self.probs_list)
-        return (env, key2)
-    
-    def sample_state(self, rng_key):
-        (env,key) = self.sample_env(rng_key)
-        return env.sample_state(key)
 
-    def sample_action(self, rng_key):
-        (env,key) = self.sample_env(rng_key)
-        return env.sample_action(key)
+ScalarNoiserMaker = Callable[[float],Noiser]
+ScaleFunction = Callable[[int],float]
+# epoch, env
 
-    def reset(self, key):
-        (env,key) = self.sample_env(key)
-        return env.reset(key)  
-
-    # these methods use the base_env 
-    def step(self, state, action, rng_key):
-        return self.base_env(rng_key)
-
-    def observe(self, state):
-        return self.base_env.observe(state)
-    
-    def reward(self, state, action, next_state):
-        return self.base_env.reward(state, action, next_state)
-    
-    def render(self,state,**kwargs):
-        return self.base_env.render(state.env_state, **kwargs)
+CurriculumInfo = Any
 
 
 # runs ppo from inital params, a net, 
@@ -84,20 +59,36 @@ def ppo_train(rng_key : PRNGKey, env : Environment, episode_length, net,
 
 
 class ScheduleItem:
-    env : MixtureEnvironment # need a discrete distribution
+    schedule_env : Environment 
     optimizer : Any = optax.chain(
                         optax.clip_by_global_norm(0.5),
                         optax.adam(3e-4, eps=1e-5)
                     )
     episode_length : int = 1000
 
+
+@dataclass(jax = True)
+class ScheduleItemMaker:
+    def make_schedule_item(epoch_num : int,
+                                data : Data,
+                                last_schedule_item : ScheduleItem,
+                                curriculum_info : CurriculumInfo = None) -> ScheduleItem:
+        raise NotImplementedError
+
+
+@dataclass(jax = True)
 class TrainingSchedule:
     init_params : Any
-    schedule : list = []
-    bc_settings : Any = None
+    num_epochs : int
+    #bc_settings : Any = None
     episode_length : int = 1000
     base_env : Environment = None
-    
+    init_data : Data = None
+    schedule_item_maker : ScheduleItemMaker = None
+
+    ### In future, we can use data from earlier in curriculum
+    ### to perform roll_in_sampling
+
 
     def execute_curriculum(self, init_key : PRNGKey = 42,
                            trainer_key : PRNGKey = 43):
@@ -113,17 +104,21 @@ class TrainingSchedule:
                 base_env.observe(base_env.sample_state(PRNGKey(0))))
 
 
-        if self.bc_data is not None:
-            pass
-            # train bc model
-        for item in self.schedule:
-            trained_params, trainer_key = ppo_train(rng_key=trainer_key, env=item.env, 
-                                                    net=net, episode_length=item.episode_length, 
-                                                    optimizer = item.optimizer, 
+        for i in range(self.num_epochs):
+            # make the schedule item
+            schedule_item = self.schedule_item_maker.make_schedule_item(epoch_num=i,
+                                                                        data=self.init_data,
+                                                                        last_schedule_item=None)
+            # train on the schedule item
+            trained_params, trainer_key = ppo_train(rng_key=trainer_key, env=schedule_item.env, 
+                                                    net=net, episode_length=schedule_item.episode_length, 
+                                                    optimizer = schedule_item.optimizer, 
                 init_params=params, init_opt_state = None,
                 rl_hooks=[], train_hooks=[])
+            
             params_list.append(trained_params)
+            params = trained_params
+            # update the schedule item maker
             
 
-        
-        
+

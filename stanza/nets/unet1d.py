@@ -55,19 +55,17 @@ class Conv1DBlock(hk.Module):
         self.n_groups = n_groups
 
     def __call__(self, x):
-        block = hk.Sequential([
-            hk.Conv1D(self.output_channels,
+        conv = hk.Conv1D(self.output_channels,
                       kernel_shape=self.kernel_size,
                       padding=(self.kernel_size // 2, self.kernel_size // 2),
                       w_init=_w_init,
                       b_init=_b_init,
-                      name="conv"),
-            # We have no batch axes in our input
-            # so average over all axes
-            hk.GroupNorm(self.n_groups, axis=slice(0,None),name="group_norm"),
-            mish
-        ])
-        return block(x)
+                      name="conv")
+        gn = hk.GroupNorm(self.n_groups, axis=slice(0,None),name="group_norm")
+        x = conv(x)
+        normed_x = gn(x)
+        x = mish(normed_x)
+        return x
 
 class CondResBlock1D(hk.Module):
     def __init__(self, output_channels,
@@ -85,8 +83,8 @@ class CondResBlock1D(hk.Module):
         residual_conv = hk.Conv1D(
             self.output_channels, 1,
             w_init=_w_init, b_init=_b_init,
-            name='residual_conv') \
-                if x.shape[-1] != self.output_channels else (lambda x: x)
+            name='residual_conv'
+        ) if x.shape[-1] != self.output_channels else (lambda x: x)
         cond_encoder = hk.Sequential(
             [mish, hk.Linear(self.output_channels*2,
                             w_init=_w_init, b_init=_b_init,
@@ -120,6 +118,7 @@ class ConditionalUnet1D(hk.Module):
         self.n_groups = 8
 
     def __call__(self, sample, timestep, global_cond=None):
+        # flatten the sample into (timestep, channels)
         down_dims = self.down_dims
         start_dim = down_dims[0]
         kernel_size = self.kernel_size

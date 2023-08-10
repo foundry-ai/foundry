@@ -11,9 +11,18 @@ class LinearNormalizer:
     min: Any
     max: Any
 
+    @property
+    def instance(self):
+        return self.min
+
+    def map(self, fun):
+        return LinearNormalizer(
+            fun(self.min), fun(self.max)
+        )
+
     def normalize(self, data):
         def norm(x, nmin, nmax):
-            scaled = (x - nmin)/(nmax - nmin)
+            scaled = (x - nmin)/(nmax - nmin + 1e-6)
             # shift to [-1, 1]
             return 2*scaled - 1
         return jax.tree_util.tree_map(
@@ -50,9 +59,19 @@ class StdNormalizer:
     total: int = 0
     std: Any = field(init=False)
 
+    @property
+    def instance(self):
+        return self.mean
+
     def __post_init__(self):
         std = jax.tree_map(lambda x: jnp.sqrt(x + 1e-8), self.var)
         object.__setattr__(self, 'std', std)
+
+    def map(self, fun):
+        return StdNormalizer(
+            fun(self.mean), fun(self.var),
+            self.total, fun(self.std)
+        )
 
     def normalize(self, data):
         if self.mean is not None:
@@ -81,3 +100,14 @@ class StdNormalizer:
     def update(self, batch):
         # get the batch dimension size
         n = jax.tree_util.tree_flatten(batch)[0][0].shape[0]
+    
+    @staticmethod
+    def from_data(data):
+        data = PyTreeData.from_data(data)
+        mean = jax.tree_util.tree_map(
+            lambda x: jnp.mean(x, axis=0), data.data
+        )
+        var = jax.tree_util.tree_map(
+            lambda x: jnp.var(x, axis=0), data.data
+        )
+        return StdNormalizer(mean, var, data.length)

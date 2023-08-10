@@ -31,7 +31,7 @@ zarr = "^2.14.2"
 plotly = "^5.14.1"
 kaleido = "0.2.0"
 seaborn = "^0.12.2"
-dm-haiku = "^0.0.9"
+dm-haiku = {git = "https://github.com/deepmind/dm-haiku"}
 shapely = "1.8.4"
 pymunk = "^6.4.0"
 drake = "^1.17.0"
@@ -43,6 +43,10 @@ distrax = "^0.1.4"
 gymnax = "^0.0.6"
 glfw = "^2.6.2"
 brax = "^0.9.1"
+tensordict = "^0.1.2"
+cv = "^1.0.0"
+torch = {version = "^2.0.1+cu118", source = "pytorch"}
+jax = {extras = ["cuda12-cudnn89"], version = "^0.4.14", source = "jax"}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.1"
@@ -55,4 +59,16 @@ build-backend = "poetry.core.masonry.api"
 [[tool.poetry.source]]
 name = "jax"
 url = "https://storage.googleapis.com/jax-releases/jax_releases.html"
-priority = "explicit"
+priority = "supplemental"
+
+
+[[tool.poetry.source]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu118"
+priority = "supplemental"
+
+
+[[tool.poetry.source]]
+name = "PyPI"
+priority = "primary"
+

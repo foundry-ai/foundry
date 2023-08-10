@@ -8,6 +8,7 @@ from stanza.rl.ppo import PPO
 from stanza.train import Trainer
 from stanza.rl import EpisodicEnvironment, ACPolicy
 from stanza.rl.nets import MLPActorCritic
+from stanza.util.loop import every_kth_iteration
 from stanza.util.rich import StatisticsTable, ConsoleDisplay, LoopProgress
 
 env = envs.create("pendulum")
@@ -26,8 +27,7 @@ display.add("ppo", StatisticsTable(), interval=1)
 display.add("ppo", LoopProgress("RL"), interval=1)
 
 from stanza.reporting.wandb import WandbDatabase
-db = WandbDatabase("dpfrommer-projects/examples")
-db = db.open("ppo")
+db = WandbDatabase("dpfrommer-projects/examples").create()
 from stanza.reporting.jax import JaxDBScope
 db = JaxDBScope(db)
 
@@ -39,14 +39,14 @@ ppo = PPO(
         )
     )
 )
-
 with display as dh, db as db:
-    wb_logger = db.log_hook(buffer=10)
+    logger_hook = db.statistic_logging_hook(
+        log_cond=every_kth_iteration(1), buffer=100)
     trained_params = ppo.train(
         PRNGKey(42),
         env, net.apply,
         params,
-        rl_hooks=[dh.ppo, wb_logger]
+        rl_hooks=[dh.ppo, logger_hook]
     )
 
 ac_apply = Partial(net.apply, trained_params.fn_params)
