@@ -47,6 +47,7 @@ tensordict = "^0.1.2"
 cv = "^1.0.0"
 torch = {version = "^2.0.1+cu118", source = "pytorch"}
 jax = {extras = ["cuda12-cudnn89"], version = "^0.4.14", source = "jax"}
+pot = "^0.9.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.1"

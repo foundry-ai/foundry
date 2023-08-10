@@ -403,6 +403,6 @@ def eval(eval_config, database, results=None):
     deconv_rngs = jax.random.split(deconv_rng, eval_config.samples)
     replica_rngs = jax.random.split(replica_rng, eval_config.samples)
     deconv_rollouts = mapped_deconv_fun(x0_rngs, deconv_rngs)
-    replica_rollouts = mapped_replica_fun(x0_rngs, replica_rngs)
+    replica_rollouts = mapped_replica_fun(x0_rngs, deconv_rngs)
     logger.info("Computing statistics")
     return compute_scores(config, env, results, replica_rollouts.states, deconv_rollouts.states)

@@ -111,7 +111,7 @@ class LocalDatabase(Database):
         ))
         if not matches:
             return None
-        path = self._path / matches[0]
+        path = matches[0]
         with open(path, "rb") as f:
             arr = jnp.load(f, allow_pickle=True)
             if arr.dtype == object:
