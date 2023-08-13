@@ -54,7 +54,9 @@ def rollout(model, state0,
             # autonomous system
             policy=None,
             *,
-            observe=None, # observation function, by default just uses the state
+            # observation function
+            # by default just uses the state
+            observe=None,
             # The rng_key for the environment
             model_rng_key=None,
             # The initial policy state.
