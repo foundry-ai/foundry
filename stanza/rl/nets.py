@@ -3,6 +3,7 @@ from flax.linen.initializers import constant, orthogonal
 
 import jax.numpy as jnp
 import jax
+import jax.flatten_util
 import jax.scipy.stats.norm as norm
 
 

@@ -1,9 +1,9 @@
 from jax._src.callback import core, effects, dispatch, mlir, sharding_impls,\
                                 pure_callback_batching_rule, batching, ad, xc, \
-                                _check_shape_dtype
+                                _check_shape_dtype, util, lax_map
 import jax.tree_util as tree_util
 import functools
-from typing import Callable, Any
+from typing import Callable, Sequence, Any
 
 io_callback_p = core.Primitive("io_callback")
 io_callback_p.multiple_results = True
@@ -47,9 +47,31 @@ def io_callback_transpose_rule(*args, **kwargs):
   raise ValueError("IO callbacks do not support transpose.")
 ad.primitive_transposes[io_callback_p] = io_callback_transpose_rule
 
-def io_callback_batching_rule(args, dims, callback, result_avals, ordered):
-  return pure_callback_batching_rule(args, dims, callback=callback,
-      vectorized=False, result_avals=result_avals)
+def io_callback_batching_rule(args, dims, *, callback, vectorized: bool,
+                                result_avals: Sequence[core.ShapedArray],
+                                ordered: bool):
+  axis_size = next(a.shape[0] for a, d in zip(args, dims)
+                   if d is not batching.not_mapped)
+  new_args = [arg if dim is batching.not_mapped else
+              batching.moveaxis(arg, dim, 0) for arg, dim in zip(args, dims)]
+  if vectorized:
+    result_avals = tuple(
+        core.unmapped_aval(axis_size, core.no_axis_name, 0, aval)  # type: ignore
+        for aval in result_avals)
+    outvals = io_callback_p.bind(
+        *new_args, callback=callback, vectorized=vectorized,
+        result_avals=result_avals)
+  else:
+    is_batched = [d is not batching.not_mapped for d in dims]
+    unbatched_args, batched_args = util.partition_list(is_batched, new_args)
+    def _batch_fun(batched_args):
+      merged_args = util.merge_lists(is_batched, unbatched_args, batched_args)
+      return io_callback_p.bind(
+          *merged_args, callback=callback, result_avals=result_avals,
+          vectorized=vectorized)
+    outvals = lax_map(_batch_fun, batched_args)
+  return tuple(outvals), (0,) * len(outvals)
+torized=False, result_avals=result_avals)
 batching.primitive_batchers[io_callback_p] = io_callback_batching_rule
 
 def io_callback_lowering(ctx, *args, callback, ordered, **params):

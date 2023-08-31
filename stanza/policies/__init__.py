@@ -31,6 +31,7 @@ class Trajectory:
 # final policy state, final rng key
 @dataclass(jax=True)
 class Rollout(Trajectory):
+    observations: Any = None
     info: AttrMap = field(default_factory=AttrMap)
     final_policy_state: Any = None
     final_policy_rng_key: PRNGKey = None
@@ -78,6 +79,8 @@ def rollout(model, state0,
         raise ValueError("Rollout length must be specified")
     if length == 0:
         raise ValueError("Rollout length must be > 0")
+    if observe is None:
+        observe = lambda x: x
 
     def scan_fn(comb_state, _):
         env_state, policy_state, policy_rng, model_rng = comb_state
@@ -85,8 +88,8 @@ def rollout(model, state0,
             if policy_rng is not None else (None, None)
         new_model_rng, m_sk = jax.random.split(model_rng) \
             if model_rng is not None else (None, None)
+        obs = observe(env_state)
         if policy is not None:
-            obs = observe(env_state) if observe is not None else env_state
             input = PolicyInput(obs, policy_state, p_sk)
             policy_output = policy(input)
             action = policy_output.action
@@ -98,7 +101,7 @@ def rollout(model, state0,
             new_policy_state = policy_state
         new_env_state = model(env_state, action, m_sk)
         return (new_env_state, new_policy_state, new_policy_rng, new_model_rng),\
-                (env_state, action, info)
+                (env_state, obs, action, info)
 
     # Do the first step manually to populate the policy state
     state = (state0, policy_init_state, policy_rng_key, model_rng_key)
@@ -111,12 +114,15 @@ def rollout(model, state0,
         lambda a, b: jnp.concatenate((jnp.expand_dims(a,0), b)),
         first_output, outputs)
 
-    states, us, info = outputs
+    states, observations, us, info = outputs
     if last_state:
         states = jax.tree_util.tree_map(
             lambda a, b: jnp.concatenate((a, jnp.expand_dims(b, 0))),
             states, state_f)
-    return Rollout(states=states, actions=us, 
+        observations = jax.tree_util.tree_map(
+            lambda a, b: jnp.concatenate((a, jnp.expand_dims(b, 0))),
+            observations, observe(state_f))
+    return Rollout(states=states, actions=us, observations=observations,
         info=info, final_policy_state=policy_state_f, 
         final_policy_rng_key=policy_rng_f, final_model_rng_key=model_rng_f)
 

@@ -50,11 +50,6 @@ class PRNGDataset(Data):
         return h
     
 
-class PRNGKey(NamedTuple):
-    idx: np.ndarray
-    block: jax.random.PRNGKey
-    next_block_key: jax.random.PRNGKey
-
 # A modified version of the jax permutation implementation
 # that will only permute the first n elements
 from jax._src.random import _random_bits, _split, _check_prng_key

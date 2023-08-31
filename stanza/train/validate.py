@@ -37,7 +37,7 @@ class Validator:
                 def scan_fn(carry, batch):
                     batch = PyTreeData.from_data(batch).data
                     running_stats, total = carry
-                    _, _, stats = state.loss_fn(
+                    _, _, stats = state.config.loss_fn(
                         state.fn_state,
                         state.fn_params, 
                         rng_key, batch
@@ -53,7 +53,7 @@ class Validator:
                 stats, _ = dataset.scan(scan_fn, (state.last_stats["test"], 0), limit=batches)
             else:
                 data = PyTreeData.from_data(self.dataset).data
-                _, _, stats = state.loss_fn(
+                _, _, stats = state.config.loss_fn(
                     state.fn_state, state.fn_params,
                     rng_key, data)
                 stats = jax.tree_util.tree_map(lambda x: jnp.mean(x), stats)

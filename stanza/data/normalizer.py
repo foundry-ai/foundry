@@ -5,6 +5,8 @@ from stanza.data import PyTreeData
 import jax
 import jax.numpy as jnp
 
+Normalizer = Any
+
 # Will rescale to [-1, 1]
 @dataclass(jax=True)
 class LinearNormalizer:
@@ -56,7 +58,7 @@ class LinearNormalizer:
 class StdNormalizer:
     mean: Any = None
     var: Any = None
-    total: int = 0
+    count: int = 0
     std: Any = field(init=False)
 
     @property
@@ -70,7 +72,7 @@ class StdNormalizer:
     def map(self, fun):
         return StdNormalizer(
             fun(self.mean), fun(self.var),
-            self.total, fun(self.std)
+            self.count, fun(self.std)
         )
 
     def normalize(self, data):
@@ -100,7 +102,26 @@ class StdNormalizer:
     def update(self, batch):
         # get the batch dimension size
         n = jax.tree_util.tree_flatten(batch)[0][0].shape[0]
-    
+        batch_mean = jax.tree_map(lambda x: jnp.mean(x, axis=0), batch)
+        batch_var = jax.tree_map(lambda x: jnp.var(x, axis=0), batch)
+
+        if self.var is None:
+            return StdNormalizer(batch_mean, batch_var, n)
+        total = self.count + n
+        mean_delta = jax.tree_map(lambda x, y: x - y,
+                                  batch_mean, self.mean)
+        new_mean = jax.tree_map(lambda x, y: x + n/total * y,
+                                self.mean, mean_delta)
+
+        m_a = jax.tree_map(lambda v: v*self.total, self.var)
+        m_b = jax.tree_map(lambda v: v*n, batch_var)
+        m2 = jax.tree_map(
+            lambda a, b, d: a + b + d * n * self.count / total,
+            m_a, m_b, mean_delta
+        )
+        new_var = jax.tree_map(lambda x: x/total, m2)
+        return StdNormalizer(new_mean, new_var, total)
+
     @staticmethod
     def from_data(data):
         data = PyTreeData.from_data(data)
@@ -111,3 +132,9 @@ class StdNormalizer:
             lambda x: jnp.var(x, axis=0), data.data
         )
         return StdNormalizer(mean, var, data.length)
+    
+    @staticmethod
+    def empty_for(sample):
+        zeros = jax.tree_map(lambda x: jnp.zeros_like(x), sample)
+        ones = jax.tree_map(lambda x: jnp.ones_like(x), sample)
+        return StdNormalizer(zeros, ones, jnp.zeros(()))

@@ -18,10 +18,10 @@ activity = "stanza.runtime:launch_activity"
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.12"
+#jaxlib = {version = "^0.4.14", source = "jax"}
+#jax = {version = "^0.4.14", source = "jax"}
 torch = {version = "^2.0.1+cu118", source = "pytorch"}
-jaxlib = {version = "^0.4.14", source = "jax"}
-jax = {version = "^0.4.14", source = "jax"}
-#jaxlib = {extras = ["cuda12.cudnn89"], version="^0.4.14", source="jax", optional=false}
+jaxlib = {extras = ["cuda12.cudnn89"], version="^0.4.14", source="jax", optional=false}
 #jax = {extras=["cuda12_pip"], version="^0.4.14", source="jax", optional=false}
 optax = "^0.1.4"
 rich = "^13.3.1"

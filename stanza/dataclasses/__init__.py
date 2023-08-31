@@ -10,9 +10,20 @@ def unpack(dc) -> dict:
     return { field.name : getattr(dc, field.name) for field in fields(dc) }
 
 def replace(__obj, **changes):
+    from stanza.util.attrdict import AttrMap
+    if isinstance(__obj, AttrMap):
+        return AttrMap(__obj, **changes)
     if isinstance(__obj, dict):
         return { **__obj, **changes }
     return _replace(__obj, **changes)
+
+def combine(clazz, *dcs):
+    args = {}
+    for dc in dcs:
+        if not isinstance(dc, dict):
+            dc = unpack(dc)
+        args.update(dc)
+    return clazz(**args)
 
 def dataclass(cls=None, frozen : bool = False, jax : bool = True, kw_only: bool = False):
     frozen = frozen or jax

@@ -11,7 +11,8 @@ from stanza.policies import PolicyOutput
 
 def make_diffusion_policy(net_fn, diffuser, normalizer,
                           action_chunk_length, action_horizon_offset, 
-                          action_horizon_length, diffuse_gains=False, noise=0.):
+                          action_horizon_length, diffuse_gains=False, 
+                          gains_model=None, noise=0.):
     obs_norm = normalizer.map(lambda x: x.observation)
     action_norm = normalizer.map(lambda x: x.action)
     gain_norm = normalizer.map(lambda x: x.info.K) \
@@ -59,6 +60,8 @@ def make_diffusion_policy(net_fn, diffuser, normalizer,
             gains = jax.tree_util.tree_map(
                 lambda x: x[start:end], gains
             )
+            gains = gain_norm.unnormalize(gains)
+            states = states_norm.unnormalize(states)
             actions = actions, states, gains
         return PolicyOutput(actions)
     return policy

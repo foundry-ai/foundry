@@ -23,7 +23,7 @@ class QuadrotorEnvironment(Environment):
         self.L = 0.086
         self.Ixx = 0.5
         self.dt = 0.1
-    
+
     def sample_action(self, rng):
         return jax.random.uniform(rng, (2,), jnp.float32, -1, 1)
 
@@ -73,7 +73,7 @@ class QuadrotorEnvironment(Environment):
 
     def cost(self, state, action):
         x_cost = state.x**2 + state.z**2 + \
-                10*state.phi**2 + \
+                5*state.phi**2 + \
                 0.1*(state.x_dot**2 + state.z_dot**2 + \
                 state.phi_dot**2)
         u_cost = jnp.mean(action**2)

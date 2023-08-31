@@ -23,7 +23,10 @@ class AttrMap:
         self._dict = d
 
     def __getitem__(self, name: str):
-        return self._dict[name]
+        return self._dict.__getitem__(name)
+    
+    def __contains__(self, name: str):
+        return self._dict.__contains__(name)
 
     def __setattr__(self, name: str, value:  Any):
         if name != '_dict':

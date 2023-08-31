@@ -4,6 +4,7 @@ from stanza.nets.unet1d import ConditionalUnet1D
 import stanza
 import haiku as hk
 import jax.numpy as jnp
+import jax
 
 def pusht_model_fn(curr_sample, timestep, cond):
     logger.trace("Tracing model", only_tracing=True)
@@ -23,6 +24,7 @@ def quadrotor_model_fn(curr_sample, timestep, cond):
     logger.trace("Tracing model", only_tracing=True)
     sample_flat, sample_uf = stanza.util.vmap_ravel_pytree(curr_sample)
     # flatten each observation
+    cond = jax.tree_map(jnp.atleast_1d, cond)
     cond_flat, _ = stanza.util.vmap_ravel_pytree(cond)
     # flatten the observations along the time axis
     cond_flat = cond_flat.reshape((-1))

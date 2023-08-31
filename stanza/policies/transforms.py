@@ -140,21 +140,23 @@ class ChunkedPolicy(Policy):
                     if policy_state is not None else None,
                 input.rng_key
             ))
-            action = output.action \
+            action, info = output.action \
                 if self.output_chunk_size is None else \
                 jax.tree_util.tree_map(
-                    lambda x: x[0, ...], output.action
+                    lambda x: x[0, ...], (output.action, output.info)
                 ) 
             return PolicyOutput(
                 action=action,
                 policy_state=ChunkedPolicyState(obs_batch, output, 1),
-                info=output.info
+                info=info
             )
         def index():
-            action = policy_state.last_batched_output.action \
+            action, info = policy_state.last_batched_output.action \
                 if self.output_chunk_size is None else \
                 jax.tree_util.tree_map(
-                    lambda x: x[policy_state.t, ...], policy_state.last_batched_output.action
+                    lambda x: x[policy_state.t, ...], 
+                    (policy_state.last_batched_output.action,
+                     policy_state.last_batched_output.info)
                 )
             return PolicyOutput(
                 action,
@@ -163,7 +165,7 @@ class ChunkedPolicy(Policy):
                     policy_state.last_batched_output,
                     policy_state.t + 1
                 ),
-                policy_state.last_batched_output.info
+                info
             )
         if self.output_chunk_size is None \
                 or input.policy_state is None:
@@ -255,6 +257,8 @@ class FeedbackPolicy(Policy):
         action_flat, action_uf = jax.flatten_util.ravel_pytree(action)
         obs_flat, _ = jax.flatten_util.ravel_pytree(input.observation)
         ref_flat, _ = jax.flatten_util.ravel_pytree(ref_state)
-        action_mod = 0. # ref_gain @ (obs_flat - ref_flat)
+        action_mod = ref_gain @ (obs_flat - ref_flat)
         action = action_uf(action_flat + action_mod)
-        return replace(out, action=action)
+        return replace(out, action=action,
+            info=replace(out.info,
+                ref_state=ref_state, ref_gain=ref_gain))

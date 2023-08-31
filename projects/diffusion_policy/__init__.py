@@ -92,7 +92,7 @@ def make_policy_transform(config, chunk_size=8):
 
 def make_diffuser(config):
     return DDPMSchedule.make_squaredcos_cap_v2(
-        100, clip_sample_range=10.)
+        100, clip_sample_range=1.)
 
 def setup_data(config, rng_key):
     if config.env == "pusht":
@@ -112,7 +112,7 @@ def setup_data(config, rng_key):
             cost_fn=env.cost,
             model_fn=env.step,
             horizon_length=100,
-            receed=False,
+            receed=True,
             solver=iLQRSolver()
         )
         from stanza.solver.ilqr import linearize, tvlqr

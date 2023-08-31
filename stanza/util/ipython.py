@@ -13,6 +13,8 @@ def display_image(image):
     imgByteArr = imgByteArr.getvalue()
     return display.Image(data=imgByteArr)
 
+def display_html(html):
+    return display.HTML(html)
 
 def display_video(file_name, video_data=None, fps=30):
     if video_data is not None:
