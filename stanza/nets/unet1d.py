@@ -1,18 +1,22 @@
-import haiku as hk
+import flax.linen as nn
 import jax.numpy as jnp
 import jax
-from haiku.initializers import VarianceScaling
+from flax.linen.initializers import variance_scaling
+import flax.linen.activation as activations
 
-from typing import Optional
+from typing import Tuple
 
-_w_init = VarianceScaling(1.0, "fan_in", "uniform")
-_b_init = VarianceScaling(1.0, "fan_in", "uniform")
+from stanza.util import vmap_ravel_pytree
 
-class SinusoidalPosEmbed(hk.Module):
+_w_init = variance_scaling(1.0, "fan_in", "uniform")
+_b_init = variance_scaling(1.0, "fan_in", "uniform")
+
+class SinusoidalPosEmbed(nn.Module):
     def __init__(self, dim, name=None):
         super().__init__(name=name)
         self.dim = dim
 
+    @nn.compact
     def __call__(self, x):
         half_dim = self.dim // 2
         emb = jnp.log(10000) / (half_dim - 1)
@@ -21,77 +25,83 @@ class SinusoidalPosEmbed(hk.Module):
         emb = jnp.concatenate((jnp.sin(emb), jnp.cos(emb)), axis=0)
         return emb.reshape((-1))
 
-class Downsample1D(hk.Module):
+class Downsample1D(nn.Module):
+    @nn.compact
     def __call__(self, x):
-        conv = hk.Conv1D(x.shape[-1],
-                    kernel_shape=3,
-                    stride=2,
+        conv = nn.Conv(x.shape[-1],
+                    kernel_size=3,
+                    strides=2,
                     padding=[(1,1)], 
-                    w_init=_w_init,
-                    b_init=_b_init,
+                    kernel_init=_w_init,
+                    bias_init=_b_init,
                     name='conv')
         return conv(x)
 
-class Upsample1D(hk.Module):
+class Upsample1D(nn.Module):
+    @nn.compact
     def __call__(self, x):
-        conv = hk.Conv1DTranspose(x.shape[-1],
-                    kernel_shape=4,
-                    stride=2,
-                    w_init=_w_init,
-                    b_init=_b_init,
+        conv = nn.Conv1DTranspose(x.shape[-1],
+                    kernel_size=4,
+                    strides=2,
+                    kernel_init=_w_init,
+                    bias_init=_b_init,
                     padding=[(2,2)],
                     name='conv_transpose')
         return conv(x)
 
 def mish(x): return x * jnp.tanh(jax.nn.softplus(x))
 
-class Conv1DBlock(hk.Module):
-    def __init__(self, output_channels, 
-                 kernel_size, n_groups=8,
-                 name: Optional[str] = None):
-        super().__init__(name=name)
-        self.output_channels = output_channels
-        self.kernel_size = kernel_size
-        self.n_groups = n_groups
+class Conv1DBlock(nn.Module):
+    output_channels: int
+    kernel_size: int
+    n_groups: int = 8
 
+    @nn.compact
     def __call__(self, x):
-        conv = hk.Conv1D(self.output_channels,
+        conv = nn.Conv1D(self.output_channels,
                       kernel_shape=self.kernel_size,
                       padding=(self.kernel_size // 2, self.kernel_size // 2),
                       w_init=_w_init,
                       b_init=_b_init,
                       name="conv")
-        gn = hk.GroupNorm(self.n_groups, axis=slice(0,None),name="group_norm")
+        gn = nn.GroupNorm(self.n_groups, axis=slice(0,None),name="group_norm")
         x = conv(x)
-        normed_x = gn(x)
+        # if we only have (dim, channels), expand to (1, dim, channels)
+        # so the group norm does not interpret dim as the batch dimension
+        if len(x.shape) == 2:
+            x = jnp.expand_dims(x, 0)
+            normed_x = gn(x)
+            normed_x = normed_x.squeeze(0)
+        else:
+            normed_x = gn(x)
         x = mish(normed_x)
         return x
 
-class CondResBlock1D(hk.Module):
-    def __init__(self, output_channels,
-                 kernel_size=3, n_groups=8, name: Optional[str] = None):
-        super().__init__(name=name)
-        self.output_channels = output_channels
-        self.kernel_size = kernel_size
-        self.n_groups = n_groups
+class CondResBlock1D(nn.Module):
+    output_channels: int
+    kernel_size: int = 3
+    n_groups: int = 8
     
+    @nn.compact
     def __call__(self, x, cond):
         block0 = Conv1DBlock(self.output_channels, 
                     self.kernel_size, n_groups=self.n_groups, name='block0')
         block1 = Conv1DBlock(self.output_channels,
                     self.kernel_size, n_groups=self.n_groups, name='block1')
-        residual_conv = hk.Conv1D(
+        residual_conv = nn.Conv1D(
             self.output_channels, 1,
-            w_init=_w_init, b_init=_b_init,
+            kernel_init=_w_init, bias_init=_b_init,
             name='residual_conv'
         ) if x.shape[-1] != self.output_channels else (lambda x: x)
-        cond_encoder = hk.Sequential(
-            [mish, hk.Linear(self.output_channels*2,
-                            w_init=_w_init, b_init=_b_init,
-                            name='cond_encoder')]
-        )
         out = block0(x)
-        embed = cond_encoder(cond)
+
+        if cond is not None:
+            cond_encoder = nn.Sequential(
+                [mish, nn.Dense(self.output_channels*2,
+                                kernel_init=_w_init, bias_init=_b_init,
+                                name='cond_encoder')]
+            )
+            embed = cond_encoder(cond)
         # reshape into (dims, 2, output_channels)
         embed = embed.reshape(
             embed.shape[:-1] + (2, self.output_channels))
@@ -106,40 +116,44 @@ class CondResBlock1D(hk.Module):
         return out
 
 
-class ConditionalUnet1D(hk.Module):
-    def __init__(self, diffusion_step_embed_dim=256,
-                        down_dims=[256,512,1024],
-                        kernel_size=5, n_groups=8,
-                        name=None):
-        super().__init__(name=name)
-        self.diffusion_step_embed_dim = diffusion_step_embed_dim
-        self.down_dims = down_dims
-        self.kernel_size = 5
-        self.n_groups = 8
+class ConditionalUNet1D(nn.Module):
+    step_embed_dim: int = None
+    down_dims: Tuple[int] = (256,512,1024)
+    kernel_size: int = 5
+    n_groups: int = 8
+    final_activation: str = 'tanh'
 
+    @nn.compact
     def __call__(self, sample, timestep, global_cond=None):
-        # flatten the sample into (timestep, channels)
         down_dims = self.down_dims
         start_dim = down_dims[0]
         kernel_size = self.kernel_size
         n_groups = self.n_groups
         mid_dim = down_dims[-1]
-        dsed = self.diffusion_step_embed_dim
 
-        diffusion_step_encoder = hk.Sequential([
-            SinusoidalPosEmbed(dsed, name='diff_embed'),
-            hk.Linear(4*dsed, w_init=_w_init, b_init=_b_init,
-                      name='diff_embed_linear_0'),
-            mish,
-            hk.Linear(dsed, w_init=_w_init, b_init=_b_init,
-                      name='diff_embed_linear_1')
-        ])
         # encode a timesteps array
         # condition on timesteps + global_cond
+
+        # flatten the sample into (dim, channels)
+        sample, sample_uf = vmap_ravel_pytree(sample)
         x = sample
-        global_feat = diffusion_step_encoder(jnp.atleast_1d(timestep))
+
+        if self.step_embed_dim is not None:
+            dsed = self.step_embed_dim
+            diffusion_step_encoder = nn.Sequential([
+                SinusoidalPosEmbed(dsed, name='diff_embed'),
+                nn.Dense(4*dsed, kernel_init=_w_init, bias_init=_b_init,
+                        name='diff_embed_linear_0'),
+                mish,
+                nn.Dense(dsed, w_init=_w_init, b_init=_b_init,
+                        name='diff_embed_linear_1')
+            ])
+            global_feat = diffusion_step_encoder(jnp.atleast_1d(timestep))
+
         if global_cond is not None:
-            global_feat = jnp.concatenate((global_feat, global_cond), -1)
+            global_cond, _ = jax.flatten_util.ravel_pytree(global_cond)
+            global_feat = jnp.concatenate((global_feat, global_cond), -1) \
+                if global_feat is not None else global_cond
 
         # skip connections
         hs = []
@@ -181,13 +195,16 @@ class ConditionalUnet1D(hk.Module):
                 us = Upsample1D(name=f'up{ind}_upsample')
                 x = us(x)
 
-        final_conv = hk.Sequential([
+        final_conv = nn.Sequential([
             Conv1DBlock(start_dim, kernel_size=kernel_size,
                         name='final_conv_block'),
-            hk.Conv1D(sample.shape[-1], 1, 
-                      w_init=_w_init,
-                      b_init=_b_init,
+            nn.Conv1D(sample.shape[-1], 1, 
+                      kernel_init=_w_init,
+                      bias_init=_b_init,
                       name='final_conv')
         ])
         x = final_conv(x)
-        return x
+        if self.final_activation is not None:
+            activation = getattr(activations, self.final_activation)
+            x = activation(x)
+        return sample_uf(x)

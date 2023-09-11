@@ -13,6 +13,7 @@ class Validator:
     rng_key: PRNGKey
     dataset: Data
     condition : Callable = every_epoch
+    stat_fn : Callable = None
     batch_size: int = field(default=None, jax_static=True)
     # set to None to run through the entire validation dataset
     samples_per_run: int = field(default=None)
@@ -37,11 +38,15 @@ class Validator:
                 def scan_fn(carry, batch):
                     batch = PyTreeData.from_data(batch).data
                     running_stats, total = carry
-                    _, _, stats = state.config.loss_fn(
-                        state.fn_state,
-                        state.fn_params, 
-                        rng_key, batch
-                    )
+                    if self.stat_fn is not None:
+                        _, _, stats = state.config.loss_fn(
+                            state.fn_state,
+                            state.fn_params, 
+                            rng_key, batch
+                        )
+                    else:
+                        stats = self.stat_fn(state.fn_state, 
+                                state.fn_params, rng_key, batch)
                     new_total = total + self.batch_size
                     running_stats = jax.tree_util.tree_map(
                         lambda x, y: x*(total/new_total) + y*(self.batch_size/new_total),

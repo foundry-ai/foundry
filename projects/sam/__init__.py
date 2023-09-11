@@ -37,6 +37,7 @@ def accuracy(model, vars, sample):
 
 def loss_fn(model, batch_stats, params, rng_key, sample):
     x, y = sample
+    return batch_stats, 0., {"loss": 0.}
     vars = {
         "batch_stats": batch_stats,
         "params": params
@@ -60,9 +61,9 @@ def train(config, db):
     else:
         batch_size = config.batch_size
 
-    sam_iterations = (config.sam_epochs * \
-                 (train_data.length // config.batch_size)) \
-                if config.sam_epochs is not None else None
+    # sam_iterations = (config.sam_epochs * \
+    #              (train_data.length // config.batch_size)) \
+    #             if config.sam_epochs is not None else None
 
     model = make_net(config)
     # use first sample to initialize model
@@ -82,16 +83,14 @@ def train(config, db):
 
     if config.use_sam:
         trainer = SAMTrainer(
-            epochs=config.epochs,
+            max_epochs=config.epochs,
             batch_size=batch_size,
             optimizer=optimizer,
             sub_optimizer=sub_optimizer,
-            sam_iterations=sam_iterations,
-            resample=config.sam_resample,
             normalize=config.normalize)
     else:
         trainer = Trainer(
-            epochs=config.epochs,
+            max_epochs=config.epochs,
             batch_size=batch_size,
             optimizer=optimizer)
 
@@ -103,11 +102,11 @@ def train(config, db):
     logger.info("Training...")
     with display as w:
         res = trainer.train(
-            loss,
             train_data,
-            next(rng),
-            init_params,
-            batch_stats,
+            loss_fn=loss,
+            rng_key=next(rng),
+            init_params=init_params,
+            init_state=batch_stats,
             hooks=[w.train]
         )
 

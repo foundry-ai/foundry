@@ -4,6 +4,7 @@ from pathlib import Path
 import jax
 import jax.numpy as jnp
 import random
+import pickle
 
 _NOUNS = None
 _ADJECTIVES = None
@@ -40,8 +41,7 @@ class LocalDatabase(Database):
         return set([p.stem for p in self._path.iterdir()])
 
     def has(self, name):
-        path = self._path / name
-        return path.exists()
+        return name in self.children
 
     def open(self, name=None):
         if name is None:
@@ -59,8 +59,6 @@ class LocalDatabase(Database):
         path = self._path / name
         if path.is_dir():
             raise RuntimeError("This is a sub-database!")
-        if value is None:
-            return
         if isinstance(value, Video):
             assert append == False
             import ffmpegio
@@ -89,10 +87,10 @@ class LocalDatabase(Database):
                 value.fig.savefig(png_path, bbox_inches='tight')
                 value.fig.savefig(pdf_path, bbox_inches='tight')
         else:
-            path = self._path / f"{name}.npy"
+            path = self._path / f"{name}.pkl"
             if append and path.is_file():
                 with open(path, "rb") as f:
-                    d = jnp.load(f)
+                    d = pickle.load(f)
                     value = jnp.expand_dims(value, 0) \
                         if not batch else value
                     value = jnp.concatenate(
@@ -100,20 +98,17 @@ class LocalDatabase(Database):
                         axis=0
                     )
             with open(path, "wb") as f:
-                jnp.save(f, value, allow_pickle=True)
+                pickle.dump(value, f)
 
     def get(self, name):
         children = self.children
         if name not in children:
-            return None
+            raise AttributeError()
         matches = list(filter(
             lambda x: x.stem == name, self._path.iterdir()
         ))
         if not matches:
-            return None
+            raise AttributeError()
         path = matches[0]
         with open(path, "rb") as f:
-            arr = jnp.load(f, allow_pickle=True)
-            if arr.dtype == object:
-                return arr.item()
-            return arr
+            return pickle.load(f)

@@ -104,7 +104,7 @@ class DataclassArg(Arg):
 class ArgParser:
     def __init__(self, *dcs):
         self._args = []
-        self._parser = argparse.ArgumentParser(add_help=False)
+        self._parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
 
         for dc in dcs:
             self.add_to_parser(dc)

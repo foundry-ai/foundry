@@ -39,6 +39,7 @@ class ACPolicy:
 @dataclass(jax=True)
 class EpisodeState:
     timestep: int
+    total_reward: float
     env_state: Any
 
 @dataclass(jax=True)
@@ -50,10 +51,10 @@ class EpisodicEnvironment(Environment):
         return self.env.sample_action(rng_key)
 
     def sample_state(self, rng_key):
-        return EpisodeState(0, self.env.sample_state(rng_key))
+        return EpisodeState(0, 0., self.env.sample_state(rng_key))
 
     def reset(self, rng_key):
-        return EpisodeState(0, self.env.reset(rng_key))
+        return EpisodeState(0, 0., self.env.reset(rng_key))
     
     def step(self, state, action, rng_key):
         def step(state, action, rng_key):
@@ -61,19 +62,22 @@ class EpisodicEnvironment(Environment):
                 state.env_state, action, rng_key)
             return EpisodeState(
                 timestep=state.timestep + 1,
+                total_reward=state.total_reward + \
+                    self.env.reward(state.env_state, action, env_state),
                 env_state=env_state
             )
         def reset(state, action, rng_key):
             env_state = self.env.reset(rng_key)
             return EpisodeState(
                 timestep=0,
+                total_reward=0.,
                 env_state=env_state
             )
         done = jnp.logical_or(
             state.timestep == self.episode_length,
             self.env.done(state.env_state)
         )
-        return jax.lax.cond(done, reset, 
+        return jax.lax.cond(done, reset,
                 step, state, action, rng_key)
     
     def observe(self, state):
@@ -105,7 +109,6 @@ class RLConfig:
     total_timesteps: int = 1_000_000
     steps_per_iteration: int = field(default=10, jax_static=True)
 
-    num_eval: int = field(default=8, jax_static=True)
     episode_length: int = field(default=None, jax_static=True)
 
     rl_hooks: List[Callable] = field(default_factory=list)
@@ -116,8 +119,7 @@ class RLState(LoopState):
     rng_key : PRNGKey
     # the episodic states
     episode_states: Any
-    # total rewards of the current episodes
-    env_total_rewards: jnp.array
+    average_reward: float
     total_episodes: int
 
 @dataclass(jax=True)
@@ -125,13 +127,15 @@ class Transition:
     done: jnp.ndarray
     reward: jnp.ndarray
     policy_info: Any
+    state: Any
     obs: Any
     action: Any
+    next_state: Any
     next_obs: Any
 
 class RLAlgorithm:
     @staticmethod
-    def evaluate(state, policy, rng_key):
+    def evaluate(state, policy, rng_key, num_trajs):
         env = state.config.env
         def roll(rng_key):
             x0_rng, prk, mrk = jax.random.split(rng_key, 3)
@@ -144,7 +148,7 @@ class RLAlgorithm:
             us = traj.actions
             rewards = jax.vmap(env.reward)(earlier_xs, us, later_xs)
             return jnp.sum(rewards)
-        rngs = jax.random.split(rng_key, state.config.num_eval)
+        rngs = jax.random.split(rng_key, num_trajs)
         return jnp.mean(jax.vmap(roll)(rngs))
 
     @staticmethod
@@ -164,17 +168,19 @@ class RLAlgorithm:
                             policy_rng_key=next(rng),
                             observe=episode_env.observe,
                             length=state.config.steps_per_iteration)
-            obs = roll.observations
-            earlier_obs, later_obs = extract_shifted(obs)
+            earlier_obs, later_obs = extract_shifted(roll.observations)
+            earlier_states, later_states = extract_shifted(roll.states)
             us = roll.actions
-            reward = jax.vmap(episode_env.reward)(earlier_obs, us, later_obs)
+            reward = jax.vmap(episode_env.reward)(earlier_states, us, later_states)
             transitions = Transition(
-                done=jax.vmap(episode_env.done)(later_obs),
+                done=jax.vmap(episode_env.done)(later_states),
                 reward=reward,
                 policy_info=roll.info,
+                state=earlier_states,
                 obs=earlier_obs,
                 action=roll.actions,
-                next_obs=later_obs,
+                next_state=later_states,
+                next_obs=later_obs
             )
             last_state = jax.tree_map(lambda x: x[-1], roll.states)
             return transitions, last_state
@@ -187,10 +193,17 @@ class RLAlgorithm:
             lambda x: jnp.swapaxes(x, 0, 1), transitions
         )
         finished_episodes = jnp.count_nonzero(transitions_reshaped.done)
+        finished_rewards = transitions_reshaped.done*transitions_reshaped.state.total_reward
+        average_reward = jax.lax.cond(
+            finished_episodes > 0,
+            lambda: jnp.sum(finished_rewards) / finished_episodes,
+            lambda: state.average_reward
+        )
         state = replace(state, 
             rng_key=next_key, 
             total_episodes=state.total_episodes + finished_episodes,
-            episode_states=episode_states)
+            episode_states=episode_states,
+            average_reward=average_reward)
         return state, transitions
     
     @staticmethod
@@ -214,8 +227,8 @@ class RLAlgorithm:
             config=config,
             rng_key=rng_key,
             episode_states=episode_states,
-            env_total_rewards=jnp.zeros(config.num_envs),
             total_episodes=0,
+            average_reward=0.
         )
         if init_hooks:
             rl_state = _init_hooks(rl_state)

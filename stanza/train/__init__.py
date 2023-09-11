@@ -109,8 +109,6 @@ class Trainer(TrainConfig):
         batch_dataset = shuffled_dataset.batch(state.config.batch_size)
 
         step_fn = cls.train_step_with_hooks
-        # call the hooks before each epoch
-        # run first step separately
         state = run_hooks(state)
         state = batch_dataset.scan(step_fn, state, jit=jit,
                 limit=state.max_iterations - state.iteration)
@@ -135,8 +133,9 @@ class Trainer(TrainConfig):
     
     def init(self, data_sample, config=None, init_hooks=True, **kwargs):
         if config is None:
-            config = self
-        config = combine(TrainConfig, config, kwargs)
+            config = combine(TrainConfig, self, kwargs)
+        else:
+            config = replace(config, **kwargs)
         if config.max_iterations is None:
             raise RuntimeError("max_iterations must be set")
         if config.init_opt_state is None:
@@ -179,8 +178,8 @@ class Trainer(TrainConfig):
         if config.max_iterations is None and config.max_epochs is not None:
             iter_per_epoch = len(dataset) // config.batch_size
             max_iterations = iter_per_epoch * config.max_epochs
-            config = replace(config, max_iterations=max_iterations)
-        state = self.init(dataset[0], config)
+            kwargs["max_iterations"] = max_iterations
+        state = self.init(dataset[0], **kwargs)
         run = jax.jit(self.run) if jit else partial(self.run, jit=False)
         state = run(state, dataset)
         results = TrainResults(
@@ -192,6 +191,15 @@ class Trainer(TrainConfig):
         return results
 
 @dataclass(jax=True)
+class SAMConfig(TrainConfig):
+    sub_optimizer: optax.GradientTransformation = optax.sgd(1e-5)
+    init_sub_opt_state: Any = None
+    normalize: bool = field(default=True, jax_static=True)
+    # Number of iterations to run SAM for
+    sam_iterations: int = field(default=None)
+    resample: bool = field(default=False, jax_static=True)
+
+@dataclass(jax=True)
 class SAMTrainState(TrainState):
     sub_opt_state: Any
 
@@ -199,90 +207,67 @@ class SAMTrainState(TrainState):
 class SAMTrainResults(TrainResults):
     sub_opt_state: Any
 
+
 @dataclass(jax=True)
 class SAMTrainer(Trainer):
-    sub_optimizer: optax.GradientTransformation = optax.sgd(1e-5)
+    sub_optimizer: optax.GradientTransformation = optax.scale(1e-2)
+    init_sub_opt_state: Any = None
     normalize: bool = field(default=True, jax_static=True)
     # Number of iterations to run SAM for
     sam_iterations: int = field(default=None)
     resample: bool = field(default=False, jax_static=True)
 
-    @jax.jit
-    def train_step(self, state, batch):
+    @staticmethod
+    def train_step(state, batch):
         logger.trace("Tracing train step", only_tracing=True)
         rng_key, sk = jax.random.split(state.rng_key)
         batch = PyTreeData.from_data(batch,
-                    buffer_size=self.batch_size)
-        if self.resample:
-            sam_batch = Data.from_pytree(
-                jax.tree_map(lambda x: x[:self.batch_size//2], batch.data),
-            )
-            batch = Data.from_pytree(
-                jax.tree_map(lambda x: x[self.batch_size//2:], batch.data),
-            )
-            gen_batch_fn = Partial(_trainer_loss_fn, 
-                    state.config.loss_fn, state.fn_state, 
-                    sk)
-            gen_batch_grad_fn = jax.grad(gen_batch_fn, has_aux=True, argnums=1)
-            batch_grad_fn = Partial(gen_batch_grad_fn, batch.data)
-            sam_batch_grad_fn = Partial(gen_batch_grad_fn, sam_batch.data)
-        else:
-            batch_fn = Partial(_trainer_loss_fn, 
-                    state.config.loss_fn, state.fn_state, 
-                    sk, batch.data)
-            batch_grad_fn = jax.grad(batch_fn, has_aux=True)
-            sam_batch_grad_fn = batch_grad_fn
+                    buffer_size=state.config.batch_size)
+        batch_fn = Partial(_trainer_loss_fn, 
+                state.config.loss_fn, state.fn_state, 
+                sk, batch.data)
+        batch_grad_fn = jax.grad(batch_fn, has_aux=True)
+        sam_batch_grad_fn = batch_grad_fn
 
-        def sam_update(state):
-            grads, (_, _) = sam_batch_grad_fn(state.fn_params)
-            if self.normalize:
-                global_norm = optax.global_norm(grads)
-                grads = jax.tree_map(lambda x: x / global_norm, grads)
-            updates, sub_opt_state = self.sub_optimizer.update(grads, 
-                                state.sub_opt_state, state.fn_params)
-            sub_fn_params = optax.apply_updates(state.fn_params, updates)
-            grads, (fn_state, stats) = batch_grad_fn(sub_fn_params)
+        grads, _ = sam_batch_grad_fn(state.fn_params)
+        if state.config.normalize:
+            global_norm = optax.global_norm(grads)
+            grads = jax.tree_map(lambda x: x / global_norm, grads)
+        updates, sub_opt_state = state.config.sub_optimizer.update(grads, 
+                            state.sub_opt_state, state.fn_params)
+        sub_fn_params = optax.apply_updates(state.fn_params, updates)
+        grads, (fn_state, stats) = batch_grad_fn(sub_fn_params)
+        chex.assert_trees_all_equal_shapes_and_dtypes(fn_state, state.fn_state)
+        updates, opt_state = state.config.optimizer.update(grads, 
+                            state.opt_state, state.fn_params)
+        fn_params = optax.apply_updates(state.fn_params, updates)
+
+        if fn_state is not None or state.fn_state is not None:
             chex.assert_trees_all_equal_shapes_and_dtypes(fn_state, state.fn_state)
-            updates, opt_state = self.optimizer.update(grads, 
-                                state.opt_state, state.fn_params)
-            fn_params = optax.apply_updates(state.fn_params, updates)
-            state = replace(state,
-                epoch_iteration=state.epoch_iteration + 1,
-                iteration=state.iteration + 1,
-                last_stats=stats, rng_key=rng_key,
-                fn_params=fn_params, 
-                fn_state=fn_state,
-                opt_state=opt_state, sub_opt_state=sub_opt_state)
-            return state
 
-        def regular_update(state):
-            grads, (fn_state, stats) = batch_grad_fn(state.fn_params)
-
-            if fn_state is not None or state.fn_state is not None:
-                chex.assert_trees_all_equal_shapes_and_dtypes(fn_state, state.fn_state)
-
-            updates, opt_state = self.optimizer.update(grads, 
-                                state.opt_state, state.fn_params)
-            fn_params = optax.apply_updates(state.fn_params, updates)
-            state = replace(state,
-                epoch_iteration=state.epoch_iteration + 1,
-                iteration=state.iteration+ 1,
-                last_stats=stats, rng_key=rng_key,
-                fn_params=fn_params, 
-                fn_state=fn_state, opt_state=opt_state)
-            return state
-        if self.sam_iterations is None:
-            state = sam_update(state)
-        else:
-            state = jax.lax.cond(state.iteration < self.sam_iterations,sam_update,regular_update,state)
+        state = replace(state,
+            epoch_iteration=state.epoch_iteration + 1,
+            iteration=state.iteration+ 1,
+            last_stats=replace(
+                state.last_stats,
+                train=stats
+            ), rng_key=rng_key,
+            fn_params=fn_params, 
+            fn_state=fn_state, opt_state=opt_state,
+            sub_opt_state=sub_opt_state)
         return state
 
-    def init(self, *args, init_sub_opt_state=None, **kwargs):
-        state = super().init(*args, **kwargs)
-        if init_sub_opt_state is None:
-            init_sub_opt_state = self.sub_optimizer.init(state.fn_params)
-        state = unpack(state)
-        state = SAMTrainState(**state,
+    def init(self, data_sample, config=None, init_hooks=True, 
+                    **kwargs):
+        if config is None:
+            config = combine(SAMConfig, self, kwargs)
+        else:
+            config = replace(config, **kwargs)
+        state = super().init(data_sample, config=config,
+                            init_hooks=init_hooks)
+        if config.init_sub_opt_state is None:
+            init_sub_opt_state = config.sub_optimizer.init(state.fn_params)
+        state = SAMTrainState(**unpack(state),
                       sub_opt_state=init_sub_opt_state)
         return state
 

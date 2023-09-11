@@ -2645,13 +2645,13 @@ test = ["dm-haiku (>=0.0.3)", "dm-tree (>=0.1.7)", "flax (==0.5.3)"]
 
 [[package]]
 name = "orbax-checkpoint"
-version = "0.3.2"
+version = "0.3.5"
 description = "Orbax Checkpoint"
 optional = false
 python-versions = ">=3.9"
 files = [
-    {file = "orbax_checkpoint-0.3.2-py3-none-any.whl", hash = "sha256:efc158b1d83b8b5483c83650f9534167cf8592553a654ae56131fd4137797236"},
-    {file = "orbax_checkpoint-0.3.2.tar.gz", hash = "sha256:ba4d90e9884b94780c244ee305dbcbd1050d04bffb991832d2063c3a6685e7ed"},
+    {file = "orbax_checkpoint-0.3.5-py3-none-any.whl", hash = "sha256:5c297b32985a76cacbe22d17057a13a81d968a108a90565000b471f55ee08539"},
+    {file = "orbax_checkpoint-0.3.5.tar.gz", hash = "sha256:fb573e132503c6e9dfa5ff17ff22521f326a6bf929002e3d62d0397c617f9775"},
 ]
 
 [package.dependencies]
@@ -4615,4 +4615,4 @@ cuda = ["jaxlib"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<3.12"
-content-hash = "cb99cdd21c808371d62feb3db8d02fa7266bfce4570c76b38bd0317cc230e957"
+content-hash = "0ae349ef16ca111548c4a1690311c69c1b3ba8a48a27aa6c337409ce3f4aae8a"

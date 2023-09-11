@@ -17,11 +17,17 @@ def replace(__obj, **changes):
         return { **__obj, **changes }
     return _replace(__obj, **changes)
 
+def replace_defaults(dc, **defaults):
+    overrides = { k : v for k, v in defaults.items() if getattr(dc, k) is None }
+    return replace(dc, **overrides)
+
 def combine(clazz, *dcs):
+    fields = set(clazz.__dataclass_fields__.keys())
     args = {}
     for dc in dcs:
         if not isinstance(dc, dict):
             dc = unpack(dc)
+        dc = { k : v for k, v in dc.items() if k in fields}
         args.update(dc)
     return clazz(**args)
 
@@ -93,6 +99,7 @@ def _dataclass_flatten_with_keys(dcls, do):
     dyn_values = _wrap_functions(dyn_values)
     children = dyn_values
     aux = dyn_keys, static_keys, static_values
+    dyn_keys = [jax.tree_util.GetAttrKey(k) for k in dyn_keys]
     return zip(dyn_keys, children), aux
 
 def _dataclass_unflatten(dcls, aux, children):

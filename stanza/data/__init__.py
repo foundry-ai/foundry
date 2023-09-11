@@ -1,6 +1,6 @@
 import math
 import math
-import chex
+import functools
 import jax
 import jax.tree_util as tree_util
 import jax.numpy as jnp
@@ -323,6 +323,7 @@ class PyTreeData(Data):
     
     # Returns
     @staticmethod
+    @functools.partial(jax.jit, static_argnums=(2,))
     def _data_chunk(data, start, buffer_size):
         def scan_fn(carry, _):
             iter, n = carry

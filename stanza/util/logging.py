@@ -28,7 +28,7 @@ LEVEL_COLORS = {
     ERROR: 'red'
 }
 
-console = rich.console.Console()
+console = rich.get_console()
 
 JAX_PLACEHOLDER = object()
 

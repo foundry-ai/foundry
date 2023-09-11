@@ -43,6 +43,8 @@ class Database:
     def has(self, name):
         pass
 
+    def __contains__(self, name):
+        return self.has(name)
 
     def open(self, name):
         pass
