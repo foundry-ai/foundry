@@ -1,20 +1,18 @@
 import flax.linen as nn
 import jax.numpy as jnp
 import jax
-from flax.linen.initializers import variance_scaling
+import flax.linen.initializers as initializers
 import flax.linen.activation as activations
 
 from typing import Tuple
 
 from stanza.util import vmap_ravel_pytree
 
-_w_init = variance_scaling(1.0, "fan_in", "uniform")
-_b_init = variance_scaling(1.0, "fan_in", "uniform")
+_w_init = initializers.lecun_normal()
+_b_init = initializers.zeros_init()
 
 class SinusoidalPosEmbed(nn.Module):
-    def __init__(self, dim, name=None):
-        super().__init__(name=name)
-        self.dim = dim
+    dim: int
 
     @nn.compact
     def __call__(self, x):
@@ -29,8 +27,8 @@ class Downsample1D(nn.Module):
     @nn.compact
     def __call__(self, x):
         conv = nn.Conv(x.shape[-1],
-                    kernel_size=3,
-                    strides=2,
+                    kernel_size=(3,),
+                    strides=(2,),
                     padding=[(1,1)], 
                     kernel_init=_w_init,
                     bias_init=_b_init,
@@ -40,9 +38,9 @@ class Downsample1D(nn.Module):
 class Upsample1D(nn.Module):
     @nn.compact
     def __call__(self, x):
-        conv = nn.Conv1DTranspose(x.shape[-1],
-                    kernel_size=4,
-                    strides=2,
+        conv = nn.ConvTranspose(x.shape[-1],
+                    kernel_size=(4,),
+                    strides=(2,),
                     kernel_init=_w_init,
                     bias_init=_b_init,
                     padding=[(2,2)],
@@ -58,16 +56,16 @@ class Conv1DBlock(nn.Module):
 
     @nn.compact
     def __call__(self, x):
-        conv = nn.Conv1D(self.output_channels,
-                      kernel_shape=self.kernel_size,
-                      padding=(self.kernel_size // 2, self.kernel_size // 2),
-                      w_init=_w_init,
-                      b_init=_b_init,
+        conv = nn.Conv(self.output_channels,
+                      kernel_size=(self.kernel_size,),
+                      padding=[(self.kernel_size // 2, self.kernel_size // 2)],
+                      kernel_init=_w_init,
+                      bias_init=_b_init,
                       name="conv")
-        gn = nn.GroupNorm(self.n_groups, axis=slice(0,None),name="group_norm")
         x = conv(x)
         # if we only have (dim, channels), expand to (1, dim, channels)
         # so the group norm does not interpret dim as the batch dimension
+        gn = nn.GroupNorm(self.n_groups, name="group_norm")
         if len(x.shape) == 2:
             x = jnp.expand_dims(x, 0)
             normed_x = gn(x)
@@ -88,8 +86,9 @@ class CondResBlock1D(nn.Module):
                     self.kernel_size, n_groups=self.n_groups, name='block0')
         block1 = Conv1DBlock(self.output_channels,
                     self.kernel_size, n_groups=self.n_groups, name='block1')
-        residual_conv = nn.Conv1D(
-            self.output_channels, 1,
+        residual_conv = nn.Conv(
+            self.output_channels,
+            kernel_size=(1,),
             kernel_init=_w_init, bias_init=_b_init,
             name='residual_conv'
         ) if x.shape[-1] != self.output_channels else (lambda x: x)
@@ -124,7 +123,8 @@ class ConditionalUNet1D(nn.Module):
     final_activation: str = 'tanh'
 
     @nn.compact
-    def __call__(self, sample, timestep, global_cond=None):
+    def __call__(self, sample, timestep, cond=None):
+        timestep = jnp.atleast_1d(timestep)
         down_dims = self.down_dims
         start_dim = down_dims[0]
         kernel_size = self.kernel_size
@@ -138,6 +138,7 @@ class ConditionalUNet1D(nn.Module):
         sample, sample_uf = vmap_ravel_pytree(sample)
         x = sample
 
+        global_feat = None
         if self.step_embed_dim is not None:
             dsed = self.step_embed_dim
             diffusion_step_encoder = nn.Sequential([
@@ -145,15 +146,15 @@ class ConditionalUNet1D(nn.Module):
                 nn.Dense(4*dsed, kernel_init=_w_init, bias_init=_b_init,
                         name='diff_embed_linear_0'),
                 mish,
-                nn.Dense(dsed, w_init=_w_init, b_init=_b_init,
+                nn.Dense(dsed, kernel_init=_w_init, bias_init=_b_init,
                         name='diff_embed_linear_1')
             ])
-            global_feat = diffusion_step_encoder(jnp.atleast_1d(timestep))
+            global_feat = diffusion_step_encoder(timestep)
 
-        if global_cond is not None:
-            global_cond, _ = jax.flatten_util.ravel_pytree(global_cond)
-            global_feat = jnp.concatenate((global_feat, global_cond), -1) \
-                if global_feat is not None else global_cond
+        if cond is not None:
+            cond , _ = jax.flatten_util.ravel_pytree(cond)
+            global_feat = jnp.concatenate((global_feat, cond), -1) \
+                if global_feat is not None else cond
 
         # skip connections
         hs = []
@@ -164,10 +165,9 @@ class ConditionalUNet1D(nn.Module):
             res1 = CondResBlock1D(dim_out, kernel_size=kernel_size, n_groups=n_groups,
                                   name=f'down{ind}_res1')
             x = res0(x, global_feat)
-            # print(f'down{ind}', x)
             x = res1(x, global_feat)
             hs.append(x)
-            if not is_last:
+            if not is_last and x.shape[-2] > 1:
                 ds = Downsample1D(name=f'down{ind}_downsample')
                 x = ds(x)
 
@@ -180,8 +180,9 @@ class ConditionalUNet1D(nn.Module):
         x = mid1(x, global_feat)
         # print('post_mid', x)
 
-        for ind, (dim_out, h) in enumerate(zip(
-                    reversed(down_dims[:-1]), reversed(hs)
+        for ind, (dim_out, h, h_next) in enumerate(zip(
+                    reversed(down_dims[:-1]), reversed(hs),
+                    reversed([None] + hs[:-1])
                 )):
             is_last = ind >= (len(down_dims) - 1)
             res0 = CondResBlock1D(dim_out, kernel_size=kernel_size, n_groups=n_groups,
@@ -191,17 +192,18 @@ class ConditionalUNet1D(nn.Module):
             x = jnp.concatenate((x, h), axis=-1)
             x = res0(x, global_feat)
             x = res1(x, global_feat)
-            if not is_last:
+            if not is_last and h_next.shape[-2] > h.shape[-2]:
                 us = Upsample1D(name=f'up{ind}_upsample')
                 x = us(x)
 
         final_conv = nn.Sequential([
             Conv1DBlock(start_dim, kernel_size=kernel_size,
                         name='final_conv_block'),
-            nn.Conv1D(sample.shape[-1], 1, 
-                      kernel_init=_w_init,
-                      bias_init=_b_init,
-                      name='final_conv')
+            nn.Conv(sample.shape[-1], 
+                    kernel_size=(1,), 
+                    kernel_init=_w_init,
+                    bias_init=_b_init,
+                    name='final_conv')
         ])
         x = final_conv(x)
         if self.final_activation is not None:

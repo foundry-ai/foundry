@@ -8,6 +8,11 @@ from stanza.rl.ppo import PPO
 from stanza.train import Trainer
 from stanza.data.trajectory import Timestep
 from stanza.data import Data
+
+from stanza.policies.mpc import MPC
+from stanza.solver.ilqr import iLQRSolver
+from stanza.solver.optax import OptaxSolver
+
 import optax
 
 import stanza.envs as envs
@@ -69,37 +74,55 @@ def train(config, db):
 @dataclass
 class GenerateConfig:
     expert_name: str = None
+    mpc_env: str = None
     data_name: str = None
     traj_length: int = 1000
     trajectories: int = 1000
     rng_seed: int = 42
     include_jacobian: bool = True
 
+def make_expert(config, db):
+    if config.expert_name is not None:
+        exp = db.open(f"experts/{config.expert_name}")
+        if not "config" in exp:
+            print(exp.children)
+            logger.error("Expert not found")
+            return
+        expert_config = exp.get("config")
+        expert_net = exp.get("net")
+        expert_params = exp.get("fn_params")
+        expert_state = exp.get("fn_state")
+        normalizer = exp.get("obs_normalizer")
+
+        if config.data_name is None:
+            config = replace(config, data_name=config.expert_name)
+
+        ac_apply = expert_net.apply
+        ac_apply = Partial(ac_apply, expert_params)
+        policy = ACPolicy(ac_apply, normalizer, use_mean=True)
+        return expert_config.env_name, policy
+    elif config.mpc_env is not None:
+        env = envs.create(config.mpc_env)
+        policy = MPC(
+            action_sample=env.sample_action(PRNGKey(0)),
+            cost_fn=env.cost,
+            model_fn=env.step,
+            horizon_length=config.traj_length,
+            solver=OptaxSolver(), receed=True
+        )
+        return config.mpc_env, policy
+
 @activity(GenerateConfig)
 def generate_data(config, db):
-    if config.expert_name is None:
-        logger.error("Must specify expert name")
-        return
-    exp = db.open(f"experts/{config.expert_name}")
-    if not "config" in exp:
-        print(exp.children)
-        logger.error("Expert not found")
-        return
-    expert_config = exp.get("config")
-    expert_net = exp.get("net")
-    expert_params = exp.get("fn_params")
-    expert_state = exp.get("fn_state")
-    normalizer = exp.get("obs_normalizer")
-
-    if config.data_name is None:
+    if config.data_name is None and config.expert_name is not None:
         config = replace(config, data_name=config.expert_name)
-    data = db.open(f"expert_data/{config.data_name}")
-    logger.info(f"Saving to {data.name} using {exp.name}")
+    if config.data_name is None and config.mpc_env is not None:
+        config = replace(config, data_name=config.mpc_env)
 
-    ac_apply = expert_net.apply
-    ac_apply = Partial(ac_apply, expert_params)
-    env = envs.create(expert_config.env_name)
-    policy = ACPolicy(ac_apply, normalizer)
+    env_name, policy = make_expert(config, db)
+    env = envs.create(env_name)
+    data = db.open(f"expert_data/{config.data_name}")
+    logger.info(f"Saving to {data.name}")
 
     def rollout(rng_key):
         x0_rng, policy_rng, env_rng = jax.random.split(rng_key, 3)
@@ -108,11 +131,29 @@ def generate_data(config, db):
             policy, length=config.traj_length,
             policy_rng_key=policy_rng,
             model_rng_key=env_rng,
-            observe=env.observe)
+            observe=env.observe,
+            last_input=True)
+        
+        def jacobian(x):
+            flat_obs, unflatten = jax.flatten_util.ravel_pytree(x)
+            def f(x_flat):
+                x = unflatten(x_flat)
+                action = policy(policies.PolicyInput(x)).action
+                return jax.flatten_util.ravel_pytree(action)[0]
+            return jax.jacfwd(f)(flat_obs)
+        if config.include_jacobian:
+            Ks = jax.lax.map(jacobian, roll.observations)
+            info = replace(roll.info, K=Ks)
+        else:
+            info = roll.info
         return Data.from_pytree(Timestep(
             roll.observations, roll.actions, 
-            roll.states, roll.info))
-    trajectories = jax.vmap(rollout)(jax.random.split(PRNGKey(config.rng_seed), config.trajectories))
+            roll.states, info))
+    if config.mpc_env is not None:
+        with jax.default_device(jax.devices("cpu")[0]):
+            trajectories = jax.vmap(rollout)(jax.random.split(PRNGKey(config.rng_seed), config.trajectories))
+    else:
+        trajectories = jax.vmap(rollout)(jax.random.split(PRNGKey(config.rng_seed), config.trajectories))
     trajectories = Data.from_pytree(trajectories)
-    data.add("env_name", expert_config.env_name)
+    data.add("env_name", env_name)
     data.add("trajectories", trajectories)

@@ -38,8 +38,8 @@ class DDPMSchedule:
         def alpha_bar(t):
             return jnp.square(jnp.cos((t + 0.008) / 1.008 * jnp.pi / 2))
         return DDPMSchedule(
-            betas=jnp.minimum(1 - alpha_bar(t2) / alpha_bar(t1), max_beta), **kwargs
-        )
+            betas=jnp.minimum(1 - alpha_bar(t2) / alpha_bar(t1), max_beta), 
+            **kwargs)
 
     @property
     def num_steps(self):

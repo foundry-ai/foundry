@@ -156,7 +156,6 @@ class IterativeSolver(Solver):
             # Prevent gradient backprop through final_state so we don't unroll
             # the loop.
             final_state = jax.lax.stop_gradient(final_state)
-
             if hasattr(final_state, 'params'):
                 flat_params, unflatten = jax.flatten_util.ravel_pytree(final_state.params)
                 optimality = partial(self._custom_optimality, objective, kwargs, final_state, unflatten)

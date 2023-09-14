@@ -90,7 +90,6 @@ with display as w, db as db:
     trainer = Trainer(max_epochs=10, 
             batch_size=128, optimizer=optimizer)
     init_params = model.init(PRNGKey(7), train_data[0][0])
-
     logger_hook = db.statistic_logging_hook(
        log_cond=every_kth_iteration(1), buffer=100)
     res = trainer.train(

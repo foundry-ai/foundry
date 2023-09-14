@@ -48,13 +48,11 @@ class Policy:
 # stanza.jit can handle function arguments
 # and intelligently makes them static and allows
 # for vectorizing over functins.
-@partial(stanza.jit, static_argnames=("length", "last_state"))
+@partial(stanza.jit, static_argnames=("length", "last_input"))
 def rollout(model, state0,
             # policy is optional. If policy is not supplied
-            # it is assumed that model is for an
-            # autonomous system
-            policy=None,
-            *,
+            # it is assumed that model is for an autonomous system
+            policy=None, *,
             # observation function
             # by default just uses the state
             observe=None,
@@ -67,8 +65,7 @@ def rollout(model, state0,
             # Apply a transform to the
             # policy before rolling out.
             policy_transform=None,
-            # either length is an integer or policy.rollout_length is not None
-            length=None, last_state=True):
+            length=None, last_input=False):
     if policy_transform is not None and policy is not None:
         policy, policy_init_state = policy_transform(policy, policy_init_state)
     # Look for a fallback to the rollout length
@@ -79,6 +76,8 @@ def rollout(model, state0,
         raise ValueError("Rollout length must be specified")
     if length == 0:
         raise ValueError("Rollout length must be > 0")
+    if last_input:
+        length = length + 1
     if observe is None:
         observe = lambda x: x
 
@@ -115,7 +114,7 @@ def rollout(model, state0,
         first_output, outputs)
 
     states, observations, us, info = outputs
-    if last_state:
+    if not last_input:
         states = jax.tree_util.tree_map(
             lambda a, b: jnp.concatenate((a, jnp.expand_dims(b, 0))),
             states, state_f)

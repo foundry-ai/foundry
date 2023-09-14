@@ -293,7 +293,7 @@ class PyTreeData(Data):
         # automatically use that
         l = data.length
         if buffer_size is None and l is not None and math.isfinite(l):
-            buffer_size = l
+            buffer_size = int(l)
 
         if buffer_size is None and chunk_size is None:
             raise RuntimeError("Must specify buffer or chunk size")
