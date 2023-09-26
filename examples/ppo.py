@@ -6,15 +6,12 @@ from jax.random import PRNGKey
 from stanza import Partial
 from stanza.rl.ppo import PPO
 from stanza.train import Trainer
-from stanza.rl import EpisodicEnvironment, ACPolicy
+from stanza.rl import ACPolicy
 from stanza.rl.nets import MLPActorCritic
 from stanza.util.loop import every_kth_iteration
 from stanza.util.rich import StatisticsTable, ConsoleDisplay, LoopProgress
 
 env = envs.create("pendulum")
-# will automatically reset when done
-# or when 1000 timesteps have been reached
-env = EpisodicEnvironment(env, 1000)
 
 net = MLPActorCritic(
     env.sample_action(PRNGKey(0))

@@ -40,8 +40,9 @@ class PyMunkWrapper(Environment):
 
     @jax.jit
     def reset(self, rng_key):
-        space = self._build_space(None)
-        _state = self._make_state(space)
+        with jax.ensure_compile_time_eval():
+            space = self._build_space(PRNGKey(0))
+            _state = self._make_state(space)
         return jax.pure_callback(type(self)._reset_callback, 
                                  _state, self, rng_key)
 
@@ -51,8 +52,9 @@ class PyMunkWrapper(Environment):
 
     @jax.jit
     def step(self, state, action, rng_key):
-        space = self._build_space(None)
-        _state = self._make_state(space)
+        with jax.ensure_compile_time_eval():
+            space = self._build_space(PRNGKey(0))
+            _state = self._make_state(space)
         return jax.pure_callback(type(self)._step_callback,
                                  _state, self, state, action, rng_key) 
 
@@ -65,7 +67,8 @@ class PyMunkWrapper(Environment):
     @jax.jit
     def render(self, state, width=256, height=256):
         img = jnp.ones((width, height, 3))
-        space = self._build_space(None)
+        with jax.ensure_compile_time_eval():
+            space = self._build_space(PRNGKey(0))
 
         shapes = []
         for shape in space.shapes:
@@ -115,7 +118,8 @@ class PyMunkWrapper(Environment):
         return img
     
     def _build_state(self, state):
-        space = self._build_space(None)
+        with jax.ensure_compile_time_eval():
+            space = self._build_space(PRNGKey(0))
         for b in space.bodies:
             if hasattr(b, 'name'):
                 bs = state[b.name]

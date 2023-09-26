@@ -2,7 +2,6 @@ import flax.linen as nn
 import jax.numpy as jnp
 from typing import Sequence
 
-
 class MLP(nn.Module):
   features: Sequence[int]
   activation: str = "relu"

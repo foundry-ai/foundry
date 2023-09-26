@@ -3,11 +3,13 @@ from flax.linen.initializers import constant, orthogonal
 
 import jax.numpy as jnp
 import jax
+import chex
 import jax.flatten_util
 import jax.scipy.stats.norm as norm
 
+from typing import Any, Sequence
 
-from typing import Any
+from stanza.nets.mlp import MLP
 from stanza.distribution import MultivariateNormalDiag
 
 # TODO: typing for Gaussian Actor Critic
@@ -15,10 +17,36 @@ from stanza.distribution import MultivariateNormalDiag
 
 class MLPActorCritic(nn.Module):
     action_sample: Any
+    # actor_hidden_sizes: Sequence[int] = (32,)*4
+    # value_hidden_sizes: Sequence[int] = (256,)*5
     activation: str = "tanh"
     min_var : float = 0
 
-    @nn.compact
+    # def setup(self):
+    #     action_flat, _ = jax.flatten_util.ravel_pytree(self.observation_sample)
+    #     dim = action_flat.shape[0]
+    #     self.actor_mlp = MLP(
+    #         (32,)*4 + (dim,), 
+    #         activation=self.activation
+    #     )
+    #     self.value_mlp = MLP(
+
+    #     )
+    #     self.actor_logstd = self.param(
+    #         "log_std", nn.initializers.zeros, (action_flat.shape[0],)
+    #     )
+
+    # def actor(self, x):
+    #     x_flat, _ = jax.flatten_util.ravel_pytree(x)
+
+    #     action_flat, action_uf = jax.flatten_util.ravel_pytree(self.action_sample)
+    #     dist_mean = self.actor_mlp(x_flat)
+    #     chex.assert_equal_shape([dist_mean, action_flat, self.actor_logstd])
+    #     dist_mean = action_uf(dist_mean)
+    #     dist_var = action_uf(jnp.exp(self.actor_logstd))
+    #     pi = MultivariateNormalDiag(dist_mean, dist_var)
+    #     return pi
+
     def __call__(self, x):
         action_flat, action_uf = jax.flatten_util.ravel_pytree(self.action_sample)
         x_flat, _ = jax.flatten_util.ravel_pytree(x)

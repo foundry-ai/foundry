@@ -43,7 +43,7 @@ class Config:
 
     rng_seed: int = 42
 
-    epochs: int = 20
+    epochs: int = 100
     batch_size: int = 512
     warmup_steps: int = 500
 
@@ -160,23 +160,25 @@ def loss(config, net, diffuser, normalizer,
     pred_flat, _ = jax.flatten_util.ravel_pytree(pred_noise)
     noise_flat, _ = jax.flatten_util.ravel_pytree(noise)
     noise_loss = jnp.mean(jnp.square(pred_flat - noise_flat))
+
     loss = noise_loss
+
+    def jacobian(x):
+        flat_obs, unflatten = jax.flatten_util.ravel_pytree(x)
+        def f(x_flat):
+            x = unflatten(x_flat)
+            pred = net.apply(params, noisy, timestep, x)
+            return jax.flatten_util.ravel_pytree(pred)[0]
+        return jax.jacfwd(f)(flat_obs)
+    jac = jacobian(obs)
+    K_norm = normalizer.map(lambda x: x.info.K)
+    jac_norm = K_norm.normalize(jac)
+    f = jnp.sqrt(diffuser.alphas_cumprod[timestep]/(1 - diffuser.alphas_cumprod[timestep]))
+    jacobian_diff = jac_norm - (-normalized_sample.info.K) * f
+    jac_loss = jnp.mean(jnp.square(jacobian_diff))
+
     if config.regularize_gains_lambda > 0:
-        def jacobian(x):
-            flat_obs, unflatten = jax.flatten_util.ravel_pytree(x)
-            def f(x_flat):
-                x = unflatten(x_flat)
-                pred = net.apply(params, noisy, timestep, x)
-                return jax.flatten_util.ravel_pytree(pred)[0]
-            return jax.jacfwd(f)(flat_obs)
-        jac = jacobian(obs)
-        K_norm = normalizer.map(lambda x: x.info.K)
-        jac_norm = K_norm.normalize(jac)
-        jacobian_diff = jac_norm - normalized_sample.info.K
-        jac_loss = jnp.mean(jnp.square(jacobian_diff))
         loss = loss + config.regularize_gains_lambda*jac_loss
-    else:
-        jac_loss = 0.
 
     stats = {
         "loss": loss,

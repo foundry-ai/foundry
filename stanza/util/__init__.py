@@ -3,6 +3,8 @@ import jax.numpy as jnp
 from stanza.dataclasses import dataclass, replace, field
 from typing import List, Any
 
+from chex import assert_trees_all_equal_shapes_and_dtypes
+
 def vmap_ravel_pytree(x):
     i = jax.tree_util.tree_map(lambda x: x[0], x)
     _, uf = jax.flatten_util.ravel_pytree(i)

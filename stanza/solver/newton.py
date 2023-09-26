@@ -1,12 +1,12 @@
 from stanza.dataclasses import dataclass, replace
-from stanza.solver import IterativeSolver, UnsupportedObectiveError, \
+from stanza.solver import UnsupportedObectiveError, \
         MinimizeState, Minimize, EqConstraint, IneqConstraint
+from stanza.solver.iterative import IterativeSolver
 from stanza import Partial
 
 import jax
 import jax.experimental.host_callback
 import jax.numpy as jnp
-
 
 DEBUG = False
 
@@ -26,7 +26,9 @@ class NewtonSolver(IterativeSolver):
 
     eta: float = 0.001 # for interior point
 
-    def init_state(self, objective):
+    def init(self, objective, **kwargs):
+        if not isinstance(objective, Minimize):
+            raise UnsupportedObectiveError("Can only handle unconstrained minimization objectives")
         a, _, b, _, _ = self._constraints(objective,
                     objective.initial_state,
                     objective.initial_params)
@@ -36,15 +38,10 @@ class NewtonSolver(IterativeSolver):
             state=objective.initial_state,
             params=objective.initial_params,
             aux=None,
-            cost=None,
+            cost=jnp.zeros(()),
             nu_dual=jnp.zeros_like(a),
             lambda_dual=jnp.ones_like(b)
         )
-    
-    # gradient of the objective at params == 0
-    def optimality(self, objective, solver_state):
-        grad = jax.grad(lambda p: objective.eval(solver_state.state, p)[1])(solver_state.params)
-        return grad
     
     def _constraints(self, objective, state, params, hess=True):
         eq_resid = []
@@ -80,10 +77,7 @@ class NewtonSolver(IterativeSolver):
     def update(self, objective, solver_state):
         if not isinstance(objective, Minimize):
             raise UnsupportedObectiveError("Can only handle unconstrained minimization objectives")
-        if solver_state is None:
-            solver_state = self.init_state(objective)
         new_state, _, aux = objective.eval(solver_state.state, solver_state.params)
-
         # unravel argument structure into param_v
         x, p_fmt = jax.flatten_util.ravel_pytree(solver_state.params)
         nu_dual, lambda_dual = solver_state.nu_dual, solver_state.lambda_dual

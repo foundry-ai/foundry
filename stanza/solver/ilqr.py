@@ -1,18 +1,19 @@
 from typing import Any
-from jax.random import PRNGKey
 
-from stanza.policies import Policy, PolicyOutput
-from stanza.dataclasses import dataclass, field
-from stanza.solver import IterativeSolver, SolverState, UnsupportedObectiveError
-from stanza.policies.mpc import MinimizeMPC
+from stanza.dataclasses import dataclass
+from stanza.solver import (
+    Solver, SolverResult, UnsupportedObectiveError
+)
+from stanza.solver.util import implicit_diff_solve
+from stanza.util.trajax.optimizer import ilqr
+
+import stanza
+import functools
 
 import jax
 import jax.numpy as jnp
 
-from stanza.solver import Solver
-from stanza.policies.mpc import MPC
 
-from stanza.util.trajax.optimizer import ilqr
 
 def linearize(step_fn):
     def grad_fn(state, action, rng):
@@ -54,19 +55,16 @@ def tvlqr(As, Bs, Qs, Rs):
 
 
 @dataclass(jax=True)
-class iLQRResult:
-    actions: Any
-    cost: float
-    iteration: int
-
-@dataclass(jax=True)
 class iLQRSolver(Solver):
-    def run(self, objective, **kwargs) -> Any:
+    @staticmethod
+    @functools.partial(jax.jit, static_argnums=(0,))
+    def _solve(history, objective, solver_state):
+        from stanza.policies.mpc import MinimizeMPC, MinimizeMPCState
         if not isinstance(objective, MinimizeMPC):
             raise UnsupportedObectiveError("iLQR only supports MinimizeMPC objectives")
 
         state0_flat, state_uf = jax.flatten_util.ravel_pytree(objective.state0)
-        a0 = jax.tree_map(lambda x: x[0], objective.initial_actions)
+        a0 = jax.tree_map(lambda x: x[0], solver_state.actions)
         _, action_uf = jax.flatten_util.ravel_pytree(a0)
 
         # flatten everything
@@ -85,8 +83,19 @@ class iLQRSolver(Solver):
 
         initial_actions_flat = jax.vmap(
             lambda x: jax.flatten_util.ravel_pytree(x)[0]
-        )(objective.initial_actions)
+        )(solver_state.actions)
         _, actions_flat, cost, _, _, _, it = ilqr(flat_cost, flat_model,
                 state0_flat, initial_actions_flat)
         actions = jax.vmap(action_uf)(actions_flat)
-        return iLQRResult(actions, cost, it)
+        res = MinimizeMPCState(it, True, actions, cost)
+        return SolverResult(res, None)
+
+    @functools.partial(jax.jit, static_argnames=("implicit_diff", "history"))
+    def run(self, objective, *, implicit_diff=True, history=False) -> SolverResult:
+        from stanza.policies.mpc import MinimizeMPCState
+        init_state = MinimizeMPCState(0, False, 
+                objective.initial_actions, 0.)
+        solve = stanza.partial(self._solve, history)
+        if implicit_diff:
+            solve = implicit_diff_solve(solve)
+        return solve(objective, init_state)

@@ -9,17 +9,21 @@ from functools import partial
 
 # A policy is a function from PolicyInput --> PolicyOutput
 
+Observation = Any
+PolicyState = Any
+Action = Any
+
 @dataclass(jax=True)
 class PolicyInput:
-    observation: Any
-    policy_state: Any = None
+    observation: Observation
+    policy_state: PolicyState = None
     rng_key : PRNGKey = None
 
 @dataclass(jax=True)
 class PolicyOutput:
-    action: Any
+    action: Action
     # The policy state
-    policy_state: Any = None
+    policy_state: PolicyState = None
     info: AttrMap = field(default_factory=AttrMap)
 
 @dataclass(jax=True)
@@ -148,3 +152,15 @@ class Actions:
         T = input.policy_state if input.policy_state is not None else 0
         action = jax.tree_util.tree_map(lambda x: x[T], self.actions)
         return PolicyOutput(action=action, policy_state=T + 1)
+
+from stanza.distribution import Distribution
+
+@dataclass(jax=True)
+class StochasticPolicy:
+    distribution: Callable[[Observation], Distribution]
+    preprocess: Callable[[Observation], Observation] = None
+
+    def __call__(self, input):
+        dist = self.policy(input.observation)
+        action = dist.sample(input.rng_key)
+        return PolicyOutput(action)
