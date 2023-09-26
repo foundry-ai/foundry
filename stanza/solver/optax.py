@@ -1,6 +1,6 @@
 from stanza.dataclasses import dataclass
-from stanza.solver import IterativeSolver, UnsupportedObectiveError, \
-        MinimizeState, Minimize
+from stanza.solver import UnsupportedObectiveError, MinimizeState, Minimize
+from stanza.solver.iterative import IterativeSolver
 
 from typing import Any
 import jax
@@ -20,13 +20,15 @@ class OptaxSolver(IterativeSolver):
     tol: float = 1e-3
     optimizer: Any = None
 
-    def init_state(self, objective):
+    def init(self, objective):
+        if not isinstance(objective, Minimize) or objective.constraints:
+            raise UnsupportedObectiveError("Can only handle unconstrained minimization objectives")
         return OptaxState(
             iteration=0,
             solved=False,
             state=objective.initial_state,
             params=objective.initial_params,
-            cost=None,
+            cost=jnp.array(()),
             aux=None,
             optimizer_state = self.optimizer.init(objective.initial_params)
         )
@@ -38,8 +40,6 @@ class OptaxSolver(IterativeSolver):
     def update(self, objective, solver_state):
         if not isinstance(objective, Minimize) or objective.constraints:
             raise UnsupportedObectiveError("Can only handle unconstrained minimization objectives")
-        if solver_state is None:
-            solver_state = self.init_state(objective)
         def f(p):
             obj_state, cost, obj_aux = objective.eval(solver_state.state, p)
             return cost, (obj_state, cost, obj_aux)

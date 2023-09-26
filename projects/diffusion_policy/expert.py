@@ -17,7 +17,9 @@ import optax
 
 import stanza.envs as envs
 import stanza.policies as policies
+import functools
 import jax
+import jax.numpy as jnp
 
 from jax.random import PRNGKey
 from stanza.dataclasses import dataclass, replace
@@ -78,6 +80,7 @@ class GenerateConfig:
     data_name: str = None
     traj_length: int = 1000
     trajectories: int = 1000
+    batch_size: int = None
     rng_seed: int = 42
     include_jacobian: bool = True
 
@@ -108,9 +111,26 @@ def make_expert(config, db):
             cost_fn=env.cost,
             model_fn=env.step,
             horizon_length=config.traj_length,
-            solver=OptaxSolver(), receed=True
         )
         return config.mpc_env, policy
+
+def batch_rollout(batch_size, rng_keys, rollout_fn):
+    N = rng_keys.shape[0]
+    batch_size = batch_size or N
+    num_batches = ((N - 1) // batch_size) + 1
+    logger.info(f"Generating {num_batches} batches of size {batch_size}")
+    trajactories = []
+    for i in range(num_batches):
+        logger.info(f"Generating batch {i}: {i*batch_size} completed")
+        rng_batch = rng_keys[i*batch_size:(i+1)*batch_size]
+        traj_batch = rollout_fn(rng_batch)
+        # wait for the previous batch to finish
+        # before generating more
+        if len(trajactories) > 1:
+            jax.block_until_ready(trajactories[-1])
+
+        trajactories.append(traj_batch)
+    return jax.tree_map(lambda x: jnp.concatenate(x, axis=0), trajactories)
 
 @activity(GenerateConfig)
 def generate_data(config, db):
@@ -126,34 +146,41 @@ def generate_data(config, db):
 
     def rollout(rng_key):
         x0_rng, policy_rng, env_rng = jax.random.split(rng_key, 3)
+
+        def policy_with_jacobian(input):
+            if config.include_jacobian:
+                obs_flat, obs_uf = jax.flatten_util.ravel_pytree(input.observation)
+                def f(obs_flat):
+                    x = obs_uf(obs_flat)
+                    out = policy(replace(input, observation=x))
+                    action = out.action
+                    action_flat = jax.flatten_util.ravel_pytree(action)[0]
+                    return action_flat, out
+                jac, out = jax.jacobian(f, has_aux=True)(obs_flat)
+                out = replace(out, info=replace(out.info, K=jac))
+                return out
+            else:
+                return policy(input)
         roll = policies.rollout(env.step, 
             env.reset(x0_rng), 
-            policy, length=config.traj_length,
+            policy_with_jacobian, length=config.traj_length,
             policy_rng_key=policy_rng,
             model_rng_key=env_rng,
             observe=env.observe,
             last_input=True)
-        
-        def jacobian(x):
-            flat_obs, unflatten = jax.flatten_util.ravel_pytree(x)
-            def f(x_flat):
-                x = unflatten(x_flat)
-                action = policy(policies.PolicyInput(x)).action
-                return jax.flatten_util.ravel_pytree(action)[0]
-            return jax.jacfwd(f)(flat_obs)
-        if config.include_jacobian:
-            Ks = jax.lax.map(jacobian, roll.observations)
-            info = replace(roll.info, K=Ks)
-        else:
-            info = roll.info
         return Data.from_pytree(Timestep(
             roll.observations, roll.actions, 
-            roll.states, info))
+            roll.states, roll.info))
+    
+    rngs = jax.random.split(PRNGKey(config.rng_seed), config.trajectories)
     if config.mpc_env is not None:
-        with jax.default_device(jax.devices("cpu")[0]):
-            trajectories = jax.vmap(rollout)(jax.random.split(PRNGKey(config.rng_seed), config.trajectories))
+        batch_size = min(config.batch_size or config.trajectories, len(jax.devices("cpu")))
+        trajectories = batch_rollout(batch_size,
+                rngs, jax.pmap(rollout, backend="cpu"))
     else:
-        trajectories = jax.vmap(rollout)(jax.random.split(PRNGKey(config.rng_seed), config.trajectories))
+        trajectories = batch_rollout(batch_size,
+                rngs, jax.vmap(rollout))
+    logger.info("Done generating data, saving to output...")
     trajectories = Data.from_pytree(trajectories)
     data.add("env_name", env_name)
     data.add("trajectories", trajectories)

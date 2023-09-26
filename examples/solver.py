@@ -58,5 +58,5 @@ def solve(x):
     ))
     return res.solution.actions[0]
 
-# print(solve(jnp.array([0.,0.])))
+print(solve(jnp.array([1.,1.])))
 print(jax.jacobian(solve)(jnp.array([0.,0.])))

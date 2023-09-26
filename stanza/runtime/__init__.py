@@ -1,8 +1,10 @@
 """
     Contains high-level "target" entrypoint
 """
+import multiprocessing
+cpus = multiprocessing.cpu_count()
 import os
-os.environ["XLA_FLAGS"] = '--xla_force_host_platform_device_count=10'
+os.environ["XLA_FLAGS"] = f'--xla_force_host_platform_device_count={cpus}'
 
 import sys
 import asyncio
