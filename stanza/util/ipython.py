@@ -3,6 +3,7 @@ import numpy as np
 import io
 import ffmpegio
 from PIL import Image
+from pathlib import Path
 
 def display_image(image):
     img = Image.fromarray(np.array((255*image).astype(np.uint8)), 'RGB')
@@ -16,10 +17,13 @@ def display_image(image):
 def display_html(html):
     return display.HTML(html)
 
-def display_video(file_name, video_data=None, fps=30):
+def display_video(video_data=None, fps=30):
+    path = Path("/tmp/notebook_videos") / "foo.mp4"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path = path.with_suffix(".mp4")
     if video_data is not None:
         if video_data.dtype == np.float32:
             video_data = (255*video_data).astype(np.uint8)
-        ffmpegio.video.write(file_name, fps, video_data,
-                    overwrite=True, loglevel='quiet')
-    return display.Video(file_name)
+        ffmpegio.video.write(path, fps, video_data,
+                    overwrite=True, loglevel="quiet")
+    return display.Video(str(path), embed=True)

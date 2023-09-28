@@ -1,4 +1,4 @@
-from dataclasses import is_dataclass
+from dataclasses import is_dataclass, fields
 import argparse
 
 class ArgParseError(Exception):
@@ -68,21 +68,31 @@ def flag():
 class DataclassArg(Arg):
     def __init__(self, dclass, name, short=None, help=None):
         super().__init__(name, short, True, help)
-        self.dclass = dclass
+        if not isinstance(dclass, type):
+            self.defaults = { f.name: getattr(dclass, f.name) for f in fields(dclass) if f.init }
+            self.dclass = type(dclass)
+        else:
+            self.defaults = {}
+            self.dclass = dclass
         self.args = []
-        for f in dclass.__dataclass_fields__.values():
-            name = f.name
-            type = f.type
+        for f in fields(dclass):
+            if not f.init:
+                continue
+            name, ftype = f.name, f.type
             positional = f.metadata.get('arg_positional', False)
             short = f.metadata.get('arg_short', None)
             builder = f.metadata.get('arg_builder', None)
             help = f.metadata.get('arg_help', None)
             if builder is not None:
                 a = builder(name, short, positional, help)
-            elif is_dataclass(type):
-                a = DataclassArg(type, name, help)
+            elif is_dataclass(ftype):
+                if not isinstance(dclass, type):
+                    sub_dclass = getattr(dclass, name)
+                else:
+                    sub_dclass = ftype
+                a = DataclassArg(sub_dclass, name, help)
             else:
-                a = SimpleArg(type, name, short, positional, help)
+                a = SimpleArg(ftype, name, short, positional, help)
             self.args.append(a)
 
     def add_to_parser(self, parser, prefix=""):
@@ -94,7 +104,7 @@ class DataclassArg(Arg):
     def parse_result(self, args, prefix=""):
         if self.name is not None:
             prefix = f"{prefix}{self.name}." if prefix else f"{self.name}."
-        kwargs = {}
+        kwargs = dict(self.defaults)
         for a in self.args:
             v = a.parse_result(args, prefix)
             if v is not None:
@@ -112,8 +122,8 @@ class ArgParser:
     def print_help(self):
         self._parser.print_help()
     
-    def add_to_parser(self, type, help=None):
-        arg = DataclassArg(type, None, help)
+    def add_to_parser(self, default, help=None):
+        arg = DataclassArg(default, None, help)
         arg.add_to_parser(self._parser)
         self._args.append(arg)
     

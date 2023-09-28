@@ -42,8 +42,8 @@ class PendulumEnv(Environment):
     def sample_state(self, rng_key):
         k1, k2 = jax.random.split(rng_key)
         angle = jax.random.uniform(k1, shape=(), 
-                    minval=-2, maxval=math.pi + 1)
-        vel = jax.random.uniform(k2, shape=(), minval=-1, maxval=1)
+                    minval=-2, maxval=2*math.pi + 2)
+        vel = jax.random.uniform(k2, shape=(), minval=-2, maxval=2)
         return State(angle, vel)
 
     def reset(self, key):
@@ -58,29 +58,39 @@ class PendulumEnv(Environment):
         state = State(angle, vel)
         return state
     
+    # def observe(self, state):
+    #     return jnp.stack((jnp.sin(state.angle), jnp.cos(state.angle), state.vel), -1)
+
     # If u is None, this is the terminal cost
-    def cost(self, x, u):
+    def cost(self, states, actions):
         end_state = self.target_goal
-        x = jnp.stack((x.angle, x.vel), -1)
-        diff = (x - jnp.array([end_state.angle, end_state.vel]))
-        x_cost = jnp.sum(diff[:-1]**2)
-        xf_cost = jnp.sum(diff[-1]**2)
-        if u == None:
-            u_cost = 0
-        else:
-            u_cost = jnp.sum(u**2)
-        return 5*xf_cost + 2*x_cost + u_cost
+        x = jnp.stack((states.angle, states.vel), -1)
+        end_x = jnp.stack((end_state.angle, end_state.vel), -1)
+        # x = jnp.stack((jnp.sin(states.angle),
+        #                jnp.cos(states.angle),
+        #                states.vel), -1)
+        # end_x = jnp.stack((jnp.sin(end_state.angle),
+        #                    jnp.cos(end_state.angle),
+        #                    end_state.vel), -1)
+        diff = jnp.sum((x - end_x)**2, axis=-1)
+        x_cost = jnp.sum(diff[:-1])
+        xf_cost = diff[-1]
+        u_cost = jnp.sum(actions**2)
+        cost = 100*xf_cost + 2*x_cost + u_cost
+        return cost
 
     def reward(self, state, action, next_state):
         end_state = self.target_goal
-        angle_diff = next_state.angle - end_state.angle
-        vel_diff = next_state.vel - end_state.vel
-        angle_rew = -angle_diff**2
-        vel_rew = -vel_diff**2
-        action_penalty = 0.1 * jnp.sum(action**2)
-        return angle_rew + vel_rew - action_penalty
+        pos = jnp.array([jnp.sin(state.angle), jnp.cos(state.angle)])
+        end_pos = jnp.array([jnp.sin(end_state.angle), jnp.cos(end_state.angle)])
+        angle_diff = jnp.sum((pos - end_pos)**2)
+        vel_diff = (next_state.vel - end_state.vel)**2
+        action_penalty = 0.5*jnp.sum(action**2)
+        total = -angle_diff - vel_diff - action_penalty
+        # reward of 1 == perfect
+        return jnp.exp(10*total)/10
 
-    def render(self, state, width=256, height=256):
+    def render(self, state, *, width=256, height=256):
         angle = jnp.squeeze(state.angle)
         image = jnp.ones((width, height, 3))
         x, y = jnp.sin(angle), jnp.cos(angle)

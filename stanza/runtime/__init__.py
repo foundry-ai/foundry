@@ -60,8 +60,18 @@ def launch_activity():
     if not hasattr(entrypoint, "__config__"):
         raise ArgParseError("Entrypoint must be decorated with @activity")
     activity_conf_cls = entrypoint.__config__
-    parser.add_to_parser(activity_conf_cls)
-    _,  config = parser.parse(sys.argv[1:])
+
+    if activity_info.py_config is not None:
+        config_entrypoint = _load_entrypoint(activity_info.py_config)
+        config = config_entrypoint()
+        if not isinstance(config, activity_conf_cls):
+            raise ValueError(f"Config must be instance of {activity_conf_cls}")
+        # parse any additional args
+        parser.add_to_parser(config)
+        _,  config = parser.parse(sys.argv[1:])
+    else:
+        parser.add_to_parser(activity_conf_cls)
+        _,  config = parser.parse(sys.argv[1:])
 
     if activity_info.help:
         parser.print_help()

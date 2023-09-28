@@ -11,7 +11,7 @@ from stanza.train.validate import Validator
 
 from stanza.policies.mpc import MPC
 
-from stanza.dataclasses import dataclass, replace, replace_defaults, field
+from stanza.dataclasses import dataclass
 
 from stanza.util.random import PRNGSequence
 from stanza.util.loop import LoggerHook, every_kth_epoch, every_kth_iteration
@@ -20,10 +20,9 @@ from stanza.util.rich import ConsoleDisplay, \
     LoopProgress, StatisticsTable, EpochProgress
 from stanza.diffusion.ddpm import DDPMSchedule
 
-from stanza.data.chunk import chunk_data
-from stanza.data.normalizer import LinearNormalizer
-from stanza.data import PyTreeData
-from stanza.nets.unet1d import ConditionalUNet1D
+import stanza.envs as envs
+
+from stanza.nets.unet1d import ConditionalUNet1D, ConditionalMLP
 
 from typing import Tuple
 
@@ -32,24 +31,27 @@ import jax.random
 
 from jax.random import PRNGKey
 
+from diffusion_policy.util import load_data, eval
+
 import optax
 import time
 
 @dataclass
 class Config:
-    data: str = None
+    data: str
 
     wandb: str = "dpfrommer-projects/diffusion_policy"
 
     rng_seed: int = 42
 
+    learning_rate: float = 1e-4
     epochs: int = 100
-    batch_size: int = 512
+    batch_size: int = 128
     warmup_steps: int = 500
 
-    obs_horizon: int = None
-    action_horizon: int = None
-    diffusion_horizon: int = None
+    obs_horizon: int = 2
+    action_horizon: int = 8
+    diffusion_horizon: int = 16
 
     num_trajectories: int = None
     smoothing_sigma: float = 0
@@ -57,78 +59,9 @@ class Config:
     diffuse_gains: bool = False
     regularize_gains_lambda: float = 0.0
 
-    down_dims: Tuple[int] = None
-    step_embed_dim: int = None
-
-ENV_DEFAULTS = {
-    "brax/ant": {
-        "obs_horizon": 1,
-        "action_horizon": 1,
-        "diffusion_horizon": 1,
-        "down_dims": (32, 64, 128),
-        "step_embed_dim": 128
-    },
-    "quadrotor": {
-        "obs_horizon": 2,
-        "action_horizon": 8,
-        "diffusion_horizon": 16,
-        "down_dims": (32, 64, 128),
-        "step_embed_dim": 128
-    },
-    "pendulum": {
-        "obs_horizon": 2,
-        "action_horizon": 8,
-        "diffusion_horizon": 16,
-        "down_dims": (32, 64, 128),
-        "step_embed_dim": 128
-    }
-}
-
-def make_diffuser(config):
-    return DDPMSchedule.make_squaredcos_cap_v2(
-        100, clip_sample_range=1.)
-
-def load_data(data_db, config):
-    logger.info("Reading data...")
-    data = data_db.get("trajectories")
-    # chunk the data and flatten
-    logger.info("Chunking trajectories")
-    val_data = PyTreeData.from_data(data[-20:], chunk_size=64)
-    data = data[:-20]
-    if config.num_trajectories is not None:
-        data = data[:config.num_trajectories]
-    data = PyTreeData.from_data(data, chunk_size=64)
-
-    data_flat = PyTreeData.from_data(data.flatten(), chunk_size=4096)
-    normalizer = LinearNormalizer.from_data(data_flat)
-
-    val_data_pt = val_data.data.data
-    val_trajs = Rollout(
-        val_data_pt.state,
-        val_data_pt.action,
-        val_data_pt.observation,
-        info=val_data_pt.info
-    )
-    def chunk(traj):
-        # Throw away the state, we use only
-        # the observations and actions
-        traj = traj.map(lambda x: replace(x, state=None))
-        traj = chunk_data(traj,
-            chunk_size=config.diffusion_horizon, 
-            start_padding=config.obs_horizon - 1,
-            end_padding=config.action_horizon - 1)
-        return traj
-    data = data.map(chunk)
-    val_data = val_data.map(chunk)
-
-    # Load the data into a PyTree
-    data = PyTreeData.from_data(data.flatten(), chunk_size=4096)
-    val_data = PyTreeData.from_data(val_data.flatten(), chunk_size=4096)
-    logger.info("Data size: {}",
-        sum(jax.tree_util.tree_leaves(jax.tree_map(lambda x: x.size*x.itemsize, data.data))))
-    logger.info("Data Loaded! Computing normalizer")
-    logger.info("Normalizer computed")
-    return data, val_data, val_trajs, normalizer
+    net : str = "unet"
+    features: Tuple[int] = (32, 64, 128)
+    step_embed_dim: int = 128
 
 def make_diffusion_input(config, normalized_sample):
     # the state/action chunks
@@ -155,69 +88,59 @@ def loss(config, net, diffuser, normalizer,
         obs_flat, obs_uf = jax.flatten_util.ravel_pytree(obs)
         obs_flat = obs_flat + config.smoothing_sigma*jax.random.normal(next(rng), obs_flat.shape)
         obs = obs_uf(obs_flat)
-    noisy, noise = diffuser.add_noise(next(rng), input, timestep)
+    noisy, _, desired_output = diffuser.add_noise(next(rng), input, timestep)
+
+    sqrt_alphas = jnp.sqrt(diffuser.alphas_cumprod[timestep])
+    sqrt_one_minus_alphas = jnp.sqrt(1 - diffuser.alphas_cumprod[timestep])
+
     pred_noise = net.apply(params, noisy, timestep, obs)
+    # pred_noise = jax.tree_map(
+    #     lambda noisy, pred_out: (noisy - pred_out*sqrt_alphas)/sqrt_one_minus_alphas,
+    #     noisy, pred_noise)
+
     pred_flat, _ = jax.flatten_util.ravel_pytree(pred_noise)
-    noise_flat, _ = jax.flatten_util.ravel_pytree(noise)
-    noise_loss = jnp.mean(jnp.square(pred_flat - noise_flat))
+    desired_flat , _ = jax.flatten_util.ravel_pytree(desired_output)
+    noise_loss = jnp.mean(jnp.square(pred_flat - desired_flat))
 
     loss = noise_loss
 
-    def jacobian(x):
-        flat_obs, unflatten = jax.flatten_util.ravel_pytree(x)
-        def f(x_flat):
-            x = unflatten(x_flat)
-            pred = net.apply(params, noisy, timestep, x)
-            return jax.flatten_util.ravel_pytree(pred)[0]
-        return jax.jacfwd(f)(flat_obs)
-    jac = jacobian(obs)
-    K_norm = normalizer.map(lambda x: x.info.K)
-    jac_norm = K_norm.normalize(jac)
-    f = jnp.sqrt(diffuser.alphas_cumprod[timestep]/(1 - diffuser.alphas_cumprod[timestep]))
-    jacobian_diff = jac_norm - (-normalized_sample.info.K) * f
-    jac_loss = jnp.mean(jnp.square(jacobian_diff))
+    if config.regularize_gains_lambda > 0 or True:
+        K_normalizer = normalizer.map(lambda x: x.info.K)
+        obs_normalizer = normalizer.map(lambda x: x.observation)
+        action_normalizer = normalizer.map(lambda x: x.action)
+        def jacobian(x):
+            # take the jacobian of the unnormalized output
+            x = obs_normalizer.unnormalize(x)
+            flat_obs, unflatten = jax.flatten_util.ravel_pytree(x)
+            def f(x_flat):
+                x = unflatten(x_flat)
+                x = obs_normalizer.normalize(x)
+                pred = net.apply(params, noisy, timestep, x)
+                pred = action_normalizer.unnormalize(pred[0]), None, None
+                return jax.flatten_util.ravel_pytree(pred)[0]
+            return jax.jacobian(f)(flat_obs)
+        jac = jacobian(obs)
+        #f = jnp.sqrt(diffuser.alphas_cumprod[timestep]/(1 - diffuser.alphas_cumprod[timestep]))
+        jac_norm = K_normalizer.normalize(jac)
+        # K = jnp.squeeze(sample.info.K, axis=0)
+        K_norm = jnp.squeeze(normalized_sample.info.K, axis=0)
+        jacobian_diff = jac_norm - K_norm
+        jac_loss = optax.safe_norm(jacobian_diff, 1e-2)
+    else:
+        jac_loss = 0.
 
-    if config.regularize_gains_lambda > 0:
-        loss = loss + config.regularize_gains_lambda*jac_loss
+    loss = loss + config.regularize_gains_lambda*jac_loss
 
     stats = {
         "loss": loss,
         "noise_loss": noise_loss,
         "jac_loss": jac_loss,
+        # "K_0": K[0,0],
+        # "K_1": K[0,1],
+        # "jac_0": jac[0,0],
+        # "jac_1": jac[0,1]
     }
     return state, loss, stats
-
-import stanza.envs as envs
-from stanza.policies import Rollout
-
-def eval(val_trajs, env, policy, rng_key):
-    x0s = jax.tree_map(lambda x: x[:,0], val_trajs.states)
-    N = jax.tree_util.tree_leaves(val_trajs.states)[0].shape[0]
-    length = jax.tree_util.tree_leaves(val_trajs.states)[0].shape[1]
-    def roll(x0, rng):
-        model_rng, policy_rng = jax.random.split(rng)
-        return policies.rollout(env.step, x0,
-            observe=env.observe, policy=policy, length=length, 
-            model_rng_key=model_rng, policy_rng_key=policy_rng,
-            last_input=True
-        )
-    roll = jax.vmap(roll)
-    rngs = jax.random.split(rng_key, N)
-    rolls = roll(x0s, rngs)
-    from stanza.util import extract_shifted
-
-    state_early, state_late = jax.vmap(extract_shifted)(rolls.states)
-    actions = jax.tree_map(lambda x: x[:,:-1], rolls.actions)
-    vreward = jax.vmap(jax.vmap(env.reward))
-    policy_r = vreward(state_early, actions, state_late)
-    policy_r = jnp.sum(policy_r, axis=1)
-
-    state_early, state_late = jax.vmap(extract_shifted)(val_trajs.states)
-    actions = jax.tree_map(lambda x: x[:,:-1], val_trajs.actions)
-    expert_r = vreward(state_early, actions, state_late)
-    expert_r = jnp.sum(expert_r, axis=1)
-    reward_ratio = policy_r / expert_r
-    return rolls, jnp.mean(reward_ratio)
 
 @activity(Config)
 def train_policy(config, database):
@@ -229,34 +152,42 @@ def train_policy(config, database):
     env_name = data_db.get("env_name")
     env = envs.create(env_name)
     # load the per-env defaults into config
-    config = replace_defaults(config, **ENV_DEFAULTS.get(env_name, {}))
-    logger.info("Using {} with config: {}", env_name, config)
+    logger.info("Using environment [blue]{}[/blue] with config: {}", env_name, config)
     with jax.default_device(jax.devices("cpu")[0]):
         data, val_data, val_trajs, normalizer = load_data(data_db, config)
     # move to GPU
     data, val_data, val_trajs, normalizer = jax.device_put(
         (data, val_data, val_trajs, normalizer), device=jax.devices("gpu")[0])
     logger.info("Dataset size: {} chunks", data.length)
-    train_steps = (data.length // config.batch_size) * config.epochs
-    logger.info("Training for {} steps", train_steps)
-    warmup_steps = config.warmup_steps
 
+    batch_size = min(config.batch_size, data.length)
+    steps_per_epoch = (data.length // batch_size)
+    epochs = max(config.epochs, 20000 // steps_per_epoch + 1)
+    train_steps = steps_per_epoch * epochs
+    logger.info("Training for {} steps ({} epochs)", train_steps, epochs)
+    warmup_steps = min(config.warmup_steps, train_steps/2)
     lr_schedule = optax.join_schedules(
-        [optax.linear_schedule(1e-4/500, 1e-4, warmup_steps),
-         optax.cosine_decay_schedule(1e-4, 
-                    train_steps - warmup_steps)],
+        [optax.linear_schedule(1e-4/500, config.learning_rate, warmup_steps),
+         optax.cosine_decay_schedule(1e-4, train_steps - warmup_steps)],
         [warmup_steps]
     )
     optimizer = optax.adamw(lr_schedule, weight_decay=1e-5)
     trainer = Trainer(
         optimizer=optimizer,
-        batch_size=config.batch_size,
-        max_epochs=config.epochs
+        batch_size=batch_size,
+        max_epochs=epochs
     )
     # make the network
-    net = ConditionalUNet1D(name="net",
-        down_dims=config.down_dims,
-        step_embed_dim=config.step_embed_dim)
+    if config.net == "unet":
+        net = ConditionalUNet1D(name="net",
+            down_dims=config.features,
+            step_embed_dim=config.step_embed_dim)
+    elif config.net == "mlp":
+        net = ConditionalMLP(name="net",
+                features=config.features,
+                step_embed_dim=config.step_embed_dim)
+    else:
+        raise ValueError(f"Unknown network {config.net}")
     sample = normalizer.normalize(data.get(data.start))
     sample_input, sample_obs = make_diffusion_input(config, sample)
     logger.info("Instantiating network...")
@@ -269,7 +200,8 @@ def train_policy(config, database):
     logger.info("params: {}", params_flat.shape[0])
     logger.info("Making diffusion schedule")
 
-    diffuser = make_diffuser(config)
+    diffuser = DDPMSchedule.make_squaredcos_cap_v2(
+        100, clip_sample_range=1., prediction_type="sample")
     loss_fn = Partial(partial(loss, config, net),
                     diffuser, normalizer)
     loss_fn = jax.jit(loss_fn)
@@ -301,10 +233,9 @@ def train_policy(config, database):
     )
 
     with display as rcb, db as db:
-        stat_logger = db.statistic_logging_hook(
-            log_cond=every_kth_iteration(1), buffer=100)
-        hooks = [ema_hook, validator, rcb.train, 
-                    stat_logger, print_hook]
+        hooks = [ema_hook, validator, rcb.train, print_hook]
+        if db is not None:
+            hooks.append(db.statistic_logging_hook())
         results = trainer.train(data,
                     loss_fn=batch_loss(loss_fn), 
                     rng_key=next(rng),

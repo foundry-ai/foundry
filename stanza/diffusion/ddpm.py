@@ -47,6 +47,7 @@ class DDPMSchedule:
 
     # This will do the noising
     # forward process
+    # will return noisy_sample, noise_eps, model_output 
     @jax.jit
     def add_noise(self, rng_key, sample, timestep):
         sqrt_alphas_prod = jnp.sqrt(self.alphas_cumprod[timestep])
@@ -55,7 +56,13 @@ class DDPMSchedule:
         noise_flat = jax.random.normal(rng_key, sample_flat.shape)
         noisy_flat = sqrt_alphas_prod * sample_flat + \
             sqrt_one_minus_alphas_prod*noise_flat
-        return unflatten(noisy_flat), unflatten(noise_flat)
+
+        noisy = unflatten(noisy_flat)
+        noise = unflatten(noise_flat)
+        if self.prediction_type == "epsilon":
+            return noisy, noise, noise
+        elif self.prediction_type == "sample":
+            return noisy, noise, sample
     
     # This does a reverse process step
     @jax.jit
@@ -78,7 +85,7 @@ class DDPMSchedule:
         if self.prediction_type == "epsilon":
             pred_sample = (sample_flat - beta_prod_t ** (0.5) * model_output_flat) / alpha_prod_t ** (0.5)
         elif self.prediction_type == "sample":
-            pred_sample = model_output
+            pred_sample = model_output_flat
         elif self.prediction_type == "v_prediction":
             pred_sample = (alpha_prod_t**0.5) * sample_flat - (beta_prod_t**0.5) * model_output_flat
 

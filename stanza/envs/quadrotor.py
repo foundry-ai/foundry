@@ -4,6 +4,7 @@ import jax.numpy as jnp
 import jax
 import plotly.express as px
 
+import stanza.graphics.canvas as canvas
 from stanza.envs import Environment
 
 class State(NamedTuple):
@@ -80,6 +81,15 @@ class QuadrotorEnvironment(Environment):
         cost = jnp.mean(x_cost) + 0.1*u_cost + x_cost[-1]
         return cost
     
+    def reward(self, state, action, next_state):
+        x_cost = next_state.x**2 + next_state.z**2 + \
+                5*next_state.phi**2 + \
+                0.1*(next_state.x_dot**2 + next_state.z_dot**2 + \
+                next_state.phi_dot**2)
+        u_cost = jnp.mean(action**2)
+        rew = -x_cost - u_cost
+        return jnp.exp(10*rew)/10
+
     def visualize(self, states, actions):
         T = states.x.shape[0]
         x = px.line(x=jnp.arange(T), y=states.x)

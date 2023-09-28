@@ -4,7 +4,7 @@ import jax
 import flax.linen.initializers as initializers
 import flax.linen.activation as activations
 
-from typing import Tuple
+from typing import Tuple, Sequence
 
 from stanza.util import vmap_ravel_pytree
 
@@ -210,3 +210,52 @@ class ConditionalUNet1D(nn.Module):
             activation = getattr(activations, self.final_activation)
             x = activation(x)
         return sample_uf(x)
+
+class ConditionalMLP(nn.Module):
+    features: Sequence[int]
+    step_embed_dim: int = None
+    activation: str = "relu"
+    final_activation: str = "tanh"
+
+    @nn.compact
+    def __call__(self, x, timestep=None, cond=None):
+        activation = getattr(activations, self.activation)
+        x, x_uf = jax.flatten_util.ravel_pytree(x)
+        x_dim = x.shape[-1]
+
+        if timestep is not None and self.step_embed_dim is not None:
+            dsed = self.step_embed_dim
+            diffusion_step_encoder = nn.Sequential([
+                SinusoidalPosEmbed(dsed, name='diff_embed'),
+                nn.Dense(4*dsed, kernel_init=_w_init, bias_init=_b_init,
+                        name='diff_embed_linear_0'),
+                mish,
+                nn.Dense(dsed, kernel_init=_w_init, bias_init=_b_init,
+                        name='diff_embed_linear_1')
+            ])
+            global_feat = diffusion_step_encoder(timestep)
+        else:
+            global_feat = None
+
+        if cond is not None:
+            cond , _ = jax.flatten_util.ravel_pytree(cond)
+            # put cond both in x and in the global_feat
+            x = jnp.concatenate((x, cond), -1)
+            global_feat = jnp.concatenate((global_feat, cond), -1) \
+                if global_feat is not None else cond
+
+        for feat in self.features:
+            x = activation(nn.Dense(feat)(x))
+            x_film = nn.Sequential([
+                nn.Dense(global_feat.shape[-1]//2),
+                nn.Dense(2*x.shape[-1])
+            ])(global_feat)
+            x_scale, x_bias = x_film[:x.shape[-1]], x_film[-x.shape[-1]]
+            x = x*x_scale + x_bias
+        x = nn.Dense(x_dim)(x)
+
+        if self.final_activation is not None:
+            activation = getattr(activations, self.final_activation)
+            x = activation(x)
+
+        return x_uf(x)

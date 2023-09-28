@@ -82,37 +82,6 @@ def rollout_mpc(solver='newton'):
     cost = env.cost(rollout.states, rollout.actions)
     logger.info('cost: {}', cost)
 
-def rollout_feedback_optax():
-    roller = FeedbackRollout(env.step,
-        burn_in=10, Q_coef=1, R_coef=1
-    )
-    rollout = policies.rollout(
-        model=env.step,
-        state0=env.reset(PRNGKey(0)),
-        policy=MPC(
-            # Sample action
-            action_sample=env.sample_action(PRNGKey(0)),
-            cost_fn=env.cost, 
-            rollout_fn=roller,
-            # The LSE estimator requires stochastic
-            # input for the gradients
-            horizon_length=50,
-            solver=OptaxSolver(optimizer=optimizer),
-            receed=False,
-            history=True
-            #receed=False
-        ),
-        length=50
-    )
-    logger.info('MPC Rollout with Feedback + Optax solver results')
-    logger.info('states: {}', rollout.states)
-    logger.info('actions: {}', rollout.actions)
-    history = rollout.final_policy_state.history
-    logger.info('history: {}', history.cost)
-
 # rollout_mpc(solver='newton')
 rollout_mpc(solver='optax')
 rollout_mpc(solver='ilqr')
-# rollout_feedback_optax()
-# rollout_barrier()
-#rollout_gradient()

@@ -26,6 +26,7 @@ class Config:
     lr: float = 1e-3
     weight_decay: float = 1e-4
     rho: float = 0.05
+    label_noise : float = 0.0
 
 def accuracy(model, vars, sample):
     x, y = sample
@@ -117,14 +118,6 @@ def train(config, db):
     }
     acc = jnp.mean(jax.vmap(accuracy, in_axes=(None, None, 0))(model, vars, test_data.data))
     logger.info("Test Accuracy: {}", acc)
-
-@dataclass
-class SweepConfig:
-    pass
-
-@activity(SweepConfig)
-def sweep(sweep_config, db):
-    pass
 
 def make_data(config):
     train_data, test_data = cifar10()

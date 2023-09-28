@@ -25,10 +25,10 @@ class OptaxSolver(IterativeSolver):
             raise UnsupportedObectiveError("Can only handle unconstrained minimization objectives")
         return OptaxState(
             iteration=0,
-            solved=False,
+            solved=jnp.array(False),
             state=objective.initial_state,
             params=objective.initial_params,
-            cost=jnp.array(()),
+            cost=jnp.zeros(()),
             aux=None,
             optimizer_state = self.optimizer.init(objective.initial_params)
         )
@@ -48,7 +48,7 @@ class OptaxSolver(IterativeSolver):
         obj_params = optax.apply_updates(solver_state.params, updates)
         return OptaxState(
                     iteration=solver_state.iteration + 1,
-                    solved=False,
+                    solved=jnp.array(False),
                     state=obj_state,
                     params=obj_params,
                     cost=cost,

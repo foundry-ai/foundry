@@ -17,10 +17,6 @@ def replace(__obj, **changes):
         return { **__obj, **changes }
     return _replace(__obj, **changes)
 
-def replace_defaults(dc, **defaults):
-    overrides = { k : v for k, v in defaults.items() if getattr(dc, k) is None }
-    return replace(dc, **overrides)
-
 def combine(clazz, *dcs):
     fields = set(clazz.__dataclass_fields__.keys())
     args = {}

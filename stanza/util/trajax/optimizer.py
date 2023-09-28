@@ -481,6 +481,7 @@ def ilqr_base(cost, dynamics, x0, U, cost_args, dynamics_args, maxiter,
 
     Q = lax.cond(make_psd, Q, psd, Q, lambda x: x)
     R = lax.cond(make_psd, R, psd, R, lambda x: x)
+    #jax.debug.print("Q: {}, R: {}", Q, R)
     q, r = cost_gradients(X, pad(U), *cost_args)
     A, B = dynamics_jacobians(X, pad(U), *dynamics_args)
 

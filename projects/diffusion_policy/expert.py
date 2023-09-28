@@ -130,7 +130,7 @@ def batch_rollout(batch_size, rng_keys, rollout_fn):
             jax.block_until_ready(trajactories[-1])
 
         trajactories.append(traj_batch)
-    return jax.tree_map(lambda x: jnp.concatenate(x, axis=0), trajactories)
+    return jax.tree_map(lambda *x: jnp.concatenate(x, axis=0), *trajactories)
 
 @activity(GenerateConfig)
 def generate_data(config, db):
@@ -146,6 +146,7 @@ def generate_data(config, db):
 
     def rollout(rng_key):
         x0_rng, policy_rng, env_rng = jax.random.split(rng_key, 3)
+        x0 = env.sample_state(x0_rng) 
 
         def policy_with_jacobian(input):
             if config.include_jacobian:
@@ -162,7 +163,7 @@ def generate_data(config, db):
             else:
                 return policy(input)
         roll = policies.rollout(env.step, 
-            env.reset(x0_rng), 
+            x0,
             policy_with_jacobian, length=config.traj_length,
             policy_rng_key=policy_rng,
             model_rng_key=env_rng,
