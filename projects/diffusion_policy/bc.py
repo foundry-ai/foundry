@@ -21,6 +21,7 @@ from typing import Tuple
 
 import stanza.envs as envs
 import stanza.policies as policies
+import stanza.util
 
 import optax
 import jax
@@ -33,7 +34,7 @@ class Config:
 
     learning_rate: float = 1e-4
     epochs: int = 100
-    batch_size: int = 64
+    batch_size: int = 128
     warmup_steps: int = 500
 
     num_trajectories: int = None
@@ -46,7 +47,7 @@ class Config:
     zorder_knn: int = 3
 
     net: str = "mlp"
-    features: Tuple[int] = (32, 64, 128)
+    features: Tuple[int] = (128, 64, 32)
 
 def loss(config, net, normalizer, state, params, rng, sample):
     logger.trace("Tracing loss function", only_tracing=True)
@@ -62,6 +63,7 @@ def loss(config, net, normalizer, state, params, rng, sample):
 
     stats = {}
     loss = action_loss
+    stats["action_loss"] = action_loss
     if config.jac_lambda > 0:
         def policy(x):
             norm_obs = obs_normalizer.normalize(x)
@@ -74,15 +76,17 @@ def loss(config, net, normalizer, state, params, rng, sample):
         loss = loss + config.jac_lambda * jac_loss
     if config.zorder_lambda > 0:
         def diff_loss(x):
-            no = obs_normalizer.normalize(sample.observation)
-            pred_action
-            na = action_normalizer.normalize(sample.action)
-            action_diff = jax.tree_map(lambda x, y: x - y, na, norm_action)
-            out_flat = jax.flatten_util.ravel_pytree(out)[0]
-            action_flat = jax.flatten_util.ravel_pytree(norm_action)[0]
-            action_loss = jnp.mean(jnp.square(out_flat - action_flat))
-            out = net.apply(params, norm_obs)
-            pass
+            per_obs = obs_normalizer.normalize(x.observation)
+            eps = stanza.util.l2_norm_squared(per_obs, norm_obs)
+
+            per_action = action_normalizer.normalize(x.action)
+            action_diff = jax.tree_map(lambda x, y: x - y, 
+                                       per_action, norm_action)
+            pred_per_action = net.apply(params, per_obs)
+            pred_diff = jax.tree_map(lambda x, y: x - y,
+                                pred_per_action, pred_action)
+            loss = stanza.util.l2_norm_squared(action_diff, pred_diff)/(eps + 1e-3)
+            return loss
         zorder_loss = jax.vmap(diff_loss)(sample.info.knn)
         zorder_loss = jnp.mean(zorder_loss)
         stats["zorder_loss"] = zorder_loss
@@ -180,6 +184,8 @@ def train_policy(config, repo):
                             obs_chunk_length=config.obs_horizon,
                             action_chunk_length=config.action_horizon)
     val_trajs, test_reward = eval(val_trajs, env, policy, next(rng))
+
+    logger.info("Reward: {}", test_reward)
 
     exp.add("test_reward", test_reward)
 

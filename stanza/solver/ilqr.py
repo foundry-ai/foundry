@@ -44,7 +44,8 @@ class iLQRSolver(Solver):
             lambda x: jax.flatten_util.ravel_pytree(x)[0]
         )(solver_state.actions)
         _, actions_flat, cost, _, _, _, it = ilqr(flat_cost, flat_model,
-                state0_flat, initial_actions_flat, make_psd=True, psd_delta=0.0)
+                state0_flat, initial_actions_flat, make_psd=True, psd_delta=0.0,
+                grad_norm_threshold=1e-5)
         actions = jax.vmap(action_uf)(actions_flat)
         res = MinimizeMPCState(it, True, actions, cost)
         return SolverResult(res, None)

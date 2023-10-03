@@ -24,8 +24,8 @@ def load_data(data_db, num_trajectories,
     if num_trajectories is not None:
         data = data[:num_trajectories]
     data = PyTreeData.from_data(data, chunk_size=64)
-
-    data_flat = PyTreeData.from_data(data.flatten(), chunk_size=4096)
+    data_flat = data.flatten().map(lambda x: replace(x, info=replace(x.info, knn=None)))
+    data_flat = PyTreeData.from_data(data_flat, chunk_size=4096)
     normalizer = LinearNormalizer.from_data(data_flat)
 
     val_data_pt = val_data.data.data
@@ -45,7 +45,9 @@ def load_data(data_db, num_trajectories,
             end_padding=action_horizon - 1)
         def slice_chunk(x):
             obs = jax.tree_map(lambda x: x[:obs_horizon], x.observation)
-            return replace(x, observation=obs)
+            return replace(x, observation=obs,
+                            info=replace(x.info, knn=None)
+                           )
         traj = traj.map(slice_chunk)
         return traj
     data = data.map(chunk)
@@ -64,7 +66,8 @@ def knn_data(data, n):
         dists = jax.vmap(stanza.util.l2_norm_squared, in_axes=(0, None))(
             data.observation, x.observation
         )
-        _, indices = jax.lax.top_k(dists, n)
+        _, indices = jax.lax.top_k(dists, n + 1)
+        indices = indices[1:]
         neigh = jax.tree_map(lambda x: jnp.take(x, indices, 
                                 unique_indices=True, axis=0), data)
         neigh = replace(neigh, info=None)

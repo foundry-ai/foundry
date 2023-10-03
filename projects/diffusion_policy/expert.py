@@ -99,6 +99,6 @@ def make_expert(repo, env_name, type="ppo", traj_length=None):
             action_sample=env.sample_action(PRNGKey(0)),
             cost_fn=env.cost,
             model_fn=env.step,
-            horizon_length=20
+            horizon_length=30
         )
         return policy

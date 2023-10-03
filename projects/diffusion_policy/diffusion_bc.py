@@ -10,8 +10,7 @@ from stanza.train import Trainer, batch_loss
 from stanza.train.ema import EmaHook
 from stanza.train.validate import Validator
 
-
-from stanza.dataclasses import dataclass
+from stanza.dataclasses import dataclass, replace
 
 from stanza.util.random import PRNGSequence
 from stanza.util.loop import LoggerHook, every_kth_epoch, every_kth_iteration
@@ -21,17 +20,17 @@ from stanza.util.rich import ConsoleDisplay, \
 from stanza.diffusion.ddpm import DDPMSchedule
 
 import stanza.envs as envs
+import stanza.util
 
 from stanza.nn.unet1d import ConditionalUNet1D, ConditionalMLP
-
-from typing import Tuple
+from typing import Tuple, Any
 
 import jax.numpy as jnp
 import jax.random
 
 from jax.random import PRNGKey
 
-from diffusion_policy.util import load_data, eval
+from diffusion_policy.util import load_data, knn_data, eval
 
 import optax
 import time
@@ -48,38 +47,44 @@ class Config:
 
     obs_horizon: int = 2
     action_horizon: int = 8
-    action_padding: int = 8
+    action_padding: int = 7
 
     num_trajectories: int = None
     smoothing_sigma: float = 0
 
     diffuse_gains: bool = False
-    jac_lambda: float = 0.0
 
-    net : str = "unet"
+    jac_lambda: float = 0.0
+    zorder_lambda: float = 0.
+    zorder_knn: int = 3
+
+    net : str = "mlp"
     features: Tuple[int] = (32, 64, 128)
     step_embed_dim: int = 128
 
+@dataclass
+class DiffusionSample:
+    action: Any
+
 def make_diffusion_input(config, normalized_sample):
-    # the state/action chunks
     actions = normalized_sample.action
-    # the conditioning chunks (truncated)
-    states = normalized_sample.observation
-    obs = jax.tree_map(lambda x: x[:config.obs_horizon], states)
-    if config.diffuse_gains:
-        input = actions, states, normalized_sample.info.K
-    else:
-        input = actions, None, None
-    return input, obs
+    return DiffusionSample(actions), normalized_sample.observation
 
 def loss(config, net, diffuser, normalizer,
             # these are passed in per training loop:
             state, params, rng, sample):
+    K_normalizer = normalizer.map(lambda x: x.info.K)
+    obs_normalizer = normalizer.map(lambda x: x.observation)
+    action_normalizer = normalizer.map(lambda x: x.action)
+
     logger.trace("Tracing loss function", only_tracing=True)
     rng = PRNGSequence(rng)
     timestep = jax.random.randint(next(rng), (), 0, diffuser.num_steps)
     # We do training in the normalized space!
-    normalized_sample = normalizer.normalize(sample)
+    normalized_sample = normalizer.normalize(
+        replace(sample, info=replace(sample.info, knn=None))
+    )
+
     input, obs = make_diffusion_input(config, normalized_sample)
     if config.smoothing_sigma > 0:
         obs_flat, obs_uf = jax.flatten_util.ravel_pytree(obs)
@@ -87,50 +92,46 @@ def loss(config, net, diffuser, normalizer,
         obs = obs_uf(obs_flat)
     noisy, _, desired_output = diffuser.add_noise(next(rng), input, timestep)
 
-    pred_noise = net.apply(params, noisy, timestep, obs)
+    pred = net.apply(params, noisy, timestep, obs)
 
-    pred_flat, _ = jax.flatten_util.ravel_pytree(pred_noise)
+    pred_flat, _ = jax.flatten_util.ravel_pytree(pred)
     desired_flat , _ = jax.flatten_util.ravel_pytree(desired_output)
     noise_loss = jnp.mean(jnp.square(pred_flat - desired_flat))
 
     loss = noise_loss
-
-    if config.jac_lambda > 0 or True:
-        K_normalizer = normalizer.map(lambda x: x.info.K)
-        obs_normalizer = normalizer.map(lambda x: x.observation)
-        action_normalizer = normalizer.map(lambda x: x.action)
-        def jacobian(x):
-            # take the jacobian of the unnormalized output
-            x = obs_normalizer.unnormalize(x)
-            flat_obs, unflatten = jax.flatten_util.ravel_pytree(x)
-            def f(x_flat):
-                x = unflatten(x_flat)
-                x = obs_normalizer.normalize(x)
-                pred = net.apply(params, noisy, timestep, x)
-                pred = action_normalizer.unnormalize(pred[0]), None, None
-                return jax.flatten_util.ravel_pytree(pred)[0]
-            return jax.jacobian(f)(flat_obs)
-        jac = jacobian(obs)
-        #f = jnp.sqrt(diffuser.alphas_cumprod[timestep]/(1 - diffuser.alphas_cumprod[timestep]))
+    stats = {}
+    stats["noise_loss"] = noise_loss
+    if config.jac_lambda > 0:
+        def f(x):
+            x = obs_normalizer.normalize(x)
+            action = net.apply(params, noisy, timestep, x).action
+            return action_normalizer.unnormalize(action)
+        jac = stanza.util.mat_jacobian(f)(obs_normalizer.unnormalize(obs))
         jac_norm = K_normalizer.normalize(jac)
-        # K = jnp.squeeze(sample.info.K, axis=0)
         K_norm = jnp.squeeze(normalized_sample.info.K, axis=0)
         jacobian_diff = jac_norm - K_norm
         jac_loss = optax.safe_norm(jacobian_diff, 1e-2)
-    else:
-        jac_loss = 0.
-
-    loss = loss + config.jac_lambda*jac_loss
-
-    stats = {
-        "loss": loss,
-        "noise_loss": noise_loss,
-        "jac_loss": jac_loss,
-        # "K_0": K[0,0],
-        # "K_1": K[0,1],
-        # "jac_0": jac[0,0],
-        # "jac_1": jac[0,1]
-    }
+        stats["jac_loss"] = jac_loss
+        loss = loss + config.jac_lambda*jac_loss
+    if config.zorder_lambda > 0:
+        def diff_loss(x):
+            per_obs = obs_normalizer.normalize(x.observation)
+            eps = stanza.util.l2_norm_squared(per_obs, obs)
+            action = desired_output.action
+            per_action = action_normalizer.normalize(x.action)
+            action_diff = jax.tree_map(lambda x, y: x - y, 
+                                       per_action, action)
+            pred_action = pred.action
+            pred_per_action = net.apply(params, noisy, timestep, per_obs).action
+            pred_diff = jax.tree_map(lambda x, y: x - y,
+                                pred_per_action, pred_action)
+            loss = stanza.util.l2_norm_squared(action_diff, pred_diff)/(eps + 1e-3)
+            return loss
+        zorder_loss = jax.vmap(diff_loss)(sample.info.knn)
+        zorder_loss = jnp.mean(zorder_loss)
+        stats["zorder_loss"] = zorder_loss
+        loss = loss + config.zorder_lambda * zorder_loss
+    stats["loss"] = loss
     return state, loss, stats
 
 @activity(Config)
@@ -154,6 +155,11 @@ def train_policy(config, repo):
     # move to GPU
     data, val_data, val_trajs, normalizer = jax.device_put(
         (data, val_data, val_trajs, normalizer), device=jax.devices("gpu")[0])
+
+    sample = normalizer.normalize(data.get(data.start))
+    if config.zorder_lambda > 0:
+        data = knn_data(data, config.zorder_knn)
+        val_data = knn_data(val_data, config.zorder_knn)
     logger.info("Dataset size: {} chunks", data.length)
 
     batch_size = min(config.batch_size, data.length)
@@ -184,7 +190,6 @@ def train_policy(config, repo):
                 step_embed_dim=config.step_embed_dim)
     else:
         raise ValueError(f"Unknown network {config.net}")
-    sample = normalizer.normalize(data.get(data.start))
     sample_input, sample_obs = make_diffusion_input(config, sample)
     logger.info("Instantiating network...")
     t = time.time()
