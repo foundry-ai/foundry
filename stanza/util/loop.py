@@ -1,7 +1,6 @@
 from stanza.dataclasses import dataclass, replace, field
-from stanza.reporting import flat_items
 from stanza.util.logging import logger
-from typing import List, Any, Callable
+from typing import Any, Callable
 
 import jax
 import jax.numpy as jnp
@@ -67,6 +66,13 @@ def every_kth_epoch(k):
                 state.epoch_iteration == 0)
     return cond
 every_epoch = every_kth_epoch(1)
+
+def flat_items(d, prefix=''):
+    for (k,v) in d.items():
+        if isinstance(v, dict):
+            yield from flat_items(v, prefix=f'{prefix}{k}.')
+        else:
+            yield (f'{prefix}{k}',v)
 
 @dataclass
 class LoggerHook:

@@ -7,21 +7,10 @@ import flax.linen.activation as activations
 from typing import Tuple, Sequence
 
 from stanza.util import vmap_ravel_pytree
+from stanza.nn.embed import SinusoidalPosEmbed
 
 _w_init = initializers.lecun_normal()
 _b_init = initializers.zeros_init()
-
-class SinusoidalPosEmbed(nn.Module):
-    dim: int
-
-    @nn.compact
-    def __call__(self, x):
-        half_dim = self.dim // 2
-        emb = jnp.log(10000) / (half_dim - 1)
-        emb = jnp.exp(jnp.arange(half_dim) * -emb)
-        emb = x[jnp.newaxis,...] * emb[...,jnp.newaxis]
-        emb = jnp.concatenate((jnp.sin(emb), jnp.cos(emb)), axis=0)
-        return emb.reshape((-1))
 
 class Downsample1D(nn.Module):
     @nn.compact

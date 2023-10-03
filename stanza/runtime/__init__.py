@@ -9,7 +9,7 @@ os.environ["XLA_FLAGS"] = f'--xla_force_host_platform_device_count={cpus}'
 import sys
 import asyncio
 from stanza.dataclasses import dataclass, field, is_dataclass
-from stanza.reporting import Database
+from stanza.reporting import Repo
 from stanza.runtime.container import Target
 from stanza.dataclasses.arg import \
     ArgParser, ArgParseError, flag
@@ -26,7 +26,7 @@ class ActivityConfig:
     help: bool = field(nargs=0, default=False,
             arg_help="Prints this help message",
             arg_builder=flag())
-    database: str = "local://"
+    repo: str = "dummy://"
     target: str = None
     py_config: str = None
     json_config: str = None
@@ -76,5 +76,5 @@ def launch_activity():
     if activity_info.help:
         parser.print_help()
         return
-    db = Database.from_url(activity_info.database)
-    entrypoint(config, db)
+    repo = Repo(activity_info.repo)
+    entrypoint(config, repo)

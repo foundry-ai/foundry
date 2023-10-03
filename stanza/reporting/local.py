@@ -6,18 +6,18 @@ import jax.numpy as jnp
 import random
 import pickle
 
-_NOUNS = None
-_ADJECTIVES = None
-def _words():
-    global _NOUNS
-    global _ADJECTIVES
-    if _NOUNS is None:
-        nouns_path = Path(__file__).parent / "nouns.txt"
-        _NOUNS = open(nouns_path).read().splitlines()
-    if _ADJECTIVES is None:
-        adjectives_path = Path(__file__).parent / "adjectives.txt"
-        _ADJECTIVES = open(adjectives_path).read().splitlines()
-    return _ADJECTIVES, _NOUNS
+_NOUNS = ["freedom", "shield", "resolve",
+    "shark", "sky", "champion",
+    "dawn", "fury",
+    "thunder", "endeavour",
+    "enterprise", "discovery",
+    "star", "sunset", "eagle"]
+_ADJECTIVES = ["enduring", "hopeful"
+    "blue","red", "dark", "light",
+    "brilliant", "radiant", "silver", "daring"
+    "deep", "hot", "cold", "burning"
+    "gold", "starry", "proximal", "gallant"
+    "defiant", "beautiful", "respectful"]
 
 class LocalDatabase(Database):
     def __init__(self, *, parent=None, name=None, path=None):

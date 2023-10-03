@@ -9,7 +9,7 @@ import jax.scipy.stats.norm as norm
 
 from typing import Any, Sequence
 
-from stanza.nets.mlp import MLP
+from stanza.nn.mlp import MLP
 from stanza.distribution import MultivariateNormalDiag
 
 # TODO: typing for Gaussian Actor Critic

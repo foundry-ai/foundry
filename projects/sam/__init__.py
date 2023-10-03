@@ -131,7 +131,7 @@ def make_data(config):
     return train_data, test_data
 
 def make_net(config):
-    from stanza.nets.resnet import \
+    from stanza.nn.resnet import \
         ResNet9, ResNet18, ResNet34, ResNet50
     if config.net == "resnet9":
         net = ResNet9

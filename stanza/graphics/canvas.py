@@ -48,16 +48,19 @@ def stack(*sdfs):
 @jax.jit
 def _transformed(p, fn, translation=None,
                  rotation=None, scale=None):
-    if scale is not None:
-        p = p / scale
     if translation is not None:
         p = p - translation
     if rotation is not None:
         c, s = jnp.cos(-rotation), jnp.sin(-rotation)
         M = jnp.array(((c,-s),(s,c)))
         p = M @ p
+    if scale is not None:
+        p = p / scale
     dist, color = fn(p)
     if scale is not None:
+        # TODO: get the gradient of fn
+        # and use that to figure out the
+        # distance scaling
         dist = dist * jnp.sqrt(jnp.prod(jnp.abs(scale)))
     return dist, color
 
@@ -82,6 +85,21 @@ def _circle(x, loc, radius=1):
 
 def circle(loc, radius=1):
     return Partial(_circle, loc=loc, radius=radius)
+
+@jax.jit
+def _rectangle(x, loc, extents):
+    diff = x - loc
+    width, height = extents
+    left = -(diff[0] - (-width/2))
+    right = diff[0] - width/2
+    top = -(diff[1] - (-height/2))
+    bot = diff[1] - (height/2)
+    hor = jnp.maximum(left, right)
+    ver = jnp.maximum(top, bot)
+    return jnp.maximum(hor, ver)
+
+def rectangle(loc, extents):
+    return Partial(_rectangle, loc=loc, extents=extents)
 
 @jax.jit
 def _segment(x, a, b, thickness):

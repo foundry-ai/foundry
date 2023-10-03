@@ -1,13 +1,21 @@
 import numpy as np
 import jax.numpy as jnp
-import urllib
-import random
 
-from stanza.dataclasses import dataclass
-from stanza.util.logging import logger
-from typing import Any
-from pathlib import Path
 
+from stanza.dataclasses import dataclass, field
+
+import jax
+import stanza.util.loop
+import stanza
+
+from typing import Any, Callable
+
+def _iterable(x):
+    try:
+        iter(x)
+        return True
+    except TypeError:
+        return False
 
 @dataclass(frozen=True)
 class Figure:
@@ -20,85 +28,197 @@ class Video:
     data: np.array
     fps: int = 28
 
-class Database:
-    # The name of this database
-    # in the parent (or in case of the
-    # root, a descriptive name)
-    @property
-    def name(self):
-        return None
+class Backend:
+    def create(self):
+        raise NotImplementedError()
 
-    # Get the parent database
-    # None for the root
-    @property
-    def parent(self):
-        return None
+    def open(self, id):
+        raise NotImplementedError()
 
-    # should return a set of
-    # keys
-    @property
-    def children(self):
-        return set()
+    def find(self, **tags):
+        raise NotImplementedError()
 
-    def has(self, name):
-        pass
+    @staticmethod
+    def get(url):
+        if url.startswith("local://"):
+            from stanza.reporting.local import LocalBackend
+            return LocalBackend(url)
+        elif url.startswith("wandb://"):
+            from stanza.reporting.wandb import WandbBackend
+            return WandbBackend(url)
+        elif url.startswith("dummy://"):
+            from stanza.reporting.dummy import DummyBackend
+            return DummyBackend()
+        else:
+            raise NotImplementedError(f"Unknown backend {url}")
+
+class Repo:
+    def __init__(self, url):
+        self._url = url
+        self._backend = Backend.get(url)
+    
+    def open(self, id):
+        return Bucket(self, impl=self._backend.open(id))
+    
+    def create(self):
+        return Bucket(self, impl=self._backend.create())
+
+    @property
+    def buckets(self):
+        return self._backend.buckets
+    
+    def find(self, id=None, **tags):
+        ntags = {}
+        for (k,v) in tags.items():
+            v = {v} if isinstance(v, str) or not _iterable(v) else set(v)
+            ntags[k] = v
+        return self._backend.find(id=id, **ntags)
+
+    @property
+    def url(self):
+        return self._url
+
+class Buckets:
+    def __init__(self, impl=None):
+        self._impl = impl
+
+    @property
+    def latest(self):
+        return self._impl.latest
+
+    def filter(self, id=None, **tags):
+        ntags = {}
+        for (k,v) in tags.items():
+            v = {v} if isinstance(v, str) or not _iterable(v) else set(v)
+            ntags[k] = v
+        return self._impl.find(id=id, **ntags)
+    
+    def __len__(self):
+        return len(self._impl)
+    
+    def __iter__(self):
+        return iter(self._impl)
+
+from weakref import WeakValueDictionary
+
+_BUCKET_COUNTER = 0
+_BUCKETS = WeakValueDictionary()
+
+class Bucket:
+    def __init__(self, backend, *, impl=None):
+        global _BUCKET_COUNTER
+        self._jid = _BUCKET_COUNTER
+        _BUCKET_COUNTER = _BUCKET_COUNTER + 1
+        _BUCKETS[self._jid] = self
+
+        self.backend = backend
+        self.id = impl.id
+        self.url = impl.url
+        self._impl = impl
+    
+    @property
+    def creation_time(self):
+        return self._impl.creation_time
+
+    @property
+    def tags(self):
+        return self._impl.tags
+
+    @property
+    def keys(self):
+        return self._impl.keys
 
     def __contains__(self, name):
-        return self.has(name)
-
-    def open(self, name):
-        pass
-
-    def create(self):
-        return self.open(name=None)
+        return self._impl.has_key(name)
+    
+    def tag(self, **tags):
+        ntags = {}
+        for (k,v) in tags.items():
+            v = {v} if isinstance(v, str) or not _iterable(v) else set(v)
+            ntags[k] = v
+        self._impl.tag(**ntags)
+    
+    def get(self, key):
+        return self._impl.get(key)
 
     # must have stream=True
     # to log over steps
     def add(self, name, value, *,
-            append=False, step=None, batch=False):
-        raise NotImplementedError()
+            append=False, step=None, batch=False, batch_lim=None):
+        self._impl.add(name, value,
+            append=append, step=step, batch=batch)
 
-    # if batch=True, this is a whole 
-    # batch of steps which we should log
-    def log(self, data, *, step=None, batch=False):
-        for (k,v) in flat_items(data):
-            self.add(k,v, append=True, step=step, batch=batch)
-
-    # open a root-level table
-    # name will be auto-generated if None
     @staticmethod
-    def from_url(db_url):
-        parsed = urllib.parse.urlparse(db_url)
-        if parsed.scheme == 'dummy':
-            from stanza.reporting.dummy import DummyDatabase
-            return DummyDatabase()
-        elif parsed.scheme == 'local':
-            from stanza.reporting.local import LocalDatabase
-            return LocalDatabase()
-        elif parsed.scheme == 'wandb':
-            entity = parsed.path.lstrip('/')
-            from stanza.reporting.wandb import WandbDatabase
-            return WandbDatabase(entity)
-        else:
-            raise RuntimeError("Unknown database url")
+    def _log_cb(args, transforms, batch=False):
+        handle, data, iteration, batch_n = args
+        db = _BUCKETS[handle.item()]
+        # if there is an limit to the batch, get the last batch_n
+        # from the buffer
+        if batch and batch_n is not None:
+            data = jax.tree_map(lambda x: x[-batch_n:], data)
+        db._impl.log(data, step=iteration, batch=batch)
 
-def flat_items(d, prefix=''):
-    for (k,v) in d.items():
-        if isinstance(v, dict):
-            yield from flat_items(v, prefix=f'{prefix}{k}.')
-        else:
-            yield (f'{prefix}{k}',v)
+    def log(self, data, step=None, batch=False, batch_n=None):
+        jax.experimental.host_callback.id_tap(
+            stanza.partial(self._log_cb, batch=batch), (self._jid, data, step, batch_n))
 
-def remap(obj, type_mapping):
-    if isinstance(obj, dict):
-        return { k: remap(v, type_mapping) for (k,v) in obj.items() }
-    elif isinstance(obj, list):
-        return [ remap(v, type_mapping) for v in obj ]
-    elif isinstance(obj, tuple):
-        return tuple([ remap(v, type_mapping) for v in obj ])
-    elif isinstance(obj, jnp.ndarray):
-        return np.array(obj)
-    elif type(obj) in type_mapping:
-        return type_mapping[type(obj)](obj)
-    else:
-        return obj
+jax.tree_util.register_pytree_node(
+    Bucket, lambda x: ((x._jid,), None),
+    lambda _, xs: _BUCKETS[xs[0]]
+)
+
+@dataclass(jax=True)
+class BucketLogHook:
+    bucket: Bucket
+
+    stat_fn: Callable = lambda stat_state, state: (stat_state, state.last_stats)
+    condition_fn: Callable = stanza.util.loop.every_iteration
+    buffer: int = field(default=100, jax_static=True)
+
+    def init(self, state):
+        # make a buffer for the last stats
+        if hasattr(self.stat_fn, "init"):
+            stat_fn_state = self.stat_fn.init(state)
+        else:
+            stat_fn_state = None
+        stat_fn_state, stats = self.stat_fn(stat_fn_state, state)
+        stat_buffer = jax.tree_map(
+            lambda x: jnp.repeat(jnp.expand_dims(x,0), self.buffer, axis=0),
+            stats
+        )
+        iters = jnp.zeros((self.buffer,), dtype=jnp.int32)
+        return (stat_buffer, jnp.array(0), iters, state.iteration, stat_fn_state), state
+
+    def __call__(self, hook_state, state):
+        if state.last_stats is None:
+            return hook_state, state
+        stat_buffer, elems, iters, prev_iteration, stat_fn_state = hook_state
+
+        # add the last stats to the buffer
+        def update_buffer(stat_buffer, elems, iters, stat_fn_state):
+            stat_fn_state, stats = self.stat_fn(stat_fn_state, state)
+            stat_buffer = jax.tree_map(
+                lambda x, y: jnp.roll(x, -1, axis=0).at[-1, ...].set(y), 
+                stat_buffer, stats)
+            iters = jnp.roll(iters, -1, axis=0).at[-1].set(state.iteration)
+            return stat_buffer, \
+                jnp.minimum(elems + 1, self.buffer), iters, stat_fn_state
+
+        should_log = jnp.logical_and(self.condition_fn(state),
+                        state.iteration != prev_iteration)
+        stat_buffer, elems, iters, stat_fn_state = jax.lax.cond(should_log,
+            update_buffer, lambda x, y, z, w: (x, y, z, w),
+            stat_buffer, elems, iters, stat_fn_state)
+
+        done = jnp.logical_and(
+            state.iteration == state.max_iterations,
+            state.iteration != prev_iteration)
+
+        def do_log():
+            self.handle.log(stat_buffer, iters, batch=True, batch_n=elems)
+            return 0
+        elems = jax.lax.cond(
+            jnp.logical_or(elems >= self.buffer, done),
+            do_log, lambda: elems)
+        new_hook_state = (stat_buffer, elems, iters, state.iteration, stat_fn_state)
+        return new_hook_state, state

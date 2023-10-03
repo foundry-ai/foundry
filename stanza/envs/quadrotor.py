@@ -90,6 +90,41 @@ class QuadrotorEnvironment(Environment):
         rew = -x_cost - u_cost
         return jnp.exp(10*rew)/10
 
+    def render(self, state, *, width=256, height=256):
+        image = jnp.ones((width, height, 3))
+
+        quad_width = 0.3
+        quad_height = 0.07
+        frame = canvas.rectangle(
+                jnp.array([0, 0]),
+                jnp.array([quad_width, quad_height])
+            )
+        left_motor = canvas.rectangle(
+                jnp.array([-quad_width/2, 0]),
+                jnp.array([quad_width/5, quad_height*2])
+            )
+        right_motor = canvas.rectangle(
+                jnp.array([quad_width/2, 0]),
+                jnp.array([quad_width/5, quad_height*2])
+            )
+        quadrotor = canvas.stack(
+            canvas.fill(frame, color=jnp.array([0.,0.,0.])),
+            canvas.fill(left_motor, color=jnp.array([0.2,0.2,0.2])),
+            canvas.fill(right_motor, color=jnp.array([0.2,0.2,0.2])),
+        )
+        quadrotor = canvas.transform(
+            quadrotor,
+            translation=jnp.array([state.x/10, state.z/10]),
+            rotation=state.phi
+        )
+        sdf = canvas.transform(
+            quadrotor,
+            translation=jnp.array([width/2, height/2]),
+            scale=jnp.array([width/2, height/2])
+        )
+        image = canvas.paint(image, sdf) 
+        return image
+    
     def visualize(self, states, actions):
         T = states.x.shape[0]
         x = px.line(x=jnp.arange(T), y=states.x)

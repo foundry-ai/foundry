@@ -1,13 +1,13 @@
-from diffusion_policy import Config
+from diffusion_policy.diffusion_bc import Config as DiffusionConfig
 
-def ant():
-    return Config(
-        data="ant",
+def ant_diffusion():
+    return DiffusionConfig(
+        env="ant",
     )
 
-def pendulum():
-    return Config(
-        data="pendulum",
+def pendulum_diffusion():
+    return DiffusionConfig(
+        env="pendulum",
         net="mlp",
         features=[128, 128, 64, 64, 32],
         obs_horizon=1,
@@ -16,9 +16,9 @@ def pendulum():
         step_embed_dim=64,
     )
 
-def quadrotor():
-    return Config(
-        data="quadrotor",
+def quadrotor_diffusion():
+    return DiffusionConfig(
+        env="quadrotor",
         net="mlp",
         features=[128, 128, 64, 64, 32],
         obs_horizon=1,

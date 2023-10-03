@@ -11,14 +11,14 @@ import stanza.policies as policies
 import jax
 import jax.numpy as jnp
 
-
 def load_data(data_db, config):
     logger.info("Reading data...")
     data = data_db.get("trajectories")
     # chunk the data and flatten
-    logger.info("Chunking trajectories")
-    val_data = PyTreeData.from_data(data[-20:], chunk_size=64)
-    data = data[:-20]
+    logger.info(f"Chunking {data.length} trajectories")
+    val_len = min(data.length/2, 20)
+    val_data = PyTreeData.from_data(data[-val_len:], chunk_size=64)
+    data = data[:-val_len]
     if config.num_trajectories is not None:
         data = data[:config.num_trajectories]
     data = PyTreeData.from_data(data, chunk_size=64)

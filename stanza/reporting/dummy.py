@@ -1,29 +1,29 @@
-from stanza.reporting import Database
+from stanza.reporting import Backend
+import urllib.parse as urlparse
 
-class DummyDatabase(Database):
-    def __init__(self, name=None, parent=None):
-        self._name = name
-        self._parent = parent
-        self._children = set()
+import itertools
 
-    @property
-    def name(self):
-        return self._name
+class DummyBackend(Backend):
+    def __init__(self, url=None):
+        self.url = url or "dummy://"
+        self.buckets = []
 
-    @property
-    def parent(self):
-        return self._parent
+    def open(self, id):
+        return self.buckets[int(id)]
 
-    @property
-    def children(self):
-        return self._children
+    def create(self):
+        id = str(len(self.buckets))
+        url = self.url + "/" + id
+        bucket = DummyBucket(url, id)
+        self.buckets.append(bucket)
+        return bucket
+
+class DummyBucket:
+    def __init__(self, url, id):
+        self.url = url
+        self.id = id
+        self.tags = {}
     
-    def has(self, name):
-        return name in self._children
-
-    def open(self, name):
-        self._children.add(name)
-        return DummyDatabase(name, self)
-
-    def add(self, name, value):
-        self._children.add(name)
+    def tag(self, **tags):
+        for (k,v) in tags.items():
+            self.tags.setdefault(k, set()).update(v)
