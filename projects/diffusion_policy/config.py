@@ -12,7 +12,7 @@ def pendulum_diffusion():
         features=[128, 128, 64, 64, 32],
         obs_horizon=1,
         action_horizon=1,
-        diffusion_horizon=1,
+        action_padding=0,
         step_embed_dim=64,
     )
 
@@ -23,6 +23,6 @@ def quadrotor_diffusion():
         features=[128, 128, 64, 64, 32],
         obs_horizon=1,
         action_horizon=1,
-        diffusion_horizon=1,
+        action_padding=0,
         step_embed_dim=64,
     )

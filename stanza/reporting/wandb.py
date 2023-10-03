@@ -92,6 +92,11 @@ class WandbRun:
             batch=False, batch_lim=None):
         if step is not None:
             raise RuntimeError("Cannot add with steps with wandb backend!")
+        if isinstance(value, np.ndarray):
+            value = np.array(value)
+            if value.size == 1:
+                value = value.item()
+                self._run.summary[name] = value
         artifact = wandb.Artifact(name, type="")
         with artifact.new_file("data", mode="wb") as f:
             pickle.dump(value, f)
@@ -105,6 +110,9 @@ class WandbRun:
                 file = a.get_path("data").download()
                 with open(file, "rb") as f:
                     return pickle.load(f)
+        if name in self._run.summary:
+            return np.array(self._run.summary[name])
+        raise FileNotFoundError(f"Key {name} not found!")
 
     def log(self, data, step=None, batch=False):
         if batch:
@@ -118,9 +126,7 @@ class WandbRun:
                     Figure: lambda f: f.fig,
                     Video: lambda v: wandb.Video(np.array(v.data), fps=v.fps)
                 })
-            if self.prefix != '':
-                data = {self.prefix: data}
-            self.run.log(data, step=step)
+            self._run.log(data, step=step)
 
 def remap(obj, type_mapping):
     if isinstance(obj, dict):

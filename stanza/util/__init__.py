@@ -20,6 +20,55 @@ def extract_shifted(xs):
     later_xs = jax.tree_map(lambda x: x[1:], xs)
     return earlier_xs, later_xs
 
+def mat_jacobian(f, argnums=0):
+    def jac(*args):
+        flat_args = []
+        args_uf = []
+        for a in args:
+            x_flat, x_uf = jax.flatten_util.ravel_pytree(a)
+            flat_args.append(x_flat)
+            args_uf.append(x_uf)
+        def f_flat(*flat_args):
+            args = []
+            for a, uf in zip(flat_args, args_uf):
+                args.append(uf(a))
+            y = f(*args)
+            y_flat, _ = jax.flatten_util.ravel_pytree(y)
+            return y_flat
+        return jax.jacobian(f_flat, argnums=argnums)(x_flat)
+    return jac
+
+
+def map(f, vsize=None):
+    vf = jax.vmap(lambda args: f(*args))
+    def _f(*args):
+        N = jax.tree_flatten(args)[0][0].shape[0]
+        vs = N if vsize is None else vsize
+        N_padding = vs * ((N + vs - 1) // vs) - N
+        # pad the args
+        args = jax.tree_map(
+            lambda x: jnp.concatenate(
+                (x, jnp.zeros((N_padding,) + x.shape[1:], dtype=x.dtype)),
+                axis=0
+            ),
+            args
+        )
+        # reshape to vsize chunks
+        args = jax.tree_map(
+            lambda x: jnp.reshape(x, 
+                ((N + N_padding) // vsize, vsize) + x.shape[1:]),
+            args
+        )
+        res = jax.lax.map(vf, args)
+        # and get rid of the padding
+        res = jax.tree_map(
+            lambda x: jnp.reshape(
+                x, (-1,) + x.shape[2:]
+            )[:N], res
+        )
+        return res
+    return _f
+
 def check_nan(name, x, cb=None):
     def _cb(x, has_nans):
         if has_nans:

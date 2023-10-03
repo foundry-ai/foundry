@@ -58,10 +58,10 @@ class Repo:
         self._backend = Backend.get(url)
     
     def open(self, id):
-        return Bucket(self, impl=self._backend.open(id))
+        return Bucket(impl=self._backend.open(id))
     
     def create(self):
-        return Bucket(self, impl=self._backend.create())
+        return Bucket(impl=self._backend.create())
 
     @property
     def buckets(self):
@@ -105,16 +105,28 @@ _BUCKET_COUNTER = 0
 _BUCKETS = WeakValueDictionary()
 
 class Bucket:
-    def __init__(self, backend, *, impl=None):
-        global _BUCKET_COUNTER
-        self._jid = _BUCKET_COUNTER
-        _BUCKET_COUNTER = _BUCKET_COUNTER + 1
-        _BUCKETS[self._jid] = self
+    def __init__(self, *, jid=None, impl=None):
+        self._jid = jid
+        if impl is not None and jid is None:
+            global _BUCKET_COUNTER
+            self._jid = _BUCKET_COUNTER
+            _BUCKET_COUNTER = _BUCKET_COUNTER + 1
+            _BUCKETS[self._jid] = impl
+        self.__impl = impl
+    
+    @property
+    def _impl(self):
+        if self.__impl is None:
+            self.__impl = _BUCKETS[self._jid]
+        return self.__impl
+    
+    @property
+    def url(self):
+        return self._impl.url
 
-        self.backend = backend
-        self.id = impl.id
-        self.url = impl.url
-        self._impl = impl
+    @property
+    def id(self):
+        return self._impl.id
     
     @property
     def creation_time(self):
@@ -151,12 +163,12 @@ class Bucket:
     @staticmethod
     def _log_cb(args, transforms, batch=False):
         handle, data, iteration, batch_n = args
-        db = _BUCKETS[handle.item()]
+        impl = _BUCKETS[handle.item()]
         # if there is an limit to the batch, get the last batch_n
         # from the buffer
         if batch and batch_n is not None:
             data = jax.tree_map(lambda x: x[-batch_n:], data)
-        db._impl.log(data, step=iteration, batch=batch)
+        impl.log(data, step=iteration, batch=batch)
 
     def log(self, data, step=None, batch=False, batch_n=None):
         jax.experimental.host_callback.id_tap(
@@ -164,7 +176,7 @@ class Bucket:
 
 jax.tree_util.register_pytree_node(
     Bucket, lambda x: ((x._jid,), None),
-    lambda _, xs: _BUCKETS[xs[0]]
+    lambda _, xs: Bucket(jid=xs[0])
 )
 
 @dataclass(jax=True)
@@ -215,7 +227,7 @@ class BucketLogHook:
             state.iteration != prev_iteration)
 
         def do_log():
-            self.handle.log(stat_buffer, iters, batch=True, batch_n=elems)
+            self.bucket.log(stat_buffer, iters, batch=True, batch_n=elems)
             return 0
         elems = jax.lax.cond(
             jnp.logical_or(elems >= self.buffer, done),

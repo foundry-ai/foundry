@@ -7,11 +7,13 @@ from stanza.data.normalizer import LinearNormalizer
 from stanza.dataclasses import replace
 
 import stanza.policies as policies
+import stanza.util
 
 import jax
 import jax.numpy as jnp
 
-def load_data(data_db, config):
+def load_data(data_db, num_trajectories,
+              obs_horizon, action_horizon, action_padding):
     logger.info("Reading data...")
     data = data_db.get("trajectories")
     # chunk the data and flatten
@@ -19,8 +21,8 @@ def load_data(data_db, config):
     val_len = min(data.length/2, 20)
     val_data = PyTreeData.from_data(data[-val_len:], chunk_size=64)
     data = data[:-val_len]
-    if config.num_trajectories is not None:
-        data = data[:config.num_trajectories]
+    if num_trajectories is not None:
+        data = data[:num_trajectories]
     data = PyTreeData.from_data(data, chunk_size=64)
 
     data_flat = PyTreeData.from_data(data.flatten(), chunk_size=4096)
@@ -38,21 +40,41 @@ def load_data(data_db, config):
         # the observations and actions
         traj = traj.map(lambda x: replace(x, state=None))
         traj = chunk_data(traj,
-            chunk_size=config.diffusion_horizon, 
-            start_padding=config.obs_horizon - 1,
-            end_padding=config.action_horizon - 1)
+            chunk_size=obs_horizon + action_horizon + action_padding - 1,
+            start_padding=obs_horizon - 1,
+            end_padding=action_horizon - 1)
+        def slice_chunk(x):
+            obs = jax.tree_map(lambda x: x[:obs_horizon], x.observation)
+            return replace(x, observation=obs)
+        traj = traj.map(slice_chunk)
         return traj
     data = data.map(chunk)
     val_data = val_data.map(chunk)
-
     # Load the data into a PyTree
     data = PyTreeData.from_data(data.flatten(), chunk_size=4096)
     val_data = PyTreeData.from_data(val_data.flatten(), chunk_size=4096)
     logger.info("Data size: {}",
         sum(jax.tree_util.tree_leaves(jax.tree_map(lambda x: x.size*x.itemsize, data.data))))
-    logger.info("Data Loaded! Computing normalizer")
-    logger.info("Normalizer computed")
     return data, val_data, val_trajs, normalizer
+
+def knn_data(data, n):
+    data = data.data
+    # make a distance matrix
+    def nearest(x):
+        dists = jax.vmap(stanza.util.l2_norm_squared, in_axes=(0, None))(
+            data.observation, x.observation
+        )
+        _, indices = jax.lax.top_k(dists, n)
+        neigh = jax.tree_map(lambda x: jnp.take(x, indices, 
+                                unique_indices=True, axis=0), data)
+        neigh = replace(neigh, info=None)
+        return neigh
+    # find the nearest for every data point
+    knn = stanza.util.map(nearest, vsize=128)(data)
+    data = replace(
+        data, info=replace(data.info, knn=knn)
+    )
+    return PyTreeData(data)
 
 def eval(val_trajs, env, policy, rng_key):
     x0s = jax.tree_map(lambda x: x[:,0], val_trajs.states)

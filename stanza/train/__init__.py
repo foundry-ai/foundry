@@ -60,8 +60,6 @@ def _trainer_loss_fn(loss_fn, fn_state, rng_key, batch, fn_params):
     fn_state, loss, stats = loss_fn(fn_state, fn_params, rng_key, batch)
     return loss, (fn_state, stats)
 
-
-
 @dataclass(jax=True, kw_only=True)
 class Trainer(TrainConfig):
     @staticmethod

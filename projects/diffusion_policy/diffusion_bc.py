@@ -48,13 +48,13 @@ class Config:
 
     obs_horizon: int = 2
     action_horizon: int = 8
-    diffusion_horizon: int = 16
+    action_padding: int = 8
 
     num_trajectories: int = None
     smoothing_sigma: float = 0
 
     diffuse_gains: bool = False
-    regularize_gains_lambda: float = 0.0
+    jac_lambda: float = 0.0
 
     net : str = "unet"
     features: Tuple[int] = (32, 64, 128)
@@ -95,7 +95,7 @@ def loss(config, net, diffuser, normalizer,
 
     loss = noise_loss
 
-    if config.regularize_gains_lambda > 0 or True:
+    if config.jac_lambda > 0 or True:
         K_normalizer = normalizer.map(lambda x: x.info.K)
         obs_normalizer = normalizer.map(lambda x: x.observation)
         action_normalizer = normalizer.map(lambda x: x.action)
@@ -120,7 +120,7 @@ def loss(config, net, diffuser, normalizer,
     else:
         jac_loss = 0.
 
-    loss = loss + config.regularize_gains_lambda*jac_loss
+    loss = loss + config.jac_lambda*jac_loss
 
     stats = {
         "loss": loss,
@@ -146,7 +146,11 @@ def train_policy(config, repo):
     logger.info("Using data [blue]{}[/blue] with config: {}",
             data_db.url, config)
     with jax.default_device(jax.devices("cpu")[0]):
-        data, val_data, val_trajs, normalizer = load_data(data_db, config)
+        data, val_data, val_trajs, normalizer = load_data(
+            data_db, num_trajectories=config.num_trajectories,
+            obs_horizon=config.obs_horizon,
+            action_horizon=config.action_horizon,
+            action_padding=config.action_padding)
     # move to GPU
     data, val_data, val_trajs, normalizer = jax.device_put(
         (data, val_data, val_trajs, normalizer), device=jax.devices("gpu")[0])
@@ -234,9 +238,10 @@ def train_policy(config, repo):
     exp.add('final_checkpoint_ema', ema_params)
 
     policy = make_diffusion_policy(
-        Partial(net.apply, params), diffuser, normalizer,
+        Partial(net.apply, ema_params), diffuser, normalizer,
         obs_chunk_length=config.obs_horizon,
-        action_chunk_length=config.diffusion_horizon,
+        action_chunk_length=config.obs_horizon + \
+            config.action_horizon + config.action_padding - 1,
         action_horizon_offset=config.obs_horizon - 1,
         action_horizon_length=config.action_horizon
     )
@@ -251,7 +256,7 @@ def make_diffusion_policy(net_fn, diffuser, normalizer,
                           obs_chunk_length,
                           action_chunk_length, action_horizon_offset, 
                           action_horizon_length, diffuse_gains=False, 
-                          gains_model=None, noise=0.):
+                          noise=0.):
     obs_norm = normalizer.map(lambda x: x.observation)
     action_norm = normalizer.map(lambda x: x.action)
     gain_norm = normalizer.map(lambda x: x.info.K) \
@@ -284,9 +289,11 @@ def make_diffusion_policy(net_fn, diffuser, normalizer,
             sample = action_sample_traj, states_sample_traj, gain_sample_traj
         else:
             sample = action_sample_traj, None, None
-        sample = diffuser.sample(sample_rng, model_fn,
-                sample, 
-                num_steps=diffuser.num_steps)
+        sample = diffuser.sample(
+            sample_rng, model_fn,
+            sample, 
+            num_steps=diffuser.num_steps
+        )
         actions, states, gains = sample
         actions = action_norm.unnormalize(actions)
         start = action_horizon_offset

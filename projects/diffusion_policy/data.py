@@ -80,48 +80,6 @@ def generate_data(config, repo):
     trajectories = Data.from_pytree(trajectories)
     data.add("trajectories", trajectories)
 
-def load_data(data_db, config):
-    logger.info("Reading data...")
-    data = data_db.get("trajectories")
-    # chunk the data and flatten
-    logger.info("Chunking trajectories")
-    val_data = PyTreeData.from_data(data[-20:], chunk_size=64)
-    data = data[:-20]
-    if config.num_trajectories is not None:
-        data = data[:config.num_trajectories]
-    data = PyTreeData.from_data(data, chunk_size=64)
-
-    data_flat = PyTreeData.from_data(data.flatten(), chunk_size=4096)
-    normalizer = LinearNormalizer.from_data(data_flat)
-
-    val_data_pt = val_data.data.data
-    val_trajs = policies.Rollout(
-        states=val_data_pt.state,
-        actions=val_data_pt.action,
-        observations=val_data_pt.observation,
-        info=val_data_pt.info
-    )
-    def chunk(traj):
-        # Throw away the state, we use only
-        # the observations and actions
-        traj = traj.map(lambda x: replace(x, state=None))
-        traj = chunk_data(traj,
-            chunk_size=config.diffusion_horizon, 
-            start_padding=config.obs_horizon - 1,
-            end_padding=config.action_horizon - 1)
-        return traj
-    data = data.map(chunk)
-    val_data = val_data.map(chunk)
-
-    # Load the data into a PyTree
-    data = PyTreeData.from_data(data.flatten(), chunk_size=4096)
-    val_data = PyTreeData.from_data(val_data.flatten(), chunk_size=4096)
-    logger.info("Data size: {}",
-        sum(jax.tree_util.tree_leaves(jax.tree_map(lambda x: x.size*x.itemsize, data.data))))
-    logger.info("Data Loaded! Computing normalizer")
-    logger.info("Normalizer computed")
-    return data, val_data, val_trajs, normalizer
-
 def batch_rollout(batch_size, rng_keys, rollout_fn):
     N = rng_keys.shape[0]
     batch_size = batch_size or N
