@@ -32,7 +32,7 @@ class BraxEnv(Environment):
     def reward(self, state, action, next_state):
         return next_state.reward
     
-    def render(self, state, mode="image"):
+    def render(self, state, *, width=256, height=256, mode="image", **kwargs):
         if mode == "html":
             from brax.io import html
             if state.obs.ndim == 1:
@@ -43,6 +43,8 @@ class BraxEnv(Environment):
             states = [jax.tree_map(lambda x: x[i], state).pipeline_state for i in range(state.obs.shape[0])]
             sys = self.env.sys.replace(dt=self.env.dt)
             return html.render(sys, states)
+        else:
+            raise NotImplementedError("Mode not supported")
 
     def done(self, state):
         return state.done

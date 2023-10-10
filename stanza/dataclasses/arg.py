@@ -31,15 +31,20 @@ class SimpleArg(Arg):
     
     def add_to_parser(self, parser, prefix=""):
         arg = f"{prefix}{self.name}"
-        if not self.positional:
-            arg = f"--{arg}"
         parser.add_argument(
-            arg, type=str, help=self.help if self.help else ""
+            f"--{arg}", type=str, help=self.help if self.help else "",
         )
+        if self.positional:
+            parser.add_argument(
+                arg.capitalize(), type=str, help=self.help if self.help else "",
+                nargs="?"
+            )
 
     def parse_result(self, args, prefix=None):
         arg = f"{prefix}{self.name}" if prefix else self.name
         val = getattr(args, arg)
+        if self.positional and val is None:
+            val = getattr(args, arg.capitalize())
         return self.parser(val) if val is not None else None
 
 class FlagArg(Arg):

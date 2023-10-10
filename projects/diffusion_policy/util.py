@@ -38,7 +38,7 @@ def load_data(data_db, num_trajectories,
     def chunk(traj):
         # Throw away the state, we use only
         # the observations and actions
-        traj = traj.map(lambda x: replace(x, state=None))
+        traj = traj.map(lambda x: replace(x, state=x.observation))
         traj = chunk_data(traj,
             chunk_size=obs_horizon + action_horizon + action_padding - 1,
             start_padding=obs_horizon - 1,

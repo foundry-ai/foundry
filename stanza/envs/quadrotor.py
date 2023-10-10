@@ -99,18 +99,19 @@ class QuadrotorEnvironment(Environment):
                 jnp.array([0, 0]),
                 jnp.array([quad_width, quad_height])
             )
-        left_motor = canvas.rectangle(
-                jnp.array([-quad_width/2, 0]),
-                jnp.array([quad_width/5, quad_height*2])
-            )
-        right_motor = canvas.rectangle(
-                jnp.array([quad_width/2, 0]),
-                jnp.array([quad_width/5, quad_height*2])
-            )
+        motor = canvas.stack(
+            canvas.fill(canvas.rectangle([0,100-0.75*quad_height],
+                    [quad_width/5, quad_height*0.5]), 
+                    color=jnp.array([0.9,0.1,0.1])),
+            canvas.fill(canvas.rectangle([0,0],
+                    [quad_width/5, quad_height*1.5]), 
+                    color=jnp.array([0.2,0.2,0.2])),
+            # red cap
+        )
         quadrotor = canvas.stack(
             canvas.fill(frame, color=jnp.array([0.,0.,0.])),
-            canvas.fill(left_motor, color=jnp.array([0.2,0.2,0.2])),
-            canvas.fill(right_motor, color=jnp.array([0.2,0.2,0.2])),
+            canvas.transform(motor, translation=jnp.array([-quad_width/2,0.])),
+            canvas.transform(motor, translation=jnp.array([quad_width/2,0.])),
         )
         quadrotor = canvas.transform(
             quadrotor,
@@ -119,7 +120,7 @@ class QuadrotorEnvironment(Environment):
         )
         sdf = canvas.transform(
             quadrotor,
-            translation=jnp.array([width/2, height/2]),
+            translation=jnp.array([1, 1]),
             scale=jnp.array([width/2, height/2])
         )
         image = canvas.paint(image, sdf) 

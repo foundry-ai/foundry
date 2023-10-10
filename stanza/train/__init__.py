@@ -2,7 +2,7 @@ from stanza import Partial
 from stanza.dataclasses import dataclass, field, \
     replace, unpack, combine
 from stanza.util.logging import logger
-from stanza.util.loop import LoopState, run_hooks, init_hooks as _init_hooks, loop
+from stanza.util.loop import LoopState, run_hooks, finish_hooks, init_hooks as _init_hooks, loop
 from stanza.data import Data, Iterator, PyTreeData
 
 from jax.random import PRNGKey
@@ -125,7 +125,6 @@ class Trainer(TrainConfig):
             epoch_fn = Partial(cls.train_epoch, dataset=dataset, jit=False)
         # populate the last_stats if necessary
         state = loop(epoch_fn, state, jit=jit)
-        state = run_hooks(state)
         logger.trace("Done tracing training", only_tracing=True)
         return state
     
@@ -180,6 +179,7 @@ class Trainer(TrainConfig):
         state = self.init(dataset[0], **kwargs)
         run = jax.jit(self.run) if jit else partial(self.run, jit=False)
         state = run(state, dataset)
+        state = finish_hooks(state)
         results = TrainResults(
             fn_params = state.fn_params,
             fn_state = state.fn_state,
@@ -289,3 +289,50 @@ def _batch_loss_fn(loss_fn, fn_state, fn_params,
 
 def batch_loss(loss_fn):
     return Partial(_batch_loss_fn, Partial(loss_fn))
+
+
+from stanza.util.loop import every_kth_epoch, every_iteration, every_kth_iteration
+
+# Make a trainer, quickly
+def express(*, log_condition=every_kth_iteration(10), 
+            console_interval=100,
+            bucket_condition=every_iteration,
+            bucket_buffer=100, bucket=None,
+            validate_dataset=None, validate_rng=None,
+            validate_batch_size=None,
+            validate_condition=every_kth_epoch(1),
+            train_hooks=[],
+            **kwargs):
+    extra_hooks = []
+    if validate_dataset is not None:
+        assert validate_rng is not None
+        from stanza.train.validate import Validator
+        validator = Validator(
+            rng_key=validate_rng,
+            condition=validate_condition,
+            dataset=validate_dataset,
+            batch_size=validate_batch_size
+        )
+        extra_hooks.append(validator)
+    if bucket is not None:
+        from stanza.reporting import BucketLogHook
+        extra_hooks.append(BucketLogHook(bucket,
+            buffer=bucket_buffer, condition_fn=bucket_condition))
+    if log_condition is not None:
+        from stanza.util.logging import LoggerHook
+        print_hook = LoggerHook(every_kth_iteration(500))
+        extra_hooks.append(print_hook)
+    if console_interval is not None:
+        from stanza.util.rich import (ConsoleDisplay, StatisticsTable, 
+                                    LoopProgressBar, EpochProgressBar)
+        display = ConsoleDisplay()
+        display.add(StatisticsTable(), interval=100)
+        display.add(LoopProgressBar(), interval=100)
+        display.add(EpochProgressBar(), interval=100)
+        extra_hooks.append(display)
+    train_hooks = list(train_hooks)
+    train_hooks.extend(extra_hooks)
+    return Trainer(
+        train_hooks=train_hooks,
+        **kwargs
+    )

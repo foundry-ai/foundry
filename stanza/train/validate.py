@@ -2,14 +2,14 @@ from stanza.data import Data, PyTreeData
 from stanza.dataclasses import dataclass, field, replace
 from jax.random import PRNGKey
 from typing import Callable
-from stanza.util.loop import every_epoch
+from stanza.util.loop import every_epoch, Hook
 
 import jax.numpy as jnp
 import jax
 import chex
 
 @dataclass(jax=True)
-class Validator:
+class Validator(Hook):
     rng_key: PRNGKey
     dataset: Data
     condition : Callable = every_epoch
@@ -37,7 +37,7 @@ class Validator:
         state = replace(state, last_stats=last_stats)
         return (self.rng_key, state.iteration), state
 
-    def __call__(self, hs, state):
+    def run(self, hs, state):
         _, iteration = hs
         stat_fn = self.stat_fn if self.stat_fn is not None else \
             lambda s, p, r, b: state.config.loss_fn(s,p,r,b)[2]
@@ -46,8 +46,9 @@ class Validator:
             rng_key, sk = jax.random.split(rng_key)
 
             if self.batch_size is not None:
+                batch_size = min(self.dataset.length, self.batch_size)
                 dataset = self.dataset.shuffle(sk)
-                dataset = dataset.batch(self.batch_size)
+                dataset = dataset.batch(batch_size)
                 def scan_fn(carry, batch):
                     batch = PyTreeData.from_data(batch).data
                     running_stats, total = carry
@@ -56,9 +57,9 @@ class Validator:
                         state.fn_params, 
                         rng_key, batch
                     )
-                    new_total = total + self.batch_size
+                    new_total = total + batch_size
                     running_stats = jax.tree_util.tree_map(
-                        lambda x, y: x*(total/new_total) + y*(self.batch_size/new_total),
+                        lambda x, y: x*(total/new_total) + y*(batch_size/new_total),
                         running_stats, stats
                     )
                     return (running_stats, new_total)

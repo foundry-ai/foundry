@@ -20,7 +20,6 @@ from stanza.solver.newton import NewtonSolver
 from stanza.solver.ilqr import iLQRSolver
 from stanza.policies import Actions, PolicyOutput
 
-
 import jax.experimental.host_callback
 
 # A special MinimizeMPC objective

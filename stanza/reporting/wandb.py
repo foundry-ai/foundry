@@ -3,6 +3,7 @@ import jax
 import dateutil.parser
 
 from stanza.reporting import Backend, Video, Figure
+import jax.numpy as jnp
 import numpy as np
 import os
 import pickle
@@ -92,7 +93,8 @@ class WandbRun:
             batch=False, batch_lim=None):
         if step is not None:
             raise RuntimeError("Cannot add with steps with wandb backend!")
-        if isinstance(value, np.ndarray):
+        if isinstance(value, jnp.ndarray) \
+                or isinstance(value, np.ndarray):
             value = np.array(value)
             if value.size == 1:
                 value = value.item()
@@ -122,22 +124,20 @@ class WandbRun:
                 s = step[i] if step is not None else None
                 self.log(x, step=s, batch=False)
         else:
-            data = remap(data, {
+            def convert_video(v):
+                # convert NHWC -> NCHW
+                data = v.data.transpose((0, 3, 1, 2))
+                if data.dtype == jnp.float32:
+                    data = (255*data).astype(jnp.uint8)
+                if data.shape[-1] == 4:
+                    data = data[...,:3]
+                return wandb.Video(data, fps=v.fps)
+            data = _remap(data, {
                     Figure: lambda f: f.fig,
-                    Video: lambda v: wandb.Video(np.array(v.data), fps=v.fps)
+                    Video: convert_video
                 })
             self._run.log(data, step=step)
 
-def remap(obj, type_mapping):
-    if isinstance(obj, dict):
-        return { k: remap(v, type_mapping) for (k,v) in obj.items() }
-    elif isinstance(obj, list):
-        return [ remap(v, type_mapping) for v in obj ]
-    elif isinstance(obj, tuple):
-        return tuple([ remap(v, type_mapping) for v in obj ])
-    elif isinstance(obj, np.ndarray):
-        return np.array(obj)
-    elif type(obj) in type_mapping:
-        return type_mapping[type(obj)](obj)
-    else:
-        return obj
+def _remap(tree, type_mapping):
+    return jax.tree_map(lambda x: type_mapping[type(x)](x) if type(x) in type_mapping else x, tree, 
+                 is_leaf=lambda x: type(x) in type_mapping)

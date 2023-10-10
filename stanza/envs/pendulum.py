@@ -90,20 +90,23 @@ class PendulumEnv(Environment):
         # reward of 1 == perfect
         return jnp.exp(10*total)/10
 
-    def render(self, state, *, width=256, height=256):
-        angle = jnp.squeeze(state.angle)
-        image = jnp.ones((width, height, 3))
-        x, y = jnp.sin(angle), jnp.cos(angle)
-        center = jnp.array([width/2, height/2])
-        circle_loc = center + jnp.array([width*2/6, height*2/6])*jnp.stack((x,y))
-        stick = canvas.segment(center, circle_loc, thickness=2)
-        circle = canvas.circle(circle_loc, radius=width/24)
-        sdf = canvas.stack(
-            canvas.fill(stick, color=jnp.array([0.,0.,0.])),
-            canvas.fill(circle, color=jnp.array([1.,0.,0.]))
-        )
-        image = canvas.paint(image, sdf) 
-        return image
+    def render(self, state, *, width=256, height=256, mode="image"):
+        if mode == "image":
+            angle = jnp.squeeze(state.angle)
+            image = jnp.ones((width, height, 3))
+            x, y = jnp.sin(angle), jnp.cos(angle)
+            center = jnp.array([width/2, height/2])
+            circle_loc = center + jnp.array([width*2/6, height*2/6])*jnp.stack((x,y))
+            stick = canvas.segment(center, circle_loc, thickness=2)
+            circle = canvas.circle(circle_loc, radius=width/24)
+            sdf = canvas.stack(
+                canvas.fill(stick, color=jnp.array([0.,0.,0.])),
+                canvas.fill(circle, color=jnp.array([1.,0.,0.]))
+            )
+            image = canvas.paint(image, sdf) 
+            return image
+        else:
+            raise NotImplementedError("Mode not supported")
     
     def done(self, state):
         end_state = self.target_goal

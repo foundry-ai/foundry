@@ -1,8 +1,8 @@
 import numpy as np
 import jax.numpy as jnp
 
-
 from stanza.dataclasses import dataclass, field
+from stanza.util.loop import Hook
 
 import jax
 import stanza.util.loop
@@ -161,8 +161,7 @@ class Bucket:
             append=append, step=step, batch=batch)
 
     @staticmethod
-    def _log_cb(args, transforms, batch=False):
-        handle, data, iteration, batch_n = args
+    def _log_cb(handle, data, iteration, batch_n, batch=False):
         impl = _BUCKETS[handle.item()]
         # if there is an limit to the batch, get the last batch_n
         # from the buffer
@@ -171,8 +170,10 @@ class Bucket:
         impl.log(data, step=iteration, batch=batch)
 
     def log(self, data, step=None, batch=False, batch_n=None):
-        jax.experimental.host_callback.id_tap(
-            stanza.partial(self._log_cb, batch=batch), (self._jid, data, step, batch_n))
+        import jax.experimental
+        jax.experimental.io_callback(
+            stanza.partial(self._log_cb, batch=batch), (),
+            self._jid, data, step, batch_n, ordered=True)
 
 jax.tree_util.register_pytree_node(
     Bucket, lambda x: ((x._jid,), None),
@@ -180,7 +181,7 @@ jax.tree_util.register_pytree_node(
 )
 
 @dataclass(jax=True)
-class BucketLogHook:
+class BucketLogHook(Hook):
     bucket: Bucket
 
     stat_fn: Callable = lambda stat_state, state: (stat_state, state.last_stats)
@@ -201,7 +202,7 @@ class BucketLogHook:
         iters = jnp.zeros((self.buffer,), dtype=jnp.int32)
         return (stat_buffer, jnp.array(0), iters, state.iteration, stat_fn_state), state
 
-    def __call__(self, hook_state, state):
+    def run(self, hook_state, state):
         if state.last_stats is None:
             return hook_state, state
         stat_buffer, elems, iters, prev_iteration, stat_fn_state = hook_state

@@ -63,72 +63,19 @@ def loss_fn(_state, params, rng_key, sample):
 
 from stanza import Partial
 from stanza.train import Trainer, batch_loss
-from stanza.train.validate import Validator
-from stanza.util.loop import every_kth_iteration, every_iteration, LoggerHook
-from stanza.util.rich import ConsoleDisplay, StatisticsTable, LoopProgress
-# import wandb
-# wandb.init(project="train_test")
+from stanza.util.rich import ConsoleDisplay, StatisticsTable, LoopProgressBar
 
 loss_fn = batch_loss(Partial(loss_fn))
 
 display = ConsoleDisplay()
-display.add("train", StatisticsTable(), interval=100)
-display.add("train", LoopProgress(), interval=100)
+display.add(StatisticsTable(), interval=100)
+display.add(LoopProgressBar(), interval=100)
 
-from stanza.reporting.wandb import WandbDatabase
-db = WandbDatabase("dpfrommer-projects/examples")
-db = db.create()
-logger.info(f"Logging to [blue]{db.name}[/blue]")
-
-validator = Validator(PRNGKey(40), test_data, every_iteration)
-
-from stanza.reporting.jax import JaxDBScope
-db = JaxDBScope(db)
-print_hook = LoggerHook(every_kth_iteration(100))
-
-with display as w, db as db:
-    trainer = Trainer(max_epochs=10, 
-            batch_size=128, optimizer=optimizer)
-    init_params = model.init(PRNGKey(7), train_data[0][0])
-    logger_hook = db.statistic_logging_hook(
-       log_cond=every_kth_iteration(1), buffer=100)
-    res = trainer.train(
-        train_data, loss_fn=loss_fn,
-        rng_key=PRNGKey(42), init_params=init_params,
-        train_hooks=[validator, w.train, 
-                     logger_hook, print_hook], 
-        jit=True
-    )
-
-# run manually and compare...
-sys.exit(0)
-optimizer = trainer.optimizer
-from stanza.util.random import PRNGSequence
-rng = PRNGSequence(42)
-batch_size = 10
-params = init_params
-opt_state = optimizer.init(params)
-
-def loss(params, batch):
-   _, loss, stats = loss_fn(None, params, None, batch)
-   return loss, stats
-
-loss_grad = jax.jit(jax.grad(loss, argnums=0, has_aux=True))
-for e in range(trainer.epochs):
-    data = dataset.data
-    idx = jax.random.permutation(next(rng), dataset.length)
-    shuffled_data = jax.tree_map(
-      lambda x: jnp.take(x, idx, axis=0, unique_indices=True),
-      data)
-    batched = jax.tree_map(
-       lambda x: jnp.reshape(x, (-1, batch_size) + x.shape[1:]),
-        shuffled_data
-    )
-    batches = dataset.length // 10
-    for i in range(batches):
-        batch = jax.tree_map(lambda x: x[i], batched)
-        grad, stats = loss_grad(params, batch)
-        updates, opt_state = optimizer.update(grad, opt_state, params)
-        params = optax.apply_updates(params, updates)
-    if e % 100 == 0:
-        logger.info("{}", stats)
+trainer = Trainer(max_epochs=10, 
+        batch_size=128, optimizer=optimizer)
+init_params = model.init(PRNGKey(7), train_data[0][0])
+res = trainer.train(
+    train_data, loss_fn=loss_fn,
+    rng_key=PRNGKey(42), init_params=init_params,
+    train_hooks=[display], jit=True
+)

@@ -8,7 +8,7 @@ from functools import partial
 import jax.experimental.host_callback
 import rich.console
 from rich.markup import escape
-from typing import Any, Optional
+from typing import List, Any, Optional
 
 # Topic management
 
@@ -95,9 +95,6 @@ def _log(*objects: Any,
 # This will bypass logging at compile time
 # if the selected "topic" have not been enabled
 class JaxLogger:
-    def __init__(self):
-        pass
-
     # Host-side logging
     def _log_callback(self, level, msg, reg_comp, jax_comp,
                         tracing=False, highlight=True, filename=None, line_no=None):
@@ -174,43 +171,41 @@ class JaxLogger:
     def error(self, *args, **kwargs):
         return self.log(ERROR, *args, **kwargs, _stack_offset=2)
 
-# The default logger (note that it is not initialized!)
 logger = JaxLogger()
 
-# ---------------- ProgressBars ---------------
+def _flat_items(d, prefix=''):
+    for (k,v) in d.items():
+        if isinstance(v, dict):
+            yield from _flat_items(v, prefix=f'{prefix}{k}.')
+        else:
+            yield (f'{prefix}{k}',v)
 
-class ProgressBar:
-    def __init__(self, topic, total):
-        self.topic = topic
-        self.total = total
-        jax.debug.callback(self._create, total, ordered=True)
+from stanza.dataclasses import dataclass
+from stanza.util.loop import Hook
+from typing import Callable
 
-    def inc(self, amt=1, stats={}):
-        # TODO: We need to get the debug callback's vmap-transform
-        # unrolling
-        jax.debug.callback(self._inc, amt, stats, ordered=True)
+import jax.numpy as jnp
 
-    # TODO: Figure out what to do about close()
-    # getting optimized out...
-    def close(self):
-        jax.debug.callback(self._close, ordered=True)
+@dataclass
+class LoggerHook(Hook):
+    condition_fn: Any
+    stat_fn: Callable = lambda state: state.last_stats
 
-    def _create(self, total):
-        pass
+    def init(self, state):
+        return 0, state
 
-    def _inc(self, amt, stats):
-        postfix = ', '.join([f'{k}: {v.item():8.3}' for (k,v) in stats.items()])
-        console.log(f'{self.topic} - {postfix}')
-
-    def _close(self):
-        pass
-
-    def __enter__(self):
-        return self
+    def run(self, hs, state):
+        def log():
+            stats = self.stat_fn(state)
+            flat_stats = dict(_flat_items(stats))
+            s = [f"{k}: {{}}" for k in flat_stats.keys()]
+            fmt = "\n".join(s)
+            logger.info("Iteration {}:\n" + fmt, state.iteration, *flat_stats.values())
+        jax.lax.cond(jnp.logical_and(
+            self.condition_fn(state),
+            state.iteration != hs
+        ), log, lambda: None)
+        return state.iteration, state
     
-    def __exit__(self, _0, _1, _2):
-        self.close()
-
-# Handy ergonomic function
-def pbar(topic, total):
-    return ProgressBar(topic, total)
+    def finalize(self, hook_state, state):
+        return hook_state, state

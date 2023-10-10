@@ -1,4 +1,3 @@
-from stanza.dataclasses import dataclass
 from rich.live import Live as RichLive
 from rich.text import Text as RichText
 from rich.console import Group as RichGroup
@@ -11,66 +10,164 @@ from rich.progress import (
 from rich.table import Table as RichTable
 from rich.style import Style
 
-from stanza import partial, Partial
-from typing import Dict, Any
+from typing import Dict, List, Any
+
+import abc
+from abc import abstractmethod
+from weakref import WeakValueDictionary
+
+from stanza.util.loop import Hook
+from stanza.dataclasses import dataclass, field
 
 import jax
-import abc
 import jax.numpy as jnp
+import jax.experimental
 
-from abc import abstractmethod
-from jax.experimental.host_callback import id_tap, barrier_wait
+# The live management, so
+# we can have multiple live environments
 
-_DISPLAYS = {}
-_counter = 0
+_LIVE = None
+_LIVE_GROUP = None
+_LIVE_STACK = []
 
-def _cpu_callback(name, interval, args, _):
-    id, extracted = args
-    id = id.item()
-    display = _DISPLAYS[id]
-    display.update(name, interval, extracted)
+def push_live(*renderables):
+    _LIVE_STACK.append(renderables)
+    r = [r for s in _LIVE_STACK for r in s]
+    global _LIVE
+    global _LIVE_GROUP
+    if _LIVE is None:
+        _LIVE_GROUP = RichGroup(*r)
+        _LIVE = RichLive(_LIVE_GROUP) 
+        # enter the live environment
+        _LIVE.__enter__()
+    else:
+        _LIVE_GROUP._renderables = r
 
-def _split(iterable):
-    return tuple(zip(*iterable))
+def pop_live():
+    _LIVE_STACK.pop()
+    global _LIVE
+    global _LIVE_GROUP
+    if len(_LIVE_STACK) == 0:
+        _LIVE.__exit__(None, None, None)
+        _LIVE = None
+        _LIVE_GROUP = None
+    else:
+        r = [r for s in _LIVE_STACK for r in s]
+        _LIVE_GROUP._renderables = r
+
+
+# The host-side object
+@dataclass
+class _ConsoleDisplay:
+    elements: List = field(default_factory=list)
+    intervals: List = field(default_factory=dict)
+
+    def add_element(self, element, interval):
+        self.elements.append(element)
+        self.intervals.setdefault(interval, []).append(element)
+
+    # Make "hashable" using the id
+    def __hash__(self):
+        return id(self)
 
 @dataclass(jax=True)
-class RichHook:
-    id: jnp.array
-    extractors: Dict[str, Any]
+class ConsoleDisplay(Hook):
+    display: _ConsoleDisplay = field(
+        default_factory=_ConsoleDisplay,
+        jax_static=True
+    )
 
-    def hook(self, name, hook_state, state):
-        intervals = self.extractors[name]
-        hook_state = {} if hook_state is None else hook_state
-        new_hook_state = dict()
-        for (interval, extractors) in intervals.items():
-            hs = hook_state.get(interval, [None]*len(extractors))
-            hs, values = _split([v(hs, state) for hs, v in zip(hs, extractors)])
-            def cb(state):
-                state = id_tap(partial(_cpu_callback, name, interval), 
-                            (self.id, values), result=state)
-                return state
-            do_cb = jnp.logical_or(state.iteration % interval == 0,
-                                state.iteration == state.max_iterations)
-            state = jax.lax.cond(do_cb, cb, lambda x: x, state)
-            new_hook_state[interval] = hs
-        return None, state
+    def add(self, elements, interval=1):
+        self.display.add_element(elements, interval)
     
-    def __getattr__(self, name: str) -> Any:
-        if name in ["id", "extractors"]:
-            super().__getattribute__(name)
-        if not name in self.extractors:
-            raise AttributeError(f"hook {name} not defined!")
-        hook = partial(Partial(type(self).hook, self), name)
-        return hook
+    @staticmethod
+    def _host_make_live(disp):
+        r = [r for e in disp.display.elements 
+               for r in e.renderables]
+        push_live(*r)
+
+    @staticmethod
+    def _host_stop_live():
+        pop_live()
     
+    @staticmethod
+    def _host_update(disp, interval, updates):
+        elements = disp.display.intervals[interval.item()]
+        for (element, update) in zip(elements, updates):
+            element.handle_updates(update)
+
+    def init(self, state):
+        jax.experimental.io_callback(self._host_make_live, (), 
+                                     self, ordered=True)
+        element_states = []
+        for element in self.display.elements:
+            element_states.append(element.init_state(state))
+        hook_state = -1, element_states
+        return hook_state, state
+    
+    def run(self, hook_state, state):
+        iteration, element_states = hook_state
+        def do_update():
+            new_es = []
+            elem_states = {}
+            for (element, es) in zip(self.display.elements, element_states):
+                new_es.append(
+                    element.update_state(es, state)
+                )
+                elem_states[id(element)] = new_es[-1]
+            for (interval, elements) in self.display.intervals.items():
+                def do_callback():
+                    es = [elem_states[id(e)] for e in elements]
+                    updates = list([e.compute_updates(es, state) for e, es in zip(elements, es)])
+                    jax.experimental.io_callback(
+                        self._host_update, (), self, interval, updates, ordered=True
+                    )
+                jax.lax.cond(iteration % interval == 0,
+                    do_callback, lambda: None)
+            return state.iteration, new_es
+        new_hook_state = jax.lax.cond(iteration != state.iteration,
+            do_update, lambda: hook_state)
+        return new_hook_state, state
+
+    def finalize(self, hook_state, state):
+        _, element_states = hook_state
+        # do a final update before closing the live environment
+        elem_states = {}
+        for (e, es) in zip(self.display.elements, element_states):
+            elem_states[id(e)] = es
+
+        for (interval, elements) in self.display.intervals.items():
+            es = [elem_states[id(e)] for e in elements]
+            updates = list([e.compute_updates(es, state) for e, es in zip(elements, es)])
+            jax.experimental.io_callback(
+                self._host_update, (), self, interval, updates, ordered=True
+            )
+
+        jax.experimental.io_callback(self._host_stop_live, (), ordered=True)
+        return hook_state, state
+
 class Element(abc.ABC):
+    @property
+    def renderables(self) -> List:
+        raise NotImplementedError()
+
     @abstractmethod
-    def update(self, updates):
+    def compute_updates(self, element_state, state):
         ...
 
     @abstractmethod
-    def extract(self, element_state, *args):
+    def handle_updates(self, updates):
         ...
+
+    def init_state(self, state):
+        return None
+    
+    def update_state(self, element_state, state):
+        return element_state
+
+    def finalize_state(self, element_state):
+        return element_state
+    
 
 class MofNColumn(ProgressColumn):
     def __init__(self):
@@ -85,7 +182,7 @@ class MofNColumn(ProgressColumn):
             style="progress.percentage",
         )
 
-class Progress(Element):
+class ProgressBar(Element):
     def __init__(self, task_name="", columns=None):
         if columns is None:
             columns = [
@@ -98,40 +195,35 @@ class Progress(Element):
         self.task_name = task_name
         self.widget = RichProgress(*columns)
         self.task = None
+    
+    @property
+    def renderables(self):
+        return [self.widget]
+    
+    def handle_updates(self, updates):
+        completed, total = updates
+        if self.task is None:
+            self.task = self.widget.add_task(self.task_name,
+                completed=completed, total=total)
+        self.widget.update(self.task,
+            completed=completed,
+            total=total)
+        return super().handle_updates(updates)
 
-class LoopProgress(Progress):
+class LoopProgressBar(ProgressBar):
     def __init__(self, task_name="Iteration", columns=None):
         super().__init__(task_name, columns)
 
-    def update(self, updates):
-        completed, total = updates
-        if self.task is None:
-            self.task = self.widget.add_task(self.task_name,
-                completed=completed, total=total)
-        self.widget.update(self.task,
-            completed=completed,
-            total=total)
+    def compute_updates(self, element_state, state):
+        return (state.iteration, state.max_iterations)
 
-    def extract(self, element_state, state):
-        return element_state, (state.iteration, state.max_iterations)
-
-class EpochProgress(Progress):
+class EpochProgressBar(ProgressBar):
     def __init__(self, task_name="Epoch", columns=None):
         super().__init__(task_name, columns)
 
-    def update(self, updates):
-        completed, total = updates
-        if self.task is None:
-            self.task = self.widget.add_task(self.task_name,
-                completed=completed, total=total)
-        self.widget.update(self.task,
-            completed=completed,
-            total=total)
-
-    def extract(self, element_state, state):
-        return element_state, (state.epoch, state.max_epochs)
+    def compute_updates(self, element_state, state):
+        return (state.epoch, state.max_epochs)
     
-
 def _flatten(d):
     for (k, v) in d.items():
         if isinstance(v, dict):
@@ -146,7 +238,11 @@ class StatisticsTable(Element):
         self.widget = RichTable()
         self.stats = stats
     
-    def update(self, stats):
+    @property
+    def renderables(self):
+        return [self.widget]
+    
+    def handle_updates(self, stats):
         self.widget.rows = []
         self.widget.columns = []
         self.widget.add_column("Statistic")
@@ -156,62 +252,14 @@ class StatisticsTable(Element):
             cells = [RichText(f"{val:5f}")]
             self.widget.add_row(stat, *cells)
 
-    def extract(self, element_state, state):
+    def compute_updates(self, element_state, state):
         if state.last_stats is None:
-            return element_state, {}
+            return {}
         stats = dict(_flatten(state.last_stats))
         if self.stats is not None:
             stats = {k: v for (k, v) in stats.items() if k in self.stats}
         # take the mean of the stats
         stats = jax.tree_map(lambda x: jnp.mean(x), stats)
-        return element_state, stats
+        return stats
 
-class ConsoleDisplay:
-    def __init__(self):
-        self.intervals = {}
-        self.groups = {}
-        self.elements = []
-        self.live = None
 
-        global _counter
-        _counter = _counter + 1
-        self.display_id = _counter
-
-    def add(self, group_name, element, interval=1):
-        if self.display_id in _DISPLAYS:
-            raise ValueError("Cannot not add display elements while active")
-        intervals = self.groups.setdefault(group_name, {})
-        elems = intervals.setdefault(interval, [])
-        elems.append(element)
-        self.elements.append(element)
-
-    def update(self, group, interval, values):
-        intervals = self.groups[group]
-        elems = intervals[interval]
-        for (e,v) in zip(elems, values):
-            e.update(v)
-        self.live.refresh()
-
-    def __enter__(self):
-        if self.live is not None:
-            raise ValueError("Cannot make display active recursively")
-        _DISPLAYS[self.display_id] = self
-        from stanza.util.logging import console
-
-        self.live = RichLive(
-            RichGroup(*[r.widget for r in self.elements]),
-            console=console)
-        self.live.__enter__()
-        extractors = {
-            group_name: {
-                i : [v.extract for v in l] \
-                    for (i,l) in group.items()
-            } for (group_name, group) in self.groups.items()}
-        return RichHook(self.display_id, extractors)
-
-    def __exit__(self, exc_type, exc_value, exc_traceback):
-        barrier_wait()
-        del _DISPLAYS[self.display_id]
-        self.live.__exit__(exc_type,
-            exc_value, exc_traceback)
-        self.live = None

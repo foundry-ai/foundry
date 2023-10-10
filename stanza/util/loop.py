@@ -1,7 +1,8 @@
 from stanza.dataclasses import dataclass, replace, field
-from stanza.util.logging import logger
 from typing import Any, Callable
 
+
+import abc
 import jax
 import jax.numpy as jnp
 
@@ -15,6 +16,16 @@ class LoopState:
     hooks : Any
     hook_states: Any
     last_stats: Any
+
+class Hook(abc.ABC):
+    def init(self, state):
+        return None, state
+    
+    def run(self, hook_state, state):
+        ...
+    
+    def finalize(self, hook_state, state):
+        return hook_state, state
 
 def loop(step_fn, state, jit=True):
     if jit:
@@ -34,22 +45,25 @@ def loop(step_fn, state, jit=True):
 def init_hooks(state):
     new_hook_states = []
     for h in state.hooks:
-        if hasattr(h, 'init'):
-            hs, state = h.init(state)
-            new_hook_states.append(hs)
-        else:
-            new_hook_states.append(None)
+        hs, state = h.init(state)
+        new_hook_states.append(hs)
     state = replace(state, hook_states=new_hook_states)
     return state
 
 @jax.jit
 def run_hooks(state):
     new_hook_states = []
-    if state.hook_states is None:
-        state = replace(state,
-            hook_states=[None] * len(state.hooks))
     for h, hs in zip(state.hooks, state.hook_states):
-        hs, state = h(hs, state)
+        hs, state = h.run(hs, state)
+        new_hook_states.append(hs)
+    state = replace(state, hook_states=new_hook_states)
+    return state
+
+@jax.jit
+def finish_hooks(state):
+    new_hook_states = []
+    for h, hs in zip(state.hooks, state.hook_states):
+        hs, state = h.finalize(hs, state)
         new_hook_states.append(hs)
     state = replace(state, hook_states=new_hook_states)
     return state
@@ -66,31 +80,3 @@ def every_kth_epoch(k):
                 state.epoch_iteration == 0)
     return cond
 every_epoch = every_kth_epoch(1)
-
-def flat_items(d, prefix=''):
-    for (k,v) in d.items():
-        if isinstance(v, dict):
-            yield from flat_items(v, prefix=f'{prefix}{k}.')
-        else:
-            yield (f'{prefix}{k}',v)
-
-@dataclass
-class LoggerHook:
-    condition_fn: Any
-    stat_fn: Callable = lambda state: state.last_stats
-
-    def init(self, state):
-        return state.iteration, state
-
-    def __call__(self, hs, state):
-        def log():
-            stats = self.stat_fn(state)
-            flat_stats = dict(flat_items(stats))
-            s = [f"{k}: {{}}" for k in flat_stats.keys()]
-            fmt = "\n".join(s)
-            logger.info("Iteration {}:\n" + fmt, state.iteration, *flat_stats.values())
-        jax.lax.cond(jnp.logical_and(
-            self.condition_fn(state),
-            state.iteration != hs
-        ), log, lambda: None)
-        return state.iteration, state

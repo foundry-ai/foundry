@@ -20,6 +20,16 @@ class Environment:
     
     def reward(self, state, action, next_state):
         raise NotImplementedError("Must impelement reward()")
+    
+    def render(self, state, *, 
+                    # every environment *must* support "image"
+                    # without any additional kwargs
+                    width=256, height=256, mode="image",
+                    # the kwargs can be extra things we may want
+                    # to render. Environments should just ignore kwargs
+                    # they do not support
+                    **kwargs):
+        raise NotImplementedError("Must implement render()")
 
 from stanza.envs.builders import create, register_lazy
 

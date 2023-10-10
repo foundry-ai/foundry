@@ -19,19 +19,14 @@ activity = "stanza.runtime:launch_activity"
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.12"
-#jaxlib = {version = "^0.4.14", source = "jax"}
-#jax = {version = "^0.4.14", source = "jax"}
-jaxlib = {extras = ["cuda12.cudnn89"], version="^0.4.14", source="jax", optional=false}
-#jax = {extras=["cuda12_pip"], version="^0.4.14", source="jax", optional=false}
+jax = [
+	{version="^0.4.18", optional=true},
+	{version="^0.4.18", extras=["cuda12_pip"], optional=true}
+]
 optax = "^0.1.4"
 rich = "^13.3.1"
-cloudpickle = "^2.2.1"
-docker = "^6.0.1"
-dockerpty = "^0.4.1"
-rpyc = "^5.3.0"
 wandb = "^0.13.11"
 ffmpegio = "^0.8.3"
-gdown = "^4.7.1"
 zarr = "^2.14.2"
 plotly = "^5.14.1"
 kaleido = "0.2.0"
@@ -41,24 +36,21 @@ shapely = "1.8.4"
 pymunk = "^6.4.0"
 drake = "^1.17.0"
 typing-extensions = "^4.6.3"
-flax = "^0.6.10"
-tqdm = "^4.65.0"
-absl-py = "^1.4.0"
-distrax = "^0.1.4"
-gymnax = "^0.0.6"
+flax = "^0.7.1"
 glfw = "^2.6.2"
 brax = "^0.9.1"
-tensordict = "^0.1.2"
-cv = "^1.0.0"
 pot = "^0.9.1"
-orbax-checkpoint = "^0.3.5"
+moviepy = "^1.0.3"
+imageio = "^2.31.5"
+docker = "^6.1.3"
+dockerpty = "^0.4.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.2.1"
 jupyter = "^1.0.0"
 
 [tool.poetry.extras]
-cuda = ["Jax", "Jaxlib"]
+cuda = ["jax"]
 
 [build-system]
 requires = ["poetry-core"]
@@ -67,12 +59,10 @@ build-backend = "poetry.core.masonry.api"
 [[tool.poetry.source]]
 name = "jax"
 url = "https://storage.googleapis.com/jax-releases/jax_releases.html"
-priority = "primary"
 
 [[tool.poetry.source]]
-name = "pytorch"
-url = "https://download.pytorch.org/whl/cu118"
-priority = "explicit"
+name = "jax_cuda"
+url = "https://storage.googleapis.com/jax-releases/jax_cuda_releases.html"
 
 [[tool.poetry.source]]
 name = "PyPI"

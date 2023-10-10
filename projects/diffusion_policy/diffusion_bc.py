@@ -2,28 +2,25 @@ import stanza.policies as policies
 import stanza.envs as envs
 
 from stanza.policies.transforms import ChunkedPolicy
-from stanza.reporting import BucketLogHook
+from stanza.reporting import Video
 from stanza.runtime import activity
 from stanza import partial, Partial
 
-from stanza.train import Trainer, batch_loss
+import stanza.train
+from stanza.train import batch_loss
 from stanza.train.ema import EmaHook
-from stanza.train.validate import Validator
 
 from stanza.dataclasses import dataclass, replace
 
-from stanza.util.random import PRNGSequence
-from stanza.util.loop import LoggerHook, every_kth_epoch, every_kth_iteration
 from stanza.util.logging import logger
-from stanza.util.rich import ConsoleDisplay, \
-    LoopProgress, StatisticsTable, EpochProgress
+from stanza.util.random import PRNGSequence
 from stanza.diffusion.ddpm import DDPMSchedule
 
 import stanza.envs as envs
 import stanza.util
 
 from stanza.nn.unet1d import ConditionalUNet1D, ConditionalMLP
-from typing import Tuple, Any
+from typing import Tuple
 
 import jax.numpy as jnp
 import jax.random
@@ -45,9 +42,9 @@ class Config:
     batch_size: int = 128
     warmup_steps: int = 500
 
-    obs_horizon: int = 2
-    action_horizon: int = 8
-    action_padding: int = 7
+    obs_horizon: int = 1
+    action_horizon: int = 1
+    action_padding: int = 0
 
     num_trajectories: int = None
     smoothing_sigma: float = 0
@@ -55,20 +52,15 @@ class Config:
     diffuse_gains: bool = False
 
     jac_lambda: float = 0.0
-    zorder_lambda: float = 0.
+    zorder_lambda: float = 0.0
     zorder_knn: int = 3
 
+    lambda_param: str = None
+    lambda_val: float = None
+
     net : str = "mlp"
-    features: Tuple[int] = (32, 64, 128)
-    step_embed_dim: int = 128
-
-@dataclass
-class DiffusionSample:
-    action: Any
-
-def make_diffusion_input(config, normalized_sample):
-    actions = normalized_sample.action
-    return DiffusionSample(actions), normalized_sample.observation
+    features: Tuple[int] = (128, 64, 64, 32)
+    step_embed_dim: int = 64
 
 def loss(config, net, diffuser, normalizer,
             # these are passed in per training loop:
@@ -85,7 +77,7 @@ def loss(config, net, diffuser, normalizer,
         replace(sample, info=replace(sample.info, knn=None))
     )
 
-    input, obs = make_diffusion_input(config, normalized_sample)
+    input, obs = normalized_sample.action, normalized_sample.observation
     if config.smoothing_sigma > 0:
         obs_flat, obs_uf = jax.flatten_util.ravel_pytree(obs)
         obs_flat = obs_flat + config.smoothing_sigma*jax.random.normal(next(rng), obs_flat.shape)
@@ -104,7 +96,7 @@ def loss(config, net, diffuser, normalizer,
     if config.jac_lambda > 0:
         def f(x):
             x = obs_normalizer.normalize(x)
-            action = net.apply(params, noisy, timestep, x).action
+            action = net.apply(params, noisy, timestep, x)
             return action_normalizer.unnormalize(action)
         jac = stanza.util.mat_jacobian(f)(obs_normalizer.unnormalize(obs))
         jac_norm = K_normalizer.normalize(jac)
@@ -136,6 +128,11 @@ def loss(config, net, diffuser, normalizer,
 
 @activity(Config)
 def train_policy(config, repo):
+    if config.lambda_param is not None:
+        if config.lambda_param == "jac":
+            config = replace(config, jac_lambda=config.lambda_val)
+        elif config.lambda_param == "zorder":
+            config = replace(config, zorder_lambda=config.lambda_val)
     rng = PRNGSequence(config.rng_seed)
     data_db = repo.find(data_for=config.env).latest
     if data_db is None:
@@ -152,33 +149,14 @@ def train_policy(config, repo):
             obs_horizon=config.obs_horizon,
             action_horizon=config.action_horizon,
             action_padding=config.action_padding)
+        sample = normalizer.normalize(data.get(data.start))
+        if config.zorder_lambda > 0:
+            data = knn_data(data, config.zorder_knn)
+            val_data = knn_data(val_data, config.zorder_knn)
     # move to GPU
-    data, val_data, val_trajs, normalizer = jax.device_put(
-        (data, val_data, val_trajs, normalizer), device=jax.devices("gpu")[0])
-
-    sample = normalizer.normalize(data.get(data.start))
-    if config.zorder_lambda > 0:
-        data = knn_data(data, config.zorder_knn)
-        val_data = knn_data(val_data, config.zorder_knn)
+    data, sample, val_data, val_trajs, normalizer = jax.device_put(
+        (data, sample, val_data, val_trajs, normalizer), device=jax.devices("gpu")[0])
     logger.info("Dataset size: {} chunks", data.length)
-
-    batch_size = min(config.batch_size, data.length)
-    steps_per_epoch = (data.length // batch_size)
-    epochs = max(config.epochs, 20000 // steps_per_epoch + 1)
-    train_steps = steps_per_epoch * epochs
-    logger.info("Training for {} steps ({} epochs)", train_steps, epochs)
-    warmup_steps = min(config.warmup_steps, train_steps/2)
-    lr_schedule = optax.join_schedules(
-        [optax.linear_schedule(1e-4/500, config.learning_rate, warmup_steps),
-         optax.cosine_decay_schedule(1e-4, train_steps - warmup_steps)],
-        [warmup_steps]
-    )
-    optimizer = optax.adamw(lr_schedule, weight_decay=1e-5)
-    trainer = Trainer(
-        optimizer=optimizer,
-        batch_size=batch_size,
-        max_epochs=epochs
-    )
     # make the network
     if config.net == "unet":
         net = ConditionalUNet1D(name="net",
@@ -190,53 +168,57 @@ def train_policy(config, repo):
                 step_embed_dim=config.step_embed_dim)
     else:
         raise ValueError(f"Unknown network {config.net}")
-    sample_input, sample_obs = make_diffusion_input(config, sample)
+    sample_input, sample_obs = sample.action, sample.observation
     logger.info("Instantiating network...")
-    t = time.time()
     jit_init = jax.jit(net.init)
     init_params = jit_init(next(rng), sample_input,
                            jnp.array(1), sample_obs)
-    logger.info(f"Initialization took {time.time() - t}")
     params_flat, _ = jax.flatten_util.ravel_pytree(init_params)
     logger.info("params: {}", params_flat.shape[0])
-    logger.info("Making diffusion schedule")
 
+    logger.info("Making diffusion schedule")
     diffuser = DDPMSchedule.make_squaredcos_cap_v2(
         100, clip_sample_range=1., prediction_type="sample")
     loss_fn = Partial(partial(loss, config, net),
                     diffuser, normalizer)
     loss_fn = jax.jit(loss_fn)
 
+    logger.info("Initialized, starting training...")
+    batch_size = min(config.batch_size, data.length)
+    steps_per_epoch = (data.length // batch_size)
+    epochs = max(config.epochs, 20_000 // steps_per_epoch + 1)
+    # epochs = config.epochs
+    train_steps = steps_per_epoch * epochs
+    logger.info("Training for {} steps ({} epochs)", train_steps, epochs)
+    warmup_steps = min(config.warmup_steps, train_steps/2)
+    lr_schedule = optax.join_schedules(
+        [optax.linear_schedule(1e-4/500, config.learning_rate, warmup_steps),
+         optax.cosine_decay_schedule(1e-4, train_steps - warmup_steps)],
+        [warmup_steps]
+    )
+    optimizer = optax.adamw(lr_schedule, weight_decay=1e-5)
+
     ema_hook = EmaHook(
         decay=0.75
     )
-    logger.info("Initialized, starting training...")
-
-    print_hook = LoggerHook(every_kth_iteration(500))
-    display = ConsoleDisplay()
-    display.add("train", StatisticsTable(), interval=100)
-    display.add("train", LoopProgress(), interval=100)
-    display.add("train", EpochProgress(), interval=100)
-
-    validator = Validator(
-        condition=every_kth_epoch(1),
-        rng_key=next(rng),
-        dataset=val_data,
-        batch_size=config.batch_size
+    trainer = stanza.train.express(
+        optimizer=optimizer,
+        batch_size=batch_size,
+        max_epochs=epochs,
+        # hook related things
+        validate_dataset=val_data,
+        validate_batch_size=config.batch_size,
+        validate_rng=next(rng),
+        bucket=exp,
+        train_hooks=[ema_hook]
     )
-    with display as rcb:
-        hooks = [ema_hook, validator, rcb.train, print_hook]
-        hooks.append(BucketLogHook(exp))
-        results = trainer.train(data,
-                    loss_fn=batch_loss(loss_fn), 
-                    rng_key=next(rng),
-                    init_params=init_params,
-                    train_hooks=hooks
-                )
-    params = results.fn_params
-    # get the moving average params
-    ema_params = results.hook_states[0]
-    # save the final checkpoint
+    results = trainer.train(data,
+                loss_fn=batch_loss(loss_fn), 
+                rng_key=next(rng), init_params=init_params,
+            )
+    params = results.fn_params.reg_params
+    ema_params = results.fn_params.ema_params
+
     exp.add('config', config)
     exp.add('normalizer', normalizer)
     exp.add('final_checkpoint', params)
@@ -255,6 +237,17 @@ def train_policy(config, repo):
     exp.add("test_expert", val_trajs)
     exp.add("test_policy", test_policy)
     exp.add("test_reward", reward)
+
+    N_trajs = jax.tree_flatten(val_trajs)[0][0].shape[0]
+    for i in range(N_trajs):
+        logger.info(f"Rendering trajectory {i}")
+        val_traj = jax.tree_map(lambda x: x[i], val_trajs)
+        expert_video = jax.vmap(env.render)(val_traj.states)
+        exp.log({"{}_expert".format(i): Video(expert_video, fps=10)})
+        test_traj = jax.tree_map(lambda x: x[i], test_policy)
+        policy_video = jax.vmap(env.render)(test_traj.states)
+        exp.log({"{}_learned".format(i): Video(policy_video, fps=10)})
+    # render to a video
     logger.info("Normalized test reward: {}", reward)
 
 def make_diffusion_policy(net_fn, diffuser, normalizer,

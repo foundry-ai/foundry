@@ -1,13 +1,10 @@
-from stanza.dataclasses import dataclass
+from stanza.dataclasses import dataclass, replace
 from stanza.runtime import activity
-from stanza.util.logging import logger
+from stanza.util.logging import logger, LoggerHook
 
-from stanza.train import Trainer, batch_loss
+from stanza.train import batch_loss
 from stanza.train.ema import EmaHook
-from stanza.train.validate import Validator
-from stanza.reporting import BucketLogHook
-from stanza.util.rich import ConsoleDisplay, StatisticsTable, LoopProgress, EpochProgress
-from stanza.util.loop import LoggerHook, every_kth_iteration, every_kth_epoch
+from stanza.reporting import Video
 from stanza.util import mat_jacobian
 from stanza.nn.mlp import MLP
 
@@ -45,6 +42,9 @@ class Config:
     jac_lambda: float = 0.
     zorder_lambda: float = 0.
     zorder_knn: int = 3
+
+    lambda_param: str = None
+    lambda_val: float = None
 
     net: str = "mlp"
     features: Tuple[int] = (128, 64, 32)
@@ -92,11 +92,15 @@ def loss(config, net, normalizer, state, params, rng, sample):
         stats["zorder_loss"] = zorder_loss
         loss = loss + config.zorder_lambda * zorder_loss
     stats["loss"] = loss
-
     return state, loss, stats
 
 @activity(Config)
 def train_policy(config, repo):
+    if config.lambda_param is not None:
+        if config.lambda_param == "jac":
+            config = replace(config, jac_lambda=config.lambda_val)
+        elif config.lambda_param == "zorder":
+            config = replace(config, zorder_lambda=config.lambda_val)
     exp = repo.create()
     env = envs.create(config.env)
     rng = PRNGSequence(config.rng_seed)
@@ -114,13 +118,13 @@ def train_policy(config, repo):
             obs_horizon=config.obs_horizon,
             action_horizon=config.action_horizon,
             action_padding=config.action_padding)
+        sample = normalizer.normalize(data.get(data.start))
+        if config.zorder_lambda > 0:
+            data = knn_data(data, config.zorder_knn)
+            val_data = knn_data(val_data, config.zorder_knn)
     # move to GPU
-    data, val_data, val_trajs, normalizer = jax.device_put(
-        (data, val_data, val_trajs, normalizer), device=jax.devices("gpu")[0])
-    sample = normalizer.normalize(data.get(data.start))
-    if config.zorder_lambda > 0:
-        data = knn_data(data, config.zorder_knn)
-        val_data = knn_data(val_data, config.zorder_knn)
+    data, sample, val_data, val_trajs, normalizer = jax.device_put(
+        (data, sample, val_data, val_trajs, normalizer), device=jax.devices("gpu")[0])
     logger.info("Dataset size: {} chunks", data.length)
 
     if config.net == "mlp":
@@ -137,8 +141,9 @@ def train_policy(config, repo):
     loss_fn = Partial(partial(loss, config, net), normalizer)
     batch_size = min(config.batch_size, data.length)
     steps_per_epoch = (data.length // batch_size)
-    train_steps = steps_per_epoch * config.epochs
-    logger.info("Training for {} steps ({} epochs)", train_steps, config.epochs)
+    epochs = max(config.epochs, 20_000 // steps_per_epoch + 1)
+    train_steps = steps_per_epoch * epochs
+    logger.info("Training for {} steps ({} epochs)", train_steps, epochs)
     warmup_steps = min(config.warmup_steps, train_steps/2)
     lr_schedule = optax.join_schedules(
         [optax.linear_schedule(1e-4/500, config.learning_rate, warmup_steps),
@@ -147,43 +152,40 @@ def train_policy(config, repo):
     )
     optimizer = optax.adamw(lr_schedule, weight_decay=1e-5)
 
-    trainer = Trainer(
-        optimizer=optimizer,
-        batch_size=batch_size,
-        max_epochs=config.epochs
-    )
-
     ema_hook = EmaHook(
         decay=0.75
     )
-    logger.info("Initialized, starting training...")
-
-    print_hook = LoggerHook(every_kth_iteration(500))
-    display = ConsoleDisplay()
-    display.add("train", StatisticsTable(), interval=100)
-    display.add("train", LoopProgress(), interval=100)
-    display.add("train", EpochProgress(), interval=100)
-
-    validator = Validator(
-        condition=every_kth_epoch(1),
-        rng_key=next(rng),
-        dataset=val_data,
-        batch_size=config.batch_size
+    trainer = stanza.train.express(
+        optimizer=optimizer,
+        batch_size=batch_size,
+        max_epochs=epochs,
+        # hook related things
+        validate_dataset=val_data,
+        validate_batch_size=config.batch_size,
+        validate_rng=next(rng),
+        bucket=exp,
+        train_hooks=[ema_hook]
     )
-    with display as rcb:
-        hooks = [ema_hook, validator, rcb.train, print_hook]
-        hooks.append(BucketLogHook(exp))
-        results = trainer.train(data,
-                    loss_fn=batch_loss(loss_fn), 
-                    rng_key=next(rng),
-                    init_params=init_params,
-                    train_hooks=hooks
-                )
-        params = results.hook_states[0]
+    logger.info("Initialized, starting training...")
+    results = trainer.train(data,
+                loss_fn=batch_loss(loss_fn), 
+                rng_key=next(rng),
+                init_params=init_params)
+    params = results.ema_params
     policy = make_bc_policy(Partial(net.apply, params), normalizer,
                             obs_chunk_length=config.obs_horizon,
                             action_chunk_length=config.action_horizon)
-    val_trajs, test_reward = eval(val_trajs, env, policy, next(rng))
+    test_policy, test_reward = eval(val_trajs, env, policy, next(rng))
+
+    N_trajs = jax.tree_flatten(val_trajs)[0][0].shape[0]
+    for i in range(N_trajs):
+        logger.info(f"Rendering trajectory {i}")
+        val_traj = jax.tree_map(lambda x: x[i], val_trajs)
+        expert_video = jax.vmap(env.render)(val_traj.states)
+        exp.log({"{}_expert".format(i): Video(expert_video, fps=10)})
+        test_traj = jax.tree_map(lambda x: x[i], test_policy)
+        policy_video = jax.vmap(env.render)(test_traj.states)
+        exp.log({"{}_learned".format(i): Video(policy_video, fps=10)})
 
     logger.info("Reward: {}", test_reward)
 

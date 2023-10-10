@@ -3,6 +3,7 @@ import jax.numpy as jnp
 import jax
 
 def sanitize_color(color):
+    color = jnp.array(color)
     # if alpha is not specified, make alpha = 1
     if color.shape[0] == 3:
         return jnp.concatenate((color, jnp.ones((1,))), axis=0)
@@ -48,14 +49,14 @@ def stack(*sdfs):
 @jax.jit
 def _transformed(p, fn, translation=None,
                  rotation=None, scale=None):
+    if scale is not None:
+        p = p / scale
     if translation is not None:
         p = p - translation
     if rotation is not None:
         c, s = jnp.cos(-rotation), jnp.sin(-rotation)
         M = jnp.array(((c,-s),(s,c)))
         p = M @ p
-    if scale is not None:
-        p = p / scale
     dist, color = fn(p)
     if scale is not None:
         # TODO: get the gradient of fn
@@ -66,7 +67,9 @@ def _transformed(p, fn, translation=None,
 
 def transform(fn, translation=None, rotation=None, scale=None):
     return Partial(partial(_transformed, fn=fn),
-        translation=translation, rotation=rotation,scale=scale)
+        translation=jnp.array(translation) if translation is not None else None,
+        rotation=jnp.array(rotation) if rotation is not None else None,
+        scale=jnp.array(scale) if scale is not None else None)
 
 
 def _fill(p, sdf, color):
@@ -83,8 +86,8 @@ def _circle(x, loc, radius=1):
     dist = jnp.linalg.norm(x - loc) - radius
     return dist
 
-def circle(loc, radius=1):
-    return Partial(_circle, loc=loc, radius=radius)
+def circle(loc, radius=1.):
+    return Partial(_circle, loc=jnp.array(loc), radius=jnp.array(radius))
 
 @jax.jit
 def _rectangle(x, loc, extents):
@@ -99,7 +102,7 @@ def _rectangle(x, loc, extents):
     return jnp.maximum(hor, ver)
 
 def rectangle(loc, extents):
-    return Partial(_rectangle, loc=loc, extents=extents)
+    return Partial(_rectangle, loc=jnp.array(loc), extents=jnp.array(extents))
 
 @jax.jit
 def _segment(x, a, b, thickness):
