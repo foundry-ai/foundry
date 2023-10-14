@@ -140,23 +140,22 @@ class ChunkedPolicy(Policy):
                     if policy_state is not None else None,
                 input.rng_key
             ))
-            action, info = output.action \
+            action = output.action \
                 if self.output_chunk_size is None else \
                 jax.tree_util.tree_map(
-                    lambda x: x[0, ...], (output.action, output.info)
+                    lambda x: x[0, ...], output.action,
                 ) 
             return PolicyOutput(
                 action=action,
                 policy_state=ChunkedPolicyState(obs_batch, output, 1),
-                info=info
+                info=output.info
             )
         def index():
-            action, info = policy_state.last_batched_output.action \
+            action = policy_state.last_batched_output.action \
                 if self.output_chunk_size is None else \
                 jax.tree_util.tree_map(
                     lambda x: x[policy_state.t, ...], 
-                    (policy_state.last_batched_output.action,
-                     policy_state.last_batched_output.info)
+                    policy_state.last_batched_output.action,
                 )
             return PolicyOutput(
                 action,
@@ -165,7 +164,7 @@ class ChunkedPolicy(Policy):
                     policy_state.last_batched_output,
                     policy_state.t + 1
                 ),
-                info
+                policy_state.last_batched_output.info
             )
         if self.output_chunk_size is None \
                 or input.policy_state is None:

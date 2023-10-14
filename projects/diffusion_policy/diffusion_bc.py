@@ -1,7 +1,7 @@
 import stanza.policies as policies
 import stanza.envs as envs
 
-from stanza.policies.transforms import ChunkedPolicy
+from stanza.policies.transforms import ChunkedPolicy, FeedbackPolicy
 from stanza.reporting import Video
 from stanza.runtime import activity
 from stanza import partial, Partial
@@ -12,6 +12,7 @@ from stanza.train.ema import EmaHook
 
 from stanza.dataclasses import dataclass, replace
 
+from stanza.util.attrdict import attrs
 from stanza.util.logging import logger
 from stanza.util.random import PRNGSequence
 from stanza.diffusion.ddpm import DDPMSchedule
@@ -20,7 +21,7 @@ import stanza.envs as envs
 import stanza.util
 
 from stanza.nn.unet1d import ConditionalUNet1D, ConditionalMLP
-from typing import Tuple
+from typing import Tuple, Any
 
 import jax.numpy as jnp
 import jax.random
@@ -49,6 +50,7 @@ class Config:
     num_trajectories: int = None
     smoothing_sigma: float = 0
 
+    diffuse_states: bool = False
     diffuse_gains: bool = False
 
     jac_lambda: float = 0.0
@@ -62,10 +64,16 @@ class Config:
     features: Tuple[int] = (128, 64, 64, 32)
     step_embed_dim: int = 64
 
+@dataclass
+class DiffusionSample:
+    actions: Any
+    ref_states: Any
+    gains: Any
+
 def loss(config, net, diffuser, normalizer,
             # these are passed in per training loop:
             state, params, rng, sample):
-    K_normalizer = normalizer.map(lambda x: x.info.K)
+    J_normalizer = normalizer.map(lambda x: x.info.J)
     obs_normalizer = normalizer.map(lambda x: x.observation)
     action_normalizer = normalizer.map(lambda x: x.action)
 
@@ -77,7 +85,17 @@ def loss(config, net, diffuser, normalizer,
         replace(sample, info=replace(sample.info, knn=None))
     )
 
-    input, obs = normalized_sample.action, normalized_sample.observation
+    obs = normalized_sample.observation
+    if config.diffuse_gains:
+        input = DiffusionSample(
+            actions=normalized_sample.action,
+            ref_states=normalized_sample.state,
+            gains=normalized_sample.info.K
+        )
+    else:
+        input = DiffusionSample(
+            actions=normalized_sample.action,
+        )
     if config.smoothing_sigma > 0:
         obs_flat, obs_uf = jax.flatten_util.ravel_pytree(obs)
         obs_flat = obs_flat + config.smoothing_sigma*jax.random.normal(next(rng), obs_flat.shape)
@@ -96,11 +114,11 @@ def loss(config, net, diffuser, normalizer,
     if config.jac_lambda > 0:
         def f(x):
             x = obs_normalizer.normalize(x)
-            action = net.apply(params, noisy, timestep, x)
+            action = net.apply(params, noisy, timestep, x).actions
             return action_normalizer.unnormalize(action)
         jac = stanza.util.mat_jacobian(f)(obs_normalizer.unnormalize(obs))
-        jac_norm = K_normalizer.normalize(jac)
-        K_norm = jnp.squeeze(normalized_sample.info.K, axis=0)
+        jac_norm = J_normalizer.normalize(jac)
+        K_norm = jnp.squeeze(normalized_sample.info.J, axis=0)
         jacobian_diff = jac_norm - K_norm
         jac_loss = optax.safe_norm(jacobian_diff, 1e-2)
         stats["jac_loss"] = jac_loss
@@ -109,8 +127,8 @@ def loss(config, net, diffuser, normalizer,
         def diff_loss(x):
             per_obs = obs_normalizer.normalize(x.observation)
             eps = stanza.util.l2_norm_squared(per_obs, obs)
-            action = desired_output.action
-            per_action = action_normalizer.normalize(x.action)
+            action = desired_output.actions
+            per_action = action_normalizer.normalize(x.actions)
             action_diff = jax.tree_map(lambda x, y: x - y, 
                                        per_action, action)
             pred_action = pred.action
@@ -168,11 +186,15 @@ def train_policy(config, repo):
                 step_embed_dim=config.step_embed_dim)
     else:
         raise ValueError(f"Unknown network {config.net}")
-    sample_input, sample_obs = sample.action, sample.observation
+    sample_input = DiffusionSample(actions=sample.action)
+    if config.diffuse_states or config.diffuse_gains:
+        sample_input = replace(sample_input, ref_states=sample.state)
+    if config.diffuse_gains:
+        sample_input = replace(sample_input, gains=sample.info.K)
     logger.info("Instantiating network...")
     jit_init = jax.jit(net.init)
     init_params = jit_init(next(rng), sample_input,
-                           jnp.array(1), sample_obs)
+                           jnp.array(1), sample.observation)
     params_flat, _ = jax.flatten_util.ravel_pytree(init_params)
     logger.info("params: {}", params_flat.shape[0])
 
@@ -239,26 +261,32 @@ def train_policy(config, repo):
     exp.add("test_reward", reward)
 
     N_trajs = jax.tree_flatten(val_trajs)[0][0].shape[0]
+    def video_render(traj):
+        render_imgs = jax.jit(jax.vmap(lambda x, y: env.render(x, state_trajectory=y)))
+        chunks = traj.info.sample.ref_states if hasattr(traj.info, 'sample') else None
+        return render_imgs(traj.states, chunks)
     for i in range(N_trajs):
         logger.info(f"Rendering trajectory {i}")
         val_traj = jax.tree_map(lambda x: x[i], val_trajs)
-        expert_video = jax.vmap(env.render)(val_traj.states)
+        expert_video = video_render(val_traj)
         exp.log({"{}_expert".format(i): Video(expert_video, fps=10)})
         test_traj = jax.tree_map(lambda x: x[i], test_policy)
-        policy_video = jax.vmap(env.render)(test_traj.states)
+        policy_video = video_render(test_traj)
         exp.log({"{}_learned".format(i): Video(policy_video, fps=10)})
     # render to a video
     logger.info("Normalized test reward: {}", reward)
 
 def make_diffusion_policy(net_fn, diffuser, normalizer,
-                          obs_chunk_length,
-                          action_chunk_length, action_horizon_offset, 
-                          action_horizon_length, diffuse_gains=False, 
-                          noise=0.):
+                          obs_chunk_length, action_chunk_length,
+                          action_horizon_offset, action_horizon_length, 
+                          diffuse_states=False, diffuse_gains=False, noise=0.):
     obs_norm = normalizer.map(lambda x: x.observation)
+    state_norm = normalizer.map(lambda x: x.state)
     action_norm = normalizer.map(lambda x: x.action)
-    gain_norm = normalizer.map(lambda x: x.info.K) \
-        if hasattr(normalizer.instance.info, 'K') is not None and diffuse_gains else None
+    gain_norm = normalizer.map(lambda x: x.info.J) \
+        if hasattr(normalizer.instance.info, 'J') is not None and diffuse_gains \
+        else None
+
     action_sample_traj = jax.tree_util.tree_map(
         lambda x: jnp.repeat(jnp.expand_dims(x, 0), action_chunk_length, axis=0),
         action_norm.instance
@@ -269,8 +297,8 @@ def make_diffusion_policy(net_fn, diffuser, normalizer,
     ) if gain_norm is not None else None
     states_sample_traj = jax.tree_util.tree_map(
         lambda x: jnp.repeat(jnp.expand_dims(x, 0), action_chunk_length, axis=0),
-        obs_norm.instance
-    ) if obs_norm is not None else None
+        state_norm.instance
+    ) if state_norm is not None else None
 
     def policy(input):
         smooth_rng, sample_rng = jax.random.split(input.rng_key)
@@ -283,33 +311,30 @@ def make_diffusion_policy(net_fn, diffuser, normalizer,
         model_fn = lambda _, sample, timestep: net_fn(
             sample, timestep, cond=noised_norm_obs
         )
+        sample = DiffusionSample(actions=action_sample_traj)
+        if diffuse_states or diffuse_gains:
+            sample = replace(sample, ref_states=states_sample_traj)
         if diffuse_gains:
-            sample = action_sample_traj, states_sample_traj, gain_sample_traj
-        else:
-            sample = action_sample_traj, None, None
+            sample = replace(sample, gains=gain_sample_traj)
         sample = diffuser.sample(
             sample_rng, model_fn,
             sample, 
             num_steps=diffuser.num_steps
         )
         actions, states, gains = sample
-        actions = action_norm.unnormalize(actions)
-        start = action_horizon_offset
-        end = action_horizon_offset + action_horizon_length
-        actions = jax.tree_util.tree_map(
-            lambda x: x[start:end], actions
+        start, end = action_horizon_offset, action_horizon_offset + action_horizon_length
+        actions, states, gains = jax.tree_util.tree_map(
+            lambda x: x[start:end], (actions, states, gains)
         )
+        actions = action_norm.unnormalize(actions)
+        states = obs_norm.unnormalize(states) if states is not None else None
+        gains = gain_norm.unnormalize(gains) if gains is not None else None
         if diffuse_gains:
-            states = jax.tree_util.tree_map(
-                lambda x: x[start:end], states
-            )
-            gains = jax.tree_util.tree_map(
-                lambda x: x[start:end], gains
-            )
-            gains = gain_norm.unnormalize(gains)
-            states = obs_norm.unnormalize(states)
-            actions = actions, states, gains
-        return policies.PolicyOutput(actions)
-    return ChunkedPolicy(policy,
+            return policies.PolicyOutput((actions, states, gains))
+        return policies.PolicyOutput(actions, info=attrs(sample=sample))
+    policy = ChunkedPolicy(policy,
         input_chunk_size=obs_chunk_length,
         output_chunk_size=action_horizon_length)
+    if diffuse_gains:
+        policy = FeedbackPolicy(policy)
+    return policy

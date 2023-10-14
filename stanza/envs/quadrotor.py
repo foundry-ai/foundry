@@ -89,42 +89,52 @@ class QuadrotorEnvironment(Environment):
         u_cost = jnp.mean(action**2)
         rew = -x_cost - u_cost
         return jnp.exp(10*rew)/10
-
-    def render(self, state, *, width=256, height=256):
+    
+    def _render_image(self, state : State, *, width=256, height=256,
+                        state_trajectory: State = None):
         image = jnp.ones((width, height, 3))
-
         quad_width = 0.3
-        quad_height = 0.07
+        quad_height = 0.05
         frame = canvas.rectangle(
-                jnp.array([0, 0]),
-                jnp.array([quad_width, quad_height])
-            )
+            jnp.array([-quad_width/2, -quad_height/2]),
+            jnp.array([quad_width/2, quad_height/2])
+        )
         motor = canvas.stack(
-            canvas.fill(canvas.rectangle([0,100-0.75*quad_height],
-                    [quad_width/5, quad_height*0.5]), 
-                    color=jnp.array([0.9,0.1,0.1])),
-            canvas.fill(canvas.rectangle([0,0],
-                    [quad_width/5, quad_height*1.5]), 
-                    color=jnp.array([0.2,0.2,0.2])),
-            # red cap
+            canvas.fill(canvas.rectangle([-quad_width/20,-0.5*quad_height],
+                    [quad_width/20, quad_height*0.75]), 
+                    color=jnp.array([0.3,0.3,0.3])),
+            canvas.fill(canvas.rectangle([-quad_width/20,-quad_height],
+                    [quad_width/20, -quad_height*0.5]), 
+                    color=jnp.array([0.9,0.3,0.3])),
         )
         quadrotor = canvas.stack(
-            canvas.fill(frame, color=jnp.array([0.,0.,0.])),
+            canvas.fill(frame, color=jnp.array([0.1,0.1,0.1])),
             canvas.transform(motor, translation=jnp.array([-quad_width/2,0.])),
             canvas.transform(motor, translation=jnp.array([quad_width/2,0.])),
         )
         quadrotor = canvas.transform(
             quadrotor,
-            translation=jnp.array([state.x/10, state.z/10]),
+            translation=jnp.array([state.x/3, state.z/3]),
             rotation=state.phi
         )
+        objects = [quadrotor]
+        if state_trajectory is not None:
+            xy = jnp.stack([state_trajectory.x, state_trajectory.z], axis=1)
+            traj = canvas.vmap_union(canvas.circle(xy/3, 0.01*jnp.ones((xy.shape[0]))))
+            objects.append(canvas.fill(traj, (0.1, 0.1, 0.6)))
         sdf = canvas.transform(
-            quadrotor,
+            canvas.stack(*objects),
             translation=jnp.array([1, 1]),
             scale=jnp.array([width/2, height/2])
         )
         image = canvas.paint(image, sdf) 
         return image
+
+    def render(self, state, *, width=256, height=256, mode="image",
+                                    state_trajectory=None, **kwargs):
+        if mode == "image":
+            return self._render_image(state, width=width, height=height,
+                                      state_trajectory=state_trajectory)
     
     def visualize(self, states, actions):
         T = states.x.shape[0]

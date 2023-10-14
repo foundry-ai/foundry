@@ -131,8 +131,30 @@ class Union:
         distances = [g.signed_distance(x) for g in self.geometries]
         return jnp.min(distances, axis=0)
 
+def union(*geoemtries):
+    return Union(geoemtries)
+
+@dataclass(jax=True)
+class VMapUnion:
+    geometries: Geometry
+
+    @property
+    def aabb(self):
+        aabs = jax.vmap(lambda x: x.aabb)(self.geometries)
+        return Box(
+            top_left=jnp.min(aabs.top_left, axis=0),
+            bottom_right=jnp.max(aabs.bottom_right, axis=0)
+        )
+
+    def signed_distance(self, x):
+        distances = jax.vmap(lambda g: g.signed_distance(x))(self.geometries)
+        return jnp.min(distances, axis=0)
+
+def vmap_union(geoemtries):
+    return VMapUnion(geoemtries)
+
 def _aa_alpha(dist):
-    return jnp.clip(-(2*dist + 0.5), 0, 1)
+    return jnp.clip(-(2*dist - 1), 0, 1)
 
 @jax.jit
 def _aa(dist, color):

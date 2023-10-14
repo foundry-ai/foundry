@@ -41,7 +41,7 @@ def generate_data(config, repo):
 
     def rollout(rng_key):
         x0_rng, policy_rng, env_rng = jax.random.split(rng_key, 3)
-        x0 = env.sample_state(x0_rng) 
+        x0 = env.reset(x0_rng)
 
         def policy_with_jacobian(input):
             if config.include_jacobian:
@@ -53,7 +53,7 @@ def generate_data(config, repo):
                     action_flat = jax.flatten_util.ravel_pytree(action)[0]
                     return action_flat, out
                 jac, out = jax.jacobian(f, has_aux=True)(obs_flat)
-                out = replace(out, info=replace(out.info, K=jac))
+                out = replace(out, info=replace(out.info, J=jac))
                 return out
             else:
                 return policy(input)

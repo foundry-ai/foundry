@@ -70,8 +70,8 @@ def loss(config, net, normalizer, state, params, rng, sample):
             norm_action = net.apply(params, norm_obs)
             return action_normalizer.unnormalize(norm_action)
         jac = mat_jacobian(policy)(sample.observation)
-        K = sample.info.K
-        jac_loss = jnp.mean(jnp.square(jac - K))
+        J = sample.info.J
+        jac_loss = jnp.mean(jnp.square(jac - J))
         stats["jac_loss"] = jac_loss
         loss = loss + config.jac_lambda * jac_loss
     if config.zorder_lambda > 0:

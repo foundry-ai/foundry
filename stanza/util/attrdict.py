@@ -65,6 +65,9 @@ class AttrMap:
 def attrmap(*args, **kwargs):
     return AttrMap(*args, **kwargs)
 
+def attrs(*args, **kwargs):
+    return AttrMap(*args, **kwargs)
+
 def _flatten_attrs(attrs):
     keys, values = jax.util.unzip2(attrs._dict.items())
     children = values
