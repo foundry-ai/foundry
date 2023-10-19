@@ -9,6 +9,7 @@ from stanza.data.chunk import chunk_data
 from diffusion_policy.expert import make_expert
 
 import stanza.envs as envs
+import stanza.util
 
 import jax
 import jax.numpy as jnp
@@ -27,6 +28,7 @@ class GenerateConfig:
     batch_size: int = None
     rng_seed: int = 42
     include_jacobian: bool = True
+    synthesize_gains: bool = True
 
 @activity(GenerateConfig)
 def generate_data(config, repo):
@@ -54,9 +56,18 @@ def generate_data(config, repo):
                     return action_flat, out
                 jac, out = jax.jacobian(f, has_aux=True)(obs_flat)
                 out = replace(out, info=replace(out.info, J=jac))
-                return out
             else:
-                return policy(input)
+                out = policy(input)
+            if config.synthesize_gains:
+                A, B = stanza.util.mat_jacobian(env.step, argnums=(0, 1))(
+                    input.observation, out.action, None
+                )
+                Q, R = jnp.eye(A.shape[0]), jnp.eye(B.shape[1])
+                P = stanza.util.solve_discrete_are(A, B, Q, R)
+                # P = jnp.eye(Q.shape[0])
+                K = -jnp.linalg.solve(R + B.T @ P @ B, B.T @ P @ A)
+                out = replace(out, info=replace(out.info, K=K))
+            return out
         roll = policies.rollout(env.step, 
             x0,
             policy_with_jacobian, length=config.traj_length,

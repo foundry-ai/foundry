@@ -16,6 +16,7 @@ Action = Any
 @dataclass(jax=True)
 class PolicyInput:
     observation: Observation
+    state: Any = None
     policy_state: PolicyState = None
     rng_key : PRNGKey = None
 
@@ -93,7 +94,7 @@ def rollout(model, state0,
             if model_rng is not None else (None, None)
         obs = observe(env_state)
         if policy is not None:
-            input = PolicyInput(obs, policy_state, p_sk)
+            input = PolicyInput(obs, env_state, policy_state, p_sk)
             policy_output = policy(input)
             action = policy_output.action
             info = policy_output.info

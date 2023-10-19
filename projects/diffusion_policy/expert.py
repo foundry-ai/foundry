@@ -1,7 +1,7 @@
 from stanza.runtime import activity
 from stanza.rl import ACPolicy
 from stanza.rl.nets import MLPActorCritic
-from stanza.util.rich import StatisticsTable, ConsoleDisplay, LoopProgress
+from stanza.util.rich import StatisticsTable, ConsoleDisplay, LoopProgressBar
 from stanza import Partial
 from stanza.util.logging import logger
 from stanza.rl.ppo import PPO
@@ -43,10 +43,6 @@ def train(config, db):
     params = net.init(PRNGKey(42),
         env.observe(env.sample_state(PRNGKey(0))))
 
-    display = ConsoleDisplay()
-    display.add("ppo", StatisticsTable(), interval=1)
-    display.add("ppo", LoopProgress("RL"), interval=1)
-
     ppo = PPO(
         episode_length=config.episode_length,
         total_timesteps=config.total_timesteps,
@@ -58,14 +54,13 @@ def train(config, db):
         )
     )
     logger.info("Training PPO expert...")
-    with display as dh:
-        trained_params = ppo.train(
-            rng_key=PRNGKey(42),
-            env=env,
-            ac_apply=net.apply,
-            init_params=params,
-            rl_hooks=[dh.ppo]
-        )
+    trained_params = ppo.train(
+        rng_key=PRNGKey(42),
+        env=env,
+        ac_apply=net.apply,
+        init_params=params,
+        rl_hooks=[]
+    )
     logger.info("Done training PPO expert.")
     exp.add("config", config)
     exp.add("net", net)

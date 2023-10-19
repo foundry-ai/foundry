@@ -12,10 +12,11 @@ import stanza.util
 import jax
 import jax.numpy as jnp
 
-def load_data(data_db, num_trajectories,
+def load_data(rng_key, data_db, num_trajectories,
               obs_horizon, action_horizon, action_padding):
-    logger.info("Reading data...")
+    logger.info("Reading data from [blue]{}[/blue]", data_db.url)
     data = data_db.get("trajectories")
+    data = data.shuffle(rng_key)
     # chunk the data and flatten
     logger.info(f"Chunking {data.length} trajectories")
     val_len = min(data.length/2, 20)
@@ -38,7 +39,6 @@ def load_data(data_db, num_trajectories,
     def chunk(traj):
         # Throw away the state, we use only
         # the observations and actions
-        traj = traj.map(lambda x: replace(x, state=x.observation))
         traj = chunk_data(traj,
             chunk_size=obs_horizon + action_horizon + action_padding - 1,
             start_padding=obs_horizon - 1,
@@ -105,5 +105,7 @@ def eval(val_trajs, env, policy, rng_key):
     actions = jax.tree_map(lambda x: x[:,:-1], val_trajs.actions)
     expert_r = vreward(state_early, actions, state_late)
     expert_r = jnp.sum(expert_r, axis=1)
+    logger.info("Expert reward: {}", expert_r)
+    logger.info("Policy reward: {}", policy_r)
     reward_ratio = policy_r / expert_r
     return rolls, jnp.mean(reward_ratio)

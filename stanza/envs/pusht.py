@@ -1,6 +1,7 @@
 from stanza.envs import Environment
 import stanza.policies as policies
-from stanza.policies import Policy, PolicyOutput, PolicyTransform
+from stanza.policies import Policy, PolicyOutput
+from stanza.policies.transforms import PolicyTransform
 from stanza.dataclasses import dataclass, field, replace
 from stanza.util.attrdict import AttrMap
 from stanza.data.trajectory import (

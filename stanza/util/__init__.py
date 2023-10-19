@@ -35,9 +35,19 @@ def mat_jacobian(f, argnums=0):
             y = f(*args)
             y_flat, _ = jax.flatten_util.ravel_pytree(y)
             return y_flat
-        return jax.jacobian(f_flat, argnums=argnums)(x_flat)
+        return jax.jacobian(f_flat, argnums=argnums)(*flat_args)
     return jac
 
+import scipy.linalg
+def _are_cb(A, B, Q, R):
+    a = scipy.linalg.solve_discrete_are(A, B, Q, R)
+    return a.astype(A.dtype)
+def solve_discrete_are(A, B, Q, R):
+    return jax.pure_callback(
+        _are_cb,
+        Q, 
+        A, B, Q, R
+    )
 
 def map(f, vsize=None):
     vf = jax.vmap(lambda args: f(*args))

@@ -20,7 +20,8 @@ class AttrMap:
             d.update(a)
         k = dict(**kwargs)
         d.update(k)
-        self._dict = d
+        # Remove None values from the attr structure
+        self._dict = { k: v for k,v in d.items() if v is not None }
 
     def __getitem__(self, name: str):
         return self._dict.__getitem__(name)
@@ -34,12 +35,9 @@ class AttrMap:
         super().__setattr__(name, value)
 
     def __getattr__(self, name: str):
-        if name == '_dict':
-            return None
-        try:
-            return self._dict.get(name)
-        except KeyError:
-            raise AttributeError("Missing attribute")
+        if name.startswith('__'):
+            raise AttributeError("Not found")
+        return self._dict.get(name)
     
     def set(self, k,v):
         return AttrMap(self, **{k:v})

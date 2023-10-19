@@ -43,9 +43,9 @@ class Config:
     batch_size: int = 128
     warmup_steps: int = 500
 
-    obs_horizon: int = 1
-    action_horizon: int = 1
-    action_padding: int = 0
+    obs_horizon: int = 2
+    action_horizon: int = 4
+    action_padding: int = 4
 
     num_trajectories: int = None
     smoothing_sigma: float = 0
@@ -61,47 +61,44 @@ class Config:
     lambda_val: float = None
 
     net : str = "mlp"
-    features: Tuple[int] = (128, 64, 64, 32)
+    features: Tuple[int] = (256, 128, 128, 64)
     step_embed_dim: int = 64
+    render: bool = False
 
 @dataclass
 class DiffusionSample:
     actions: Any
-    ref_states: Any
-    gains: Any
+    ref_states: Any = None
+    gains: Any = None
 
 def loss(config, net, diffuser, normalizer,
             # these are passed in per training loop:
             state, params, rng, sample):
-    J_normalizer = normalizer.map(lambda x: x.info.J)
     obs_normalizer = normalizer.map(lambda x: x.observation)
     action_normalizer = normalizer.map(lambda x: x.action)
+    state_normalizer = normalizer.map(lambda x: x.state)
+    gains_normalizer = normalizer.map(lambda x: x.info.K) if config.diffuse_gains else None
 
     logger.trace("Tracing loss function", only_tracing=True)
     rng = PRNGSequence(rng)
     timestep = jax.random.randint(next(rng), (), 0, diffuser.num_steps)
-    # We do training in the normalized space!
-    normalized_sample = normalizer.normalize(
-        replace(sample, info=replace(sample.info, knn=None))
-    )
 
-    obs = normalized_sample.observation
-    if config.diffuse_gains:
-        input = DiffusionSample(
-            actions=normalized_sample.action,
-            ref_states=normalized_sample.state,
-            gains=normalized_sample.info.K
-        )
-    else:
-        input = DiffusionSample(
-            actions=normalized_sample.action,
-        )
+    # We do training in the normalized space!
+    # Remove the k nearest neighbors, if they exist
+    obs = obs_normalizer.normalize(sample.observation)
     if config.smoothing_sigma > 0:
         obs_flat, obs_uf = jax.flatten_util.ravel_pytree(obs)
         obs_flat = obs_flat + config.smoothing_sigma*jax.random.normal(next(rng), obs_flat.shape)
         obs = obs_uf(obs_flat)
-    noisy, _, desired_output = diffuser.add_noise(next(rng), input, timestep)
+    input = DiffusionSample(
+        actions=action_normalizer.normalize(sample.action),
+    )
+    if config.diffuse_states or config.diffuse_gains:
+        input = replace(input, ref_states=state_normalizer.normalize(sample.state))
+    if config.diffuse_gains:
+        input = replace(input, gains=gains_normalizer.normalize(sample.info.K))
 
+    noisy, _, desired_output = diffuser.add_noise(next(rng), input, timestep)
     pred = net.apply(params, noisy, timestep, obs)
 
     pred_flat, _ = jax.flatten_util.ravel_pytree(pred)
@@ -117,9 +114,8 @@ def loss(config, net, diffuser, normalizer,
             action = net.apply(params, noisy, timestep, x).actions
             return action_normalizer.unnormalize(action)
         jac = stanza.util.mat_jacobian(f)(obs_normalizer.unnormalize(obs))
-        jac_norm = J_normalizer.normalize(jac)
-        K_norm = jnp.squeeze(normalized_sample.info.J, axis=0)
-        jacobian_diff = jac_norm - K_norm
+        K = jnp.squeeze(sample.info.J, axis=0)
+        jacobian_diff = K - jac
         jac_loss = optax.safe_norm(jacobian_diff, 1e-2)
         stats["jac_loss"] = jac_loss
         loss = loss + config.jac_lambda*jac_loss
@@ -162,7 +158,7 @@ def train_policy(config, repo):
     logger.info("Using data [blue]{}[/blue] with config: {}",
             data_db.url, config)
     with jax.default_device(jax.devices("cpu")[0]):
-        data, val_data, val_trajs, normalizer = load_data(
+        data, val_data, val_trajs, normalizer = load_data(next(rng),
             data_db, num_trajectories=config.num_trajectories,
             obs_horizon=config.obs_horizon,
             action_horizon=config.action_horizon,
@@ -252,29 +248,35 @@ def train_policy(config, repo):
         action_chunk_length=config.obs_horizon + \
             config.action_horizon + config.action_padding - 1,
         action_horizon_offset=config.obs_horizon - 1,
-        action_horizon_length=config.action_horizon
+        action_horizon_length=config.action_horizon,
+        diffuse_states=config.diffuse_states, diffuse_gains=config.diffuse_gains
     )
     env = envs.create(config.env)
     test_policy, reward = eval(val_trajs, env, policy, PRNGKey(43))
     exp.add("test_expert", val_trajs)
     exp.add("test_policy", test_policy)
     exp.add("test_reward", reward)
-
-    N_trajs = jax.tree_flatten(val_trajs)[0][0].shape[0]
-    def video_render(traj):
-        render_imgs = jax.jit(jax.vmap(lambda x, y: env.render(x, state_trajectory=y)))
-        chunks = traj.info.sample.ref_states if hasattr(traj.info, 'sample') else None
-        return render_imgs(traj.states, chunks)
-    for i in range(N_trajs):
-        logger.info(f"Rendering trajectory {i}")
-        val_traj = jax.tree_map(lambda x: x[i], val_trajs)
-        expert_video = video_render(val_traj)
-        exp.log({"{}_expert".format(i): Video(expert_video, fps=10)})
-        test_traj = jax.tree_map(lambda x: x[i], test_policy)
-        policy_video = video_render(test_traj)
-        exp.log({"{}_learned".format(i): Video(policy_video, fps=10)})
-    # render to a video
     logger.info("Normalized test reward: {}", reward)
+
+    if config.render:
+        N_trajs = jax.tree_flatten(val_trajs)[0][0].shape[0]
+        def video_render(traj):
+            render_imgs = jax.jit(jax.vmap(lambda x, y: env.render(x, state_trajectory=y)))
+            if "sample" in traj.info:
+                chunks = normalizer.map(lambda x: x.state).unnormalize(
+                    traj.info.sample.ref_states
+                )
+            else:
+                chunks = None
+            return render_imgs(traj.states, chunks)
+        for i in range(N_trajs):
+            logger.info(f"Rendering trajectory {i}")
+            val_traj = jax.tree_map(lambda x: x[i], val_trajs)
+            expert_video = video_render(val_traj)
+            exp.log({"expert/{}".format(i): Video(expert_video, fps=10)})
+            test_traj = jax.tree_map(lambda x: x[i], test_policy)
+            policy_video = video_render(test_traj)
+            exp.log({"learned/{}".format(i): Video(policy_video, fps=10)})
 
 def make_diffusion_policy(net_fn, diffuser, normalizer,
                           obs_chunk_length, action_chunk_length,
@@ -321,16 +323,21 @@ def make_diffusion_policy(net_fn, diffuser, normalizer,
             sample, 
             num_steps=diffuser.num_steps
         )
-        actions, states, gains = sample
+        actions, states, gains = sample.actions, sample.ref_states, sample.gains
         start, end = action_horizon_offset, action_horizon_offset + action_horizon_length
-        actions, states, gains = jax.tree_util.tree_map(
-            lambda x: x[start:end], (actions, states, gains)
+        actions = jax.tree_util.tree_map(
+            lambda x: x[start:end], actions
+        )
+        states, gains = jax.tree_util.tree_map(
+            lambda x: x[start:end], (states, gains)
         )
         actions = action_norm.unnormalize(actions)
-        states = obs_norm.unnormalize(states) if states is not None else None
-        gains = gain_norm.unnormalize(gains) if gains is not None else None
+        states = state_norm.unnormalize(states) \
+            if states is not None else None
+        gains = gain_norm.unnormalize(gains) \
+            if gains is not None else None
         if diffuse_gains:
-            return policies.PolicyOutput((actions, states, gains))
+            return policies.PolicyOutput((actions, states, gains), info=attrs(sample=sample))
         return policies.PolicyOutput(actions, info=attrs(sample=sample))
     policy = ChunkedPolicy(policy,
         input_chunk_size=obs_chunk_length,

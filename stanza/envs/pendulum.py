@@ -16,7 +16,6 @@ class State(NamedTuple):
     angle: jnp.ndarray
     vel: jnp.ndarray
 
-
 # I added some weird  abstractions
 # maybe ill remove them later
 def get_goal(params):
@@ -90,19 +89,22 @@ class PendulumEnv(Environment):
         # reward of 1 == perfect
         return jnp.exp(10*total)/10
 
-    def render(self, state, *, width=256, height=256, mode="image"):
+    def render(self, state, *, width=256, height=256, mode="image",
+                        state_trajectory=None, **kwargs):
         if mode == "image":
-            angle = jnp.squeeze(state.angle)
             image = jnp.ones((width, height, 3))
-            x, y = jnp.sin(angle), jnp.cos(angle)
-            center = jnp.array([width/2, height/2])
-            circle_loc = center + jnp.array([width*2/6, height*2/6])*jnp.stack((x,y))
-            stick = canvas.segment(center, circle_loc, thickness=2)
-            circle = canvas.circle(circle_loc, radius=width/24)
-            sdf = canvas.stack(
-                canvas.fill(stick, color=jnp.array([0.,0.,0.])),
-                canvas.fill(circle, color=jnp.array([1.,0.,0.]))
-            )
+            pos = jnp.stack((jnp.sin(state.angle), jnp.cos(state.angle)))
+            center = jnp.zeros((2,))
+            circle_loc = center + pos
+            stick = canvas.fill(canvas.segment(center, circle_loc, thickness=0.02), color=(0.,0.,0.))
+            circle = canvas.fill(canvas.circle(circle_loc, radius=0.2), color=(1., 0., 0.))
+            objects = [stick, circle]
+            if state_trajectory is not None:
+                pos = jnp.stack((jnp.sin(state_trajectory.angle), jnp.cos(state_trajectory.angle)), axis=-1)
+                circles = canvas.batch_union(canvas.circle(pos, radius=0.02*jnp.ones((pos.shape[0],))))
+                objects.append(canvas.fill(circles, color=(0., 0., 1.)))
+            sdf = canvas.transform(canvas.stack(*objects), scale=width/3)
+            sdf = canvas.transform(sdf, translation=(width/2, height/2))
             image = canvas.paint(image, sdf) 
             return image
         else:

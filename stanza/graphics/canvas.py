@@ -135,7 +135,7 @@ def union(*geoemtries):
     return Union(geoemtries)
 
 @dataclass(jax=True)
-class VMapUnion:
+class BatchUnion:
     geometries: Geometry
 
     @property
@@ -150,8 +150,8 @@ class VMapUnion:
         distances = jax.vmap(lambda g: g.signed_distance(x))(self.geometries)
         return jnp.min(distances, axis=0)
 
-def vmap_union(geoemtries):
-    return VMapUnion(geoemtries)
+def batch_union(geoemtries):
+    return BatchUnion(geoemtries)
 
 def _aa_alpha(dist):
     return jnp.clip(-(2*dist - 1), 0, 1)
