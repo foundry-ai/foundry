@@ -1,14 +1,2 @@
-*.tmp
-.venv
-.datasets
 __pycache__
-.pytest_cache
-.cache
-results
-wandb
-artifacts
-*.png
-*.pdf
-*.mp4
-*.pyc
-.ipynb_checkpoints
+target
