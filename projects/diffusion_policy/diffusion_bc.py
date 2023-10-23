@@ -249,14 +249,30 @@ def train_policy(config, repo):
             config.action_horizon + config.action_padding - 1,
         action_horizon_offset=config.obs_horizon - 1,
         action_horizon_length=config.action_horizon,
-        diffuse_states=config.diffuse_states, diffuse_gains=config.diffuse_gains
+        diffuse_states=config.diffuse_states, diffuse_gains=config.diffuse_gains,
+        noise=config.smoothing_sigma
     )
     env = envs.create(config.env)
-    test_policy, reward = eval(val_trajs, env, policy, PRNGKey(43))
+    test_policy, reward = eval(val_trajs, env, policy, next(rng))
     exp.add("test_expert", val_trajs)
     exp.add("test_policy", test_policy)
     exp.add("test_reward", reward)
     logger.info("Normalized test reward: {}", reward)
+    if config.smoothing_sigma > 0:
+        deconv_policy = make_diffusion_policy(
+            Partial(net.apply, ema_params), diffuser, normalizer,
+            obs_chunk_length=config.obs_horizon,
+            action_chunk_length=config.obs_horizon + \
+                config.action_horizon + config.action_padding - 1,
+            action_horizon_offset=config.obs_horizon - 1,
+            action_horizon_length=config.action_horizon,
+            diffuse_states=config.diffuse_states, diffuse_gains=config.diffuse_gains,
+            noise=0. # No noise injection for deconv policy
+        )
+        _, deconv_reward = eval(val_trajs, env, deconv_policy, next(rng))
+        logger.info("Normalized test deconv reward: {}", deconv_reward)
+        exp.add("test_deconv_reward", deconv_reward)
+
 
     if config.render:
         N_trajs = jax.tree_flatten(val_trajs)[0][0].shape[0]
