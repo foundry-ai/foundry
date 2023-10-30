@@ -3,7 +3,8 @@ import tarfile
 import jax.numpy as jnp
 import pickle
 from stanza.data import Data
-from .util import _download
+from stanza.datasets import builder
+from .util import download as _download
 
 def _extract(tar_path, dest_dir):
     if dest_dir.is_dir():
@@ -21,7 +22,8 @@ def _read_batch(path):
     data = data.transpose((0, 2, 3, 1))
     return data, labels
 
-def cifar10(quiet=False):
+@builder
+def cifar10(quiet=False, splits=set()):
     tar_path = Path(".cache/data/cifar10.tar.gz")
     dest_path = Path(".cache/data/cifar10")
     _download("https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz", tar_path,
@@ -29,16 +31,23 @@ def cifar10(quiet=False):
     _extract(tar_path, dest_path)
     dest_path = dest_path / "cifar-10-batches-py"
     test_path = dest_path / "test_batch"
-    train_paths = [dest_path / f"data_batch_{i}" for i in range(1,6)]
-    train_batches = [_read_batch(p) for p in train_paths]
-    train_data = jnp.concatenate([x[0] for x in train_batches])
-    train_labels = jnp.concatenate([x[1] for x in train_batches])
-    test_data, test_labels = _read_batch(test_path)
-    train = Data.from_pytree((train_data, train_labels))
-    test = Data.from_pytree((test_data, test_labels))
-    return train, test
 
-def cifar100(quiet=False):
+    data = {}
+    if "train" in splits:
+        train_paths = [dest_path / f"data_batch_{i}" for i in range(1,6)]
+        train_batches = [_read_batch(p) for p in train_paths]
+        train_data = jnp.concatenate([x[0] for x in train_batches])
+        train_labels = jnp.concatenate([x[1] for x in train_batches])
+        train = Data.from_pytree((train_data, train_labels))
+        data["train"] = train
+    if "test" in splits:
+        test_data, test_labels = _read_batch(test_path)
+        test = Data.from_pytree((test_data, test_labels))
+        data["test"] = test
+    return data
+
+@builder
+def cifar100(quiet=False, splits=set()):
     tar_path = Path(".cache/data/cifar100.tar.gz")
     dest_path = Path(".cache/data/cifar100")
     _download("https://www.cs.toronto.edu/~kriz/cifar-100-python.tar.gz", tar_path,

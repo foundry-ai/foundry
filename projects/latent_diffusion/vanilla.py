@@ -1,9 +1,14 @@
 from stanza.dataclasses import dataclass
-
+from stanza.runtime import activity
+import stanza.datasets as datasets
 
 @dataclass(jax=True)
 class Config:
-    pass
+    dataset : str = "celeb_a"
 
-def train(config):
-    pass
+@activity(Config)
+def train(config, db):
+    train, test = datasets.load(
+        config.dataset,
+        splits=("train", "test")
+    )
