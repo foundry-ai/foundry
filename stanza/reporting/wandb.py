@@ -2,7 +2,7 @@ import wandb
 import jax
 import dateutil.parser
 
-from stanza.reporting import Backend, Video, Figure
+from stanza.reporting import Backend, Video, Image, Figure
 import jax.numpy as jnp
 import numpy as np
 import os
@@ -132,9 +132,18 @@ class WandbRun:
                 if data.shape[-1] == 4:
                     data = data[...,:3]
                 return wandb.Video(data, fps=v.fps)
+            def convert_image(i):
+                from stanza.util.ipython import make_grid
+                if i.data.ndim == 4:
+                    data = make_grid(i.data)
+                else:
+                    data = i.data
+                return wandb.Image(np.array(data))
+
             data = _remap(data, {
                     Figure: lambda f: f.fig,
-                    Video: convert_video
+                    Video: convert_video,
+                    Image: convert_image
                 })
             self._run.log(data, step=step)
 

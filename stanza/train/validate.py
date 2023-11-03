@@ -1,7 +1,7 @@
 from stanza.data import Data, PyTreeData
 from stanza.dataclasses import dataclass, field, replace
 from jax.random import PRNGKey
-from typing import Callable
+from typing import Callable, Any
 from stanza.util.loop import every_epoch, Hook
 
 import jax.numpy as jnp
@@ -50,7 +50,10 @@ class Validator(Hook):
                 dataset = self.dataset.shuffle(sk)
                 dataset = dataset.batch(batch_size)
                 def scan_fn(carry, batch):
-                    batch = PyTreeData.from_data(batch).data
+                    batch = PyTreeData.from_data(
+                        batch, 
+                        fixed_buffer_size=self.batch_size
+                    ).data
                     running_stats, total = carry
                     stats = stat_fn(
                         state.fn_state,
@@ -80,6 +83,47 @@ class Validator(Hook):
             last_stats[self.stat_key] = stats
             state = replace(state, last_stats=last_stats)
             return (rng_key, state.iteration), state
+        return jax.lax.cond(jnp.logical_and(self.condition(state),
+                            iteration != state.iteration),
+            cond_fn, lambda x, y: (x,y), hs, state)
+
+@dataclass(jax=True)
+class Generator(Hook):
+    bucket : Any
+    rng_key: PRNGKey
+    generate_fn: Callable[[PRNGKey], Any]
+    visualizer: Callable[[Any], Any] = None
+    condition : Callable = every_epoch
+    samples : int = field(default=1, jax_static=True)
+    batch_size : int = field(default=None, jax_static=True)
+
+    def init(self, state):
+        return (self.rng_key, -1), state
+
+    def do_generate(self, alg_state, rng_key):
+        batch_size = self.batch_size or self.samples
+
+        def process_batch(rng_key, _):
+            rng_key, sk = jax.random.split(rng_key)
+            rng_batch = jax.random.split(sk, batch_size)
+            generated = jax.vmap(self.generate_fn, in_axes=(None, 0))(alg_state, rng_batch)
+            return rng_key, generated
+        rng_key, batches = jax.lax.scan(process_batch, rng_key, None,
+                     length=self.samples // batch_size)
+        # reshape batches to be flat
+        batches = jax.tree_map(lambda x: jnp.reshape(x, (-1, *x.shape[2:])), batches)
+        if self.visualizer is not None:
+            batches = self.visualizer(batches)
+        return batches
+
+    def run(self, hs, state):
+        def cond_fn(hs, state):
+            rng_key, _ = hs
+            rng_key, sk = jax.random.split(rng_key)
+            generated = self.do_generate(state, sk)
+            self.bucket.log(generated, step=state.iteration)
+            return (rng_key, state.iteration), state
+        _, iteration = hs
         return jax.lax.cond(jnp.logical_and(self.condition(state),
                             iteration != state.iteration),
             cond_fn, lambda x, y: (x,y), hs, state)

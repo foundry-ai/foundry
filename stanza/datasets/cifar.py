@@ -4,14 +4,7 @@ import jax.numpy as jnp
 import pickle
 from stanza.data import Data
 from stanza.datasets import builder
-from .util import download as _download
-
-def _extract(tar_path, dest_dir):
-    if dest_dir.is_dir():
-        return
-    dest_dir.mkdir()
-    with tarfile.open(tar_path) as f:
-        f.extractall(dest_dir)
+from .util import download_and_extract, cache_path
 
 def _read_batch(path):
     with open(path, 'rb') as fo:
@@ -24,17 +17,19 @@ def _read_batch(path):
 
 @builder
 def cifar10(quiet=False, splits=set()):
-    tar_path = Path(".cache/data/cifar10.tar.gz")
-    dest_path = Path(".cache/data/cifar10")
-    _download("https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz", tar_path,
-              quiet=quiet)
-    _extract(tar_path, dest_path)
-    dest_path = dest_path / "cifar-10-batches-py"
-    test_path = dest_path / "test_batch"
+    tar_path = cache_path("cifar10", "cifar10.tar.gz")
+    data_path = cache_path("cifar10", "data")
+    if not data_path.exists():
+        download_and_extract(tar_path, data_path, 
+            url="https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz",
+            quiet=quiet
+        )
+    data_path = data_path / "cifar-10-batches-py"
+    test_path = data_path / "test_batch"
 
     data = {}
     if "train" in splits:
-        train_paths = [dest_path / f"data_batch_{i}" for i in range(1,6)]
+        train_paths = [data_path / f"data_batch_{i}" for i in range(1,6)]
         train_batches = [_read_batch(p) for p in train_paths]
         train_data = jnp.concatenate([x[0] for x in train_batches])
         train_labels = jnp.concatenate([x[1] for x in train_batches])

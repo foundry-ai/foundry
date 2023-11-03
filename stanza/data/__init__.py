@@ -64,12 +64,13 @@ class Data:
         state = (start, 0, state)
         def cond_fn(state):
             i, n, _ = state
-            return jnp.logical_and(self.is_end(i), 
+            return jnp.logical_and(jnp.logical_not(self.is_end(i)), 
                     n < limit if limit is not None else True)
         def step_fn(state):
             data = self.get(state[0])
+            next_it = self.next(state[0])
             ns = scan_fn(state[2], data)
-            return (self.next(state[0]), state[1] + 1, ns)
+            return (next_it, state[1] + 1, ns)
         if jit:
             state = jax.lax.while_loop(cond_fn, step_fn, state)
         else:
@@ -191,6 +192,11 @@ class DataSlice(Data):
         return self.data.get(iterator.it)
 
 @dataclass(jax=True)
+class StaticDataSlice(DataSlice):
+    # make the n field static
+    n : int = field(jax_static=True)
+
+@dataclass(jax=True)
 class PyTreeData(Data):
     data: jnp.array
 
@@ -279,7 +285,8 @@ class PyTreeData(Data):
         return x
 
     @staticmethod
-    def from_data(data, start=None, buffer_size=None, chunk_size=None):
+    def from_data(data, start=None, buffer_size=None,
+                  fixed_buffer_size=None, chunk_size=None):
         if isinstance(data, PyTreeData) and start is None:
             if buffer_size is not None:
                 buf = jax.tree_util.tree_map(
@@ -292,14 +299,20 @@ class PyTreeData(Data):
         # : If we can calculate the buffer size statically
         # automatically use that
         l = data.length
-        if buffer_size is None and l is not None and math.isfinite(l):
+        if buffer_size is None and fixed_buffer_size is None \
+                and l is not None and math.isfinite(l):
             buffer_size = int(l)
 
-        if buffer_size is None and chunk_size is None:
+        if buffer_size is None and chunk_size is None and fixed_buffer_size is None:
             raise RuntimeError("Must specify buffer or chunk size")
 
         if start is None:
             start = data.start
+        # fixed_buffer_size ignores if the data has less than the buffer
+        # size and just fills the whole buffer
+        if fixed_buffer_size is not None:
+            data, _, _ = PyTreeData._data_chunk(data, start, fixed_buffer_size)
+            return PyTreeData(data)
         if buffer_size is not None:
             data, n, _ = PyTreeData._data_chunk(data, start, buffer_size)
             data = jax.tree_util.tree_map(lambda x: x[:n], data)
@@ -369,9 +382,12 @@ class MappedData(Data):
     # generally more efficient (i.e for PyTreeData)
     def slice(self, start_iter, len):
         return MappedData(self.data.slice(start_iter, len), self.fun)
-    
+
     def batch(self, n):
-        return MappedData(self.data.batch(n), jax.vmap(self.fun))
+        # apply the map function to each batch object
+        def map_batch(x):
+            return x.map(self.fun)
+        return MappedData(self.data.batch(n), map_batch)
     
     def shuffle(self, rng_key):
         return MappedData(self.data.shuffle(rng_key), self.fun)
@@ -389,15 +405,13 @@ class BatchedData(Data):
         return self.data.start
     
     def is_end(self, iterator):
-        return self.data.is_end(iterator)
+        return self.remaining(iterator) == 0
 
     def remaining(self, iterator):
         return self.data.remaining(iterator) // self.n 
 
     def get(self, iterator):
-        left = self.data.remaining(iterator)
-        n = jnp.minimum(self.n, left)
-        return DataSlice(iterator, iterator + n)
+        return StaticDataSlice(self.data, iterator, self.n)
 
     def next(self, iterator):
         # advance the iterator by n

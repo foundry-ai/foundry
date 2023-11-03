@@ -18,15 +18,33 @@ def _iterable(x):
         return False
 
 @dataclass(frozen=True)
-class Figure:
+class Media:
+    pass
+
+@dataclass(frozen=True)
+class Figure(Media):
     fig: Any
     height: int = None
     width: int = None
 
 @dataclass(frozen=True)
-class Video:
+class Video(Media):
     data: np.array
     fps: int = 28
+
+@dataclass(frozen=True)
+class Image(Media):
+    data: np.array
+
+def flatten_media_tree(tree):
+    return jax.tree_util.tree_flatten_with_path(tree,
+        is_leaf=lambda x: isinstance(x, Media)
+    )[0]
+
+def map_media_tree(f, tree, *trees):
+    return jax.tree_util.tree_map(f, tree, *trees,
+        is_leaf=lambda x: isinstance(x, Media)
+    )
 
 class Backend:
     def create(self):

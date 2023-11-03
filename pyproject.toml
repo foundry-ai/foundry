@@ -19,11 +19,8 @@ activity = "stanza.runtime:launch_activity"
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.12"
-jax = [
-	{version="^0.4.18", optional=true},
-	{version="^0.4.18", extras=["cuda12_pip"], optional=true}
-]
-nvidia-cudnn-cu12 = {version="8.9.4.25", optional=true}
+jax = "0.4.20"
+jaxlib = "0.4.20"
 optax = "^0.1.4"
 rich = "^13.3.1"
 wandb = "^0.13.11"
@@ -51,20 +48,14 @@ gdown = "^4.7.1"
 pytest = "^7.2.1"
 jupyter = "^1.0.0"
 
-[tool.poetry.extras]
-cuda = ["jax", "nvidia-cudnn-cu12"]
+[[tool.poetry.source]]
+name = "jax"
+url = "https://storage.googleapis.com/jax-releases/jax_releases.html"
+priority = "primary"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
-
-[[tool.poetry.source]]
-name = "jax"
-url = "https://storage.googleapis.com/jax-releases/jax_releases.html"
-
-[[tool.poetry.source]]
-name = "jax_cuda"
-url = "https://storage.googleapis.com/jax-releases/jax_cuda_releases.html"
 
 [[tool.poetry.source]]
 name = "PyPI"

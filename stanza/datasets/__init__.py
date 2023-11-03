@@ -24,10 +24,14 @@ def load(name, **kwargs):
 def builder(func):
     @functools.wraps(func)
     def wrapper(*, splits=set(), **kwargs):
+        if isinstance(splits, str):
+            split_set = {splits}
+            data = func(splits=split_set, **kwargs)
+            return data[splits]
         if not isinstance(splits, set):
             split_set = set(splits)
             data = func(splits=split_set, **kwargs)
-            res = (data[k] for k in splits)
+            res = tuple((data[k] for k in splits))
             return res
         else:
             return func(splits=splits, **kwargs)

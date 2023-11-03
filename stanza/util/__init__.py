@@ -3,6 +3,7 @@ import jax.numpy as jnp
 from stanza.dataclasses import dataclass, replace, field
 from typing import List, Any
 
+import math
 from chex import assert_trees_all_equal_shapes_and_dtypes
 
 def vmap_ravel_pytree(x):
@@ -102,6 +103,47 @@ def mse_loss(x, y=None):
         x = jax.tree_map(lambda x, y: x - y, x, y)
     flat, _ = jax.flatten_util.ravel_pytree(x)
     return jnp.mean(jnp.square(flat))
+
+def make_grid(images, cols=None, rows=None):
+    N = images.shape[0]
+    if N == 1:
+        return images[0]
+
+    # use a heuristic to pick a good
+    # number of rows and columns
+    if cols is None and rows is None:
+        diff = math.inf
+        for c in range(1,min(N+1, 10)):
+            r = math.ceil(N / c)
+            n_diff = abs(c-r) + 5*abs(N - r*c)
+            if n_diff <= diff:
+                rows = r
+                cols = c
+                diff = n_diff
+    if cols is None:
+        cols = math.ceil(N / rows)
+    if rows is None:
+        rows = math.ceil(N / cols)
+
+    # add zero padding for missing images
+    if rows*cols > N:
+        padding = jnp.zeros((rows*cols - N,) + images.shape[1:],
+                            dtype=images.dtype)
+        images = jnp.concatenate((images, padding), axis=0)
+    images = jnp.reshape(images, (rows, cols,) + images.shape[1:])
+    # reorder row, cols, height, width, channels 
+    # to row, height, cols, width, channels
+    # then reshape to flatten the columns
+    images = jnp.transpose(images, (0, 2, 1, 3, 4))
+    images = jnp.reshape(images, 
+        (images.shape[0], images.shape[1], -1, images.shape[4])
+    )
+    # reshape to flatten the rows
+    images = jnp.reshape(images,
+        (-1, images.shape[2], images.shape[3])
+    )
+    return images
+
 
 def shape_tree(x):
     return jax.tree_util.tree_map(lambda x: jnp.array(x).shape, x)

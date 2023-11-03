@@ -1,18 +1,35 @@
 import IPython.display as display
 import numpy as np
+import math
 import io
 import ffmpegio
 from PIL import Image
 from pathlib import Path
 
+from stanza.data import Data, PyTreeData
+from stanza.util import make_grid
+
+import jax
+import jax.numpy as jnp
+
 def display_image(image):
-    img = Image.fromarray(np.array((255*image).astype(np.uint8)), 'RGB')
+    if image.dtype != np.uint8:
+        image = np.array((255*image)).astype(np.uint8)
+    else:
+        image = np.array(image)
+    img = Image.fromarray(image)
     imgByteArr = io.BytesIO()
     # image.save expects a file-like as a argument
     img.save(imgByteArr, format='PNG')
     # Turn the BytesIO object back into a bytes object
     imgByteArr = imgByteArr.getvalue()
     return display.Image(data=imgByteArr)
+
+def display_images(images, cols=None, rows=None):
+    if isinstance(images, Data):
+        images = PyTreeData.from_data(images, chunk_size=64).data
+    image = make_grid(images, cols, rows)
+    return display_image(image)
 
 def display_html(html):
     return display.HTML(html)

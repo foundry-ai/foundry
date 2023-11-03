@@ -1,5 +1,6 @@
 import flax.linen as nn
 import jax.numpy as jnp
+import numpy as np
 import jax
 import math
 
@@ -77,8 +78,7 @@ class QKVAttention(nn.Module):
             q,k,v = jnp.split(q, 3, axis=-1)
         # flatten the spatial dims
         spatial_dims = q.shape[-self.dims-1:-1]
-        with jax.ensure_compile_time_eval():
-            T = jnp.prod(spatial_dims)
+        T = np.prod(spatial_dims)
         channels = q.shape[-1]
         # flatten the spatial dims, swap the last two axes
         q,k,v = jax.tree_map(

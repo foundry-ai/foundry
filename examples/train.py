@@ -18,8 +18,8 @@ logging.basicConfig(
     level=logging.ERROR, format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
 )
 
-from stanza.data.mnist import mnist
-train_data, test_data = mnist()
+from stanza.datasets.mnist import mnist
+train_data, test_data = mnist(splits=("train", "test"))
 def map_fn(sample):
    x, y = sample
    x = x.astype(jnp.float32) / 255.

@@ -1,4 +1,4 @@
-from stanza.reporting import Backend
+from stanza.reporting import Backend, Bucket
 import urllib.parse as urlparse
 
 import itertools
@@ -27,3 +27,14 @@ class DummyBucket:
     def tag(self, **tags):
         for (k,v) in tags.items():
             self.tags.setdefault(k, set()).update(v)
+
+    def add(self, name, value, *,
+            append=False, step=None,
+            batch=False, batch_lim=None):
+        pass
+
+    def get(self, name):
+        pass
+    
+    def log(self, data, step=None, batch=False):
+        pass

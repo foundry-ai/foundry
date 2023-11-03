@@ -56,20 +56,23 @@ class ResBlock(nn.Module):
     dims: int = 2 # signal dimension
 
     @nn.compact
-    def __call__(self, x, *, cond_embed=None, train=False):
+    def __call__(self, x, *, cond_embed=None, train=False,
+                             spatial_shape=None):
         in_layers = nn.Sequential([
             Normalization(self.dims),
             activations.silu,
         ])
+        out_channels = self.out_channels or x.shape[-1]
         in_conv = nn.Conv(
-            self.out_channels,
+            out_channels,
             self.dims*(3,))
         out_norm = Normalization(self.dims)
         out_layers = nn.Sequential([
-            activations.silu,
-            nn.Dropout(self.dropout, deterministic=not train)
-        ])
-        skip_connection = nn.Conv(self.out_channels, self.dims*(1,))
+                activations.silu,
+            ] + ([nn.Dropout(self.dropout, deterministic=not train)]
+                if self.dropout is not None else [])
+        )
+        skip_connection = nn.Conv(out_channels, self.dims*(1,))
 
         h = in_layers(x)
         if self.up:
@@ -84,9 +87,9 @@ class ResBlock(nn.Module):
             film = nn.Sequential([
                 nn.Dense(cond_embed.shape[-1]),
                 activations.silu, 
-                nn.Dense(2*self.out_channels 
+                nn.Dense(2*out_channels 
                     if self.use_scale_shift_norm 
-                    else self.out_channels
+                    else out_channels
                 )
             ])(cond_embed)
             if self.use_scale_shift_norm:
@@ -104,17 +107,24 @@ class Upsample(nn.Module):
     conv: bool = False
 
     @nn.compact
-    def __call__(self, x):
+    def __call__(self, x, spatial_shape=None, **kwargs):
         scale_factors = (self.scale_factors,) * self.dims \
             if isinstance(self.scale_factors, int) else self.scale_factors
         out_ch = self.out_channels or x.shape[-1]
 
         # keep non-spatial dimensions the same
-        dest_shape = (
-            x.shape[:-1-self.dims] + \
-            (f * s for f, s in zip(scale_factors, x.shape[-1-self.dims:-1])) + \
-            (x.shape[-1],)
-        )
+        if spatial_shape is not None:
+            dest_shape = (
+                x.shape[:-1-self.dims] + \
+                tuple(spatial_shape) + 
+                (x.shape[-1],)
+            )
+        else:
+            dest_shape = (
+                x.shape[:-1-self.dims] + \
+                tuple((f * s for f, s in zip(scale_factors, x.shape[-1-self.dims:-1]))) + \
+                (x.shape[-1],)
+            )
         x = jax.image.resize(x, dest_shape, "nearest")
         if self.conv:
             x = nn.Conv(out_ch, self.dims*(3,))(x)
@@ -127,7 +137,7 @@ class Downsample(nn.Module):
     conv: bool = False
 
     @nn.compact
-    def __call__(self, x):
+    def __call__(self, x, **kwargs):
         out_ch = self.out_channels or x.shape[-1]
         if self.conv:
             x = nn.Conv(out_ch, self.dims*(3,), self.scale_factors)(x)
@@ -138,8 +148,9 @@ class Downsample(nn.Module):
 
 class UNet(nn.Module):
     base_channels: int = 64 # channels of the first layer
+    out_channels: int = None # outut channels, uses input channels if None
     num_res_blocks: int = 2 # number of res blocks per downsample
-    attention_resolutions: Sequence[int] = [4,8] # downsampling resolutions to use attention
+    attention_levels: Sequence[int] = (4,8) # downsampling resolutions to use attention
     channel_mult: Sequence[int] = (1, 2, 4, 8) # channel multiplier per downsample
     scale_factors: int | Sequence[int] = 2 # scale factors for upsampling/downsampling
     dropout: float = 0.0
@@ -154,13 +165,10 @@ class UNet(nn.Module):
     dtype: Any = jnp.float32
     num_classes: int = None # if cond is not one-hot encoded,
                             # can be used to specify the number of classes
-
-    def setup(self):
+    def _setup(self, x):
         ch = self.base_channels
-        ds = 1
-        self.input_blocks = [IgnoreExtra(nn.Conv(ch, self.dims*(3,)))]
+        input_blocks = [IgnoreExtra(nn.Conv(ch, self.dims*(3,)))]
         for level, mult in enumerate(self.channel_mult):
-            ds = level**2
             for _ in range(self.num_res_blocks):
                 layers = [
                     ResBlock(
@@ -171,18 +179,17 @@ class UNet(nn.Module):
                         dims=self.dims,
                     )
                 ]
-                if ds in self.attention_resolutions:
-                    layers.append(
-                        IgnoreExtra(AttentionBlock(
-                            num_heads=self.num_heads,
-                            num_head_channels=self.num_head_channels,
-                            dims=self.dims
-                        ))
-                    )
-                self.input_blocks.append(SharedSequential(layers))
+            if level in self.attention_levels:
+                layers.append(
+                    IgnoreExtra(AttentionBlock(
+                        num_heads=self.num_heads,
+                        num_head_channels=self.num_head_channels,
+                        dims=self.dims
+                    ))
+                )
             if level != len(self.channel_mult) - 1:
                 if self.resblock_updown:
-                    self.input_blocks.append(
+                    layers.append(
                         ResBlock(
                             out_channels=ch*mult,
                             dropout=self.dropout,
@@ -193,86 +200,87 @@ class UNet(nn.Module):
                         )
                     )
                 else:
-                    self.input_blocks.append(
+                    layers.append(
                         Downsample(
                             dims=self.dims,
                             scale_factors=self.scale_factors,
                             conv=self.conv_resample,
                         )
                     )
-        self.middle_block = SharedSequential([
+                input_blocks.append(SharedSequential(layers))
+        middle_block = SharedSequential([
             ResBlock(
                 dims=self.dims,
-                out_channels=self.base_channels*self.channel_mult[-1],
+                out_channels=ch*self.channel_mult[-1],
                 dropout=self.dropout,
                 use_scale_shift_norm=self.use_scale_shift_norm,
             ),
-            AttentionBlock(
+            IgnoreExtra(AttentionBlock(
                 dims=self.dims,
                 num_heads=self.num_heads,
                 num_head_channels=self.num_head_channels,
-            ),
+            )),
             ResBlock(
                 dims=self.dims,
                 dropout=self.dropout,
                 use_scale_shift_norm=self.use_scale_shift_norm,
             )
         ])
-        self.output_blocks = []
+        output_blocks = []
         for level, mult in list(enumerate(self.channel_mult))[::-1]:
-            ds = level**2
-            for i in range(self.num_res_blocks + 1):
-                ch = int(self.model_channels * mult)
+            for _ in range(self.num_res_blocks + 1):
                 layers = [
                     ResBlock(
                         dims=self.dims,
-                        out_channels=ch,
+                        out_channels=self.base_channels*mult,
                         use_scale_shift_norm=self.use_scale_shift_norm,
                     )
                 ]
-                if ds in self.attention_resolutions:
-                    layers.append(
-                        IgnoreExtra(AttentionBlock(
-                            dims=self.dims,
-                            num_heads=self.num_heads,
-                            num_head_channels=self.num_head_channels,
-                        ))
+            if level in self.attention_levels:
+                layers.append(
+                    IgnoreExtra(AttentionBlock(
+                        dims=self.dims,
+                        num_heads=self.num_heads,
+                        num_head_channels=self.num_head_channels,
+                    ))
+                )
+            if level > 0:
+                layers.append(
+                    ResBlock(
+                        out_channels=ch,
+                        dropout=self.dropout,
+                        dims=self.dims,
+                        use_scale_shift_norm=self.use_scale_shift_norm,
+                        up=True,
                     )
-                if level and i == self.num_res_blocks:
-                    layers.append(
-                        ResBlock(
-                            out_channels=ch,
-                            dropout=self.dropout,
-                            dims=self.dims,
-                            use_scale_shift_norm=self.use_scale_shift_norm,
-                            up=True,
-                        )
-                        if self.resblock_updown
-                        else Upsample(
-                            conv=self.conv_resample, 
-                            dims=self.dims,
-                            scale_factors=self.scale_factors,
-                            out_channels=self.out_ch
-                        )
+                    if self.resblock_updown
+                    else Upsample(
+                        conv=self.conv_resample, 
+                        dims=self.dims,
+                        scale_factors=self.scale_factors,
+                        out_channels=ch
                     )
-                self.output_blocks.append(SharedSequential(layers))
-        self.out = nn.Sequential([
+                )
+            output_blocks.append(SharedSequential(layers))
+        out_channels = self.out_channels or x.shape[-1]
+        out = nn.Sequential([
             Normalization(self.dims),
             activations.silu,
-            nn.Conv(self.out_ch, self.dims*(3,), 
+            nn.Conv(out_channels, self.dims*(3,), 
                     kernel_init=initializers.zeros_init())
         ])
+        return input_blocks, middle_block, output_blocks, out
 
     @nn.compact
     def __call__(self, x, *, timestep=None, time_embed=None,
                             cond=None, cond_embed=None, train=False):
         if timestep is not None and time_embed is None:
-            time_embed = nn.Sequential(
+            time_embed = nn.Sequential([
                 SinusoidalPosEmbed(self.embed_dim),
                 nn.Dense(self.embed_dim),
-                nn.SiLU(),
+                activations.silu,
                 nn.Dense(self.embed_dim)
-            )(timestep)
+            ])(timestep)
         if cond is not None and cond_embed is None:
             assert self.num_classes is not None
             assert cond.shape == x.shape[:-1-self.dims]
@@ -285,16 +293,32 @@ class UNet(nn.Module):
             emb = time_embed
         else:
             emb = None
-        
+
+        input_blocks, middle_block, output_blocks, out = self._setup(x)
         h = x.astype(self.dtype)
         hs = []
-        for module in self.input_blocks:
+        spatial_shapes = []
+        for module in input_blocks:
             h = module(h, cond_embed=emb, train=train)
+            spatial_shapes.append(h.shape[-1-self.dims:-1])
             hs.append(h)
-        h = self.middle_block(h, cond_embed=emb, train=train)
-        for module in self.output_blocks:
+        spatial_shapes.pop() # remove the last spatial shape
+        h = middle_block(h, cond_embed=emb, train=train)
+        for module in output_blocks:
             res = hs.pop()
             h = jnp.concatenate((h, res), axis=-1)
-            h = module(h, cond_embed=emb, train=train)
+            spatial_shape = spatial_shapes.pop() if spatial_shapes else None
+            h = module(
+                h, 
+                spatial_shape=spatial_shape,
+                cond_embed=emb, 
+                train=train
+            )
         h = h.astype(x.dtype)
-        return self.out(h)
+        # define the output block, so we can
+        # use the input number of channels
+        return out(h)
+
+
+class DiffusionUNet(UNet):
+    embed_dim: int = 64

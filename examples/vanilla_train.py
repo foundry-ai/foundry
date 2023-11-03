@@ -19,7 +19,6 @@ the mini-library jax.example_libraries.optimizers is for first-order stochastic
 optimization.
 """
 
-
 import time
 import itertools
 import wandb
@@ -33,7 +32,7 @@ from jax import jit, grad, random
 from jax.example_libraries import optimizers
 from jax.example_libraries import stax
 from jax.example_libraries.stax import Dense, Relu, LogSoftmax
-from stanza.data.mnist import mnist
+from stanza.datasets.mnist import mnist
 
 def loss(params, batch):
     inputs, targets = batch

@@ -3,51 +3,62 @@ import os
 from rich.progress import Progress
 from pathlib import Path
 import zipfile
+import tarfile
 
 _DATA = Path(os.environ["HOME"]) / ".dataset_cache"
 
 def cache_path(key, filename=None):
     path = _DATA / key 
-    return path / filename
+    return path / filename if filename is not None else path
 
 def download_and_extract(
-        download_path,
-        extract_path,
+        download_path : Path,
+        extract_path : Path,
         url=None,
         gdrive_id=None,
         strip_folder=False,
         quiet=False):
+
     download(download_path, url=url,
              gdrive_id=gdrive_id, quiet=quiet)
-    extract_zip(download_path, extract_path, 
+    extract(download_path, extract_path, 
         strip_folder=strip_folder, quiet=quiet)
 
-def extract_zip(path, dest, strip_folder=False, quiet=False):
+def extract(archive_path : Path, dest : Path, strip_folder=False, quiet=False):
     dest.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(path, 'r') as zip_ref:
-        total_size_in_bytes = sum([zinfo.file_size for zinfo in zip_ref.infolist()])
-
-        if quiet:
-            for zipinfo in zip_ref.infolist():
-                if strip_folder:
-                    path = Path(zipinfo.filename)
-                    path = Path(*path.parts[2:])
-                    zipinfo.filename = str(path)
-                zip_ref.extract(zipinfo, dest)
+    def do_extract(progress_cb=None):
+        ext = "".join(archive_path.suffixes)
+        if ext == ".zip":
+            f = zipfile.ZipFile(archive_path, "r")
+        elif ext == ".tar.gz":
+            f = tarfile.open(archive_path, "r")
         else:
-            with Progress() as pbar:
-                task = pbar.add_task("Extracting...", total=total_size_in_bytes)
-                for zipinfo in zip_ref.infolist():
+            raise ValueError(f"Unknown archive type: {archive_path.suffix}")
+        with f as f:
+            if ext == ".zip":
+                total_size_in_bytes = sum(
+                    [zinfo.file_size for zinfo in f.infolist()]
+                )
+                for zipinfo in f.infolist():
                     if strip_folder:
                         path = Path(zipinfo.filename)
-                        if len(path.parts) < 2:
-                            continue
-                        path = Path(*path.parts[1:])
+                        path = Path(*path.parts[2:])
                         zipinfo.filename = str(path)
-                    zip_ref.extract(zipinfo, dest)
-                    pbar.update(task, advance=zipinfo.file_size)
+                    f.extract(zipinfo, dest)
+                    progress_cb(zipinfo.file_size, total_size_in_bytes)
+            else:
+                f.extractall(dest)
+    if quiet:
+        do_extract()
+    else:
+        with Progress() as progress:
+            task = progress.add_task("Extracting...")
+            def cb(prog, total):
+                progress.update(task, total=total, advance=prog)
+            do_extract(cb)
 
 def download(path, url=None, gdrive_id=None, quiet=False):
+    path = Path(path)
     if path.exists():
         return path
     if not path.exists():

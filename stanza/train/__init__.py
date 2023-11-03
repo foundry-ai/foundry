@@ -67,10 +67,10 @@ class Trainer(TrainConfig):
         logger.trace("Tracing train step", only_tracing=True)
         rng_key, sk = jax.random.split(state.rng_key)
         batch = PyTreeData.from_data(batch,
-                    buffer_size=state.config.batch_size)
+                    fixed_buffer_size=state.config.batch_size).data
         batch_fn = Partial(_trainer_loss_fn, 
                 state.config.loss_fn, state.fn_state, 
-                sk, batch.data)
+                sk, batch)
         batch_grad_fn = jax.grad(batch_fn, has_aux=True)
         grads, (fn_state, stats) = batch_grad_fn(state.fn_params)
 
@@ -326,9 +326,9 @@ def express(*, log_condition=every_kth_iteration(10),
         from stanza.util.rich import (ConsoleDisplay, StatisticsTable, 
                                     LoopProgressBar, EpochProgressBar)
         display = ConsoleDisplay()
-        display.add(StatisticsTable(), interval=100)
-        display.add(LoopProgressBar(), interval=100)
-        display.add(EpochProgressBar(), interval=100)
+        display.add(StatisticsTable(), interval=console_interval)
+        display.add(LoopProgressBar(), interval=console_interval)
+        display.add(EpochProgressBar(), interval=console_interval)
         extra_hooks.append(display)
     train_hooks = list(train_hooks)
     train_hooks.extend(extra_hooks)
