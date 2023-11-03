@@ -8,6 +8,7 @@ readme = "README.md"
 packages = [
     {include = "stanza"},
     {include = "diffusion_policy", from = "projects"},
+    {include = "diffusion_policy_max", from = "projects"},
     {include = "latent_diffusion", from = "projects"},
     {include = "sam", from = "projects"},
     {include = "demo", from = "projects"}
