@@ -53,6 +53,19 @@ class LinearNormalizer:
         )
         return LinearNormalizer(min, max)
 
+@dataclass(jax=True)
+class DummyNormalizer:
+    sample: Any
+
+    @property
+    def instance(self):
+        return self.sample
+
+    def normalize(self, data):
+        return data
+
+    def unnormalize(self, data):
+        return data
 
 @dataclass(jax=True, kw_only=True)
 class StdNormalizer:

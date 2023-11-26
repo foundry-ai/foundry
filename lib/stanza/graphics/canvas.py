@@ -150,7 +150,7 @@ class BatchUnion:
         distances = jax.vmap(lambda g: g.signed_distance(x))(self.geometries)
         return jnp.min(distances, axis=0)
 
-def batch_union(geoemtries):
+def union_batch(geoemtries):
     return BatchUnion(geoemtries)
 
 def _aa_alpha(dist):
@@ -167,7 +167,7 @@ def _aa(dist, color):
 def _composite(dist, color, background_color):
     alpha = _aa_alpha(dist)
     alpha_a = alpha * color[3]
-    alpha_b = background_color[3] if background_color.shape[0] == 4 else 1.
+    alpha_b = background_color[3] if background_color.shape[0] == 4 else jnp.array([1.])
     bc, fc = background_color[:3], color[:3]
     alpha_o = alpha_a + alpha_b * (1-alpha_a)
     color_o  = (alpha_a * fc + alpha_b * (1 - alpha_a) * bc) / alpha_o
@@ -223,8 +223,8 @@ class Fill(Renderable):
 def sanitize_color(color):
     color = jnp.array(color)
     # if alpha is not specified, make alpha = 1
-    if color.shape[0] == 3:
-        return jnp.concatenate((color, jnp.ones((1,))), axis=0)
+    if color.shape[-1] == 3:
+        return jnp.concatenate((color, jnp.ones(color.shape[:-1] + (1,))), axis=-1)
     return color
 
 def fill(geometry, color=jnp.array([0.,0.,0.,1.])):
@@ -254,6 +254,38 @@ class Stack(Renderable):
 # Does an anti-aliases
 def stack(*renderables):
     return Stack(renderables)
+
+@dataclass(jax=True)
+class BatchStack:
+    renderables: Renderable
+
+    @property
+    def aabb(self):
+        aabs = jax.vmap(lambda x: x.aabb)(self.renderables)
+        return Box(
+            top_left=jnp.min(aabs.top_left, axis=0),
+            bottom_right=jnp.max(aabs.bottom_right, axis=0)
+        )
+
+    def color_distance(self, x, pixel_metric_hessian):
+        func = lambda g: jax.value_and_grad(g.color_distance, has_aux=True, argnums=0)(x, pixel_metric_hessian)
+        (distances, colors), grads = jax.vmap(func)(self.renderables)
+        dist, color = distances[0], colors[0]
+        def compose(carry, scan):
+            dist, color = carry
+            s_dist, s_color, grad = scan
+            scaling = jnp.dot(grad, pixel_metric_hessian @ grad)
+            aa_dist = s_dist * jnp.sqrt(scaling)
+            color = _composite(aa_dist, s_color, color)
+            dist = jnp.minimum(dist, s_dist)
+            return (dist, color), None
+        (dist, color), _ = jax.lax.scan(compose, 
+                    (dist, color), 
+                    (distances[1:], colors[1:], grads[1:]))
+        return dist, color
+
+def stack_batch(renderables):
+    return BatchStack(renderables)
 
 @dataclass(jax=True)
 class Transformed(Renderable):

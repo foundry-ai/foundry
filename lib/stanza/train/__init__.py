@@ -220,10 +220,10 @@ class SAMTrainer(Trainer):
         logger.trace("Tracing train step", only_tracing=True)
         rng_key, sk = jax.random.split(state.rng_key)
         batch = PyTreeData.from_data(batch,
-                    buffer_size=state.config.batch_size)
+                    fixed_buffer_size=state.config.batch_size).data
         batch_fn = Partial(_trainer_loss_fn, 
                 state.config.loss_fn, state.fn_state, 
-                sk, batch.data)
+                sk, batch)
         batch_grad_fn = jax.grad(batch_fn, has_aux=True)
         sam_batch_grad_fn = batch_grad_fn
 
@@ -234,15 +234,15 @@ class SAMTrainer(Trainer):
         updates, sub_opt_state = state.config.sub_optimizer.update(grads, 
                             state.sub_opt_state, state.fn_params)
         sub_fn_params = optax.apply_updates(state.fn_params, updates)
+
         grads, (fn_state, stats) = batch_grad_fn(sub_fn_params)
-        chex.assert_trees_all_equal_shapes_and_dtypes(fn_state, state.fn_state)
-        updates, opt_state = state.config.optimizer.update(grads, 
-                            state.opt_state, state.fn_params)
-        fn_params = optax.apply_updates(state.fn_params, updates)
 
         if fn_state is not None or state.fn_state is not None:
             chex.assert_trees_all_equal_shapes_and_dtypes(fn_state, state.fn_state)
 
+        updates, opt_state = state.config.optimizer.update(grads, 
+                            state.opt_state, state.fn_params)
+        fn_params = optax.apply_updates(state.fn_params, updates)
         state = replace(state,
             epoch_iteration=state.epoch_iteration + 1,
             iteration=state.iteration+ 1,
@@ -301,7 +301,7 @@ def express(*, log_condition=every_kth_iteration(10),
             validate_dataset=None, validate_rng=None,
             validate_batch_size=None,
             validate_condition=every_kth_epoch(1),
-            train_hooks=[],
+            train_hooks=[], cls=Trainer,
             **kwargs):
     extra_hooks = []
     if validate_dataset is not None:
@@ -332,7 +332,7 @@ def express(*, log_condition=every_kth_iteration(10),
         extra_hooks.append(display)
     train_hooks = list(train_hooks)
     train_hooks.extend(extra_hooks)
-    return Trainer(
+    return cls(
         train_hooks=train_hooks,
         **kwargs
     )

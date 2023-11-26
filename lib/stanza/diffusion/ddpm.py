@@ -63,6 +63,28 @@ class DDPMSchedule:
             return noisy, noise, noise
         elif self.prediction_type == "sample":
             return noisy, noise, sample
+
+    @jax.jit
+    def add_sub_noise(self, rng_key, sub_sample, sub_timestep, timestep):
+        alphas_shifted = jnp.concatenate((jnp.ones((1,)), self.alphas_cumprod), axis=-1)
+        alphas_prod = self.alphas_cumprod[timestep] / alphas_shifted[sub_timestep]
+
+        sqrt_alphas_prod = jnp.sqrt(alphas_prod)
+        sqrt_one_minus_alphas_prod = jnp.sqrt(1 - alphas_prod)
+        sample_flat, unflatten = jax.flatten_util.ravel_pytree(sub_sample)
+        noise_flat = jax.random.normal(rng_key, sample_flat.shape)
+        noisy_flat = sqrt_alphas_prod * sample_flat + \
+            sqrt_one_minus_alphas_prod*noise_flat
+
+        sqrt_one_minus_alphas_full_prod = jnp.sqrt(1- self.alphas_cumprod[timestep])
+        scaling = sqrt_one_minus_alphas_prod / sqrt_one_minus_alphas_full_prod
+        noisy = unflatten(noisy_flat)
+        noise = unflatten(noise_flat)
+        scaled_noise = unflatten(scaling*noise_flat)
+        if self.prediction_type == "epsilon":
+            return noisy, noise, scaled_noise
+        elif self.prediction_type == "sample":
+            return noisy, noise, sub_sample
     
     # This does a reverse process step
     @jax.jit
@@ -116,29 +138,41 @@ class DDPMSchedule:
         return (rng_key, next_sample), out
 
     # model is a map from rng_key, sample, timestep --> model_output
-    @stanza.jit(static_argnames=('num_steps','trajectory'))
+    @stanza.jit(static_argnames=('num_steps','final_step','trajectory', 'static_loop'))
     def sample(self, rng_key, model, example_sample, *, num_steps=None,
+                        final_step=None, static_loop=False,
                         trajectory=False):
+        if final_step is None:
+            final_step = self.num_steps
         if num_steps is None:
-            num_steps = self.num_steps
-
-        step_ratio = self.num_steps // num_steps
+            num_steps = final_step
+        step_ratio = final_step // num_steps
         step = partial(self._sample_step, model, step_ratio, trajectory=trajectory)
-
-        timesteps = (jnp.arange(0, num_steps) * step_ratio).round()[::-1] \
-                .copy().astype(jnp.int32)
-
         # sample initial noise
         sample_flat, unflatten = jax.flatten_util.ravel_pytree(example_sample)
         random_sample = unflatten(jax.random.normal(rng_key, sample_flat.shape))
-
-        carry = (rng_key, random_sample)
-        carry, out = jax.lax.scan(step, carry, timesteps)
-        _, sample = carry
         if trajectory:
+            timesteps = (jnp.arange(0, num_steps) * step_ratio).round()[::-1] \
+                    .copy().astype(jnp.int32)
+            carry = (rng_key, random_sample)
+            carry, out = jax.lax.scan(step, carry, timesteps)
+            _, sample = carry
             out = jax.tree_map(lambda x, y: jnp.concatenate(
                                 [jnp.expand_dims(x,axis=0), y], axis=0
                             ), random_sample, out)
             return sample, out
         else:
+            # use a for loop
+            def loop_step(i, carry):
+                T = jnp.round((num_steps - 1 - i)*step_ratio)
+                if static_loop:
+                    carry, _ = jax.lax.cond(i < num_steps, 
+                                step, lambda x,y: (x,None), carry, T)
+                else:
+                    carry, _ = step(carry, T)
+                return carry
+            carry = (rng_key, random_sample)
+            carry = jax.lax.fori_loop(0, 
+                self.num_steps if static_loop else num_steps, loop_step, carry)
+            _, sample = carry
             return sample

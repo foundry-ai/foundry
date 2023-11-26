@@ -272,38 +272,26 @@ class UNet(nn.Module):
         return input_blocks, middle_block, output_blocks, out
 
     @nn.compact
-    def __call__(self, x, *, timestep=None, time_embed=None,
-                            cond=None, cond_embed=None, train=False):
-        if timestep is not None and time_embed is None:
-            time_embed = nn.Sequential([
-                SinusoidalPosEmbed(self.embed_dim),
-                nn.Dense(self.embed_dim),
-                activations.silu,
-                nn.Dense(self.embed_dim)
-            ])(timestep)
-        if cond is not None and cond_embed is None:
+    def __call__(self, x, *, cond=None, cond_embed=None, train=False):
+        embed = cond_embed
+        if cond is not None:
+            assert cond_embed is None
             assert self.num_classes is not None
             assert cond.shape == x.shape[:-1-self.dims]
             cond_embed = nn.Embed(self.num_classes, self.embed_dim)(cond)
-        if cond_embed is not None:
-            emb = cond_embed
-            if time_embed is not None:
-                emb = emb + time_embed
-        elif time_embed is not None:
-            emb = time_embed
-        else:
-            emb = None
+            if embed is not None:
+                embed = jnp.concatenate([embed, cond_embed], axis=-1)
 
         input_blocks, middle_block, output_blocks, out = self._setup(x)
         h = x.astype(self.dtype)
         hs = []
         spatial_shapes = []
         for module in input_blocks:
-            h = module(h, cond_embed=emb, train=train)
+            h = module(h, cond_embed=embed, train=train)
             spatial_shapes.append(h.shape[-1-self.dims:-1])
             hs.append(h)
         spatial_shapes.pop() # remove the last spatial shape
-        h = middle_block(h, cond_embed=emb, train=train)
+        h = middle_block(h, cond_embed=embed, train=train)
         for module in output_blocks:
             res = hs.pop()
             h = jnp.concatenate((h, res), axis=-1)
@@ -311,7 +299,7 @@ class UNet(nn.Module):
             h = module(
                 h, 
                 spatial_shape=spatial_shape,
-                cond_embed=emb, 
+                cond_embed=embed, 
                 train=train
             )
         h = h.astype(x.dtype)
@@ -322,3 +310,18 @@ class UNet(nn.Module):
 
 class DiffusionUNet(UNet):
     embed_dim: int = 64
+
+    @nn.compact
+    def __call__(self, x, *, timestep=None, time_embed=None,
+                            cond=None, cond_embed=None, train=False):
+        if timestep is not None and time_embed is None:
+            embed = nn.Sequential([
+                SinusoidalPosEmbed(self.embed_dim),
+                nn.Dense(self.embed_dim),
+                activations.silu,
+                nn.Dense(self.embed_dim)
+            ])(timestep)
+        if cond_embed is not None:
+            embed = jnp.concatenate([embed, cond_embed], axis=-1) \
+                if embed is not None else cond_embed
+        return super().__call__(x, cond=cond, cond_embed=embed, train=train)

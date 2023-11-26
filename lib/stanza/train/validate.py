@@ -68,7 +68,7 @@ class Validator(Hook):
                     return (running_stats, new_total)
                 batches = (self.samples_per_run // self.batch_size) \
                     if self.samples_per_run is not None else None
-                stats, _ = dataset.scan(scan_fn, (state.last_stats["test"], 0), limit=batches)
+                stats, _ = dataset.scan(scan_fn, (state.last_stats[self.stat_key], 0), limit=batches)
             else:
                 data = PyTreeData.from_data(self.dataset).data
                 stats = stat_fn(
