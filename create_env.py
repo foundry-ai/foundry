@@ -1,4 +1,4 @@
-#!/usr/bin/env mamba run python
+#!/usr/bin/env python3
 
 import os
 os.environ["CONDA_OVERRIDE_CUDA"] = "11.8"

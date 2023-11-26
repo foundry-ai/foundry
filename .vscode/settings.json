@@ -1,5 +1,5 @@
 {
-    "[python]": {
-        "editor.insertSpaces": true,
-        "editor.tabSize": 4,
-    },
+    "python.analysis.extraPaths": [
+        "lib"
+    ]
+}
