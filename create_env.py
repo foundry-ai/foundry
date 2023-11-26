@@ -1,16 +1,29 @@
 #!/usr/bin/env mamba run python
+
 import os
 os.environ["CONDA_OVERRIDE_CUDA"] = "11.8"
-from mamba.api import create, install
 import subprocess
+
+def create(env_name, pkgs, channels):
+    args = ['mamba', 'create', '-y', '-n', env_name, 
+         *pkgs, '-c', *channels]
+    print("Running command:", " ".join(args))
+
+    # delete the env, if it exists
+    subprocess.run(
+        ['mamba', 'env', 'remove', '-n', env_name]
+    )
+    subprocess.run(
+        args
+    )
 
 def run(env_name, cuda=False):
     print(f"Using cuda: {cuda}")
+    channels = ['conda-forge']
     pkgs = [
         'python==3.11',
         'jax==0.4.19',
-        'jaxlib==0.4.19',
-        'flax==0.7.5',
+        'jaxlib==0.4.19' if not cuda else 'jaxlib==0.4.19[build=cuda118*]',
         'optax==0.1.7',
         'wandb==0.15.12',
         'ffmpeg==6.1.0',
@@ -18,16 +31,8 @@ def run(env_name, cuda=False):
     if cuda:
         pkgs.append('cuda-toolkit')
         pkgs.append('cuda-nvcc')
-    create(env_name,
-            pkgs,
-           ('conda-forge', 'nvidia/label/cuda-11.8.0')
-    )
-    if cuda:
-        # for whatever reason we need to install jaxlib
-        # separately so that mamba realizes that cuda is available
-        subprocess.run(
-            ['mamba', 'run', '-n', env_name, 'mamba', 'install', 'jaxlib==0.4.19[build=cuda118*]', '-c', 'conda-forge']
-        )
+        channels.append('nvidia/label/cuda-11.8.0')
+    create(env_name, pkgs, channels)
 
     # install stanza as editable
     # into the created environment

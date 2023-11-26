@@ -10,8 +10,9 @@ setup(
    install_requires=[
        'wheel',
        'jax',
-       'flax',
+       'flax==0.7.5',
        'ipython>=8.18.0',
+       'matplotlib>=3.8.2',
        'ipykernel',
        'ffmpegio>=0.8.5'
    ],
