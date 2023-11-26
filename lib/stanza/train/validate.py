@@ -121,7 +121,7 @@ class Generator(Hook):
             rng_key, _ = hs
             rng_key, sk = jax.random.split(rng_key)
             generated = self.do_generate(state, sk)
-            self.bucket.log(generated, step=state.iteration)
+            self.bucket.log(generated)
             return (rng_key, state.iteration), state
         _, iteration = hs
         return jax.lax.cond(jnp.logical_and(self.condition(state),

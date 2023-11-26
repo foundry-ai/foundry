@@ -67,6 +67,7 @@ class WandbRuns:
 class WandbRun:
     def __init__(self, run):
         self._run = run
+        self.step = 0
     
     @property
     def creation_time(self):
@@ -121,9 +122,12 @@ class WandbRun:
             dim = jax.tree_util.tree_leaves(data)[0].shape[0]
             for i in range(dim):
                 x = jax.tree_map(lambda x: x[i], data)
-                s = step[i] if step is not None else None
+                s = int(step[i]) if step is not None else None
                 self.log(x, step=s, batch=False)
         else:
+            if step is not None:
+                step = int(step)
+                self.step = max(self.step, step)
             def convert_video(v):
                 # convert NHWC -> NCHW
                 data = v.data.transpose((0, 3, 1, 2))
@@ -145,7 +149,7 @@ class WandbRun:
                     Video: convert_video,
                     Image: convert_image
                 })
-            self._run.log(data, step=step)
+            self._run.log(data, step=self.step)
 
 def _remap(tree, type_mapping):
     return jax.tree_map(lambda x: type_mapping[type(x)](x) if type(x) in type_mapping else x, tree, 

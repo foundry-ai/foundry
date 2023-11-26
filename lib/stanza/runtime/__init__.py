@@ -10,7 +10,6 @@ import sys
 import asyncio
 from stanza.dataclasses import dataclass, field, is_dataclass
 from stanza.reporting import Repo
-from stanza.runtime.container import Target
 from stanza.dataclasses.arg import \
     ArgParser, ArgParseError, flag
 
@@ -22,7 +21,7 @@ class EmptyConfig:
 
 @dataclass
 class ActivityConfig:
-    entrypoint: str = field(arg_positional=True)
+    entrypoint: str = field(arg_positional=True, default=None)
     help: bool = field(nargs=0, default=False,
             arg_help="Prints this help message",
             arg_builder=flag())
@@ -55,6 +54,9 @@ def _load_entrypoint(entrypoint_string):
 def launch_activity():
     parser = ArgParser(ActivityConfig)
     activity_info, = parser.parse(sys.argv[1:], ignore_unknown=True)
+    if activity_info.entrypoint is None:
+        parser.print_help()
+        return
     entrypoint = activity_info.entrypoint
     entrypoint = _load_entrypoint(entrypoint)
     if not hasattr(entrypoint, "__config__"):
