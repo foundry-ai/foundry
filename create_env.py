@@ -1,3 +1,4 @@
+#!/usr/bin/env mamba run python
 import os
 os.environ["CONDA_OVERRIDE_CUDA"] = "11.8"
 from mamba.api import create, install
