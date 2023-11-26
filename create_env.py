@@ -3,10 +3,14 @@
 import os
 os.environ["CONDA_OVERRIDE_CUDA"] = "11.8"
 import subprocess
+import platform
 
 def create(env_name, pkgs, channels):
     args = ['mamba', 'create', '-y', '-n', env_name, 
-         *pkgs, '-c', *channels]
+         *pkgs]
+    for c in channels:
+        args.append('-c')
+        args.append(c)
     print("Running command:", " ".join(args))
 
     # delete the env, if it exists
@@ -20,10 +24,13 @@ def create(env_name, pkgs, channels):
 def run(env_name, cuda=False):
     print(f"Using cuda: {cuda}")
     channels = ['conda-forge']
+    # if on satori, add opence channel
+    if 'ppc64le' in platform.platform():
+        channels.append("https://ftp.osuosl.org/pub/open-ce/current/")
     pkgs = [
-        'python==3.11',
-        'jax==0.4.19',
-        'jaxlib==0.4.19' if not cuda else 'jaxlib==0.4.19[build=cuda118*]',
+        'python==3.10',
+        'jax==0.4.7',
+        'jaxlib==0.4.7' if not cuda else 'jaxlib==0.4.7[build=cuda118*]',
         'optax==0.1.7',
         'wandb==0.15.12',
         'ffmpeg==6.1.0',
