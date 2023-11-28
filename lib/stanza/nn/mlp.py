@@ -16,7 +16,7 @@ class MLP(nn.Module):
 
     @nn.compact
     def __call__(self, x, embed=None, train=False, *, output_sample=None):
-        output_sample = output_sample or self.output_sample
+        output_sample = output_sample if output_sample is not None else self.output_sample
         activation = getattr(activations, self.activation)
         x, _ = jax.flatten_util.ravel_pytree(x)
         x = jnp.reshape(x, (-1,))

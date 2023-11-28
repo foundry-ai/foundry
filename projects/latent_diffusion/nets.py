@@ -32,7 +32,7 @@ def make_joint_network(rng_key, sample, latent_sample):
     if sample.ndim == 1:
         net = DiffusionMLP(
             features=(64, 64, 64, 64),
-            activation="gelu",
+            activation="relu",
         )
     else:
         net = DiffusionUNet(
@@ -46,6 +46,7 @@ def make_joint_network(rng_key, sample, latent_sample):
             dims=sample.ndim - 1,
         )
     joint_sample = (sample, latent_sample)
+    logger.info("Initializing network...")
     params = jax.jit(net.init)(rng_key, joint_sample, 
                                latent_timestep=0, timestep=0)
     n_params = jax.flatten_util.ravel_pytree(params)[0].shape[-1]
