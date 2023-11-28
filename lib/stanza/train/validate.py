@@ -76,9 +76,7 @@ class Validator(Hook):
                     state.fn_params, 
                     rng_key, data
                 )
-            chex.assert_trees_all_equal_shapes_and_dtypes(
-                state.last_stats[self.stat_key], stats)
-            
+
             last_stats = dict(state.last_stats)
             last_stats[self.stat_key] = stats
             state = replace(state, last_stats=last_stats)

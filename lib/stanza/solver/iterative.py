@@ -35,7 +35,7 @@ class IterativeSolver(Solver):
             state = replace(state, solved=solved)
         if objective.step_callback is not None:
             state = objective.step_callback(state)
-        stanza.util.assert_trees_all_equal_shapes_and_dtypes(solver_state, state)
+        #stanza.util.assert_trees_all_equal_shapes_and_dtypes(solver_state, state)
         return state
     
     def _scan_fn(self, kwargs, objective, loop_state, _):

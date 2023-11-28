@@ -4,7 +4,7 @@ from stanza.dataclasses import dataclass, replace, field
 from typing import List, Any
 
 import math
-from chex import assert_trees_all_equal_shapes_and_dtypes
+#from chex import assert_trees_all_equal_shapes_and_dtypes
 
 def vmap_ravel_pytree(x):
     i = jax.tree_util.tree_map(lambda x: x[0], x)

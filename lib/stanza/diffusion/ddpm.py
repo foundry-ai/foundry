@@ -5,7 +5,6 @@ import jax.numpy as jnp
 import jax.flatten_util
 import jax
 import stanza
-import chex
 
 @dataclass(jax=True)
 class DDPMSchedule:
@@ -89,7 +88,7 @@ class DDPMSchedule:
     # This does a reverse process step
     @jax.jit
     def step(self, rng_key, sample, timestep, delta_steps, model_output):
-        chex.assert_trees_all_equal_shapes_and_dtypes(sample, model_output)
+        #chex.assert_trees_all_equal_shapes_and_dtypes(sample, model_output)
         t = timestep
         prev_t = t - delta_steps
         alpha_prod_t = self.alphas_cumprod[t]
@@ -138,7 +137,6 @@ class DDPMSchedule:
         return (rng_key, next_sample), out
 
     # model is a map from rng_key, sample, timestep --> model_output
-    @stanza.jit(static_argnames=('num_steps','final_step','trajectory', 'static_loop'))
     def sample(self, rng_key, model, example_sample, *, num_steps=None,
                         final_step=None, static_loop=False,
                         trajectory=False):

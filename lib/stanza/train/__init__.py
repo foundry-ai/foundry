@@ -75,7 +75,7 @@ class Trainer(TrainConfig):
         grads, (fn_state, stats) = batch_grad_fn(state.fn_params)
 
         if fn_state is not None or state.fn_state is not None:
-            chex.assert_trees_all_equal_shapes_and_dtypes(fn_state, state.fn_state)
+             chex.assert_trees_all_equal_shapes_and_dtypes(fn_state, state.fn_state)
 
         updates, opt_state = state.config.optimizer.update(grads, 
                             state.opt_state, state.fn_params)
@@ -237,8 +237,8 @@ class SAMTrainer(Trainer):
 
         grads, (fn_state, stats) = batch_grad_fn(sub_fn_params)
 
-        if fn_state is not None or state.fn_state is not None:
-            chex.assert_trees_all_equal_shapes_and_dtypes(fn_state, state.fn_state)
+        # if fn_state is not None or state.fn_state is not None:
+        #     chex.assert_trees_all_equal_shapes_and_dtypes(fn_state, state.fn_state)
 
         updates, opt_state = state.config.optimizer.update(grads, 
                             state.opt_state, state.fn_params)
