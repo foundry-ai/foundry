@@ -22,7 +22,7 @@ if PROJECT_DIR == Path('/'):
     print(f"[red]Could not find config.py[/red]")
     exit(1)
 
-ENVS_DIR = Path(user_cache_dir("envtool"))
+ENVS_DIR = Path(user_cache_dir("denvtool"))
 DEFAULT_ENV = PROJECT_DIR.name
 
 USER = os.environ.get('USER')
@@ -59,6 +59,7 @@ def do_config(env_name):
     # load the config into the module
     exec(config_py, config_mod.__dict__)
     config = config_mod.config
+    config_path.parent.mkdir(parents=True, exist_ok=True)
     with open(config_path, 'w') as f:
         json.dump(config, f, indent=2)
 

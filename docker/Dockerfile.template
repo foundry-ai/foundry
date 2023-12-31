@@ -4,7 +4,7 @@ FROM base as env
 RUN pip install poetry
 
 RUN echo "#!/usr/bin/env bash \n\
-          poetry run activity $@" > /usr/local/bin/launch; \
+poetry run activity \"\$@\"" > /usr/local/bin/launch; \
     chmod +x /usr/local/bin/launch
 
 

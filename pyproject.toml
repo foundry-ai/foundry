@@ -8,11 +8,16 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.10"
 jax = "^0.4.23"
+optax = "^0.1.7"
+flax = "^0.7.5"
+ffmpegio = "^0.9.0"
+matplotlib = "^3.8.2"
+plotly = "^5.18.0"
+numpy = "^1.26.2"
+pandas = "^2.1.4"
 
-[[tool.poetry.source]]
-name = "repo"
-url = "http://repo/simple"
-priority = "supplemental"
+[tool.poetry.scripts]
+activity = 'stanza.runtime:launch_activity'
 
 [build-system]
 requires = ["poetry-core"]
