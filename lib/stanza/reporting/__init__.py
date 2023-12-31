@@ -70,6 +70,11 @@ class Backend:
         else:
             raise NotImplementedError(f"Unknown backend {url}")
 
+class BucketBackend:
+    pass
+
+class BucketsBackend:
+    pass
 class Repo:
     def __init__(self, url):
         self._url = url
@@ -175,6 +180,8 @@ class Bucket:
     # to log over steps
     def add(self, name, value, *,
             append=False, step=None, batch=False, batch_lim=None):
+        if batch and batch_lim is not None:
+            data = jax.tree_map(lambda x: x[-batch_lim:], data)
         self._impl.add(name, value,
             append=append, step=step, batch=batch)
 

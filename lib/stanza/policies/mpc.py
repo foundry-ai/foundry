@@ -76,6 +76,8 @@ class MPC:
 
     solver : Solver = iLQRSolver()
 
+    initializer : Callable[[Any,Any], Any] = None 
+
     # If the cost horizon should receed or stay static
     # if receed=False, you can only rollout horizon_length
     # length trajectories with this MPC
@@ -86,6 +88,8 @@ class MPC:
     def _solve(self, state0, init_actions):
         # Try to provide a MinimizeMPC
         # problem to the solver first
+        if self.initializer:
+            init_actions = self.initializer(state0, init_actions)
         objective = MinimizeMPC(
             initial_actions=init_actions,
             state0=state0,

@@ -105,6 +105,5 @@ def batch_rollout(batch_size, rng_keys, rollout_fn):
         # before generating more
         if len(trajactories) > 1:
             jax.block_until_ready(trajactories[-1])
-
         trajactories.append(traj_batch)
     return jax.tree_map(lambda *x: jnp.concatenate(x, axis=0), *trajactories)

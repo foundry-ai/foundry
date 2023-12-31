@@ -1,5 +1,6 @@
 {
     "python.analysis.extraPaths": [
         "lib"
-    ]
+    ],
+    "julia.environmentPath": "/Users/daniel/Documents/code/stanza-old"
 }

@@ -83,7 +83,8 @@ class WandbRun:
     
     @property
     def tags(self):
-        pass
+        tags = self._run.tags
+        return {k: v for (k,v) in tags }
 
     def tag(self, **tags):
         tags = tuple(( f"{k}:{v}" for (k,e) in tags.items() for v in e ))

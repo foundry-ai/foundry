@@ -1,0 +1,20 @@
+FROM ubuntu:22.04 AS base
+ENV DEBIAN_FRONTEND noninteractive
+ENV DEBCONF_NONINTERACTIVE_SEEN true
+
+RUN truncate -s0 /tmp/preseed.cfg; \
+    echo "tzdata tzdata/Areas select America" >> /tmp/preseed.cfg; \
+    echo "tzdata tzdata/Zones/America select New_York" >> /tmp/preseed.cfg; \
+    debconf-set-selections /tmp/preseed.cfg; \
+    rm -f /etc/timezone /etc/localtime; \
+    apt-get update; \
+    apt-get upgrade; \
+    apt-get install -y software-properties-common; \
+    apt-add-repository ppa:fish-shell/release-3; \
+    apt-get update; \
+    apt-get install -y tzdata && \
+    apt-get install -y \
+        build-essential wget curl \
+        bash python3 python3-pip python-is-python3 fish git neovim \
+        pkg-config && \
+    rm -rf /var/lib/apt/lists/*
