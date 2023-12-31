@@ -1,0 +1,17 @@
+version: "3.7"
+volumes:
+  env_home:
+services:
+  env:
+    build:
+      context: .
+      target: env
+    volumes:
+      - type: volume
+        source: env_home
+        target: /home/{{ user }}
+      - type: bind
+        source: {{ project_dir }}
+        target: /home/{{ user }}/code
+    hostname: stanza
+    stop_grace_period: 0.01s

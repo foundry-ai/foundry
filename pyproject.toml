@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "stanza"
+version = "0.1.0"
+description = ""
+authors = ["Daniel Pfrommer <dan.pfrommer@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+jax = "^0.4.23"
+
+[[tool.poetry.source]]
+name = "repo"
+url = "http://repo/simple"
+priority = "supplemental"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -1,7 +1,0 @@
-setup.py
-tensorstore/__init__.py
-tensorstore.egg-info/PKG-INFO
-tensorstore.egg-info/SOURCES.txt
-tensorstore.egg-info/dependency_links.txt
-tensorstore.egg-info/requires.txt
-tensorstore.egg-info/top_level.txt

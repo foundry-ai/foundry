@@ -1,7 +1,0 @@
-Metadata-Version: 2.1
-Name: tensorstore
-Version: 0.1.50
-Summary: Tensorstore mock
-Author: Daniel Pfrommer
-Author-email: dan.pfrommer@gmail.com
-Requires-Dist: wheel

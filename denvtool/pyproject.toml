@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "denvtool"
+version = "0.1.0"
+description = ""
+authors = ["Daniel Pfrommer <dan.pfrommer@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+jinja2 = "^3.1.2"
+rich = "^13.7.0"
+inquirer = "^3.1.4"
+
+[tool.poetry.scripts]
+denvtool = 'denvtool:run'
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

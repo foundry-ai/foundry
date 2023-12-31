@@ -1,0 +1,21 @@
+{% include "Dockerfile.base" %}
+
+FROM base as env
+RUN pip install poetry
+
+RUN echo "#!/usr/bin/env bash \n\
+          poetry run activity $@" > /usr/local/bin/launch; \
+    chmod +x /usr/local/bin/launch
+
+
+# create the user info
+RUN useradd -d /home/{{user}} -s /usr/bin/fish --uid {{uid}} {{user}}
+# Make the mountpoints
+RUN mkdir /home/{{user}}; \
+    chown {{user}}:{{user}} /home/{{user}}
+RUN mkdir /home/{{user}}/code; \
+    chown {{user}}:{{user}} /home/{{user}}/code
+USER {{user}}
+WORKDIR /home/{{user}}/code
+
+ENTRYPOINT [ "sleep", "36000000000" ]

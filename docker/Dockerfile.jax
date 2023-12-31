@@ -1,6 +1,0 @@
-FROM base as jax-build
-
-COPY docker/build_jax.py /build_jax.py
-RUN /build_jax.py
-
-# the output of the build is in /wheels/
