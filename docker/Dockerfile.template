@@ -1,12 +1,22 @@
 {% include "Dockerfile.base" %}
 
+# Include the build steps for each library
+# that is specified in the config file
+{% for library, info in config.custom %}
+    {% include "custom/Dockerfile." + library %}
+{% endfor %}
+
 FROM base as env
-RUN pip install poetry
+RUN pip install poetry pypiserver
+
+# Include the custom-built packages
+{% for library, _ in config.custom %}
+    COPY --from={{library}}-build /packages /packages
+{% endfor %}
 
 RUN echo "#!/usr/bin/env bash \n\
 poetry run activity \"\$@\"" > /usr/local/bin/launch; \
     chmod +x /usr/local/bin/launch
-
 
 # create the user info
 RUN useradd -d /home/{{user}} -s /usr/bin/fish --uid {{uid}} {{user}}
@@ -18,4 +28,4 @@ RUN mkdir /home/{{user}}/code; \
 USER {{user}}
 WORKDIR /home/{{user}}/code
 
-ENTRYPOINT [ "sleep", "36000000000" ]
+ENTRYPOINT [ "pypi-server", "run", "-p", "8666", "/packages" ]

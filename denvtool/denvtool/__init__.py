@@ -109,6 +109,10 @@ def do_gen(env_name):
             f.write(dc_content)
         print(f"Wrote [green]devcontainer.json[/green] to [green]{dc_path}[/green]")
 
+def do_build(env_name):
+    env_path = get_env(env_name)
+    subprocess.run(['docker', 'compose', 'build'], cwd=env_path)
+
 def do_start(env_name):
     env_path = get_env(env_name)
     subprocess.run(['docker', 'compose', 'up', 
@@ -143,6 +147,7 @@ def do_shell(env_name):
 COMMANDS = {
     'config': do_config,
     'gen': do_gen,
+    'build': do_build,
     'start': do_start,
     'stop': do_stop,
     'purge': do_purge,

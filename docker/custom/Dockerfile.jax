@@ -1,0 +1,3 @@
+FROM base as jax-build
+
+RUN pip wheel --no-binary jax jax=={{config.custom.jax.version}}
