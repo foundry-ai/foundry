@@ -9,10 +9,7 @@ FROM base as jaxlib-build
                --cudnn_path=$PREFIX   \
                --cuda_version={{cuda_version}}\
                --cudnn_version={{cudnn_version}}" %}
-{% else %}
-{% set jaxlib_cuda_args="" %}
 {% endif %}
-
 
 {% else %}
 
