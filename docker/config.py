@@ -2,26 +2,25 @@ import inquirer
 from rich import print
 import sys
 import platform
-
+from pathlib import Path
 
 arch = platform.machine()
-# map amd64 to aaarch64
-arch = arch if arch != "arm64" else "aarch64"
+# remap
+if arch == "aarch64": arch = "arm64"
+if arch == "x86_64": arch = "amd64"
 
 config = {
+  "context": ["requirements.txt"],
   "shell": "fish",
   "arch": arch,
   "cuda": "12.2" if sys.platform == 'linux' else "none",
-  "custom": {
-    "numpy": {"version": "1.26.2", "build": False},
-    "scipy": {"version": "1.11.4", "build": False},
-    "jax": {"version": "0.4.23", "build": False},
-    "jaxlib": {"version": "0.4.23", "build": False},
-    "pandas": {"version": "2.1.4", "build": False},
-    "plotly": {"version": "5.18.0", "build": False},
-    "matplotlib": {"version": "3.8.2", "build": False},
-  }
+  "build": []
 }
+
+# custom package options
+custom_packages = [p.suffix.lstrip(".")
+  for p in (Path(__file__).parent / "custom").iterdir()
+]
 
 use_defaults = inquirer.prompt([
   inquirer.Confirm("defaults", 
@@ -39,7 +38,7 @@ if not use_defaults:
     ),
     inquirer.List('arch',
       message="What architecture should we build for?",
-      choices=["x86_64", "aarch64", "ppc64le"],
+      choices=["amd64", "arm64", "ppc64le"],
       default=arch
     ),
     inquirer.List("cuda",
@@ -47,13 +46,8 @@ if not use_defaults:
       choices=["12.2", "none"],
       default=(None if sys.platform == 'linux' else 'none')
     ),
-  ]))
-  packages = set(inquirer.prompt([
-    inquirer.Checkbox("custom",
-      message="What custom packages do you want to install?",
-      choices=[p for p in config["custom"]],
-      default=[p for p in config["custom"] if config["custom"][p]["build"]],
+    inquirer.Checkbox("build",
+      message="What custom packages do you want to build from source?",
+      choices=custom_packages,
     )
-  ])["custom"])
-  for p in config["custom"]:
-    config["custom"][p]["build"] = p in packages
+  ]))

@@ -29,6 +29,21 @@ USER = os.environ.get('USER')
 UID = subprocess.check_output(['id', '-u']).decode().strip()
 GID = subprocess.check_output(['id', '-g']).decode().strip()
 
+def read_requirements(path):
+    requirements = {}
+    with open(path) as f:
+        for l in f.readlines():
+            l = l.strip()
+            if l.startswith('#') or not l:
+                continue
+            pkg, ver = l.split('==')
+            parts = ver.split("+")
+            ver = parts[0]
+            extras = parts[1:]
+            requirements[pkg] = {"version": ver, "extras": extras}
+    am = attrmap.AttrMap(requirements)
+    return au.convert_state(am, read_only=True)
+
 def get_path(env_name):
     return ENVS_DIR / env_name
 
@@ -92,6 +107,7 @@ def do_gen(env_name):
         if filename == 'devcontainer.json':
             continue
         template = environment.get_template(f"{filename}.template")
+        template.globals['read_requirements'] = read_requirements
         content = template.render(**template_args)
         dest = env_path / filename
         with open(dest, 'w') as f:
@@ -102,12 +118,25 @@ def do_gen(env_name):
     # into .devcontainer/devcontainer.json
     dc_template = environment.get_template('devcontainer.json.template')
     if dc_template is not None:
+        dc_template.globals['read_requirements'] = read_requirements
         dc_path = PROJECT_DIR / '.devcontainer' / 'devcontainer.json'
         dc_path.parent.mkdir(parents=True, exist_ok=True)
         dc_content = dc_template.render(**template_args)
         with open(dc_path, 'w') as f:
             f.write(dc_content)
         print(f"Wrote [green]devcontainer.json[/green] to [green]{dc_path}[/green]")
+    
+    for f in config.context:
+        src = PROJECT_DIR / f
+        dest = env_path / f
+        if src.exists():
+            if src.is_file():
+                shutil.copy(src, dest)
+            else:
+                shutil.copytree(src, dest)
+            print(f"Copied [green]{src}[/green] to [green]{dest}[/green]")
+        else:
+            print(f"[red]Could not find context file:[/red] [blue]{src}[/blue]")
 
 def do_build(env_name):
     env_path = get_env(env_name)
@@ -115,8 +144,10 @@ def do_build(env_name):
 
 def do_start(env_name):
     env_path = get_env(env_name)
-    subprocess.run(['docker', 'compose', 'up', 
-        '--remove-orphans', '--build', '-d'], cwd=env_path)
+    subprocess.run(['docker', 'compose', 'build'],
+        cwd=env_path)
+    subprocess.run(['docker', 'compose', 'up',
+        '--remove-orphans', '-d'], cwd=env_path)
 
 def do_stop(env_name):
     env_path = get_env(env_name)

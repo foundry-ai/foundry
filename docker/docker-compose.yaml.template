@@ -3,6 +3,7 @@ volumes:
   env_home:
 services:
   env:
+    platform: linux/{{ config.arch }}
     build:
       context: .
       target: env
@@ -15,3 +16,12 @@ services:
         target: /home/{{ user }}/code
     hostname: stanza
     stop_grace_period: 0.01s
+    {% if config.cuda != "none" %}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    {% endif %}

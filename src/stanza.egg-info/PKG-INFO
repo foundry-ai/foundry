@@ -1,0 +1,10 @@
+Metadata-Version: 2.1
+Name: stanza
+Version: 0.1.0
+Summary: Default template for PDM package
+Author-email: Daniel Pfrommer <dan.pfrommer@gmail.com>
+License: MIT
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: jax>=0.4.23
+Requires-Dist: optax>=0.1.7

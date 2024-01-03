@@ -8,6 +8,7 @@ __pycache__
 results
 wandb
 artifacts
+pdm.lock
 *.png
 *.pdf
 *.mp4
