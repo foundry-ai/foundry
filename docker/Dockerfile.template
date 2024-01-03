@@ -2,7 +2,7 @@
 
 # read in the requirements.txt file
 {% set requirements = read_requirements(project_dir / "requirements.txt") %}
-{% set always_build = ["jax", "jaxlib"] %}
+{% set always_build = ["jax", "jaxlib", "tensorstore"] %}
 
 # Include the build steps for each library
 # that is specified in the config file
@@ -53,6 +53,7 @@ RUN mkdir /home/{{user}}; \
 RUN mkdir /home/{{user}}/code; \
     chown {{user}}:{{user}} /home/{{user}}/code
 RUN usermod -aG sudo {{user}}
+RUN echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 USER {{user}}
 WORKDIR /home/{{user}}/code
 

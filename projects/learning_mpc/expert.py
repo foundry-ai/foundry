@@ -43,9 +43,8 @@ def make_expert(env_name, env, eta=0.0001, horizon_length=100):
     def initializer(state0, actions):
         def barrier_cost(obs, actions):
             d = constr(obs, actions)
-            return jnp.mean(
-                jnp.square(1+d)
-            ) if d is not None else None
+            d = jnp.exp(d) - 1
+            return jnp.sum(d)
         solver = iLQRSolver()
         objective = MinimizeMPC(
             initial_actions=actions,
@@ -54,17 +53,17 @@ def make_expert(env_name, env, eta=0.0001, horizon_length=100):
             model_fn=env.step
         )
         res = solver.run(objective)
+        # jax.debug.print("{}", res.solution.cost)
         return res.solution.actions
-
-    if state_constr is None and input_constr is None:
-        initializer = None
 
     if env_name == "pendulum":
         input_constr = lambda u: jnp.stack((u - 2, -2 - u))
     elif env_name == "quadrotor":
-        input_constr = lambda u: jnp.stack((u[0] - 5, -5 - u[0]))
+        # input_constr = lambda u: jnp.stack((u[0] - 5, -5 - u[0]))
         # state_constr = lambda x: jnp.stack((x.z_dot - 0.01, -0.01 - x.z_dot))
-        state_constr = lambda x: jnp.stack((x.z - 5, -5 - x.z))
+        state_constr = lambda x: jnp.stack((x.z - 10, -10 - x.z))
+    if state_constr is None and input_constr is None:
+        initializer = None
     mpc = MPC(
         action_sample=env.sample_action(PRNGKey(0)),
         initializer=initializer,
