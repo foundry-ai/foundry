@@ -24,3 +24,8 @@
 To access a shell in the running container, run ```denvtool shell```.
 
 To connect from VSCode, install the "Dev Containers" extension and then find "Attach to Running Container" from the Ctrl+Shift+P command menu. Then open the folder ```/home/$USER/code```, which is mapped to the stanza folder outside of the container.
+
+To test the installation, from within ```denvtool shell``` run
+```bash
+python examples/train.py
+```
