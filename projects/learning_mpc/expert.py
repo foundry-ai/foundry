@@ -17,7 +17,14 @@ import jax.numpy as jnp
 
 from jax.random import PRNGKey
 
-def make_expert(env_name, env, eta=0.0001, horizon_length=100):
+def centered_log(constraint_fn, x):
+    x_flat, x_uf = jax.flatten_util.ravel_pytree(x)[0]
+    def log_fn(x_flat):
+        x = x_uf(x_flat)
+        d = constraint_fn(x)
+        return jnp.log(-d)
+
+def make_expert(env_name, env, eta=0.0001, horizon_length=20):
     state_constr, input_constr = None, None
     def constr(states, actions):
         d_s = (
@@ -33,9 +40,16 @@ def make_expert(env_name, env, eta=0.0001, horizon_length=100):
         return d
 
     def cost_fn(obs, actions):
+        # obs_flat, obs_uf = jax.flatten_util.ravel_pytree(obs)
+        # actions_flat, actions_uf = jax.flatten_util.ravel_pytree(actions)
+        # def log_barrier(d, obs_flat, actions_flat):
+        #     obs = obs_uf(obs_flat)
+        #     actions = actions_uf(actions_flat)
+        #     d = constr(obs, actions)
+        #     return jnp.log(-d)
         d = constr(obs, actions)
         barrier_cost = jnp.mean(
-            jnp.log(-d)
+            -jnp.log(-d)
         ) if d is not None else None
         env_cost = env.cost(obs, actions)
         return eta*barrier_cost + env_cost
@@ -43,8 +57,11 @@ def make_expert(env_name, env, eta=0.0001, horizon_length=100):
     def initializer(state0, actions):
         def barrier_cost(obs, actions):
             d = constr(obs, actions)
-            d = jnp.exp(d) - 1
-            return jnp.sum(d)
+            # s = jnp.maximum(2*jnp.max(d) + 1e-4, 0)
+            s = 0
+            s = jax.lax.stop_gradient(s)
+            c = -jnp.log(s - d)
+            return jnp.mean(c)
         solver = iLQRSolver()
         objective = MinimizeMPC(
             initial_actions=actions,
@@ -59,11 +76,11 @@ def make_expert(env_name, env, eta=0.0001, horizon_length=100):
     if env_name == "pendulum":
         input_constr = lambda u: jnp.stack((u - 2, -2 - u))
     elif env_name == "quadrotor":
-        # input_constr = lambda u: jnp.stack((u[0] - 5, -5 - u[0]))
-        # state_constr = lambda x: jnp.stack((x.z_dot - 0.01, -0.01 - x.z_dot))
-        state_constr = lambda x: jnp.stack((x.z - 10, -10 - x.z))
+        input_constr = lambda u: jnp.stack((u[0] - 7.5, -5 - u[0]))
+        # state_constr = lambda x: jnp.stack((x.z_dot - 0.5, -0.5 - x.z_dot))
     if state_constr is None and input_constr is None:
         initializer = None
+    initializer = None
     mpc = MPC(
         action_sample=env.sample_action(PRNGKey(0)),
         initializer=initializer,

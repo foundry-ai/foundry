@@ -57,4 +57,6 @@ RUN echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 USER {{user}}
 WORKDIR /home/{{user}}/code
 
+ENV PYTHONPATH /home/{{user}}/code:/home/{{user}}/code/projects
+
 ENTRYPOINT [ "sleep", "infinity" ]
