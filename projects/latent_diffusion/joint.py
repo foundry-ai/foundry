@@ -51,8 +51,8 @@ def loss_fn(config, schedule, normalizer, net,
             rng_key, sample):
     rng = PRNGSequence(rng_key)
     dist_x_timestep = 0
-    dist_z_timestep = schedule.num_steps - 1
-    dist_x_timestep = jax.random.randint(next(rng), (), 0, schedule.num_steps)
+    dist_z_timestep = 0
+    # dist_x_timestep = jax.random.randint(next(rng), (), 0, schedule.num_steps)
     # dist_z_timestep = jax.random.randint(next(rng), (), 0, 1)
     sub_x_timestep = jax.random.randint(next(rng), (), dist_x_timestep, schedule.num_steps)
     sub_z_timestep = jax.random.randint(next(rng), (), dist_z_timestep, schedule.num_steps)
