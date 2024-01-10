@@ -1,0 +1,3 @@
+FROM base as pandas-build
+
+RUN pip wheel pandas=={{config.custom.pandas.version}}

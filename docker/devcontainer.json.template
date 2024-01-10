@@ -1,0 +1,6 @@
+{
+  "name": "stanza",
+  "dockerComposeFile": "{{ env_path }}/docker-compose.yml",
+  "service": "env",
+  "workspaceFolder": "/home/{{ user }}/code"
+}

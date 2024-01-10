@@ -1,0 +1,3 @@
+FROM base as jax-build
+
+RUN pip wheel jax=={{requirements.jax.version}} -f https://storage.googleapis.com/jax-releases/jax_releases.html

@@ -1,0 +1,3 @@
+FROM base as plotly-build
+
+RUN pip wheel --no-binary plotly plotly=={{config.custom.plotly.version}}

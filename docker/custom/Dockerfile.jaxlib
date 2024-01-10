@@ -1,0 +1,22 @@
+FROM base as jaxlib-build
+
+{% if "jaxlib" in config.build %}
+
+{% if config.cuda != "none" %}
+{% set jaxlib_cuda_args="--enable_cuda \
+               --enable_nccl \
+               --cuda_path=$CUDA_HOME \
+               --cudnn_path=$PREFIX   \
+               --cuda_version={{cuda_version}}\
+               --cudnn_version={{cudnn_version}}" %}
+{% endif %}
+
+{% else %}
+
+{% if config.cuda == "none" %}
+RUN pip wheel jaxlib=={{requirements.jaxlib.version}} -f https://storage.googleapis.com/jax-releases/jax_releases.html 
+{% elif config.cuda == "12.2" %}
+RUN pip wheel jaxlib[cuda12_local]=={{requirements.jaxlib.version}} -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+{% endif %}
+
+{% endif %}

@@ -1,0 +1,16 @@
+numpy==1.26.3
+pandas==2.1.4
+flax==0.7.5
+optax==0.1.7
+chex==0.1.85
+jax==0.4.23
+jaxlib==0.4.23
+wandb==0.16.1
+tensorstore==0.1.51
+ffmpegio==0.9.0
+rich==13.7.0
+matplotlib==3.8.2
+plotly==5.18.0
+ipykernel==6.28.0
+nbformat==5.9.2
+pytest==7.4.4

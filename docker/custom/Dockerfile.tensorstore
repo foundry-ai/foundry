@@ -1,0 +1,5 @@
+FROM base as tensorstore-build
+
+RUN pip install --upgrade pip setuptools numpy
+ENV TENSORSTORE_BAZEL_BUILD_OPTIONS "--local_ram_resources=1024"
+RUN pip wheel -v -w /packages/ --no-deps tensorstore=={{requirements.tensorstore.version}}

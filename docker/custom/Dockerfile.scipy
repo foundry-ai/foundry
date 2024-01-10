@@ -1,0 +1,5 @@
+FROM base as scipy-build
+
+# Install numpy dependency
+RUN pip install cython pythran pybind11 meson ninja pydevtool rich-click
+RUN pip wheel --no-binary scipy scipy=={{config.custom.scipy.version}}
