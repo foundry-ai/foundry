@@ -1,1 +1,0 @@
-class FrozenInstanceError(AttributeError): pass
