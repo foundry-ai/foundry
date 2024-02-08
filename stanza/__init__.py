@@ -30,14 +30,15 @@ def _load_entrypoint(entrypoint_string):
     module = importlib.import_module(module)
     return getattr(module, attr)
 
-def launch():
+def launch(entrypoint=None):
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
     os.environ["WANDB_SILENT"] = "true"
-    if len(sys.argv) < 2:
-        print("[red]Must specify entrypoint[/red]")
-        sys.exit(1)
-    entrypoint_str = sys.argv[1]
-    entrypoint = _load_entrypoint(entrypoint_str)
+    if entrypoint is None:
+        if len(sys.argv) < 2:
+            print("[red]Must specify entrypoint[/red]")
+            sys.exit(1)
+        entrypoint_str = sys.argv[1]
+        entrypoint = _load_entrypoint(entrypoint_str)
     setup_logger()
 
     from jax.experimental.compilation_cache import compilation_cache as cc
