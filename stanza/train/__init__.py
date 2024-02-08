@@ -1,3 +1,6 @@
+from bdb import BdbQuit
+import os
+import sys
 import stanza.struct as struct
 from stanza.random import PRNGSequence
 from stanza.util import MofNColumn, dict_flatten
@@ -154,6 +157,11 @@ def fit(*, dataset, optimizer, batch_loss_fn, init_vars,
             )
             for h in hooks:
                 h(next(rng), state)
+    except (KeyboardInterrupt, BdbQuit):
+        # Hard-kill wandb process on manual exit
+        cmd = "ps aux|grep wandb|grep -v grep | awk '\''{print $2}'\''|xargs kill -9"
+        os.system(cmd)
+        raise KeyboardInterrupt
     finally:
         if trace_dir is not None:
             jax.profiler.stop_trace()
