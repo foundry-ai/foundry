@@ -2,6 +2,9 @@ import sys
 import inspect
 
 from typing import Dict, Tuple, NamedTuple
+from typing_extensions import (
+  dataclass_transform,  # pytype: disable=not-supported-yet
+)
 
 class _MISSING_TYPE:
     pass
@@ -55,6 +58,7 @@ class StructParams(NamedTuple):
     jax: bool
     frozen: bool
 
+@dataclass_transform(field_specifiers=(field,))  # type: ignore[literal-required]
 def dataclass(cls=MISSING, *, frozen=False, jax=False, kw_only=False):
     frozen = frozen or jax
     params = StructParams(kw_only=kw_only, jax=jax, frozen=frozen)
