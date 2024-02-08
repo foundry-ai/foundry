@@ -1,4 +1,4 @@
-from stanza.struct import struct
+import stanza.struct as struct
 from stanza.random import PRNGSequence
 from stanza.util import MofNColumn, dict_flatten
 from stanza.data import DataLoader
@@ -28,7 +28,7 @@ Vars = Any
 Stats = Any
 
 # Training hooks
-@struct
+@struct.dataclass(jax=True)
 class TrainState:
     total_iterations: int
     iterations_per_epoch: int
@@ -40,7 +40,7 @@ class TrainState:
     vars: Vars
     last_stats: Stats
 
-@struct
+@struct.dataclass(jax=True)
 class LossOutput:
     loss: ArrayLike
     stats: Stats = None
@@ -87,7 +87,8 @@ def _update(loss_fn, optimizer,
     grads, output =  grad_fn(params, state)
     updates, opt_state = optimizer.update(grads, opt_state, params)
     params = optax.apply_updates(params, updates)
-    vars = {"params": params, **output.var_updates}
+    var_updates = output.var_updates if output.var_updates is not None else {}
+    vars = {"params": params, **var_updates}
     return opt_state, vars, output.stats
 
 def fit(*, dataset, optimizer, batch_loss_fn, init_vars, 
@@ -214,7 +215,7 @@ def validate(*, hooks,
         all_stats = jax.tree_map(lambda *x: jnp.stack(x, 0), *all_stats)
         all_stats = jax.tree_map(lambda x: jnp.mean(x, 0), all_stats)
 
-        state = state.replace(last_stats=all_stats)
+        state = struct.replace(state, last_stats=all_stats)
         for h in hooks:
             h(next(rng), state)
     return hook_fn

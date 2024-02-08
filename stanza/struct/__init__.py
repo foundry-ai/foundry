@@ -32,9 +32,6 @@ class Field:
     def required(self):
         return self.default is MISSING and self.default_factory is MISSING and self.initializer is MISSING
 
-class Struct:
-    pass
-
 def is_frozen(struct):
     return getattr(struct, "__frozen__", False)
 
@@ -45,11 +42,12 @@ def fields(struct):
     return struct.__struct_fields__.values()
 
 def replace(_struct, **kwargs):
-    s = _struct.__class__.__new__()
+    cls = _struct.__class__
+    s = cls.__new__(cls)
     for k in _struct.__struct_fields__.keys():
         v = getattr(_struct, k)
         if k in kwargs: v = kwargs[k]
-        Struct.__setattr__(s, k, v)
+        object.__setattr__(s, k, v)
     return s
 
 class StructParams(NamedTuple):
@@ -57,26 +55,23 @@ class StructParams(NamedTuple):
     jax: bool
     frozen: bool
 
-def struct(cls=MISSING, *, frozen=False, jax=False, kw_only=False):
+def dataclass(cls=MISSING, *, frozen=False, jax=False, kw_only=False):
     frozen = frozen or jax
     params = StructParams(kw_only=kw_only, jax=jax, frozen=frozen)
-    builder = lambda cls: make_struct(cls, params)
+    builder = lambda cls: make_dataclass(cls, params)
     if cls is not MISSING:
         return builder(cls)
     else:
         return builder
 
-def make_struct(base_struct, params):
-    fields, pos_fields, kw_fields = _collect_fields(base_struct, params)
+def make_dataclass(cls, params):
+    fields, pos_fields, kw_fields = _collect_fields(cls, params)
 
-    if base_struct.__module__ in sys.modules:
-        globals = sys.modules[base_struct.__module__].__dict__
+    if cls.__module__ in sys.modules:
+        globals = sys.modules[cls.__module__].__dict__
     else:
         globals = {}
     # create a new class that extends base_struct and has Struct type mixing
-    class cls(Struct, base_struct):
-        pass
-    cls.__name__ = base_struct.__name__
     cls.__struct_params__ = params
     cls.__struct_fields__ = fields
     cls.__slots__ = tuple(field.name for field in fields.values())
@@ -106,9 +101,10 @@ def _register_jax_type(cls):
         children = tuple((GetAttrKey(f.name),getattr(v, f.name)) for f in fields(cls))
         return children, None
     def unflatten(_, children):
-        i = cls.__new__()
+        i = cls.__new__(cls)
         for f, c in zip(fields(cls), children):
-            setattr(i, f.name, c)
+            object.__setattr__(i, f.name, c)
+        return i
     jax.tree_util.register_pytree_with_keys(
         cls, flatten_with_keys, unflatten, flatten
     )
@@ -144,7 +140,7 @@ def _collect_fields(cls, params) -> Tuple[Dict[str, Field], Dict[str, Field], Di
     # add fields from annotations and delete them from the class if default
     for f in annotation_fields.values():
         fields[f.name] = f
-        if f.default is MISSING:
+        if f.default is MISSING and hasattr(cls, f.name):
             delattr(cls, f.name)
         else:
             setattr(cls, f.name, f.default)
@@ -154,7 +150,7 @@ def _collect_fields(cls, params) -> Tuple[Dict[str, Field], Dict[str, Field], Di
 
 def _make_field_init(clazz, self_name, field):
     lines = []
-    make_setter = lambda value: f"Struct.__setattr__({self_name},\"{field.name}\",{value})"
+    make_setter = lambda value: f"object.__setattr__({self_name},\"{field.name}\",{value})"
     if field.required: 
         lines.append(make_setter(field.name))
     else:
@@ -195,8 +191,8 @@ def _make_frozen_setattr(cls):
         "__setattr__",
         ["self", "name", "value"],
         ["raise FrozenInstanceError(f'cannot set \"{name}\" on a frozen {cls.__name__}')"],
-        locals={"FrozenInstanceError": FrozenInstanceError, "cls": cls,
-                "Struct": Struct}
+        locals={"FrozenInstanceError": FrozenInstanceError, "cls": cls}
+                
     )
 
 # UTILITIES

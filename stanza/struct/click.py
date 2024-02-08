@@ -1,8 +1,10 @@
+from stanza.struct import fields
+
 def click_options_from_struct(struct):
     default = struct()
     import click
     def _(function):
-        for field in struct.__dataclass_fields__.values():
+        for field in fields(struct):
             name = field.name.replace("_", "-")
             if field.type == bool:
                 function = click.option(

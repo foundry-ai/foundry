@@ -1,4 +1,4 @@
-from stanza.datasets import Dataset
+from stanza.datasets import Dataset, DatasetRegistry
 import stanza.data as du
 import stanza.util as util
 
@@ -42,8 +42,7 @@ def load_mnist(quiet=False, **kwargs):
                 img = jnp.array(array.array("B", fh.read()),
                         dtype=jnp.uint8).reshape(num_data, rows, cols)
                 # Add channel dimension
-                # convert to float32 and -1 to 1 range
-                img = (img.astype(jnp.float32) / 255. - 0.5)*2
+                img = img.astype(jnp.float32) / 255.
                 return jnp.expand_dims(img, -1)
 
         for filename in ["train-images-idx3-ubyte.gz", "train-labels-idx1-ubyte.gz",
@@ -63,4 +62,5 @@ def load_mnist(quiet=False, **kwargs):
             },
         )
 
-DATASET_LOADERS = {"mnist":load_mnist}
+dataset_registry = DatasetRegistry[Dataset]() # type: DatasetRegistry[Dataset]
+dataset_registry.register("mnist", load_mnist)

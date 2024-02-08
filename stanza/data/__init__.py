@@ -5,8 +5,10 @@ import multiprocessing.pool as mp_pool
 
 from functools import partial
 
-from typing import TypeVar, Generic, Iterator, Generator
+from typing import TypeVar, Generic, Iterator, Generator, Callable, Optional
+
 T = TypeVar('T')
+V = TypeVar('V')
 
 class Data(abc.ABC, Generic[T]):
     @abc.abstractmethod
@@ -17,34 +19,37 @@ class Data(abc.ABC, Generic[T]):
     def __getitem__(self, idx : int) -> T:
         ...
 
-    def get_batch(self, batch_indices: jax.Array) -> T:
-        batch = [self[i] for i in batch_indices]
-        combined_batch = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), *batch)
-        return combined_batch
+    def slice(self, off : int, length : int) -> T:
+        off = off or 0
+        length = length or len(self) - off
+        idxs = jnp.arange(off, off+length)
+        return jax.vmap(lambda i: self[i])(idxs)
+    
+    def map(self, fn : Callable[[T], V]) -> "Mapped[V]":
+        return Mapped(self, fn)
+
+    def cache(self) -> "Data[T]":
+        return PyTreeData(self.slice(0, len(self)))
+
+class Mapped(Data[T]):
+    def __init__(self, dataset : Data[V], fn : Callable[[V], T]):
+        self.dataset = dataset
+        self.fn = fn
+
+    def __len__(self) -> int:
+        return len(self.dataset)
+
+    def __getitem__(self, idx : int) -> T:
+        return self.fn(self.dataset[idx])
+    
+    def slice(self, off : int, length : int) -> T:
+        batch = self.dataset.slice(off, length)
+        return jax.vmap(self.fn)(batch)
 
 
-def slice_dataset(dataset: Data[T], start : int, end : int) -> T:
-    if start is None: start = 0
-    if end is None: end = len(dataset)
-    if start < 0: start = len(dataset) + start
-    if end < 0: end = len(dataset) + end
-
-    data = []
-    for i in range(start, end):
-        data.append(dataset[i])
-    combined_data = jax.tree_map(lambda *xs: jnp.stack(xs), *data)
-    return combined_data
-
-
-def to_pytree(dataset : Data[T]) -> T:
-    samples = []
-    for i in range(len(dataset)):
-        samples.append(dataset[i])
-    tree = jax.tree_map(lambda *xs: jnp.stack(xs), *samples)
-    return tree
 # A pytorch dataset from a jax pytree
-class PyTreeData(Data):
-    def __init__(self, tree):
+class PyTreeData(Data[T]):
+    def __init__(self, tree: T):
         super().__init__()
         ns = jnp.array([x.shape[0] for x in jax.tree_leaves(tree)])
         n = ns[0]
@@ -55,17 +60,20 @@ class PyTreeData(Data):
     def __len__(self):
         return self.n
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx : int) -> T:
         return jax.tree_map(
             lambda x: x[idx],
             self.tree
         )
-
-    def get_batch(self, batch_indices):
-        return jax.vmap(self.__getitem__)(batch_indices)
+    
+    def slice(self, off : int, length : int) -> T:
+        return jax.tree_map(
+            lambda x: x[off:off+length],
+            self.tree
+        )
 
 def _get_batch(dataset, indices):
-    batch = dataset.get_batch(indices)
+    batch = jax.vmap(lambda i: dataset[i])(indices)
     return jax.tree_map(
         lambda x: jax.device_put(x), batch
     )
@@ -86,7 +94,7 @@ class DataLoader(Generic[T]):
         self.chunksize = chunksize
         self.shuffle = shuffle
         self.pool = mp_pool.ThreadPool(max(num_workers,1))
-    
+
     def __iter__(self) -> Iterator[T]:
         if self.shuffle:
             rng_key, subkey = jax.random.split(self.rng_key)
@@ -100,7 +108,7 @@ class DataLoader(Generic[T]):
         indices = jnp.reshape(indices, (-1, self.batch_size))
         batch_indices = iter(indices)
         return self.pool.imap(
-            partial(_get_batch, self.dataset),
+            jax.jit(partial(_get_batch, self.dataset)),
             batch_indices, chunksize=self.chunksize
         )
     

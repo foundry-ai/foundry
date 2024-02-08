@@ -1,6 +1,4 @@
-import math
 import jax.tree_util
-import jax.numpy as jnp
 
 MISSING = object()
 
@@ -23,56 +21,6 @@ def dict_flatten(*trees, prefix=None, suffix=None):
         flattened = {f"{k}{suffix}": v for k, v in flattened.items()}
     return flattened
 
-
-def grid(images, cols=None, rows=None):
-    N = images.shape[0]
-    if N == 1:
-        return images[0]
-    has_channels = len(images.shape) == 4
-
-    # use a heuristic to pick a good
-    # number of rows and columns
-    if cols is None and rows is None:
-        diff = math.inf
-        for c in range(1,min(N+1, 10)):
-            r = math.ceil(N / c)
-            n_diff = abs(c-r) + 5*abs(N - r*c)
-            if n_diff <= diff:
-                rows = r
-                cols = c
-                diff = n_diff
-    if cols is None:
-        cols = math.ceil(N / rows)
-    if rows is None:
-        rows = math.ceil(N / cols)
-
-    # add zero padding for missing images
-    if rows*cols > N:
-        padding = jnp.zeros((rows*cols - N,) + images.shape[1:],
-                            dtype=images.dtype)
-        images = jnp.concatenate((images, padding), axis=0)
-    images = jnp.reshape(images, (rows, cols,) + images.shape[1:])
-    # reorder row, cols, height, width, channels 
-    # to row, height, cols, width, channels
-    images = jnp.transpose(images,
-        (0, 2, 1, 3, 4)
-        if has_channels else
-        (0, 2, 1, 3)
-    )
-    # reshape to flatten the columns
-    images = jnp.reshape(images, 
-        (images.shape[0], images.shape[1], -1, images.shape[4])
-        if has_channels else
-        (images.shape[0], images.shape[1], -1)
-    )
-    # reshape to flatten the rows
-    images = jnp.reshape(images,
-        (-1, images.shape[2], images.shape[3])
-        if has_channels else
-        (-1, images.shape[2])
-    )
-    return images
-
 from rich.text import Text as RichText
 from rich.progress import ProgressColumn
 
@@ -88,3 +36,30 @@ class MofNColumn(ProgressColumn):
             f"{completed:{total_width}d}/{total}",
             style="progress.percentage",
         )
+
+
+def display_image(image, width=None, height=None):
+    import numpy as np
+    from PIL import Image # type: ignore
+    from IPython import display
+    import io
+    import wandb
+
+    if isinstance(image, wandb.Image):
+        img = image._image
+        if not img and image._path:
+            return display.Image(filename=image._path,
+                                 width=width, height=height)
+    else:
+        if image.dtype != np.uint8:
+            image = np.array((255*image)).astype(np.uint8)
+        else:
+            image = np.array(image)
+        img = Image.fromarray(image)
+    imgByteArr = io.BytesIO()
+    # image.save expects a file-like as a argument
+    img.save(imgByteArr, format='PNG')
+    # Turn the BytesIO object back into a bytes object
+    imgByteArr = imgByteArr.getvalue()
+    return display.Image(data=imgByteArr,
+            width=width, height=height)
