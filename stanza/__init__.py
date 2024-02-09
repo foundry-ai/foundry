@@ -7,18 +7,18 @@ import logging
 logger = logging.getLogger("stanza")
 from rich.logging import RichHandler
 
-def setup_logger():
-    FORMAT = "%(name)s - %(message)s"
-    logging.basicConfig(
-        level=logging.ERROR,
-        format=FORMAT,
-        datefmt="[%X]",
-        handlers=[RichHandler(markup=True, rich_tracebacks=True)]
-    )
+def setup_logger(verbose=0):
     logger = logging.getLogger()
     logger.setLevel(logging.ERROR)
     logger = logging.getLogger("stanza")
     logger.setLevel(logging.DEBUG)
+
+    if verbose > 0:
+        jax_logger = logging.getLogger("jax")
+        jax_logger.setLevel(logging.DEBUG)
+    if verbose < 2:
+        jax_logger = logging.getLogger("jax._src.cache_key")
+        jax_logger.setLevel(logging.ERROR)
 
 def _load_entrypoint(entrypoint_string):
     import importlib
@@ -39,6 +39,14 @@ def launch(entrypoint=None):
             sys.exit(1)
         entrypoint_str = sys.argv[1]
         entrypoint = _load_entrypoint(entrypoint_str)
+
+    FORMAT = "%(name)s - %(message)s"
+    logging.basicConfig(
+        level=logging.ERROR,
+        format=FORMAT,
+        datefmt="[%X]",
+        handlers=[RichHandler(markup=True, rich_tracebacks=True)]
+    )
     setup_logger()
 
     from jax.experimental.compilation_cache import compilation_cache as cc
