@@ -23,7 +23,7 @@ class Geometry:
     #         scale=jnp.array(scale) if scale is not None else None
     #     )
 
-@struct.dataclass(jax=True)
+@struct.dataclass
 class Box(Geometry):
     top_left: jnp.ndarray
     bottom_right: jnp.ndarray
@@ -56,7 +56,7 @@ def box(top_left, bottom_right):
     )
 rectangle = box
 
-@struct.dataclass(jax=True)
+@struct.dataclass
 class Polygon(Geometry):
     vertices: jnp.ndarray
 
@@ -81,7 +81,7 @@ class Polygon(Geometry):
 def polygon(vertices):
     return Polygon(jnp.array(vertices))
 
-@struct.dataclass(jax=True)
+@struct.dataclass
 class Circle(Geometry):
     center: jnp.ndarray
     radius: float
@@ -99,7 +99,7 @@ class Circle(Geometry):
 def circle(center, radius):
     return Circle(jnp.array(center), radius)
 
-@struct.dataclass(jax=True)
+@struct.dataclass
 class Segment(Geometry):
     a: jnp.ndarray
     b: jnp.ndarray
@@ -124,7 +124,7 @@ def segment(a, b, thickness=1.):
 
 # Composed geometries
 
-@struct.dataclass(jax=True)
+@struct.dataclass
 class Union(Geometry):
     geometries: List[Geometry]
 
@@ -144,7 +144,7 @@ class Union(Geometry):
 def union(*geoemtries):
     return Union(geoemtries)
 
-@struct.dataclass(jax=True)
+@struct.dataclass
 class BatchUnion(Geometry):
     geometries: Geometry
 
@@ -229,7 +229,7 @@ def paint(canvas, *renderables):
         canvas = r.rasterize(canvas)
     return canvas
 
-@struct.dataclass(jax=True)
+@struct.dataclass
 class Fill(Renderable):
     geometry: Geometry
     color: jnp.ndarray # must have 4 channels
@@ -247,7 +247,7 @@ def fill(geometry, color=jnp.array([0.,0.,0.,1.])):
     color = sanitize_color(color)
     return Fill(geometry, color)
 
-@struct.dataclass(jax=True)
+@struct.dataclass
 class Stack(Renderable):
     renderables: List[Renderable]
 
@@ -271,7 +271,7 @@ class Stack(Renderable):
 def stack(*renderables):
     return Stack(renderables)
 
-@struct.dataclass(jax=True)
+@struct.dataclass
 class BatchStack:
     renderables: Renderable
 
@@ -303,7 +303,7 @@ class BatchStack:
 def stack_batch(renderables):
     return BatchStack(renderables)
 
-@struct.dataclass(jax=True)
+@struct.dataclass
 class TransformedRenderable(Renderable):
     renderable: Renderable
 

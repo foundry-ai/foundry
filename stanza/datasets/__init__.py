@@ -8,7 +8,7 @@ logger = logging.getLogger("stanza.datasets")
 
 T = TypeVar('T')
 
-@struct.dataclass(frozen=True)
+@struct.dataclass
 class Dataset(Generic[T]):
     splits: dict[str, Data[T]] = struct.field(default_factory=dict)
 

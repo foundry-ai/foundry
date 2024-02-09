@@ -35,9 +35,6 @@ class Field:
     def required(self):
         return self.default is MISSING and self.default_factory is MISSING and self.initializer is MISSING
 
-def is_frozen(struct):
-    return getattr(struct, "__frozen__", False)
-
 def field(*, default=MISSING, default_factory=MISSING, initializer=MISSING):
     return Field(None, None, default, default_factory, initializer)
     
@@ -55,13 +52,10 @@ def replace(_struct, **kwargs):
 
 class StructParams(NamedTuple):
     kw_only: bool
-    jax: bool
-    frozen: bool
 
 @dataclass_transform(field_specifiers=(field,))  # type: ignore[literal-required]
-def dataclass(cls=MISSING, *, frozen=False, jax=False, kw_only=False):
-    frozen = frozen or jax
-    params = StructParams(kw_only=kw_only, jax=jax, frozen=frozen)
+def dataclass(cls=MISSING, *, kw_only=False):
+    params = StructParams(kw_only=kw_only)
     builder = lambda cls: make_dataclass(cls, params)
     if cls is not MISSING:
         return builder(cls)
@@ -80,9 +74,7 @@ def make_dataclass(cls, params):
     cls.__struct_fields__ = fields
     cls.__slots__ = tuple(field.name for field in fields.values())
     cls.__init__ = _make_init(cls, fields, pos_fields, kw_fields, globals)
-    cls.__frozen__ = params.frozen
-    if params.frozen:
-        cls.__setattr__ = _make_frozen_setattr(cls)
+    cls.__setattr__ = _make_frozen_setattr(cls)
 
     if not getattr(cls, '__doc__'):
         # Create a class doc-string, same a dataclasses
@@ -91,8 +83,7 @@ def make_dataclass(cls, params):
         except (TypeError, ValueError):
             text_sig = ''
         cls.__doc__ = (cls.__name__ + text_sig)
-    if params.jax:
-        _register_jax_type(cls)
+    _register_jax_type(cls)
     return cls
 
 def _register_jax_type(cls):
@@ -122,10 +113,6 @@ def _collect_fields(cls, params) -> Tuple[Dict[str, Field], Dict[str, Field], Di
             sub_params = b.__struct_params__
             for f in sub_fields.values():
                 fields[f.name] = f
-            if sub_params.frozen and not params.frozen:
-                raise TypeError("Cannot inherit non-frozen struct from a frozen struct")
-            elif not sub_params.frozen and params.frozen:
-                raise TypeError("Cannot inherit frozen struct from a non-frozen struct")
     
     annotations = inspect.get_annotations(cls)
     annotation_fields = {}

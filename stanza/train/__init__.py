@@ -31,7 +31,7 @@ Vars = Any
 Stats = Any
 
 # Training hooks
-@struct.dataclass(jax=True)
+@struct.dataclass
 class TrainState:
     total_iterations: int
     iterations_per_epoch: int
@@ -43,7 +43,7 @@ class TrainState:
     vars: Vars
     last_stats: Stats
 
-@struct.dataclass(jax=True)
+@struct.dataclass
 class LossOutput:
     loss: ArrayLike
     stats: Stats = None

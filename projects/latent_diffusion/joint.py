@@ -16,7 +16,7 @@ from stanza.diffusion.ddpm import DDPMSchedule
 from latent_diffusion.nets import make_joint_network
 from latent_diffusion.data import load_data
 
-@dataclass(jax=True)
+@dataclass
 class Config:
     dataset : str = "cifar10"
     latent_dim : int = 1

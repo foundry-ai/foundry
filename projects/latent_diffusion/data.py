@@ -15,7 +15,7 @@ import stanza.graphics.canvas as canvas
 from stanza.reporting import Image
 from typing import Callable
 
-@dataclass(jax=True)
+@dataclass
 class DataInfo:
     train_data: Data
     test_data: Data
