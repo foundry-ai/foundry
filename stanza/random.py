@@ -17,6 +17,9 @@ class PRNGSequence:
         self._key = key_or_seed(key_or_val)
     
     def __next__(self):
-        k, n = jax.random.split(self._key)
+        k, n = jax.jit(
+            jax.random.split,
+            static_argnums=1
+        )(self._key)
         self._key = k
         return n

@@ -94,6 +94,13 @@ class DataLoader(Generic[T]):
         self.chunksize = chunksize
         self.shuffle = shuffle
         self.pool = mp_pool.ThreadPool(max(num_workers,1))
+    
+        def _get_batch(indices):
+            batch = jax.vmap(lambda i: dataset[i])(indices)
+            return jax.tree_map(
+                lambda x: jax.device_put(x), batch
+            )
+        self._get_batch = jax.jit(_get_batch)
 
     def __iter__(self) -> Iterator[T]:
         if self.shuffle:
@@ -108,10 +115,10 @@ class DataLoader(Generic[T]):
         indices = jnp.reshape(indices, (-1, self.batch_size))
         batch_indices = iter(indices)
         return self.pool.imap(
-            jax.jit(partial(_get_batch, self.dataset)),
+            self._get_batch,
             batch_indices, chunksize=self.chunksize
         )
-    
+   
     def __len__(self) -> int:
         return len(self.dataset) // self.batch_size
 

@@ -9,7 +9,7 @@ from rich.logging import RichHandler
 
 def setup_logger(verbose=0):
     logger = logging.getLogger()
-    logger.setLevel(logging.ERROR)
+    logger.setLevel(logging.WARNING)
     logger = logging.getLogger("stanza")
     logger.setLevel(logging.DEBUG)
 
