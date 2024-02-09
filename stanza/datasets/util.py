@@ -64,7 +64,8 @@ def download(path, url=None, gdrive_id=None, quiet=False):
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
     if gdrive_id is not None:
-        download_gdrive(path, gdrive_id, quiet=quiet)
+        # download_gdrive(path, gdrive_id, quiet=quiet)
+        print("warning gdrive not implemented")
         return path
     elif url is not None:
         download_file(path, url, quiet=quiet)
@@ -89,7 +90,7 @@ def download_file(path, url, quiet=False):
                     f.write(data)
                     pbar.update(task, advance=len(data))
 
-def download_gdrive(path, id, quiet=False):
-    import gdown
-    with open(path, "wb") as f:
-        gdown.download(id=id, output=f, quiet=quiet)
+# def download_gdrive(path, id, quiet=False):
+#     import gdown
+#     with open(path, "wb") as f:
+#         gdown.download(id=id, output=f, quiet=quiet)

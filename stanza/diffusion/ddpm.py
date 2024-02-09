@@ -1,26 +1,27 @@
-from stanza.dataclasses import dataclass, field, replace
+from flax import struct
 from functools import partial
 
 import jax.numpy as jnp
 import jax.flatten_util
 import jax
-import stanza
+import chex
 
-@dataclass(jax=True)
+@struct.dataclass
 class DDPMSchedule:
     betas: jnp.array
-    alphas: jnp.array = field(init=False)
-    alphas_cumprod: jnp.array = field(init=False)
-
-    variance_type: str = field(default="fixed_small", jax_static=True)
-    prediction_type: str = field(default="epsilon", jax_static=True)
-
+    alphas: jnp.array = struct.field(default=None)
+    alphas_cumprod: jnp.array = struct.field(default=None)
+    variance_type: str = struct.field(default="fixed_small", pytree_node=False)
+    # "epsilon", "sample", or "v_prediction"
+    prediction_type: str = struct.field(default="epsilon", pytree_node=False)
     # If None, no clipping
     clip_sample_range: float = None
 
     def __post_init__(self):
-        object.__setattr__(self, 'alphas', 1 - self.betas)
-        object.__setattr__(self, 'alphas_cumprod', jnp.cumprod(self.alphas))
+        if self.alphas is None:
+            object.__setattr__(self, 'alphas', 1 - self.betas)
+        if self.alphas_cumprod is None:
+            object.__setattr__(self, 'alphas_cumprod', jnp.cumprod(self.alphas))
 
     @staticmethod
     def make_linear(num_timesteps, beta_start=0.0001, beta_end=0.02,
@@ -174,3 +175,22 @@ class DDPMSchedule:
                 self.num_steps if static_loop else num_steps, loop_step, carry)
             _, sample = carry
             return sample
+
+    def loss(self, rng_key, model, 
+             sample, t, *,
+             model_has_state_updates=False):
+        s_rng, m_rng = jax.random.split(rng_key)
+        noised_sample, _, target = self.add_noise(s_rng, sample, t)
+        pred = model(m_rng, noised_sample, t)
+        if model_has_state_updates:
+            pred, state = pred
+        chex.assert_trees_all_equal_shapes_and_dtypes(pred, target)
+
+        pred_flat = jax.flatten_util.ravel_pytree(pred)[0]
+        target_flat = jax.flatten_util.ravel_pytree(target)[0]
+        loss = jnp.mean((pred_flat - target_flat)**2)
+
+        if model_has_state_updates:
+            return loss, state
+        else:
+            return loss

@@ -1,20 +1,30 @@
-from stanza import partial, Partial
-from stanza.dataclasses import dataclass
+from stanza import struct
+from stanza.graphics import sanitize_color
 import jax.numpy as jnp
 import jax
 
-from typing import List
+from typing import List, Protocol
 
 class Geometry:
     @property
-    def aabb(self):
-        raise NotImplementedError()
+    def aabb(self): ...
 
-    def signed_distance(self, x):
-        raise NotImplementedError()
+    def signed_distance(self, x): ...
 
-@dataclass(jax=True)
-class Box:
+    def fill(self, color):
+        color = sanitize_color(color)
+        return Fill(self, color)
+
+    # def transform(self, translation=None, rotation=None, scale=None):
+    #     return TransformedGeometry(
+    #         geometry=self,
+    #         translation=jnp.array(translation) if translation is not None else None,
+    #         rotation=jnp.array(rotation) if rotation is not None else None,
+    #         scale=jnp.array(scale) if scale is not None else None
+    #     )
+
+@struct.dataclass(jax=True)
+class Box(Geometry):
     top_left: jnp.ndarray
     bottom_right: jnp.ndarray
 
@@ -46,8 +56,8 @@ def box(top_left, bottom_right):
     )
 rectangle = box
 
-@dataclass(jax=True)
-class Polygon:
+@struct.dataclass(jax=True)
+class Polygon(Geometry):
     vertices: jnp.ndarray
 
     @property
@@ -71,8 +81,8 @@ class Polygon:
 def polygon(vertices):
     return Polygon(jnp.array(vertices))
 
-@dataclass(jax=True)
-class Circle:
+@struct.dataclass(jax=True)
+class Circle(Geometry):
     center: jnp.ndarray
     radius: float
 
@@ -89,8 +99,8 @@ class Circle:
 def circle(center, radius):
     return Circle(jnp.array(center), radius)
 
-@dataclass(jax=True)
-class Segment:
+@struct.dataclass(jax=True)
+class Segment(Geometry):
     a: jnp.ndarray
     b: jnp.ndarray
     thickness: float
@@ -114,8 +124,8 @@ def segment(a, b, thickness=1.):
 
 # Composed geometries
 
-@dataclass(jax=True)
-class Union:
+@struct.dataclass(jax=True)
+class Union(Geometry):
     geometries: List[Geometry]
 
     @property
@@ -134,8 +144,8 @@ class Union:
 def union(*geoemtries):
     return Union(geoemtries)
 
-@dataclass(jax=True)
-class BatchUnion:
+@struct.dataclass(jax=True)
+class BatchUnion(Geometry):
     geometries: Geometry
 
     @property
@@ -156,25 +166,31 @@ def union_batch(geoemtries):
 def _aa_alpha(dist):
     return jnp.clip(-(2*dist - 1), 0, 1)
 
-@jax.jit
-def _aa(dist, color):
-    alpha = _aa_alpha(dist)
-    # modify the color alpha
-    color = color.at[3].set(color[3]*alpha)
-    return color
+def _split_color(color):
+    if color.shape[0] == 1:
+        return color, jnp.ones(())
+    elif color.shape[0] == 2:
+        return color[:1], color[1]
+    elif color.shape[0] == 3:
+        return color, jnp.ones(())
+    elif color.shape[0] == 4:
+        return color[:3], color[3]
+    else:
+        raise ValueError(f"Invalid color shape {color.shape}")
 
 @jax.jit
 def _composite(dist, color, background_color):
     alpha = _aa_alpha(dist)
-    alpha_a = alpha * color[3]
-    alpha_b = background_color[3] if background_color.shape[0] == 4 else jnp.array([1.])
-    bc, fc = background_color[:3], color[:3]
+    fc, alpha_a = _split_color(color)
+    bc, alpha_b = _split_color(background_color)
+    if bc.shape[0] == 1:
+        fc = jnp.mean(fc, axis=0, keepdims=True)
+    alpha_a = alpha_a * alpha
     alpha_o = alpha_a + alpha_b * (1-alpha_a)
     color_o  = (alpha_a * fc + alpha_b * (1 - alpha_a) * bc) / alpha_o
-    out = jnp.concatenate((color_o, jnp.expand_dims(alpha_o, axis=0)), axis=0) \
-        if background_color.shape[0] == 4 else color_o
-    return out
-
+    if background_color.shape[0] == 4 or background_color.shape[0] == 2:
+        color_o = jnp.concatenate((color_o, alpha_o), axis=0)
+    return color_o
 
 class Renderable:
     @property
@@ -199,14 +215,21 @@ class Renderable:
         canvas = jax.vmap(jax.vmap(_composite))(dists, colors, canvas)
         return canvas
 
+    def transform(self, translation=None, rotation=None, scale=None):
+        return TransformedRenderable(
+            renderable=self,
+            translation=jnp.array(translation) if translation is not None else None,
+            rotation=jnp.array(rotation) if rotation is not None else None,
+            scale=jnp.array(scale) if scale is not None else None
+        )
+
 @jax.jit
 def paint(canvas, *renderables):
     for r in renderables:
         canvas = r.rasterize(canvas)
     return canvas
 
-
-@dataclass(jax=True)
+@struct.dataclass(jax=True)
 class Fill(Renderable):
     geometry: Geometry
     color: jnp.ndarray # must have 4 channels
@@ -220,18 +243,11 @@ class Fill(Renderable):
         dist = self.geometry.signed_distance(x)
         return dist, self.color
 
-def sanitize_color(color):
-    color = jnp.array(color)
-    # if alpha is not specified, make alpha = 1
-    if color.shape[-1] == 3:
-        return jnp.concatenate((color, jnp.ones(color.shape[:-1] + (1,))), axis=-1)
-    return color
-
 def fill(geometry, color=jnp.array([0.,0.,0.,1.])):
     color = sanitize_color(color)
     return Fill(geometry, color)
 
-@dataclass(jax=True)
+@struct.dataclass(jax=True)
 class Stack(Renderable):
     renderables: List[Renderable]
 
@@ -255,7 +271,7 @@ class Stack(Renderable):
 def stack(*renderables):
     return Stack(renderables)
 
-@dataclass(jax=True)
+@struct.dataclass(jax=True)
 class BatchStack:
     renderables: Renderable
 
@@ -287,8 +303,8 @@ class BatchStack:
 def stack_batch(renderables):
     return BatchStack(renderables)
 
-@dataclass(jax=True)
-class Transformed(Renderable):
+@struct.dataclass(jax=True)
+class TransformedRenderable(Renderable):
     renderable: Renderable
 
     scale: jnp.ndarray
@@ -297,21 +313,22 @@ class Transformed(Renderable):
 
     @property
     def aabb(self):
-        return self.renderable.aabb
+        raise NotImplementedError()
     
     @jax.jit
     def color_distance(self, x, pixel_metric_hessian):
         def _transform(x, pixel_metric_hessian):
             if self.scale is not None:
                 x = x / self.scale
-                M_inv = jnp.eye(2) * self.scale
+                M_inv = jnp.diag(self.scale)
                 pixel_metric_hessian = M_inv @ pixel_metric_hessian @ M_inv.T
             if self.translation is not None:
                 x = x - self.translation
             if self.rotation is not None:
                 c, s = jnp.cos(self.rotation), jnp.sin(self.rotation)
                 M = jnp.array(((c,-s),(s,c))) if self.rotation is not None else jnp.eye(2)
-                # M_inv = jnp.array(((c,s),(-s,c))) if self.rotation is not None else jnp.eye(2)
+                M_inv = jnp.array(((c,s),(-s,c))) if self.rotation is not None else jnp.eye(2)
+                pixel_metric_hessian = M_inv @ pixel_metric_hessian @ M_inv.T
                 x = M @ x
             return self.renderable.color_distance(x, pixel_metric_hessian)
         # renormalize the distance
@@ -321,9 +338,8 @@ class Transformed(Renderable):
         dist = dist / jnp.linalg.norm(grad)
         return dist, color
 
-def transform(fn, translation=None, rotation=None, scale=None):
-    return Transformed(
-        renderable=fn,
+def transform(r, translation=None, rotation=None, scale=None):
+    return r.transform(
         translation=jnp.array(translation) if translation is not None else None,
         rotation=jnp.array(rotation) if rotation is not None else None,
         scale=jnp.array(scale) if scale is not None else None

@@ -1,114 +1,60 @@
-import functools
-from functools import wraps
-from jax.tree_util import Partial
-import jax.tree_util
-from typing import List, Any
-import types
-import jax
+import logging
+import os
+import sys
+from rich import print
+from pathlib import Path
+import logging
+logger = logging.getLogger("stanza")
+from rich.logging import RichHandler
 
-# Tools for auto wrapping and unwrapping
-# function arguments
-class _func:
-    def __init__(self, func):
-        self.func = func
-    
-    def __hash__(self):
-        return hash(self.func)
+def setup_logger(verbose=0):
+    logger = logging.getLogger()
+    logger.setLevel(logging.WARNING)
+    logger = logging.getLogger("stanza")
+    logger.setLevel(logging.DEBUG)
 
-def _wrapper_flatten(v):
-    return (), v.func
+    if verbose > 0:
+        jax_logger = logging.getLogger("jax")
+        jax_logger.setLevel(logging.DEBUG)
+    if verbose < 2:
+        jax_logger = logging.getLogger("jax._src.cache_key")
+        jax_logger.setLevel(logging.ERROR)
 
-def _wrapper_unflatten(aux, children):
-    return _func(aux)
+def _load_entrypoint(entrypoint_string):
+    import importlib
+    parts = entrypoint_string.split(":")
+    if len(parts) != 2:
+        print("[red]Entrypoint must include module and function[/red]")
+        sys.exit(1)
+    module, attr = parts
+    module = importlib.import_module(module)
+    return getattr(module, attr)
 
-jax.tree_util.register_pytree_node(_func,
-        _wrapper_flatten, _wrapper_unflatten)
+def launch(entrypoint=None):
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    os.environ["WANDB_SILENT"] = "true"
+    if entrypoint is None:
+        if len(sys.argv) < 2:
+            print("[red]Must specify entrypoint[/red]")
+            sys.exit(1)
+        entrypoint_str = sys.argv[1]
+        entrypoint = _load_entrypoint(entrypoint_str)
 
-def _wrap_functions(args):
-    def _wrap_arg(node):
-        if callable(node) and not is_jaxtype(type(node)):
-            node = _func(node)
-        return node
-    return jax.tree_util.tree_map(_wrap_arg, args)
+    FORMAT = "%(name)s - %(message)s"
+    logging.basicConfig(
+        level=logging.ERROR,
+        format=FORMAT,
+        datefmt="[%X]",
+        handlers=[RichHandler(markup=True, rich_tracebacks=True)]
+    )
+    setup_logger()
 
-def _unwrap_functions(args):
-    def _unwrap_arg(node):
-        if isinstance(node, _func):
-            node = node.func
-        return node
-    def _unwrap_is_leaf(node):
-        if isinstance(node, _func):
-            return True
-        return False
-    return jax.tree_util.tree_map(_unwrap_arg, args, is_leaf=_unwrap_is_leaf)
+    from jax.experimental.compilation_cache import compilation_cache as cc
+    JAX_CACHE = Path(os.environ.get("JAX_CACHE", "/tmp/jax_cache"))
+    JAX_CACHE.mkdir(parents=True, exist_ok=True)
+    cc.initialize_cache(JAX_CACHE)
 
-from jax._src.tree_util import _HashableCallableShim
-
-# A version of partial() which makes arguments static
-# into the pytree
-# Partial makes them jax-based
-class partial(functools.partial):
-  def __new__(klass, func, *args, **kw):
-    if isinstance(func, functools.partial):
-      original_func = func
-      func = _HashableCallableShim(original_func)
-      out = super().__new__(klass, func, *args, **kw)
-      func.func = original_func.func
-      func.args = original_func.args
-      func.keywords = original_func.keywords
-      return out
-    else:
-      return super().__new__(klass, func, *args, **kw)
-
-jax.tree_util.register_pytree_node(
-    partial,
-    lambda partial_: ((), (partial_.func, partial_.args, partial_.keywords)),
-    lambda func, _: partial(func[0], *func[1], **func[2]),  # type: ignore[index]
-)
-
-"""
-    A version of jax.jit which
-       - Can automatically make function-based arguments
-         static by wrapping them using Partial()
-"""
-def jit(fun=None, **kwargs):
-    if fun is None:
-        return functools.partial(_jit, **kwargs)
-    return _jit(fun, **kwargs)
-
-def _jit(fun, **kwargs):
-    @wraps(fun)
-    def internal_fun(*fargs, **fkwargs):
-        (fargs, fkwargs) = _unwrap_functions((fargs, fkwargs))
-        return fun(*fargs, **fkwargs)
-    jfun = jax.jit(internal_fun, **kwargs)
-
-    @wraps(fun)
-    def wrapped_fun(*fargs, **fkwargs):
-        (fargs, fkwargs) = _wrap_functions((fargs, fkwargs))
-        return jfun(*fargs, **fkwargs)
-    return wrapped_fun
-
-
-# TODO: Maybe move some of the functions below into separate utils?
-from jax._src.api_util import _shaped_abstractify_handlers
-from jax._src.tree_util import _registry
-from jax._src.core import Tracer, ConcreteArray
-
-# If "t" is a jax type
-def is_jaxtype(t):
-    if t is str:
-        return False
-    if t is int or t is float or t is bool:
-        return True
-    if t in _shaped_abstractify_handlers:
-        return True
-    if t in _registry:
-        return True
-    return False
-
-def is_concrete(val):
-    if isinstance(val, Tracer) and \
-            not isinstance(val.aval, ConcreteArray):
-        return False
-    return True
+    logger.info(f"Launching {entrypoint_str}")
+    # remove the "launch" argument
+    sys.argv.pop(0)
+    entrypoint()

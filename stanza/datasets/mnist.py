@@ -1,44 +1,66 @@
-from stanza.datasets import builder
-from stanza.data import Data
+from stanza.datasets import Dataset, DatasetRegistry
+import stanza.data as du
+import stanza.util as util
 
-from .util import download, cache_path
-from pathlib import Path as Path
+from .util import cache_path, download
 
-import struct
-import array
 import gzip
 
+import jax
 import jax.numpy as jnp
+import struct
+import array
+import wandb
+import numpy as np
+
+def visualize_mnist(signal_samples,
+                    latent_samples=None,
+                    signal_resample=None):
+    if signal_resample is not None:
+        signal_samples = jnp.concatenate(
+            (signal_samples, signal_resample),
+            axis=-2 # concat along cols
+        )
+    return wandb.Image(np.array(
+        util.grid(signal_samples))
+    )
 
 
+def load_mnist(quiet=False, **kwargs):
+    with jax.default_device(jax.devices("cpu")[0]):
+        data_path = cache_path("mnist")
+        """Download and parse the raw MNIST dataset."""
+        base_url = "https://storage.googleapis.com/cvdf-datasets/mnist/"
+        def parse_labels(filename):
+            with gzip.open(filename, "rb") as fh:
+                _ = struct.unpack(">II", fh.read(8))
+                return jnp.array(array.array("B", fh.read()), dtype=jnp.uint8)
 
-@builder
-def mnist(quiet=False, splits=set()):
-    data_path = cache_path("mnist")
-    """Download and parse the raw MNIST dataset."""
-    base_url = "https://storage.googleapis.com/cvdf-datasets/mnist/"
-    def parse_labels(filename):
-        with gzip.open(filename, "rb") as fh:
-            _ = struct.unpack(">II", fh.read(8))
-            return jnp.array(array.array("B", fh.read()), dtype=jnp.uint8)
+        def parse_images(filename):
+            with gzip.open(filename, "rb") as fh:
+                _, num_data, rows, cols = struct.unpack(">IIII", fh.read(16))
+                img = jnp.array(array.array("B", fh.read()),
+                        dtype=jnp.uint8).reshape(num_data, rows, cols)
+                # Add channel dimension
+                img = img.astype(jnp.float32) / 255.
+                return jnp.expand_dims(img, -1)
 
-    def parse_images(filename):
-        with gzip.open(filename, "rb") as fh:
-            _, num_data, rows, cols = struct.unpack(">IIII", fh.read(16))
-            return jnp.array(array.array("B", fh.read()),
-                      dtype=jnp.uint8).reshape(num_data, rows, cols)
-
-    for filename in ["train-images-idx3-ubyte.gz", "train-labels-idx1-ubyte.gz",
-                     "t10k-images-idx3-ubyte.gz", "t10k-labels-idx1-ubyte.gz"]:
-        download(data_path/filename, base_url + filename, quiet=quiet)
-    
-    data = {}
-    if "train" in splits:
+        for filename in ["train-images-idx3-ubyte.gz", "train-labels-idx1-ubyte.gz",
+                        "t10k-images-idx3-ubyte.gz", "t10k-labels-idx1-ubyte.gz"]:
+            download(data_path/filename, base_url + filename, quiet=quiet)
+        
         train_images = parse_images(data_path / "train-images-idx3-ubyte.gz")
         train_labels = parse_labels(data_path / "train-labels-idx1-ubyte.gz")
-        data["train"] = Data.from_pytree((train_images, train_labels))
-    if "test" in splits:
+        train_data = (train_images, train_labels)
         test_images = parse_images(data_path / "t10k-images-idx3-ubyte.gz")
         test_labels = parse_labels(data_path / "t10k-labels-idx1-ubyte.gz")
-        data["test"] = Data.from_pytree((test_images, test_labels))
-    return data
+        test_data = (test_images, test_labels)
+        return Dataset(
+            splits={
+                "train": du.PyTreeData(train_data),
+                "test": du.PyTreeData(test_data)
+            },
+        )
+
+dataset_registry = DatasetRegistry[Dataset]() # type: DatasetRegistry[Dataset]
+dataset_registry.register("mnist", load_mnist)

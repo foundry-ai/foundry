@@ -13,3 +13,4 @@ matplotlib==3.8.2
 plotly==5.18.0
 ipykernel==6.28.0
 nbformat==5.9.2
+pytest==7.4.4

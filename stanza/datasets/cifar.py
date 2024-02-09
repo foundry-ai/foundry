@@ -3,7 +3,7 @@ import tarfile
 import jax.numpy as jnp
 import pickle
 from stanza.data import Data
-from stanza.datasets import builder
+from stanza.datasets import Registry, Dataset
 from .util import download_and_extract, cache_path
 
 def _read_batch(path):
@@ -15,8 +15,7 @@ def _read_batch(path):
     data = data.transpose((0, 2, 3, 1))
     return data, labels
 
-@builder
-def cifar10(quiet=False, splits=set()):
+def load_cifar10(quiet=False, splits=set()):
     tar_path = cache_path("cifar10", "cifar10.tar.gz")
     data_path = cache_path("cifar10", "data")
     if not data_path.exists():
@@ -39,14 +38,7 @@ def cifar10(quiet=False, splits=set()):
         test_data, test_labels = _read_batch(test_path)
         test = Data.from_pytree((test_data, test_labels))
         data["test"] = test
-    return data
+    return Dataset(splits=data)
 
-@builder
-def cifar100(quiet=False, splits=set()):
-    tar_path = Path(".cache/data/cifar100.tar.gz")
-    dest_path = Path(".cache/data/cifar100")
-    _download("https://www.cs.toronto.edu/~kriz/cifar-100-python.tar.gz", tar_path,
-              quiet=quiet)
-    _extract(tar_path, dest_path)
-    test_data = jnp.load(dest_path / "cifar-100-python" / "test", allow_pickle=True)
-    print(test_data)
+registry = Registry() # type: Registry[Dataset]
+registry.register("cifar10", load_cifar10)
