@@ -54,6 +54,10 @@ def launch(entrypoint=None):
     JAX_CACHE.mkdir(parents=True, exist_ok=True)
     cc.initialize_cache(JAX_CACHE)
 
+    import gc
+    # pop the xla gc callback
+    gc.callbacks.pop()
+
     logger.info(f"Launching {entrypoint_str}")
     # remove the "launch" argument
     sys.argv.pop(0)

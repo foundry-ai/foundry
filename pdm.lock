@@ -5,7 +5,7 @@
 groups = ["default"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:694643aff67b94eed700cceac25e01226e79acf60fd136fcebc878e56af8dd7b"
+content_hash = "sha256:058ff8e7118095204f1890f35db33a866173b6ca8a2fdbda6882e25463098e33"
 
 [[package]]
 name = "absl-py"

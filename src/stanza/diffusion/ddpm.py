@@ -63,6 +63,23 @@ class DDPMSchedule:
             return noisy, noise, noise
         elif self.prediction_type == "sample":
             return noisy, noise, sample
+    
+    @jax.jit
+    def noise_trajectory(self, rng_key, sample):
+        sample_flat, unflatten = jax.flatten_util.ravel_pytree(sample)
+        unfaltten_vmap = jax.vmap(unflatten)
+
+        noise_flat = jax.random.normal(rng_key, (self.num_steps,) + sample_flat.shape)
+        alphas_shifted = jnp.concatenate((jnp.ones((1,)), self.alphas_cumprod[:-1]), axis=-1)
+        noise_scales = alphas_shifted * self.betas
+
+        noise_flat = noise_flat * noise_scales[:,None]
+        noise_flat = jnp.cumsum(noise_flat, axis=0)
+        noisy_flat = noise_flat + self.alphas_cumprod[:,None]*sample_flat[None,:]
+
+        noise = unfaltten_vmap(noise_flat)
+        noisy = unfaltten_vmap(noisy_flat)
+        return noisy, noise
 
     @jax.jit
     def add_sub_noise(self, rng_key, sub_sample, sub_timestep, timestep):

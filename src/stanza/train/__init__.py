@@ -168,24 +168,28 @@ def fit(*, dataset, optimizer, batch_loss_fn, init_vars,
     return vars
 
 # Hook decorators
-def every_n_iterations(hook=None, n=1):
-    if hook is None:
-        return partial(every_n_epochs, n=n)
-    @functools.wraps(hook)
+def every_n_iterations(*hooks, n=1):
+    if not hooks:
+        return partial(every_n_iterations, n=n)
     def wrapped(rng_key, state, **kwargs):
         if state.epoch % n == 0 and \
                 state.epoch_iteration + 1 == state.iterations_per_epoch:
-            return hook(rng_key, state, **kwargs)
+            for h in hooks:
+                h(rng_key, state, **kwargs)
+    if len(hooks) == 1:
+        wrapped = functools.wraps(hooks[0])(wrapped)
     return wrapped
 
-def every_n_epochs(hook=None, n=1):
-    if hook is None:
+def every_n_epochs(*hooks, n=1):
+    if not hooks:
         return partial(every_n_epochs, n=n)
-    @functools.wraps(hook)
     def wrapped(rng_key, state, **kwargs):
         if state.epoch % n == 0 and \
                 state.epoch_iteration == 0:
-            return hook(rng_key, state, **kwargs)
+            for h in hooks:
+                h(rng_key, state, **kwargs)
+    if len(hooks) == 1:
+        wrapped = functools.wraps(hooks[0])(wrapped)
     return wrapped
 
 every_epoch = partial(every_n_epochs, n=1)
