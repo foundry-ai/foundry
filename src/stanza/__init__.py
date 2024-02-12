@@ -20,6 +20,12 @@ def setup_logger(verbose=0):
         jax_logger = logging.getLogger("jax._src.cache_key")
         jax_logger.setLevel(logging.ERROR)
 
+def setup_jax_cache():
+    from jax.experimental.compilation_cache import compilation_cache as cc
+    JAX_CACHE = Path(os.environ.get("JAX_CACHE", "/tmp/jax_cache"))
+    JAX_CACHE.mkdir(parents=True, exist_ok=True)
+    cc.initialize_cache(JAX_CACHE)
+
 def _load_entrypoint(entrypoint_string):
     import importlib
     parts = entrypoint_string.split(":")
@@ -48,11 +54,7 @@ def launch(entrypoint=None):
         handlers=[RichHandler(markup=True, rich_tracebacks=True)]
     )
     setup_logger()
-
-    from jax.experimental.compilation_cache import compilation_cache as cc
-    JAX_CACHE = Path(os.environ.get("JAX_CACHE", "/tmp/jax_cache"))
-    JAX_CACHE.mkdir(parents=True, exist_ok=True)
-    cc.initialize_cache(JAX_CACHE)
+    setup_jax_cache()
 
     import gc
     # pop the xla gc callback
