@@ -54,10 +54,10 @@ class StructParams(NamedTuple):
     kw_only: bool
 
 @dataclass_transform(field_specifiers=(field,))  # type: ignore[literal-required]
-def dataclass(cls=MISSING, *, kw_only=False):
+def dataclass(cls=None, *, kw_only=False):
     params = StructParams(kw_only=kw_only)
     builder = lambda cls: make_dataclass(cls, params)
-    if cls is not MISSING:
+    if cls is not None:
         return builder(cls)
     else:
         return builder

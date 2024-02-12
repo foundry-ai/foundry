@@ -1,8 +1,0 @@
-README.md
-pyproject.toml
-src/stanza/__init__.py
-src/stanza.egg-info/PKG-INFO
-src/stanza.egg-info/SOURCES.txt
-src/stanza.egg-info/dependency_links.txt
-src/stanza.egg-info/requires.txt
-src/stanza.egg-info/top_level.txt

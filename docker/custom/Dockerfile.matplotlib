@@ -1,3 +1,0 @@
-FROM base as matplotlib-build
-
-RUN pip wheel --no-binary matplotlib matplotlib=={{config.custom.matplotlib.version}}
