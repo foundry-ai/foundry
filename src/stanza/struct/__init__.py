@@ -157,6 +157,8 @@ def _make_init(clazz, fields, pos_fields, kw_fields, globals):
     params = clazz.__struct_params__
     args = []
     body_lines = []
+    if params.kw_only:
+        args.append("*")
     for f in pos_fields.values():
         if f.required:
             args.append(f"{f.name}")
