@@ -31,6 +31,10 @@ class Data(abc.ABC, Generic[T]):
     def cache(self) -> "Data[T]":
         return PyTreeData(self.slice(0, len(self)))
 
+    @staticmethod
+    def from_pytree(tree: T) -> "PyTreeData[T]":
+        return PyTreeData(tree)
+
 class Mapped(Data[T]):
     def __init__(self, dataset : Data[V], fn : Callable[[V], T]):
         self.dataset = dataset

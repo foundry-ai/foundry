@@ -193,7 +193,7 @@ class DDPMSchedule:
             _, sample = carry
             return sample
 
-    def loss(self, rng_key, model, 
+    def loss(self, rng_key : jax.Array, model, 
              sample, t, *,
              model_has_state_updates=False):
         s_rng, m_rng = jax.random.split(rng_key)

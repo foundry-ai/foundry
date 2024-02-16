@@ -26,6 +26,11 @@ def setup_jax_cache():
     JAX_CACHE.mkdir(parents=True, exist_ok=True)
     cc.initialize_cache(JAX_CACHE)
 
+def setup_gc():
+    import gc
+    # pop the xla gc callback
+    gc.callbacks.pop()
+
 def _load_entrypoint(entrypoint_string):
     import importlib
     parts = entrypoint_string.split(":")
@@ -35,6 +40,19 @@ def _load_entrypoint(entrypoint_string):
     module, attr = parts
     module = importlib.import_module(module)
     return getattr(module, attr)
+
+def setup_notebook():
+    FORMAT = "%(name)s - %(message)s"
+    logging.basicConfig(
+        level=logging.ERROR,
+        format=FORMAT,
+        datefmt="[%X]",
+        handlers=[RichHandler(markup=True, rich_tracebacks=True)]
+    )
+    setup_logger()
+    setup_jax_cache()
+    setup_gc()
+
 
 def launch(entrypoint=None):
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -55,10 +73,7 @@ def launch(entrypoint=None):
     )
     setup_logger()
     setup_jax_cache()
-
-    import gc
-    # pop the xla gc callback
-    gc.callbacks.pop()
+    setup_gc()
 
     logger.info(f"Launching {entrypoint_str}")
     # remove the "launch" argument
