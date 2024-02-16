@@ -1,5 +1,7 @@
 import sys
 import inspect
+import jax.tree_util
+import types
 
 from typing import Dict, Tuple, NamedTuple
 from typing_extensions import (
@@ -7,13 +9,16 @@ from typing_extensions import (
 )
 
 class _MISSING_TYPE:
-    pass
+    def __repr__(self):
+        return "Missing"
+
 MISSING = _MISSING_TYPE()
 
 class Field:
     __slots__ = (
         'name',
         'type',
+        'pytree_node',
         'default',
         'default_factory',
         # unlike default_factory, initializer
@@ -23,9 +28,10 @@ class Field:
         # must be specified
         'initializer'
     )
-    def __init__(self, name, type, default, default_factory, initializer):
+    def __init__(self, name, type, pytree_node, default, default_factory, initializer):
         self.name = name
         self.type = type
+        self.pytree_node = pytree_node
         self.default = default
         self.default_factory = default_factory
         self.initializer = initializer
@@ -34,9 +40,15 @@ class Field:
     @property
     def required(self):
         return self.default is MISSING and self.default_factory is MISSING and self.initializer is MISSING
+    
+    def __repr__(self):
+        return (f"Field(name={self.name}, type={self.type}, "
+            f"pytree_node={self.pytree_node}, default={self.default}, "
+             f"default_factory={self.default_factory}, initializer={self.initializer})")
 
-def field(*, default=MISSING, default_factory=MISSING, initializer=MISSING):
-    return Field(None, None, default, default_factory, initializer)
+
+def field(*, pytree_node=True, default=MISSING, default_factory=MISSING, initializer=MISSING):
+    return Field(None, None, pytree_node, default, default_factory, initializer)
     
 def fields(struct):
     return struct.__struct_fields__.values()
@@ -75,6 +87,7 @@ def make_dataclass(cls, params):
     cls.__slots__ = tuple(field.name for field in fields.values())
     cls.__init__ = _make_init(cls, fields, pos_fields, kw_fields, globals)
     cls.__setattr__ = _make_frozen_setattr(cls)
+    cls.__repr__ = lambda self: f"{cls.__name__}({', '.join(f'{k}={getattr(self, k)!r}' for k in fields)})"
 
     if not getattr(cls, '__doc__'):
         # Create a class doc-string, same a dataclasses
@@ -86,18 +99,36 @@ def make_dataclass(cls, params):
     _register_jax_type(cls)
     return cls
 
+class FnChild:
+    def __init__(self, fn):
+        self.fn = fn
+
+jax.tree_util.register_pytree_node(
+    FnChild, lambda f: ((), f.fn),
+        lambda aux, _: FnChild(aux)
+)
+
 def _register_jax_type(cls):
-    import jax
     from jax.tree_util import GetAttrKey
+    dyn_fields = list(f for f in fields(cls) if f.pytree_node)
+    static_fields = list(f for f in fields(cls) if not f.pytree_node)
     def flatten(v):
-        children = tuple(getattr(v, f.name) for f in fields(cls))
-        return children, None
+        children = tuple(getattr(v, f.name) for f in dyn_fields)
+        children = tuple(FnChild(v) if type(v) == types.FunctionType else v for v in children)
+        static_children = tuple(getattr(v, f.name) for f in static_fields)
+        return children, static_children
     def flatten_with_keys(v):
-        children = tuple((GetAttrKey(f.name),getattr(v, f.name)) for f in fields(cls))
-        return children, None
-    def unflatten(_, children):
+        children = tuple((GetAttrKey(f.name),getattr(v, f.name)) for f in dyn_fields)
+        children = tuple(FnChild(v) if type(v) == types.FunctionType else v for v in children)
+        static_children = tuple(getattr(v, f.name) for f in static_fields)
+        return children, static_children
+    def unflatten(static_children, children):
         i = cls.__new__(cls)
-        for f, c in zip(fields(cls), children):
+        # unwrap FnNode
+        children = tuple(c.fn if type(c) == FnChild else c for c in children)
+        for f, c in zip(dyn_fields, children):
+            object.__setattr__(i, f.name, c)
+        for f, c in zip(static_fields, static_children):
             object.__setattr__(i, f.name, c)
         return i
     jax.tree_util.register_pytree_with_keys(
@@ -119,9 +150,9 @@ def _collect_fields(cls, params) -> Tuple[Dict[str, Field], Dict[str, Field], Di
     for name, _type in annotations.items():
         f = getattr(cls, name, MISSING)
         if not isinstance(f, Field):
-            f = Field(None, None, f, MISSING, MISSING)
+            f = Field(None, None, True, f, MISSING, MISSING)
         # re-instantiate the field with the name and type
-        f = Field(name, _type, f.default, f.default_factory, f.initializer)
+        f = Field(name, _type, f.pytree_node, f.default, f.default_factory, f.initializer)
         annotation_fields[name] = f
 
     for name, value in cls.__dict__.items():
