@@ -6,6 +6,7 @@ from pathlib import Path
 import logging
 logger = logging.getLogger("stanza")
 from rich.logging import RichHandler
+from functools import partial
 
 def setup_logger(verbose=0):
     logger = logging.getLogger()
