@@ -12,7 +12,7 @@ import jax.numpy as jnp
 class IterativeSolver(Solver):
     # This is static so we can output the optimization history
     # if requested
-    max_iterations: int = field(default=1000, jax_static=True)
+    max_iterations: int = field(default=1000, pytree_node=False)
     
     def init(self, objective, **kwargs):
         raise NotImplementedError("init() must be implemented")

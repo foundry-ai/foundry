@@ -22,7 +22,7 @@ import jax.experimental.host_callback
 
 # A special MinimizeMPC objective
 # which solvers can take
-@dataclass(jax=True, kw_only=True)
+@dataclass(kw_only=True)
 class MinimizeMPC(Objective):
     # The actions. 
     initial_actions: Any
@@ -54,7 +54,7 @@ class MinimizeMPC(Objective):
             initial_params=self.initial_actions,
         )
 
-@dataclass(jax=True)
+@dataclass
 class MinimizeMPCState(SolverState):
     actions: Any
     cost: float
@@ -153,7 +153,7 @@ def centered_barrier(barrier_sdf, center_state, center_action,
             jnp.dot(center_a_grad, a_flat - a_center) - v
 
 # A barrier-based MPC
-@dataclass(jax=True)
+@dataclass
 class BarrierMPC(MPC):
     # Takes states, actions as inputs
     # outputs

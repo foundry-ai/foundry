@@ -61,7 +61,7 @@ class EstimatorRollout:
 @dataclass
 class FeedbackRollout:
     model_fn : Callable = None
-    burn_in : int = field(jax_static=True, default=10)
+    burn_in : int = field(pytree_node=False, default=10)
     Q_coef : float = 10
     R_coef : float = 1
     grad_estimator : Callable = None

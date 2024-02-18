@@ -4,7 +4,7 @@ import jax.flatten_util
 import jax.numpy as jnp
 
 from typing import Callable, Any, Optional, NamedTuple
-from stanza.dataclasses import dataclass, field, replace
+from stanza.struct import dataclass, field, replace
 
 import jax.experimental.host_callback
 
@@ -12,7 +12,7 @@ import jax.experimental.host_callback
 SolverState = Any
 Params = Any
 
-@dataclass(jax=True, kw_only=True)
+@dataclass(kw_only=True)
 class Objective:
     # A custom termination condition
     terminate_condition: Callable[[SolverState], bool] = None
@@ -34,7 +34,7 @@ class Objective:
 class UnsupportedObectiveError(RuntimeError):
     pass
 
-@dataclass(jax=True)
+@dataclass
 class SolverResult:
     solution : SolverState
     history : Optional[SolverState]
@@ -46,13 +46,13 @@ class Solver:
         raise UnsupportedObectiveError("Solver does not support this objective")
 
 # All solver states must have iteration and solved fields
-@dataclass(jax=True)
+@dataclass
 class SolverState:
     iteration: int
     solved: bool
 
 # A solver state for Minimize() objectives
-@dataclass(jax=True)
+@dataclass
 class MinimizeState(SolverState):
     # The function state
     cost: float # the current objective cost
@@ -61,21 +61,21 @@ class MinimizeState(SolverState):
     aux: Any # auxiliary output of the objective
 
 # Fun <= 0
-@dataclass(jax=True)
+@dataclass
 class IneqConstraint:
     fun: Callable
 
 # Fun == 0
-@dataclass(jax=True)
+@dataclass
 class EqConstraint:
     fun: Callable
 
 # Minimize the passed-in function
-@dataclass(jax=True, kw_only=True)
+@dataclass(kw_only=True)
 class Minimize(Objective):
     fun: Callable[[Any, Any], float]
-    has_state: bool = field(default=False, jax_static=True)
-    has_aux: bool = field(default=False, jax_static=True)
+    has_state: bool = field(default=False, pytree_node=False)
+    has_aux: bool = field(default=False, pytree_node=False)
     initial_state: Any = None # Note that has_state needs to be true in order for this
                            # to be passed into the function!
     initial_params: Any = None

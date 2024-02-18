@@ -1,5 +1,5 @@
 from stanza.envs import Environment
-from stanza.dataclasses import dataclass, field
+from stanza.struct import dataclass, field
 
 from gymnax.environments import environment
 from typing import Any
@@ -7,16 +7,16 @@ from typing import Any
 import jax.numpy as jnp
 import gymnax
 
-@dataclass(jax=True)
+@dataclass
 class GymnaxState:
     obs : Any
     state : Any
     reward : jnp.array
     done : jnp.array
 
-@dataclass(jax=True)
+@dataclass
 class GymnaxEnv(Environment):
-    gymnax_env : environment.Environment = field(jax_static=True)
+    gymnax_env : environment.Environment = field(pytree_node=False)
     env_params : Any
 
     def sample_action(self, rng_key):

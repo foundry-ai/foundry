@@ -2,7 +2,7 @@ from bdb import BdbQuit
 import os
 import sys
 import stanza.struct as struct
-from stanza.random import PRNGSequence
+from stanza.util.random import PRNGSequence
 from stanza.util import MofNColumn, dict_flatten
 from stanza.data import DataLoader
 

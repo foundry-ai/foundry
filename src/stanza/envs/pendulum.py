@@ -6,10 +6,7 @@ import jax.numpy as jnp
 import math
 
 from typing import NamedTuple
-from functools import partial
-
-from stanza.reporting import Figure, Video
-from stanza.dataclasses import dataclass, field
+from stanza.struct import dataclass, field
 import stanza.graphics.canvas as canvas
 
 class State(NamedTuple):
@@ -24,9 +21,9 @@ def get_goal(params):
     else:
         return params.goal
 
-@dataclass(jax=True)
+@dataclass
 class PendulumEnv(Environment):
-    sub_steps : int = field(default=1, jax_static=True)
+    sub_steps : int = field(default=1, pytree_node=False)
     dt : float = 0.2
     target_goal : State = State(angle=jnp.array(math.pi), vel=jnp.array(0))
 
@@ -116,13 +113,6 @@ class PendulumEnv(Environment):
             jnp.abs(state.angle - end_state.angle) < 0.03,
             jnp.abs(state.vel - end_state.vel) < 0.03
         )
-
-    def teleop_policy(self, interface):
-        def policy(_):
-            left =  jnp.array(-0.1)*interface.key_pressed('a')
-            right = jnp.array(0.1)*interface.key_pressed('d')
-            return PolicyOutput(left + right)
-        return policy
 
 def builder(name):
     return PendulumEnv()

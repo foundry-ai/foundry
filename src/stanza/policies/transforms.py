@@ -52,13 +52,13 @@ def chain_transforms(*transforms):
 # ---- NoiseTransform ----
 # Injects noise ontop of a given policy
 
-@dataclass(jax=True)
+@dataclass
 class NoiseInjector(PolicyTransform):
     sigma: float
     def __call__(self, policy, policy_state):
         return NoisyPolicy(policy, self.sigma), policy_state
 
-@dataclass(jax=True)
+@dataclass
 class NoisyPolicy(Policy):
     policy: Callable
     sigma: float
@@ -80,7 +80,7 @@ class NoisyPolicy(Policy):
 # A chunk transform will composite inputs,
 # outputs
 
-@dataclass(jax=True)
+@dataclass
 class ChunkedPolicyState:
     # The batched (observation, state) history
     input_chunk: Any = None
@@ -89,11 +89,11 @@ class ChunkedPolicyState:
     last_batched_output: Any = None
     t: int = 0
 
-@dataclass(jax=True)
+@dataclass
 class ChunkTransform(PolicyTransform):
     # If None, no input/output batch dimension
-    input_chunk_size: int = field(default=None, jax_static=True)
-    output_chunk_size: int = field(default=None, jax_static=True)
+    input_chunk_size: int = field(default=None, pytree_node=False)
+    output_chunk_size: int = field(default=None, pytree_node=False)
 
     def transform_policy(self, policy):
         return ChunkedPolicy(policy, self.input_chunk_size, self.output_chunk_size)
@@ -102,12 +102,12 @@ class ChunkTransform(PolicyTransform):
         return ChunkedPolicyState(None, PolicyOutput(None, policy_state, None),
                                 self.output_chunk_size)
 
-@dataclass(jax=True)
+@dataclass
 class ChunkedPolicy(Policy):
     policy: Policy
     # If None, no input/output batch dimension
-    input_chunk_size: int = field(default=None, jax_static=True)
-    output_chunk_size: int = field(default=None, jax_static=True)
+    input_chunk_size: int = field(default=None, pytree_node=False)
+    output_chunk_size: int = field(default=None, pytree_node=False)
 
     @property
     def rollout_length(self):
@@ -186,9 +186,9 @@ class ChunkedPolicy(Policy):
 # This is equivalent to a ChunkPolicy where the output
 # gets replicated control_interval number of times
 
-@dataclass(jax=True)
+@dataclass
 class ActionRepeater(PolicyTransform):
-    repeats : int = field(default=1, jax_static=True)
+    repeats : int = field(default=1, pytree_node=False)
 
     def transform_policy(self, policy):
         return RepeatingPolicy(policy, self.repeats)
@@ -199,17 +199,17 @@ class ActionRepeater(PolicyTransform):
             self.control_interval
         )
 
-@dataclass(jax=True)
+@dataclass
 class RepeatingState:
     # The last output from the low-level controller
     last_output: PolicyOutput
     # Time since last evaluation
     t: int
 
-@dataclass(jax=True)
+@dataclass
 class RepeatingPolicy(Policy):
     policy: Policy = None
-    repeats : int = field(default=1, jax_static=True)
+    repeats : int = field(default=1, pytree_node=False)
 
     @property
     def rollout_length(self):
@@ -236,7 +236,7 @@ class RepeatingPolicy(Policy):
             policy_state=RepeatingState(sub_output, t))
         return output
 
-@dataclass(jax=True)
+@dataclass
 class FeedbackTransform(PolicyTransform):
     def transform_policy(self, policy):
         return FeedbackPolicy(policy)
@@ -244,7 +244,7 @@ class FeedbackTransform(PolicyTransform):
     def transform_policy_state(self, policy_state):
         return policy_state
 
-@dataclass(jax=True)
+@dataclass
 class FeedbackPolicy(Policy):
     policy: Policy = None
     

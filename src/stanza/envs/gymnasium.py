@@ -1,7 +1,7 @@
 from stanza.envs import Environment
 from stanza.policies import PolicyOutput
 
-from stanza.dataclasses import dataclass, field
+from stanza.struct import dataclass, field
 from typing import Any, Callable
 
 import jax.numpy as jnp
@@ -69,14 +69,14 @@ class GymWrapper(Environment):
             return PolicyOutput(None)
         return policy
 
-@dataclass(jax=True)
+@dataclass
 class GymEnv(GymWrapper):
-    env_builder : Callable = field(jax_static=True)
+    env_builder : Callable = field(pytree_node=False)
 
     def _make_env(self):
         return self.env_builder()
 
-@dataclass(jax=True)
+@dataclass
 class GymState:
     env_id: int
     obs : Any

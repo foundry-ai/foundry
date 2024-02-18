@@ -2,11 +2,8 @@ from stanza.envs import Environment
 import stanza.policies as policies
 from stanza.policies import Policy, PolicyOutput
 from stanza.policies.transforms import PolicyTransform
-from stanza.dataclasses import dataclass, field, replace
-from stanza.util.attrdict import AttrMap
-from stanza.data.trajectory import (
-    Timestep, IndexedTrajectoryData, TrajectoryIndices
-)
+from stanza.struct import dataclass, field, replace
+from stanza.util import AttrMap
 from stanza.envs.pymunk import PyMunkWrapper, BodyState
 
 from stanza.data import Data
@@ -19,7 +16,7 @@ import shapely.geometry as sg
 import jax.numpy as jnp
 import jax.random
 
-@dataclass(jax=True)
+@dataclass
 class PushTEnv(PyMunkWrapper):
     width: float = 512.0
     height: float = 512.0
@@ -145,18 +142,18 @@ def builder(name):
     return PushTEnv()
 
 
-@dataclass(jax=True)
+@dataclass
 class PushTPositionObs:
     agent_pos: jnp.array
     block_pos: jnp.array
     block_rot: jnp.array
 
-@dataclass(jax=True)
+@dataclass
 class PositionObsTransform(PolicyTransform):
     def transform_policy(self, policy):
         return PositionObsPolicy(policy)
 
-@dataclass(jax=True)
+@dataclass
 class PositionObsPolicy(Policy):
     policy: Policy
 
@@ -176,7 +173,7 @@ class PositionObsPolicy(Policy):
 
 # A state-feedback adapter for the PushT environment
 # Will run a PID controller under the hood
-@dataclass(jax=True)
+@dataclass
 class PositionControlTransform(PolicyTransform):
     k_p : float = 100
     k_v : float = 20
@@ -184,7 +181,7 @@ class PositionControlTransform(PolicyTransform):
     def transform_policy(self, policy):
         return PositionControlPolicy(policy, self.k_p, self.k_v)
 
-@dataclass(jax=True)
+@dataclass
 class PositionControlPolicy(Policy):
     policy: Policy
     k_p : float = 100

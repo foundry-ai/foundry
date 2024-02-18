@@ -1,4 +1,4 @@
-from stanza.envs import Environment
+from stanza.envs import Environment, EnvironmentRegistry
 
 import jax.numpy as jnp
 import jax.random
@@ -7,15 +7,15 @@ from functools import partial
 import scipy
 
 class LinearSystem(Environment):
-    def __init__(self, A, B, Q, R,
+    def __init__(self, A, B, Q=None, R=None,
                 x0_min=None, x0_max=None,
                 xmax=None, xmin=None,
                 umax=None, umin=None):
         self.A = A
         self.B = B
 
-        self.Q = Q
-        self.R = R
+        self.Q = Q if Q is not None else jnp.eye(A.shape[0])
+        self.R = R if R is not None else jnp.eye(B.shape[1])
         self.P = jnp.array(scipy.linalg.solve_discrete_are(self.A, self.B, self.Q, self.R,
                                               e=None, s=None, balanced=True))
         self.xmin = xmin
@@ -63,41 +63,7 @@ class LinearSystem(Environment):
             constraints.append(jnp.ravel(self.xmin - xs))
         return jnp.concatenate(constraints) if constraints else jnp.zeros(())
 
-
-
-    
-
-def builder(name):
-    env_path = name.split("/")
-    sys = env_path[1] if len(env_path) > 1 else ""
-    if sys == "di":
-        return LinearSystem(
-            A=jnp.array([
-                [1., 1.],
-                [0, 1.]
-            ]),
-            B=jnp.array([
-                [0.],
-                [1.],
-            ]),
-            Q=jnp.eye(2),
-            R=0.01*jnp.eye(1),
-            xmin=-10, xmax=10,
-            x0_min=-8, x0_max=8,
-            umin=-1, umax=1,
-        )
-    else:
-        return LinearSystem( 
-            A=jnp.array(
-                [
-                    [1.1, 0.860757747,  0.4110535,  0.17953273, -0.305308],
-                    [0,   1.1,          0.4110535,  0.17953273, -0.305308],
-                    [0  , 0,            1.1,        0.17953273, -0.305308],
-                    [0  , 0,            0,          1.1,        -0.305308],
-                    [0  , 0,            0,          0,          1.1],
-                ]
-            ),
-            B=jnp.array([[0,0,0,0,1]]).T,
-            Q=0.1*jnp.eye(5),
-            R=0.1*jnp.eye(1)
-        )
+env_registry = EnvironmentRegistry[LinearSystem]()
+env_registry.register("linear", LinearSystem)
+env_registry.register("linear/double_integrator", 
+    partial(LinearSystem, A=jnp.array([[1, 1], [0, 1]]), B=jnp.array([[0], [1]]),))

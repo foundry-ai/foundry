@@ -1,43 +1,33 @@
+import typing
+import jax
+
+from stanza.util.registry import Registry, register_module
+from typing import Optional
+
+Action = typing.TypeVar("Action")
+State = typing.TypeVar("State")
+Observation = typing.TypeVar("Observation")
+
 # Generic environment. Note that all
 # environments are also adapters
-class Environment:
-    def sample_state(self, rng_key):
-        raise NotImplementedError("Must impelement sample_state()")
+@typing.runtime_checkable
+class Environment(typing.Protocol[State, Action, Observation]):
+    def sample_state(self, rng_key : jax.Array): ...
+    def sample_action(self, rng_key : jax.Array): ...
 
-    def sample_action(self, rng_key):
-        raise NotImplementedError("Must impelement sample_action()")
+    def reset(self, rng_key : jax.Array): ...
+    def step(self, state : State, action : Action,
+             rng_key : Optional[jax.Array] = None) -> State: ...
 
-    def reset(self, key):
-        raise NotImplementedError("Must impelement reset()")
+    def observe(self, state: State) -> Observation: ...
+    def reward(self, state: State,
+               action : Action, next_state : State) -> jax.Array: ...
+    def cost(self, states: State, actions: Action) -> jax.Array: ...
 
-    # rng_key may be None. if it is None and the environment
-    # is stochastic, throw an error!
-    def step(self, state, action, rng_key):
-        raise NotImplementedError("Must impelement step()")
+    def render_image(self, state : State, action: Optional[Action] = None) -> jax.Array: ...
 
-    def observe(self, state):
-        return state
-    
-    def reward(self, state, action, next_state):
-        raise NotImplementedError("Must impelement reward()")
-    
-    def render(self, state, *, 
-                    # every environment *must* support "image"
-                    # without any additional kwargs
-                    width=256, height=256, mode="image",
-                    # the kwargs can be extra things we may want
-                    # to render. Environments should just ignore kwargs
-                    # they do not support
-                    **kwargs):
-        raise NotImplementedError("Must implement render()")
+EnvironmentRegistry = Registry
 
-from stanza.envs.builders import create, register_lazy
-
-register_lazy('pusht', '.pusht')
-register_lazy('pendulum', '.pendulum')
-register_lazy('linear', '.linear')
-register_lazy('quadrotor', '.quadrotor')
-register_lazy('gym', '.gymnasium')
-register_lazy('gymnax', '.gymnax')
-register_lazy('brax', '.brax')
-register_lazy('robosuite', '.robosuite')
+env_registry = EnvironmentRegistry[Environment]()
+# env_registry.defer(register_module(".pusht", "env_registry"))
+env_registry.defer(register_module(".linear", "env_registry"))

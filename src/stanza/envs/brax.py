@@ -1,15 +1,15 @@
 from stanza.envs import Environment
 import brax.envs as envs
 
-from stanza.dataclasses import dataclass, field
+from stanza.struct import dataclass, field
 from typing import Any
 
 import jax
 import jax.numpy as jnp
 
-@dataclass(jax=True)
+@dataclass
 class BraxEnv(Environment):
-    env : Any = field(jax_static=True)
+    env : Any = field(pytree_node=False)
 
     def sample_action(self, rng_key):
         return jax.random.uniform(rng_key,

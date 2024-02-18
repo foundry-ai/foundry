@@ -13,28 +13,28 @@ Observation = Any
 PolicyState = Any
 Action = Any
 
-@dataclass(jax=True)
+@dataclass
 class PolicyInput:
     observation: Observation
     state: Any = None
     policy_state: PolicyState = None
     rng_key : PRNGKey = None
 
-@dataclass(jax=True)
+@dataclass
 class PolicyOutput:
     action: Action
     # The policy state
     policy_state: PolicyState = None
     info: AttrMap = field(default_factory=AttrMap)
 
-@dataclass(jax=True)
+@dataclass
 class Trajectory:
     states: Any
     actions: Any = None
 
 # Rollout contains the trajectory + aux data,
 # final policy state, final rng key
-@dataclass(jax=True)
+@dataclass
 class Rollout(Trajectory):
     observations: Any = None
     info: AttrMap = field(default_factory=AttrMap)
@@ -53,7 +53,7 @@ class Policy:
 # stanza.jit can handle function arguments
 # and intelligently makes them static and allows
 # for vectorizing over functins.
-@partial(stanza.jit, static_argnames=("length", "last_input"))
+@partial(jax.jit, static_argnames=("length", "last_input"))
 def rollout(model, state0,
             # policy is optional. If policy is not supplied
             # it is assumed that model is for an autonomous system
@@ -137,7 +137,7 @@ def rollout_inputs(model, state0, actions, last_state=True):
 
 # An "Actions" policy can be used to replay
 # actions from a history buffer
-@dataclass(jax=True)
+@dataclass
 class Actions:
     actions: Any
 

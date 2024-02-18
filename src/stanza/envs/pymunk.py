@@ -1,6 +1,6 @@
 from stanza.envs import Environment
-from stanza.dataclasses import dataclass, field, replace
-from stanza.util.attrdict import AttrMap
+from stanza.struct import dataclass, field, replace
+from stanza.util import AttrMap
 from typing import Callable, List
 from jax.random import PRNGKey
 
@@ -9,7 +9,7 @@ import jax
 import stanza.graphics.canvas as canvas
 import pymunk
 
-@dataclass(jax=True)
+@dataclass
 class BodyState:
     position: jnp.array
     velocity: jnp.array
@@ -19,7 +19,7 @@ class BodyState:
 class PyMunkState(AttrMap):
     pass
 
-@dataclass(jax=True, kw_only=True)
+@dataclass(kw_only=True)
 class PyMunkWrapper(Environment):
     sim_hz: float
     width: float
@@ -136,7 +136,7 @@ class PyMunkWrapper(Environment):
     def _build_space(self, rng_key):
         pass
 
-@dataclass(jax=True, kw_only=True)
+@dataclass(kw_only=True)
 class PyMunkEnv(PyMunkWrapper):
     space_builder : Callable
     space_action : Callable = None
