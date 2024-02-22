@@ -103,4 +103,3 @@ class Minimize(Objective):
         state, r = (r[0], r[1:]) if self.has_state else (None, r)
         cost, aux = (r[0], r[1]) if self.has_aux else (r[0], None)
         return state, cost, aux
-

@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 from jax.random import PRNGKey
-from typing import Callable, List, Any
+from typing import Generic, TypeVar, Protocol
 import stanza
 from stanza.struct import dataclass, field, replace
 from stanza.util import AttrMap
@@ -9,51 +9,53 @@ from functools import partial
 
 # A policy is a function from PolicyInput --> PolicyOutput
 
-Observation = Any
-PolicyState = Any
-Action = Any
+Observation = TypeVar("Observation")
+PolicyState = TypeVar("PolicyState")
+State = TypeVar("State")
+Action = TypeVar("Action")
+Info = TypeVar("Info")
 
 @dataclass
-class PolicyInput:
+class PolicyInput(Generic[Observation, State, PolicyState]):
     observation: Observation
-    state: Any = None
+    state: State = None
     policy_state: PolicyState = None
-    rng_key : PRNGKey = None
+    rng_key : jax.Array = None
 
 @dataclass
-class PolicyOutput:
+class PolicyOutput(Generic[Action, PolicyState, Info]):
     action: Action
     # The policy state
     policy_state: PolicyState = None
-    info: AttrMap = field(default_factory=AttrMap)
+    info: Info = None
 
 @dataclass
-class Trajectory:
-    states: Any
-    actions: Any = None
+class Trajectory(Generic[State, Action]):
+    states: State
+    actions: Action = None
 
 # Rollout contains the trajectory + aux data,
 # final policy state, final rng key
 @dataclass
 class Rollout(Trajectory):
-    observations: Any = None
-    info: AttrMap = field(default_factory=AttrMap)
-    final_policy_state: Any = None
-    final_policy_rng_key: PRNGKey = None
-    final_model_rng_key: PRNGKey = None
+    observations: Observation = None
+    info: Info = None
+    final_policy_state: State = None
+    final_policy_rng_key: jax.Array = None
+    final_model_rng_key: jax.Array = None
 
-class Policy:
+class Policy(Protocol[Observation, Action, State, PolicyState, Info]):
     @property
-    def rollout_length(self):
-        return None
+    def rollout_length(self): ...
 
-    def __call__(self, input):
-        raise NotImplementedError("Must implement __call__()")
+    def __call__(self, 
+        input : PolicyInput[Observation, State, PolicyState]
+    ) -> PolicyOutput[Action, PolicyState, Info]: ...
 
 # stanza.jit can handle function arguments
 # and intelligently makes them static and allows
 # for vectorizing over functins.
-@partial(jax.jit, static_argnames=("length", "last_input"))
+@partial(stanza.jit, static_argnames=("length", "last_input"))
 def rollout(model, state0,
             # policy is optional. If policy is not supplied
             # it is assumed that model is for an autonomous system
@@ -138,8 +140,8 @@ def rollout_inputs(model, state0, actions, last_state=True):
 # An "Actions" policy can be used to replay
 # actions from a history buffer
 @dataclass
-class Actions:
-    actions: Any
+class Actions(Generic[Action]):
+    actions: Action
 
     @property
     def rollout_length(self):
@@ -149,7 +151,7 @@ class Actions:
         return lengths[0] + 1
 
     @jax.jit
-    def __call__(self, input):
+    def __call__(self, input : PolicyInput) -> PolicyOutput[Action, jax.Array, None]:
         T = input.policy_state if input.policy_state is not None else 0
         action = jax.tree_util.tree_map(lambda x: x[T], self.actions)
         return PolicyOutput(action=action, policy_state=T + 1)

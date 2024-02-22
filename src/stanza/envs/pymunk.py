@@ -16,7 +16,7 @@ class BodyState:
     angle: jnp.array
     angular_velocity: jnp.array
 
-class PyMunkState(AttrMap):
+class PyMunkState(dict):
     pass
 
 @dataclass(kw_only=True)
@@ -25,7 +25,7 @@ class PyMunkWrapper(Environment):
     width: float
     height: float
 
-    def _make_state(self, space):
+    def state_from_space(self, space):
         state = PyMunkState()
         for body in space.bodies:
             if hasattr(body, 'name'):
@@ -35,8 +35,20 @@ class PyMunkWrapper(Environment):
                     jnp.array(body.angle),
                     jnp.array(body.angular_velocity)
                 )
-                state = state.set(body.name, body_state)
+                state[body.name] = body_state
         return state
+
+    def spae_from_state(self, state):
+        with jax.ensure_compile_time_eval():
+            space = self._build_space(PRNGKey(0))
+        for b in space.bodies:
+            if hasattr(b, 'name'):
+                bs = state[b.name]
+                b.position = tuple(bs.position)
+                b.velocity = tuple(bs.velocity)
+                b.angle = bs.angle
+                b.angular_velocity = bs.angular_velocity
+        return space
 
     @jax.jit
     def reset(self, rng_key):
@@ -63,9 +75,9 @@ class PyMunkWrapper(Environment):
         self._space_action(space, action, rng_key)
         space.step(1/self.sim_hz)
         return self._make_state(space)
-    
+
     @jax.jit
-    def render(self, state, width=256, height=256):
+    def render(self, state : PyMunkState, *, width=256, height=256):
         img = jnp.ones((width, height, 3))
         with jax.ensure_compile_time_eval():
             space = self._build_space(PRNGKey(0))
@@ -117,17 +129,6 @@ class PyMunkWrapper(Environment):
         img = canvas.paint(img, render)
         return img
     
-    def _build_state(self, state):
-        with jax.ensure_compile_time_eval():
-            space = self._build_space(PRNGKey(0))
-        for b in space.bodies:
-            if hasattr(b, 'name'):
-                bs = state[b.name]
-                b.position = tuple(bs.position)
-                b.velocity = tuple(bs.velocity)
-                b.angle = bs.angle
-                b.angular_velocity = bs.angular_velocity
-        return space
 
     # Perform an action on the system
     def _space_action(self, space, action, rng_key):

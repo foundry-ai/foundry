@@ -2,7 +2,7 @@ from stanza.struct import dataclass, replace
 from stanza.solver import UnsupportedObectiveError, \
         MinimizeState, Minimize, EqConstraint, IneqConstraint
 from stanza.solver.iterative import IterativeSolver
-from stanza import Partial
+from stanza import partial
 
 import jax
 import jax.experimental.host_callback
@@ -54,7 +54,7 @@ class NewtonSolver(IterativeSolver):
         v_params, unflatten = jax.flatten_util.ravel_pytree(params)
         for c in objective.constraints:
             if isinstance(c, EqConstraint):
-                f = Partial(c.fun, state) if objective.has_state else c.fun
+                f = partial(c.fun, state) if objective.has_state else c.fun
                 fun = lambda x: f(unflatten(x))
                 eq_resid.append(jnp.atleast_1d(f(v_params)))
                 eq_grads.append(jnp.atleast_2d(jax.grad(fun)(v_params)))

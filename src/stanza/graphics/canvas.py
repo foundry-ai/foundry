@@ -189,7 +189,7 @@ def _composite(dist, color, background_color):
     alpha_o = alpha_a + alpha_b * (1-alpha_a)
     color_o  = (alpha_a * fc + alpha_b * (1 - alpha_a) * bc) / alpha_o
     if background_color.shape[0] == 4 or background_color.shape[0] == 2:
-        color_o = jnp.concatenate((color_o, alpha_o), axis=0)
+        color_o = jnp.concatenate((color_o, alpha_o[None]), axis=0)
     return color_o
 
 class Renderable:

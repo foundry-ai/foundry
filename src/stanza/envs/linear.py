@@ -66,4 +66,9 @@ class LinearSystem(Environment):
 env_registry = EnvironmentRegistry[LinearSystem]()
 env_registry.register("linear", LinearSystem)
 env_registry.register("linear/double_integrator", 
-    partial(LinearSystem, A=jnp.array([[1, 1], [0, 1]]), B=jnp.array([[0], [1]]),))
+    partial(LinearSystem, 
+        A=jnp.array([[1, 1], [0, 1]]),
+        B=jnp.array([[0], [1]]),
+        Q=jnp.array([[1, 0], [0, 1]]),
+        R=0.01*jnp.array([[1]]),
+    ))

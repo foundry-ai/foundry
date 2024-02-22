@@ -56,8 +56,8 @@ from jax import random
 from jax import vmap
 import jax.numpy as np
 import scipy.optimize as osp_optimize
-from stanza.util.trajax.tvlqr import rollout as tvlqr_rollout
-from stanza.util.trajax.tvlqr import tvlqr
+from stanza.solver.trajax.tvlqr import rollout as tvlqr_rollout
+from stanza.solver.trajax.tvlqr import tvlqr
 
 # Convenience routine to pad zeros for vectorization purposes.
 pad = lambda A: np.vstack((A, np.zeros((1,) + A.shape[1:])))
@@ -153,9 +153,9 @@ def quadratize(fun, argnums=3):
     hessian_x = jax.hessian(f_fun)
     hessian_u = jax.hessian(f_fun, argnums=1)
     hessian_x_u = jacobian(jax.grad(f_fun), argnums=1)
-    hessian_x = jax.vmap(hessian_x, in_axes=(0, 0, 0, None, None))
-    hessian_u = jax.vmap(hessian_u, in_axes=(0, 0, 0, None, None))
-    hessian_x_u = jax.vmap(hessian_x_u, in_axes=(0, 0, 0, None, None))
+    hessian_x = jax.vmap(hessian_x, in_axes=(0, 0, 0, None, None) + (None,)*len(args))
+    hessian_u = jax.vmap(hessian_u, in_axes=(0, 0, 0, None, None) + (None,)*len(args))
+    hessian_x_u = jax.vmap(hessian_x_u, in_axes=(0, 0, 0, None, None) + (None,)*len(args))
 
     return hessian_x(xs, us, t, xs, us, *args), \
         hessian_u(xs, us, t, xs, us, *args), \
@@ -200,7 +200,7 @@ def evaluate(cost, X, U, *args):
   Returns:
     objectives: (T, ) array of objectives.
   """
-  return cost(X, U)
+  return cost(X, U, *args)
 
 
 def objective(cost, dynamics, U, x0):
@@ -413,6 +413,7 @@ def project_psd_cone(Q, delta=0.0):
 
 def ilqr(cost,
          dynamics,
+         cost_state,
          x0,
          U,
          maxiter=100,
@@ -448,17 +449,18 @@ def ilqr(cost,
   """
   xs = np.tile(np.expand_dims(x0, 0), (U.shape[0]+1,1))
   cost_fn, cost_args = custom_derivatives.closure_convert(
-      cost, xs, U)
+      cost, xs, U, cost_state)
   dynamics_fn, dynamics_args = custom_derivatives.closure_convert(
       dynamics, x0, U[0])
-  return ilqr_base(cost_fn, dynamics_fn, x0, U, tuple(cost_args),
+  return ilqr_base(cost_fn, dynamics_fn, x0, U, cost_state, tuple(cost_args),
                    tuple(dynamics_args), maxiter, grad_norm_threshold, make_psd,
                    psd_delta, alpha_0, alpha_min)
 
+DEBUG = False
 
 # @partial(jax.custom_vjp, nondiff_argnums=(0, 1))
 @partial(jit, static_argnums=(0, 1))
-def ilqr_base(cost, dynamics, x0, U, cost_args, dynamics_args, maxiter,
+def ilqr_base(cost, dynamics, x0, U, cost_state, cost_args, dynamics_args, maxiter,
               grad_norm_threshold, make_psd, psd_delta, alpha_0, alpha_min):
   """ilqr implementation."""
 
@@ -466,23 +468,25 @@ def ilqr_base(cost, dynamics, x0, U, cost_args, dynamics_args, maxiter,
   n = x0.shape[0]
 
   roll = partial(_rollout, dynamics)
-  quadratizer = quadratize(cost)
+  cost_nostate = lambda *args: cost(*args)[0]
+  quadratizer = quadratize(cost_nostate)
   dynamics_jacobians = linearize(dynamics)
-  cost_gradients = jax.grad(cost, argnums=(0,1))
+  cost_gradients = jax.grad(cost_nostate, argnums=(0,1))
 
-  evaluator = partial(evaluate, cost)
+  evaluator = partial(evaluate, cost_nostate)
   psd = vmap(partial(project_psd_cone, delta=psd_delta))
 
   X = roll(U, x0, *dynamics_args)
-  obj = np.sum(evaluator(X, pad(U), *cost_args))
+  obj = np.sum(evaluator(X, pad(U), cost_state, *cost_args))
+  # if cost_state is not None:
+  #   jax.debug.print("Initial Objective: {}", obj)
 
-  def get_lqr_params(X, U):
-    Q, R, M = quadratizer(X, pad(U), *cost_args)
-
+  def get_lqr_params(X, U, cost_state):
+    Q, R, M = quadratizer(X, pad(U), cost_state, *cost_args)
     Q = lax.cond(make_psd, Q, psd, Q, lambda x: x)
     R = lax.cond(make_psd, R, psd, R, lambda x: x)
     #jax.debug.print("Q: {}, R: {}", Q, R)
-    q, r = cost_gradients(X, pad(U), *cost_args)
+    q, r = cost_gradients(X, pad(U), cost_state, *cost_args)
     A, B = dynamics_jacobians(X, pad(U), *dynamics_args)
 
     return (Q, q, R, r, M, A, B)
@@ -494,25 +498,30 @@ def ilqr_base(cost, dynamics, x0, U, cost_args, dynamics_args, maxiter,
 
   def body(inputs):
     """Solves LQR subproblem and returns updated trajectory."""
-    X, U, obj, alpha, gradient, adjoints, lqr, iteration = inputs
+    X, U, cost_state, obj, alpha, gradient, adjoints, lqr, iteration = inputs
 
     Q, q, R, r, M, A, B = lqr
 
+
     K, k, _, _ = tvlqr(Q, q, R, r, M, A, B, c)
-    X, U, obj, alpha = line_search_ddp(cost, dynamics, X, U, K, k, obj,
-                                       cost_args, dynamics_args, alpha_0,
+    X, U, obj, alpha = line_search_ddp(cost_nostate, dynamics, X, U, K, k, obj,
+                                       (cost_state,) + cost_args, dynamics_args, alpha_0,
                                        alpha_min)
     gradient, adjoints, _ = adjoint(A, B, q, r)
     # print("Iteration=%d, Objective=%f, Alpha=%f, Grad-norm=%f\n" %
     #      (device_get(iteration), device_get(obj), device_get(alpha),
     #       device_get(np.linalg.norm(gradient))))
-
-    lqr = get_lqr_params(X, U)
+    _, n_cost_state = cost(X, U, cost_state, *cost_args)
+    n_obj, _ = cost(X, U, n_cost_state, *cost_args)
+    lqr = get_lqr_params(X, U, n_cost_state)
+    # if cost_state is not None:
+    #   jax.debug.print("iter {}: {} {} state: {} {}", iteration, obj, n_obj, cost_state, n_cost_state)
+    #   jax.debug.print("X: {} U: {}", X, U)
     iteration = iteration + 1
-    return X, U, obj, alpha, gradient, adjoints, lqr, iteration
+    return X, U, n_cost_state, n_obj, alpha, gradient, adjoints, lqr, iteration
 
   def continuation_criterion(inputs):
-    _, _, _, alpha, gradient, _, _, iteration = inputs
+    _, _, _, _, alpha, gradient, _, _, iteration = inputs
     grad_norm = np.linalg.norm(gradient)
     grad_norm = np.where(np.isnan(grad_norm), np.inf, grad_norm)
 
@@ -520,47 +529,12 @@ def ilqr_base(cost, dynamics, x0, U, cost_args, dynamics_args, maxiter,
         iteration < maxiter,
         np.logical_and(grad_norm > grad_norm_threshold, alpha > alpha_min))
 
-  lqr = get_lqr_params(X, U)
-  X, U, obj, _, gradient, adjoints, lqr, it = lax.while_loop(
+  lqr = get_lqr_params(X, U, cost_state)
+  X, U, cost_state, obj, _, gradient, adjoints, lqr, it = lax.while_loop(
       continuation_criterion, body,
-      (X, U, obj, alpha_0, gradient, adjoints, lqr, 0))
+      (X, U, cost_state, obj, alpha_0, gradient, adjoints, lqr, 0))
 
-  return X, U, obj, gradient, adjoints, lqr, it
-
-
-def _ilqr_fwd(cost, dynamics, *args):
-  """Forward pass of custom vector-Jacobian product implementation."""
-  ilqr_output = ilqr_base(cost, dynamics, *args)  # pylint: disable=no-value-for-parameter
-  X, U, _, _, adjoints, lqr, _ = ilqr_output
-  return ilqr_output, (args, X, U, adjoints, lqr)
-
-
-def _ilqr_bwd(cost, dynamics, fwd_residuals, gX_gU_gNonDifferentiableOutputs):
-  """Backward pass of custom vector-Jacobian product implementation."""
-  # TODO(schmrlng): Add gradient of `obj` with respect to inputs.
-  args, X, U, adjoints, lqr = fwd_residuals
-  x0, _, cost_args, dynamics_args = args[:4]
-  gX, gU = gX_gU_gNonDifferentiableOutputs[:2]
-
-  _, _, _, _, _, A, B = lqr
-  timesteps = np.arange(X.shape[0])
-
-  quadratizer = quadratize(hamiltonian(cost, dynamics), argnums=4)
-  Q, R, M = quadratizer(X, pad(U), timesteps, pad(adjoints), cost_args,
-                        dynamics_args)
-
-  c = np.zeros(A.shape[:2])
-  K, k, _, _ = tvlqr(Q, gX, R, gU, M, A, B, c)
-  _, dU = tvlqr_rollout(K, k, np.zeros_like(x0), A, B, c)
-
-  vhp = vhp_params(cost)
-  gradients = vhp(pad(dU), X, pad(U), A, B, *cost_args)[1]
-  zeros_like_args = jax.tree_map(np.zeros_like, args)
-  # TODO(schmrlng): Add gradients with respect to `cost_args` other than the
-  # first, `x0`, and `dynamics_args`.
-  return (zeros_like_args[:2] + ((gradients, *zeros_like_args[2][1:]),) +
-          zeros_like_args[3:])
-
+  return X, U, cost_state, obj, gradient, adjoints, lqr, it
 # ilqr_base.defvjp(_ilqr_fwd, _ilqr_bwd)
 
 def hamiltonian(cost, dynamics):

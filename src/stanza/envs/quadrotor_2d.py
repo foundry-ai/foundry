@@ -5,17 +5,22 @@ import jax
 import plotly.express as px
 
 import stanza.graphics.canvas as canvas
-from stanza.envs import Environment
+
+from stanza.envs import Environment, EnvironmentRegistry
 
 class State(NamedTuple):
-    x: jnp.ndarray
-    z: jnp.ndarray
-    phi: jnp.ndarray
-    x_dot: jnp.ndarray
-    z_dot: jnp.ndarray
-    phi_dot: jnp.ndarray
+    x: jax.Array
+    z: jax.Array
+    phi: jax.Array
+    x_dot: jax.Array
+    z_dot: jax.Array
+    phi_dot: jax.Array
 
-class QuadrotorEnvironment(Environment):
+class Action(NamedTuple):
+    thrust: jax.Array
+    torque: jax.Array
+
+class QuadrotorEnvironment(Environment[State, jax.Array, State]):
     def __init__(self):
         self.g = 9.8
         self.m = 0.8
@@ -23,10 +28,13 @@ class QuadrotorEnvironment(Environment):
         self.Ixx = 0.5
         self.dt = 0.05
 
-    def sample_action(self, rng):
-        return jax.random.uniform(rng, (2,), jnp.float32, -1, 1)
+    def sample_action(self, rng_key : jax.Array) -> Action:
+        a, b = jax.random.split(rng_key)
+        thrust = jax.random.uniform(a, (), jnp.float32, -1, 1)
+        torque = jax.random.uniform(b, (), jnp.float32, -1, 1)
+        return Action(thrust, torque)
 
-    def sample_state(self, rng_key):
+    def sample_state(self, rng_key : jax.Array) -> State:
         x_key, z_key, phi_key, xd_key, \
             zd_key, phid_key = jax.random.split(rng_key, 6)
         return State(
@@ -38,7 +46,7 @@ class QuadrotorEnvironment(Environment):
             phi_dot=jax.random.uniform(phid_key, (), minval=-2, maxval=2)
         )
     
-    def reset(self, rng_key):
+    def reset(self, rng_key : jax.Array) -> State:
         x_key, xd_key, z_key, zd_key, p_key, pd_key = jax.random.split(rng_key, 6)
         return State(
             x=jax.random.uniform(x_key, (), jnp.float32, -2., 2.),
@@ -49,9 +57,9 @@ class QuadrotorEnvironment(Environment):
             phi_dot=jax.random.uniform(pd_key, (), jnp.float32, -0.3, 0.3)
         )
 
-    def step(self, state, action, rng_key):
-        thrust = action[0]
-        torque = action[1]
+    def step(self, state : State, action : Action, rng_key=None) -> State:
+        thrust = action.thrust
+        torque = action.torque
 
         x_dot = state.x_dot
         z_dot = state.z_dot
@@ -75,7 +83,7 @@ class QuadrotorEnvironment(Environment):
                 state.phi**2 + \
                 (state.x_dot**2 + state.z_dot**2 + \
                 state.phi_dot**2)
-        u_cost = jnp.mean((action[...,0] - self.g*self.m)**2 + 0.2*action[...,1]**2)
+        u_cost = jnp.mean((action.thrust - self.g*self.m)**2 + 0.2*action.torque**2)
         cost = jnp.mean(x_cost) + 0.5*u_cost
         return cost
     
@@ -84,7 +92,7 @@ class QuadrotorEnvironment(Environment):
                 state.phi**2 + \
                 (state.x_dot**2 + state.z_dot**2 + \
                 state.phi_dot**2)
-        u_cost = jnp.mean((action[0] - self.g*self.m)**2 + 0.2*action[1]**2)
+        u_cost = jnp.mean((action.thrust - self.g*self.m)**2 + 0.2*action.torque**2)
         cost = jnp.mean(x_cost) + 0.5*u_cost
         rew = -cost
         return jnp.exp(rew)
@@ -137,6 +145,6 @@ class QuadrotorEnvironment(Environment):
         if mode == "image":
             return self._render_image(state, width=width, height=height,
                                       state_trajectory=state_trajectory)
-    
-def builder(name):
-    return QuadrotorEnvironment()
+
+env_registry = EnvironmentRegistry[Environment]()
+env_registry.register("quadrotor_2d", QuadrotorEnvironment)

@@ -1,7 +1,7 @@
 from stanza.envs import Environment
-import stanza.policies as policies
-from stanza.policies import Policy, PolicyOutput
-from stanza.policies.transforms import PolicyTransform
+import stanza.policy as policy
+from stanza.policy import Policy, PolicyOutput
+from stanza.policy.transforms import PolicyTransform
 from stanza.struct import dataclass, field, replace
 from stanza.util import AttrMap
 from stanza.envs.pymunk import PyMunkWrapper, BodyState
@@ -126,21 +126,6 @@ class PushTEnv(PyMunkWrapper):
         dt = 1.0 / self.sim_hz
         agent.velocity += action * dt
         return space
-    
-    def teleop_policy(self, interface):
-        def policy(input):
-            size = jnp.array([interface.width, interface.height])
-            p = interface.mouse_position / size
-            return PolicyOutput(
-                action=p
-            )
-        return policies.chain_transforms(
-            PositionControlTransform(),
-        )(policy)
-
-def builder(name):
-    return PushTEnv()
-
 
 @dataclass
 class PushTPositionObs:
@@ -199,49 +184,6 @@ class PositionControlPolicy(Policy):
             output, action=a,
             info=AttrMap(output.info, target_pos=output.action)
         )
-
-# ----- The expert dataset ----
-
-def expert_data():
-    import gdown
-    import os
-    cache = os.path.join(os.getcwd(), '.cache')
-    os.makedirs(cache, exist_ok=True)
-    dataset_path = os.path.join(cache, 'pusht_data.zarr.zip')
-    if not os.path.exists(dataset_path):
-        id = "1KY1InLurpMvJDRb14L9NlXT_fEsCvVUq&confirm=t"
-        gdown.download(id=id, output=dataset_path, quiet=False)
-    import zarr
-    with zarr.open(dataset_path, "r") as data:
-        # Read in all of the data
-        state = jnp.array(data['data/state'])
-        actions = jnp.array(data['data/action'])
-        episode_ends = jnp.array(data['meta/episode_ends'])
-        episode_starts = jnp.roll(episode_ends, 1)
-        episode_starts = episode_starts.at[0].set(0)
-    # fill in zeros for the missing state data
-    z = jnp.zeros((state.shape[0],))
-    z2 = jnp.zeros((state.shape[0],2))
-    agent_pos = state[:,:2]
-    block_pos = state[:,2:4]
-    block_rot = state[:,4]
-    states = PushTPositionObs(
-        agent_pos,
-        block_pos,
-        block_rot
-    )
-    timesteps = Timestep(
-        states,
-        actions
-    )
-    indices = TrajectoryIndices(
-        episode_starts,
-        episode_ends
-    )
-    return IndexedTrajectoryData(
-        Data.from_pytree(indices),
-        Data.from_pytree(timesteps)
-    )
 
 def pymunk_to_shapely(body):
     geoms = list()

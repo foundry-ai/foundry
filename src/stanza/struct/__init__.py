@@ -3,10 +3,16 @@ import inspect
 import jax.tree_util
 import types
 
-from typing import Dict, Tuple, NamedTuple
-from typing_extensions import (
-  dataclass_transform,  # pytype: disable=not-supported-yet
+from functools import partial
+from typing import (
+    Dict, Tuple, NamedTuple, TypeVar, 
+    Callable, overload
 )
+
+if sys.version_info >= (3, 11):
+    from typing import dataclass_transform
+else:
+    from typing_extensions import dataclass_transform
 
 class _MISSING_TYPE:
     def __repr__(self):
@@ -19,6 +25,7 @@ class Field:
         'name',
         'type',
         'pytree_node',
+        'kw_only',
         'default',
         'default_factory',
         # unlike default_factory, initializer
@@ -28,10 +35,13 @@ class Field:
         # must be specified
         'initializer'
     )
-    def __init__(self, name, type, pytree_node, default, default_factory, initializer):
+    def __init__(self, *, name, type, 
+                 pytree_node=True, kw_only=False,
+                 default=MISSING, default_factory=MISSING, initializer=MISSING):
         self.name = name
         self.type = type
         self.pytree_node = pytree_node
+        self.kw_only = kw_only
         self.default = default
         self.default_factory = default_factory
         self.initializer = initializer
@@ -47,8 +57,16 @@ class Field:
              f"default_factory={self.default_factory}, initializer={self.initializer})")
 
 
-def field(*, pytree_node=True, default=MISSING, default_factory=MISSING, initializer=MISSING):
-    return Field(None, None, pytree_node, default, default_factory, initializer)
+def field(*, pytree_node=True, kw_only=False, 
+          default=MISSING, default_factory=MISSING,
+          initializer=MISSING):
+    return Field(name=None, type=None,
+        pytree_node=pytree_node,
+        kw_only=kw_only,
+        default=default,
+        default_factory=default_factory,
+        initializer=initializer
+    )
     
 def fields(struct):
     return struct.__struct_fields__.values()
@@ -65,14 +83,25 @@ def replace(_struct, **kwargs):
 class StructParams(NamedTuple):
     kw_only: bool
 
-@dataclass_transform(field_specifiers=(field,))  # type: ignore[literal-required]
-def dataclass(cls=None, *, kw_only=False):
+_C = TypeVar("_C", bound=type)
+
+@overload
+@dataclass_transform(field_specifiers=(field,),
+    frozen_default=True)
+def dataclass(cls : None = ..., *,
+    kw_only : bool = ...) -> Callable[[_C], _C]: ...
+
+@overload
+@dataclass_transform(field_specifiers=(field,),
+    frozen_default=True)
+def dataclass(cls : _C, *, kw_only : bool = ...) -> _C: ...
+
+# actual dataclass implementation
+def dataclass(maybe_cls=None, *, kw_only=False) -> _C:
     params = StructParams(kw_only=kw_only)
-    builder = lambda cls: make_dataclass(cls, params)
-    if cls is not None:
-        return builder(cls)
-    else:
-        return builder
+    if maybe_cls is None:
+        return partial(make_dataclass, params=params)
+    return make_dataclass(maybe_cls, params)
 
 def make_dataclass(cls, params):
     fields, pos_fields, kw_fields = _collect_fields(cls, params)
@@ -132,18 +161,20 @@ def _collect_fields(cls, params) -> Tuple[Dict[str, Field], Dict[str, Field], Di
     for b in cls.__mro__[-1:0:-1]:
         sub_fields = getattr(b, "__struct_fields__", None)
         if sub_fields is not None:
-            sub_params = b.__struct_params__
+            # sub_params = b.__struct_params__
             for f in sub_fields.values():
                 fields[f.name] = f
-    
+
     annotations = inspect.get_annotations(cls)
     annotation_fields = {}
     for name, _type in annotations.items():
         f = getattr(cls, name, MISSING)
         if not isinstance(f, Field):
-            f = Field(None, None, True, f, MISSING, MISSING)
+            f = Field(name=None, type=None, kw_only=params.kw_only, default=f)
         # re-instantiate the field with the name and type
-        f = Field(name, _type, f.pytree_node, f.default, f.default_factory, f.initializer)
+        f = Field(name=name, type=_type, pytree_node=f.pytree_node,
+                  kw_only=f.kw_only or params.kw_only, default=f.default,
+            default_factory=f.default_factory, initializer=f.initializer)
         annotation_fields[name] = f
 
     for name, value in cls.__dict__.items():
@@ -157,8 +188,11 @@ def _collect_fields(cls, params) -> Tuple[Dict[str, Field], Dict[str, Field], Di
             delattr(cls, f.name)
         else:
             setattr(cls, f.name, f.default)
-    pos_fields = fields # type: Dict[str, Field]
+    pos_fields = {} # type: Dict[str, Field]
     kw_fields = {} # type: Dict[str, Field]
+    for n, f in fields.items(): 
+        if f.kw_only: kw_fields[n] = f
+        else: pos_fields[n] = f
     return fields, pos_fields, kw_fields
 
 def _make_field_init(clazz, self_name, field):
@@ -179,8 +213,6 @@ def _make_init(clazz, fields, pos_fields, kw_fields, globals):
     params = clazz.__struct_params__
     args = []
     body_lines = []
-    if params.kw_only:
-        args.append("*")
     for f in pos_fields.values():
         if f.required:
             args.append(f"{f.name}")

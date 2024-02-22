@@ -1,4 +1,4 @@
-from stanza.policies import Policy, PolicyInput, PolicyOutput
+from stanza.policy import Policy, PolicyInput, PolicyOutput
 from typing import Callable, List, Any
 from stanza.struct import dataclass, replace, field
 
