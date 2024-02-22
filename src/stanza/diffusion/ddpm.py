@@ -63,6 +63,8 @@ class DDPMSchedule:
             return noisy, noise, noise
         elif self.prediction_type == "sample":
             return noisy, noise, sample
+        else:
+            raise ValueError("Not supported prediction type")
     
     @jax.jit
     def noise_trajectory(self, rng_key, sample):

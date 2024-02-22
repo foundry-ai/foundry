@@ -105,6 +105,11 @@ class DataLoader(Generic[T]):
                 lambda x: jax.device_put(x), batch
             )
         self._get_batch = jax.jit(_get_batch)
+    
+    def cycle(self) -> Generator[T, None, None]:
+        while True:
+            for data in self:
+                yield data
 
     def __iter__(self) -> Iterator[T]:
         if self.shuffle:
@@ -125,8 +130,3 @@ class DataLoader(Generic[T]):
    
     def __len__(self) -> int:
         return len(self.dataset) // self.batch_size
-
-def cycle(loader : DataLoader[T]) -> Generator[T, None, None]:
-    while True:
-        for data in loader:
-            yield data
