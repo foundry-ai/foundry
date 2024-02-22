@@ -49,6 +49,9 @@ cuda12_pip = [
     "nvidia-nccl-cu12>=2.19.3",
     "nvidia-nvjitlink-cu12>=12.2",
 ]
+docs = [
+    "sphinx>=7.2.6",
+]
 
 [project.scripts]
 launch = "stanza.runtime:launch"
