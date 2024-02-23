@@ -29,7 +29,7 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.intersphinx',
     'sphinx_autodoc_typehints',
-    'sphinx_design'
+    'sphinx_design',
 ]
 
 suppress_warnings = [

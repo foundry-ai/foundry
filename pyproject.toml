@@ -23,7 +23,7 @@ dependencies = [
     "pymunk>=6.6.0",
     "nbformat>=5.9.2",
 ]
-requires-python = "==3.10.*"
+requires-python = ">=3.10"
 readme = "README.md"
 license = {text = "MIT"}
 
@@ -57,6 +57,7 @@ docs = [
     "sphinx-book-theme>=1.1.2",
     "sphinx-autodoc-typehints>=2.0.0",
     "furo>=2024.1.29",
+    "sphinx-toolbox>=3.5.0",
 ]
 
 [project.scripts]

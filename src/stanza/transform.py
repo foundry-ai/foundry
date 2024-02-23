@@ -39,9 +39,11 @@ def _external(fun):
 
 @functools.wraps(jax.jit)
 def jit(fun, **kwargs):
+    o_fun = fun
     fun = _internal(fun)
     fun = jax.jit(fun, **kwargs)
     fun = _external(fun)
+    fun = functools.wraps(o_fun)(fun)
     return fun
 
 
