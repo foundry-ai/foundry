@@ -1,3 +1,7 @@
+![Docs](https://github.com/pfrommerd/stanza/actions/workflows/docs.yml/badge.svg)
+
+# [Documentation](https://dan.pfrommer.us/stanza/)
+
 # Installation Instructions
 
  1. Install Python >= 3.10
