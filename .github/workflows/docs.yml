@@ -17,6 +17,6 @@ jobs:
       - name: Setup PDM
         uses: pdm-project/setup-pdm@v4
       - name: Build Documentation
-        run: sphinx-build -b html docs docs/build/html -j auto
-
+        working-directory: ./docs
+        run: make html
     
