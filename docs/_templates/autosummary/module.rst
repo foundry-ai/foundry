@@ -1,5 +1,12 @@
 {{ ("``" + (fullname) + "`` module") | underline}}
 
+{% if modules %}
+.. toctree::
+   :hidden:
+{% for item in modules %}
+   {{ item }}
+{%- endfor %}
+{% endif %}
 
 .. currentmodule:: {{ fullname }}
 
@@ -9,6 +16,14 @@
 .. rubric:: Functions
 .. autosummary::
 {% for item in functions %}
+   {{ item }}
+{%- endfor %}
+{% endif %}
+
+{% if attributes %}
+.. rubric:: Globals
+.. autosummary::
+{% for item in attributes %}
    {{ item }}
 {%- endfor %}
 {% endif %}
@@ -35,6 +50,7 @@
    :members:
    :special-members: __call__
    :undoc-members:
+   :inherited-members:
    :show-inheritance:
    :member-order: bysource
 
@@ -45,14 +61,7 @@
    generate the module index. They are hidden because they are not meant to be
    seen by the user, but are meant to be consumed by Sphinx:
 
-
 {% if modules %}
-.. toctree::
-   :hidden:
-{% for item in modules %}
-   {{ item }}
-{%- endfor %}
-
 .. rst-class:: hidden
 
    Hidden:

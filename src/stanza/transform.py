@@ -5,8 +5,16 @@ import warnings
 import functools
 import types
 
-from typing import Callable
-from functools import partial
+from typing import Callable, Any
+
+class partial(functools.partial):
+    """Partial function application with static_argnames
+    """
+    def __init__(self, fun, *args, **kwargs):
+        super().__init__(fun, *args, **kwargs)
+    
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        return super().__call__(*args, **kwargs)
 
 @struct.dataclass
 class Fn:
@@ -37,7 +45,6 @@ def _external(fun):
         return fun(*args, **kwargs)
     return wrapper
 
-@functools.wraps(jax.jit)
 def jit(fun, **kwargs):
     o_fun = fun
     fun = _internal(fun)

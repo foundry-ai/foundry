@@ -52,6 +52,7 @@ typehints_document_rtype = False
 
 autosummary_generate = True
 autosummary_generate_overwrite = False
+autosummary_ignore_module_all = False
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output

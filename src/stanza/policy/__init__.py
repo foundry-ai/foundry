@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from typing import Generic, TypeVar, Protocol
+from typing import Generic, TypeVar, Protocol, Callable, Optional
 from stanza import transform
 from stanza.struct import dataclass
 from functools import partial
@@ -12,6 +12,8 @@ PolicyState = TypeVar("PolicyState")
 State = TypeVar("State")
 Action = TypeVar("Action")
 Info = TypeVar("Info")
+
+Model = Callable[[State, Action, jax.Array], State]
 
 @dataclass
 class PolicyInput(Generic[Observation, State, PolicyState]):
@@ -35,7 +37,7 @@ class Trajectory(Generic[State, Action]):
 # Rollout contains the trajectory + aux data,
 # final policy state, final rng key
 @dataclass
-class Rollout(Trajectory):
+class Rollout(Trajectory[State, Action], Generic[State, Action, Observation, Info]):
     observations: Observation = None
     info: Info = None
     final_policy_state: State = None
@@ -54,23 +56,31 @@ class Policy(Protocol[Observation, Action, State, PolicyState, Info]):
 # and intelligently makes them static and allows
 # for vectorizing over functins.
 @partial(transform.jit, static_argnames=("length", "last_input"))
-def rollout(model, state0,
+def rollout(model : Model, state0 : State,
             # policy is optional. If policy is not supplied
             # it is assumed that model is for an autonomous system
-            policy=None, *,
+            policy : Optional[Policy] = None, *,
             # observation function
             # by default just uses the state
-            observe=None,
+            observe : Optional[Callable[[State], Observation]] =  None,
             # The rng_key for the environment
-            model_rng_key=None,
+            model_rng_key : Optional[jax.Array] = None,
             # The initial policy state.
-            policy_init_state=None,
+            policy_init_state : Optional[PolicyState] = None,
             # The policy rng key
-            policy_rng_key=None,
+            policy_rng_key : Optional[jax.Array] = None,
             # Apply a transform to the
             # policy before rolling out.
-            policy_transform=None,
-            length=None, last_input=False):
+            policy_transform : Optional[Callable[[Policy], Policy]] =None,
+            length : Optional[int] = None, last_input : bool = False) -> Rollout[State, Action, Observation, Info]:
+    """ Rollout a model in-loop with policy for a fixed length.
+    The length must either be provided via ``policy.rollout_length``
+    or by the ``length`` parameter.
+
+    If ``last_input`` is True, the policy is called again with the final
+    state of the rollout to get a final action (so that the states and actions are the same length).
+    """
+
     if policy_transform is not None and policy is not None:
         policy, policy_init_state = policy_transform(policy, policy_init_state)
     # Look for a fallback to the rollout length

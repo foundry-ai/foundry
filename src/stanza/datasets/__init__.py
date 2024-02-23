@@ -15,5 +15,15 @@ class Dataset(Generic[T]):
 
 DatasetRegistry = Registry
 
-image_label_datasets = DatasetRegistry[Dataset]()
+image_label_datasets : DatasetRegistry[Dataset] = DatasetRegistry[Dataset]()
+"""Datasets containing (image, label) pairs,
+where label is one-hot encoded.
+"""
+
 image_label_datasets.defer(register_module(".mnist", "dataset_registry"))
+
+__all__ = [
+    "Dataset",
+    "DatasetRegistry",
+    "image_label_datasets"
+]

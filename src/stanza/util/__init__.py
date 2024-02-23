@@ -23,6 +23,16 @@ def dict_flatten(*trees, prefix=None, suffix=None):
         flattened = {f"{k}{suffix}": v for k, v in flattened.items()}
     return flattened
 
+from jax._src.api_util import flatten_axes
+from jax._src.api import _mapped_axis_size
+
+def axis_size(pytree, axes_tree) -> int:
+    args_flat, in_tree  = jax.tree_util.tree_flatten(pytree)
+    in_axes_flat = flatten_axes("pvmap in_axes", in_tree, axes_tree, kws=False)
+    axis_sizes_ = [x.shape[i] for x, i in zip(args_flat, in_axes_flat)]
+    assert all(x == axis_sizes_[0] for x in axis_sizes_)
+    return axis_sizes_[0]
+
 from rich.text import Text as RichText
 from rich.progress import ProgressColumn
 
