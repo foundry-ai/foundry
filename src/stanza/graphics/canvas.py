@@ -1,3 +1,7 @@
+"""
+A simple functional API for creating and manipulating 2D geometries 
+and rasterizing them onto a canvas.
+"""
 from stanza import struct
 from stanza.graphics import sanitize_color
 import jax.numpy as jnp

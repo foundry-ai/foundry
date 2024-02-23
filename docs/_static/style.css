@@ -1,0 +1,16 @@
+
+.hidden {
+    display: none;
+}
+
+.hidden + .autosummary {
+    display: none;
+}
+
+.autosummary {
+    width: 100%;
+}
+.autosummary td {
+    border-left: none !important;
+    border-right: none !important;
+}

@@ -1,5 +1,5 @@
 from stanza.envs import Environment
-from stanza.policies import PolicyOutput
+from stanza.policy import PolicyOutput
 
 import jax
 import jax.numpy as jnp

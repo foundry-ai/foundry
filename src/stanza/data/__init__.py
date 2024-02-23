@@ -11,6 +11,8 @@ T = TypeVar('T')
 V = TypeVar('V')
 
 class Data(abc.ABC, Generic[T]):
+    """ A dataset of elements of type T. Not necessarily a jax pytree.
+    """
     @abc.abstractmethod
     def __len__(self) -> int:
         ...
@@ -87,9 +89,9 @@ def _shuffle(rng_key, len):
     return jax.random.permutation(rng_key, jnp.arange(len))
 
 class DataLoader(Generic[T]):
-    def __init__(self, dataset : Data[T], *, batch_size=1,
-                shuffle=False, rng_key=None, drop_jagged=False,
-                batch_sampler=None, num_workers=1, chunksize=16):
+    def __init__(self, dataset : Data[T], *, batch_size : int =1,
+                shuffle : bool =False, rng_key : jax.Array = None, drop_jagged : bool =False,
+                num_workers : int = 1, chunksize : int =16):
         if shuffle and rng_key is None:
             raise ValueError("Must provide rng_key if shuffle=True")
         self.rng_key = rng_key

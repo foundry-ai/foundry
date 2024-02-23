@@ -1,13 +1,8 @@
 import jax
-import stanza
 import jax.flatten_util
-import jax.numpy as jnp
 
 from typing import Callable, Any, Optional, NamedTuple
 from stanza.struct import dataclass, field, replace
-
-import jax.experimental.host_callback
-
 
 SolverState = Any
 Params = Any

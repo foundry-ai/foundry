@@ -21,6 +21,8 @@ class _MISSING_TYPE:
 MISSING = _MISSING_TYPE()
 
 class Field:
+    """A struct field class. Not to be instantiated directly. Use the field() function instead.
+    """
     __slots__ = (
         'name',
         'type',
@@ -55,7 +57,6 @@ class Field:
         return (f"Field(name={self.name}, type={self.type}, "
             f"pytree_node={self.pytree_node}, default={self.default}, "
              f"default_factory={self.default_factory}, initializer={self.initializer})")
-
 
 def field(*, pytree_node=True, kw_only=False, 
           default=MISSING, default_factory=MISSING,
