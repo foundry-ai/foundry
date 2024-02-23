@@ -32,6 +32,10 @@
 .. rubric:: Classes
 {% for item in classes %}
 .. autoclass:: {{ item }}
+   :members:
+   :undoc-members:
+   :member-order: bysource
+
 {%- endfor %}
 {% endif %}
 

@@ -18,7 +18,7 @@ class Objective:
     # indicates optimality of this objective
     def optimality(self, solver_state : SolverState):
         raise NotImplementedError("optimality() must be implemented")
-    
+
     # get the elements of the state wrt which we can diff
     def extract_params(self, solver_state : SolverState):
         raise NotImplementedError("extract_params() must be implemented")

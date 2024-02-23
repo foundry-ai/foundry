@@ -43,6 +43,11 @@ pygments_style = None
 autosummary_generate = True
 napolean_use_rtype = False
 
+
+typehints_use_signature = True
+typehints_use_signature_return = True
+typehints_document_rtype = False
+
 # autosummary config
 
 autosummary_generate = True
