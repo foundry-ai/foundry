@@ -1,4 +1,4 @@
-from flax import struct
+from stanza import struct
 from functools import partial
 
 import jax.numpy as jnp
@@ -9,19 +9,13 @@ import chex
 @struct.dataclass
 class DDPMSchedule:
     betas: jnp.array
-    alphas: jnp.array = struct.field(default=None)
-    alphas_cumprod: jnp.array = struct.field(default=None)
+    alphas: jnp.array = struct.field(initializer=lambda x: 1  - x.betas)
+    alphas_cumprod: jnp.array = struct.field(initializer=lambda x: jnp.cumprod(x.alphas))
     variance_type: str = struct.field(default="fixed_small", pytree_node=False)
     # "epsilon", "sample", or "v_prediction"
     prediction_type: str = struct.field(default="epsilon", pytree_node=False)
     # If None, no clipping
     clip_sample_range: float = None
-
-    def __post_init__(self):
-        if self.alphas is None:
-            object.__setattr__(self, 'alphas', 1 - self.betas)
-        if self.alphas_cumprod is None:
-            object.__setattr__(self, 'alphas_cumprod', jnp.cumprod(self.alphas))
 
     @staticmethod
     def make_linear(num_timesteps, beta_start=0.0001, beta_end=0.02,

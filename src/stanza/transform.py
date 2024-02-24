@@ -7,14 +7,21 @@ import types
 
 from typing import Callable, Any
 
-class partial(functools.partial):
+class partial:
     """Partial function application with static_argnames
     """
-    def __init__(self, fun, *args, **kwargs):
-        super().__init__(fun, *args, **kwargs)
-    
-    def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        return super().__call__(*args, **kwargs)
+    def __init__(self, func, /, *args, **keywords):
+        if hasattr(func, "func"):
+            args = func.args + args
+            keywords = {**func.keywords, **keywords}
+            func = func.func
+        self.func = func
+        self.args = args
+        self.keywords = keywords
+
+    def __call__(self, /, *args, **keywords):
+        keywords = {**self.keywords, **keywords}
+        return self.func(*self.args, *args, **keywords)
 
 @struct.dataclass
 class Fn:

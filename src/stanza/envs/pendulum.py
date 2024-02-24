@@ -13,14 +13,6 @@ class State(NamedTuple):
     angle: jnp.ndarray
     vel: jnp.ndarray
 
-# I added some weird  abstractions
-# maybe ill remove them later
-def get_goal(params):
-    if params is None:
-        return None
-    else:
-        return params.goal
-
 @dataclass
 class PendulumEnv(Environment):
     sub_steps : int = field(default=1, pytree_node=False)
