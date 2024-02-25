@@ -1,11 +1,16 @@
 import stanza.struct as struct
 import jax
 import jax.numpy as jnp
+import numpy as np
 import warnings
 import functools
 import types
 
-from typing import Callable, Any
+from typing import Any
+
+def is_array(element: Any) -> bool:
+    """Returns `True` if `element` is a JAX array or NumPy array."""
+    return isinstance(element, (np.ndarray, np.generic, jax.Array))
 
 class partial:
     """Partial function application with static_argnames
@@ -24,30 +29,26 @@ class partial:
         return self.func(*self.args, *args, **keywords)
 
 @struct.dataclass
-class Fn:
-    fun: Callable = struct.field(pytree_node=False)
+class Static:
+    value: Any = struct.field(pytree_node=False)
 
 def _internal(fun):
     if not hasattr(fun, '__unwrapper__'):
         @functools.wraps(fun)
         def unwrapper(*args, **kwargs):
             args, kwargs = jax.tree_util.tree_map(
-                lambda x: x.fun if isinstance(x, Fn) else x,
-                (args, kwargs), is_leaf=lambda x: isinstance(x, Fn)
+                lambda x: x.value if isinstance(x, Static) else x,
+                (args, kwargs), is_leaf=lambda x: isinstance(x, Static)
             )
             return fun(*args, **kwargs)
         fun.__unwrapper__ = unwrapper
     return fun.__unwrapper__
 
-_fn_type = type(_internal)
-
 def _external(fun):
     def wrapper(*args, **kwargs):
         args, kwargs = jax.tree_util.tree_map(
-            lambda x: Fn(x) if isinstance(x, types.FunctionType) \
-                            or isinstance(x, types.MethodType) else x,
+            lambda x: Static(x) if not is_array(x) else x,
             (args, kwargs), 
-            is_leaf=lambda x: isinstance(x, types.FunctionType) or isinstance(x, types.MethodType)
         )
         return fun(*args, **kwargs)
     return wrapper
@@ -84,7 +85,7 @@ def pvmap(fun, in_axes=0, out_axes=0, axis_size=None, devices=None):
                         for x, a in zip(args_flat, in_axes_flat)]
         # pad up to padded_axis_size
         args_flat = [jnp.concatenate((
-            x, jnp.zeros((padded_axis_size_ - axis_size_,) + x.shape[1:])
+            x, jnp.zeros((padded_axis_size_ - axis_size_,) + x.shape[1:], dtype=x.dtype)
         )) if a is not None else x for x, a in zip(args_flat, in_axes_flat)]
         args_flat = [jnp.reshape(x, (pmap_axis_size, vmap_axis_size) + x.shape[1:])
                         if a is not None else x
