@@ -135,18 +135,14 @@ def _register_jax_type(cls):
     static_fields = list(f for f in fields(cls) if not f.pytree_node)
     def flatten(v):
         children = tuple(getattr(v, f.name) for f in dyn_fields)
-        # children = tuple(FnChild(v) if type(v) == types.FunctionType else v for v in children)
         static_children = tuple(getattr(v, f.name) for f in static_fields)
         return children, static_children
     def flatten_with_keys(v):
         children = tuple((GetAttrKey(f.name),getattr(v, f.name)) for f in dyn_fields)
-        # children = tuple(FnChild(v) if type(v) == types.FunctionType else v for v in children)
         static_children = tuple(getattr(v, f.name) for f in static_fields)
         return children, static_children
     def unflatten(static_children, children):
         i = cls.__new__(cls)
-        # unwrap FnNode
-        # children = tuple(c.fn if type(c) == FnChild else c for c in children)
         for f, c in zip(dyn_fields, children):
             object.__setattr__(i, f.name, c)
         for f, c in zip(static_fields, static_children):

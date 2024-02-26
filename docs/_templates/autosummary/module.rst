@@ -52,7 +52,7 @@
    :undoc-members:
    :inherited-members:
    :show-inheritance:
-   :member-order: bysource
+   :member-order: groupwise
 
 {%- endfor %}
 {% endif %}
