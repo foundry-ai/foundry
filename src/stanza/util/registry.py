@@ -12,27 +12,27 @@ class Builders(typing.Protocol[T]):
 class Registry(Generic[T]):
     def __init__(self):
         self._registered = {} # type: dict[str, Builder[T]]
-        self._deffered = []
+        self._defered = []
     
     def register(self, name: str, loader: Callable, *, transform: Optional[Callable] = None):
         if transform is not None:
             loader = transform(loader)
         self._registered[name] = loader
-    
-    def register_all(self, datasets: Optional[Builders], *, transform: Optional[Callable] = None):
-        if datasets is None:
-            return
-        for name, loader in datasets.items():
-            self.register(name, loader, transform=transform)
 
-    def defer(self, callback: Callable):
-        self._deffered.append(callback)
-    
+    def defer(self, callback: Callable, transform: Optional[Callable] = None):
+        self._defered.append((callback, transform))
+
     @property
     def _registry(self) -> dict[str, Builder[T]]:
-        while self._deffered:
-            cb = self._deffered.pop(0)
-            self.register_all(cb(self))
+        while self._defered:
+            cb, transform = self._defered.pop(0)
+            items = cb if hasattr(cb, "items") else cb(self)
+            if items is not None:
+                items = items.items()
+                for name, loader in items:
+                    if transform is not None:
+                        loader = transform(loader)
+                    self._registered[name] = loader
         return self._registered
     
     def items(self) -> Iterable[tuple[str, Builder[T]]]:
@@ -43,7 +43,14 @@ class Registry(Generic[T]):
             raise ValueError(f"Unknown registry entry: {name}")
         return self._registry[name](**kwargs)
 
-def register_module(module_name, registry_name):
+def transform_result(transform: Callable) -> Callable:
+    def wrapper(loader: Callable) -> Callable:
+        def wrapped(**kwargs) -> Any:
+            return transform(loader(**kwargs))
+        return wrapped
+    return wrapper
+
+def from_module(module_name, registry_name):
     import inspect
     import importlib
     frm = inspect.stack()[1]

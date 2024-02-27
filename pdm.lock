@@ -5,7 +5,7 @@
 groups = ["default", "cuda12_pip", "dev", "docs"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:e1ac5e5f7acfcbfdc0f606fdf727adbc4fa7f731e39a467927fa4f7457d22a43"
+content_hash = "sha256:e8af318658135acf068e68eae5c960c0a933619ecffee15471a32f1b0eda24b6"
 
 [[package]]
 name = "absl-py"
@@ -243,7 +243,7 @@ name = "beautifulsoup4"
 version = "4.12.3"
 requires_python = ">=3.6.0"
 summary = "Screen-scraping library"
-groups = ["dev", "docs"]
+groups = ["default", "dev", "docs"]
 dependencies = [
     "soupsieve>1.2",
 ]
@@ -2975,7 +2975,7 @@ name = "soupsieve"
 version = "2.5"
 requires_python = ">=3.8"
 summary = "A modern CSS selector implementation for Beautiful Soup."
-groups = ["dev", "docs"]
+groups = ["default", "dev", "docs"]
 files = [
     {file = "soupsieve-2.5-py3-none-any.whl", hash = "sha256:eaa337ff55a1579b6549dc679565eac1e3d000563bcb1c8ab0d0fefbc0c2cdc7"},
     {file = "soupsieve-2.5.tar.gz", hash = "sha256:5663d5a7b3bfaeee0bc4372e7fc48f9cff4940b3eec54a6451cc5299f1097690"},

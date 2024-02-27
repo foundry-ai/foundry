@@ -33,10 +33,6 @@ class Data(abc.ABC, Generic[T]):
     def cache(self) -> "Data[T]":
         return PyTreeData(self.slice(0, len(self)))
 
-    @staticmethod
-    def from_pytree(tree: T) -> "PyTreeData[T]":
-        return PyTreeData(tree)
-
 class Mapped(Data[T]):
     def __init__(self, dataset : Data[V], fn : Callable[[V], T]):
         self.dataset = dataset
@@ -66,7 +62,7 @@ class PyTreeData(Data[T]):
     def __len__(self):
         return self.n
 
-    def __getitem__(self, idx : int) -> T:
+    def __getitem__(self, idx : jax.Array) -> T:
         return jax.tree_map(
             lambda x: x[idx],
             self.tree
@@ -77,6 +73,18 @@ class PyTreeData(Data[T]):
             lambda x: x[off:off+length],
             self.tree
         )
+
+class IOData(Data[T], abc.ABC):
+    def __init__(self):
+        ex = self._fetch(0)
+        self._ex = jax.tree_map(lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype), ex)
+
+    @abc.abstractmethod
+    def _fetch(self, idx: jax.Array) -> T: ...
+
+    def __getitem__(self, idx : jax.Array) -> T:
+        data = jax.pure_callback(self._fetch, self._ex, idx)
+        return data
 
 def _get_batch(dataset, indices):
     batch = jax.vmap(lambda i: dataset[i])(indices)

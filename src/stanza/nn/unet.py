@@ -309,19 +309,21 @@ class UNet(nn.Module):
 
 
 class DiffusionUNet(UNet):
-    embed_dim: int = 64
+    time_embed_dim: int = 32
 
     @nn.compact
     def __call__(self, x, *, timestep=None, time_embed=None,
                             cond=None, cond_embed=None, train=False):
         if timestep is not None and time_embed is None:
-            embed = nn.Sequential([
-                SinusoidalPosEmbed(self.embed_dim),
-                nn.Dense(self.embed_dim),
+            time_embed = nn.Sequential([
+                SinusoidalPosEmbed(self.time_embed_dim),
+                nn.Dense(2*self.time_embed_dim),
                 activations.silu,
-                nn.Dense(self.embed_dim)
+                nn.Dense(self.time_embed_dim)
             ])(timestep)
         if cond_embed is not None:
-            embed = jnp.concatenate([embed, cond_embed], axis=-1) \
-                if embed is not None else cond_embed
-        return super().__call__(x, cond=cond, cond_embed=embed, train=train)
+            cond_embed = jnp.concatenate([time_embed, cond_embed], axis=-1)
+        else:
+            cond_embed = time_embed
+        return super().__call__(x, cond=cond,
+                cond_embed=cond_embed, train=train)

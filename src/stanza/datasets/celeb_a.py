@@ -1,36 +1,38 @@
-# from stanza.datasets import builder
+from stanza.datasets import DatasetRegistry, ImageDataset
+from stanza.data import IOData
 
-# from stanza.data.stored import FolderImageStorage
-# from stanza.data.stored import StoredData
+from . import util as du
 
-# from .util import cache_path, download_and_extract
+class CelebAData(IOData):
+    def __init__(self, path):
+        self._path = path
+        super().__init__()
+    
+    def _fetch(self, idx):
+        return du.read_image(self._path / f"{idx+1:06d}.jpg")
 
-# @builder
-# def celeb_a(quiet=False, splits=set()):
-#     download_path = cache_path("celeb_a", "img_align_celeba.zip")
-#     folder_path = cache_path("celeb_a", "data")
-#     if not folder_path.exists():
-#         download_and_extract(
-#             download_path=download_path,
-#             extract_path=folder_path,
-#             gdrive_id="1Yo6KZFeQeuplQ_fvqvqAei0WouFbjKjT",
-#             quiet=quiet,
-#             strip_folder=True
-#         )
-#     data = {}
-#     val_start = 162772
-#     test_start = 182638
-#     if "train" in splits:
-#         storage = FolderImageStorage(folder_path, end=val_start)
-#         data["train"] = StoredData(storage)
-#     if "validation" in splits:
-#         storage = FolderImageStorage(folder_path,
-#                     start=val_start, end=test_start)
-#         data["validation"] = StoredData(storage)
-#     if "test" in splits:
-#         storage = FolderImageStorage(
-#             folder_path,
-#             start=test_start
-#         )
-#         data["test"] = StoredData(storage)
-#     return data
+    def __len__(self):
+        return 202599
+
+def _load_celeb_a(quiet=False, **kwargs):
+    data_path = du.cache_path("celeb_a") / "img_align_celeba.zip"
+    du.download(data_path,
+        gdrive_id="1Yo6KZFeQeuplQ_fvqvqAei0WouFbjKjT",
+        md5="00d2c5bc6d35e252742224ab0c1e8fcb",
+        job_name="CelebA"
+    )
+    extract_path = du.cache_path("celeb_a") / "images"
+    if not extract_path.exists():
+        du.extract_to(data_path, extract_path,
+            job_name="CelebA",
+            quiet=quiet,
+            strip_folder="img_align_celeba"
+        )
+    
+    train_data = CelebAData(extract_path)
+
+    return ImageDataset(splits={"train": train_data})
+
+
+registry = DatasetRegistry()
+registry.register("celeb_a", _load_celeb_a)

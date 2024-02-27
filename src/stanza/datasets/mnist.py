@@ -1,4 +1,4 @@
-from stanza.datasets import Dataset, DatasetRegistry
+from stanza.datasets import ImageClassDataset, DatasetRegistry
 import stanza.data as du
 import stanza.util as util
 
@@ -13,20 +13,7 @@ import array
 import wandb
 import numpy as np
 
-def visualize_mnist(signal_samples,
-                    latent_samples=None,
-                    signal_resample=None):
-    if signal_resample is not None:
-        signal_samples = jnp.concatenate(
-            (signal_samples, signal_resample),
-            axis=-2 # concat along cols
-        )
-    return wandb.Image(np.array(
-        util.grid(signal_samples))
-    )
-
-
-def load_mnist(quiet=False, **kwargs):
+def _load_mnist(quiet=False, **kwargs):
     with jax.default_device(jax.devices("cpu")[0]):
         data_path = cache_path("mnist")
         """Download and parse the raw MNIST dataset."""
@@ -45,9 +32,15 @@ def load_mnist(quiet=False, **kwargs):
                 img = img.astype(jnp.float32) / 255.
                 return jnp.expand_dims(img, -1)
 
-        for filename in ["train-images-idx3-ubyte.gz", "train-labels-idx1-ubyte.gz",
-                        "t10k-images-idx3-ubyte.gz", "t10k-labels-idx1-ubyte.gz"]:
-            download(data_path/filename, base_url + filename, quiet=quiet)
+        for job_name, filename in [
+                    ("MNIST Train Images", "train-images-idx3-ubyte.gz"),
+                    ("MNIST Train Labels", "train-labels-idx1-ubyte.gz"),
+                    ("MNIST Test Images", "t10k-images-idx3-ubyte.gz"),
+                    ("MNIST Test Labels", "t10k-labels-idx1-ubyte.gz")
+                ]:
+            download(data_path/filename, url=base_url + filename, 
+                    job_name=job_name,
+                    quiet=quiet)
         
         train_images = parse_images(data_path / "train-images-idx3-ubyte.gz")
         train_labels = parse_labels(data_path / "train-labels-idx1-ubyte.gz")
@@ -55,12 +48,13 @@ def load_mnist(quiet=False, **kwargs):
         test_images = parse_images(data_path / "t10k-images-idx3-ubyte.gz")
         test_labels = parse_labels(data_path / "t10k-labels-idx1-ubyte.gz")
         test_data = (test_images, test_labels)
-        return Dataset(
+        return ImageClassDataset(
             splits={
                 "train": du.PyTreeData(train_data),
                 "test": du.PyTreeData(test_data)
             },
+            classes=[str(i) for i in range(10)]
         )
 
-dataset_registry = DatasetRegistry[Dataset]() # type: DatasetRegistry[Dataset]
-dataset_registry.register("mnist", load_mnist)
+registry = DatasetRegistry[ImageClassDataset]()
+registry.register("mnist", _load_mnist)

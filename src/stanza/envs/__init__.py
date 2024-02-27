@@ -1,7 +1,7 @@
 import typing
 import jax
 
-from stanza.util.registry import Registry, register_module
+from stanza.util.registry import Registry, from_module
 from typing import Optional
 
 State = typing.TypeVar("State")
@@ -32,8 +32,8 @@ EnvironmentRegistry = Registry
 
 env_registry = EnvironmentRegistry[Environment]()
 # env_registry.defer(register_module(".pusht", "env_registry"))
-env_registry.defer(register_module(".linear", "env_registry"))
-env_registry.defer(register_module(".quadrotor_2d", "env_registry"))
+env_registry.defer(from_module(".linear", "env_registry"))
+env_registry.defer(from_module(".quadrotor_2d", "env_registry"))
 
 __all__ = [
     "State", "Action", "Observation", "Render",

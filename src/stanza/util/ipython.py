@@ -9,8 +9,8 @@ import rich.live
 import inspect
 import os
 import IPython
+from PIL import Image as PILImage
 
-from PIL import Image
 from pathlib import Path
 from ipywidgets import Video, Image, HBox, HTML, Output
 from rich.segment import Segment
@@ -30,28 +30,31 @@ pre {
 }
 </style>"""
 
-def display_image(array):
+def from_image(array):
     array = np.array(array)
+    if array.ndim == 2:
+        array = np.expand_dims(array, -1)
     if array.dtype == np.float32 or array.dtype == np.float64:
         array = (array*255).astype(np.uint8)
-    img = Image.fromarray(array)
+    if array.shape[-1] == 1:
+        array = np.repeat(array, 3, axis=-1)
+    img = PILImage.fromarray(array)
     id = uuid.uuid4()
-    path = Path("/tmp") / (str(id) + ".png")
+    path = Path("/tmp") / "notebook" / (str(id) + ".png")
     path.parent.mkdir(parents=True, exist_ok=True)
     img.save(path)
     return HBox([HTML(STYLE), Image.from_file(path)])
 
-def display_video(array, fps=28):
+def from_video(array, fps=28):
     array = np.array(array)
     if array.dtype == np.float32 or array.dtype == np.float64:
         array = (array*255).astype(np.uint8)
     f = tempfile.mktemp() + ".mp4"
     id = uuid.uuid4()
-    path = Path("/tmp") / (str(id) + ".mp4")
+    path = Path("/tmp") / "notebook" / (str(id) + ".mp4")
     path.parent.mkdir(parents=True, exist_ok=True)
     ffmpegio.video.write(path, fps, array)
     return HBox([HTML(STYLE), Video.from_file(path)])
-
 
 # Hook into rich to display in jupyter
 _JUPYTER_HTML_FORMAT = """\
@@ -134,7 +137,8 @@ def _rich_live_refresh(self):
             else:
                 if self.ipy_widget is None:
                     self.ipy_widget = Output()
-                    display(HBox([HTML(STYLE), self.ipy_widget]))
+                    _add_to_rich_display(self.ipy_widget)
+                    # display(HBox([HTML(STYLE), self.ipy_widget]))
 
                 with self.ipy_widget:
                     self.ipy_widget.clear_output(wait=True)
