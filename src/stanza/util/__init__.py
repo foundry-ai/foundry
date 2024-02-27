@@ -1,27 +1,13 @@
+import jax
 import jax.tree_util
+import jax.flatten_util
+import jax.numpy as jnp
 
 from typing import Any
 
 MISSING = object()
 
 class FrozenInstanceError(AttributeError): pass
-
-def _key_str(key):
-    return key.key
-
-def dict_flatten(*trees, prefix=None, suffix=None):
-    flattened = {}
-    for t in trees:
-        paths_nodes = jax.tree_util.tree_flatten_with_path(t)[0]
-        flattened.update({
-            '.'.join([_key_str(p) for p in path]): node
-            for (path, node) in paths_nodes
-        })
-    if prefix is not None:
-        flattened = {f"{prefix}{k}": v for k, v in flattened.items()}
-    if suffix is not None:
-        flattened = {f"{k}{suffix}": v for k, v in flattened.items()}
-    return flattened
 
 from jax._src.api_util import flatten_axes
 from jax._src.api import _mapped_axis_size
@@ -32,6 +18,31 @@ def axis_size(pytree, axes_tree) -> int:
     axis_sizes_ = [x.shape[i] for x, i in zip(args_flat, in_axes_flat)]
     assert all(x == axis_sizes_[0] for x in axis_sizes_)
     return axis_sizes_[0]
+
+def ravel_pytree(pytree):
+    leaves, treedef = jax.tree_util.tree_flatten(pytree)
+    if len(leaves) == 0:
+        def unflatten(x):
+            return jax.tree_util.tree_unflatten(treedef, x.reshape(leaves.shape))
+        return leaves.reshape((-1,)), unflatten
+    return jax.flatten_util.ravel_pytree(pytree)
+
+
+def ravel_pytree_structure(pytree):
+    leaves, treedef = jax.tree_util.tree_flatten(pytree)
+    shapes, types = [l.shape for l in leaves], [l.dtype for l in leaves]
+    type = jnp.result_type(*types) if leaves else jnp.float32
+    with jax.ensure_compile_time_eval():
+        elems = jnp.array([0] + [jnp.prod(jnp.array(l.shape)) for l in leaves])
+        total_elems = jnp.sum(elems)
+        indices = tuple(jnp.cumsum(elems))
+    def unravel_to_list(x):
+        return [x[indices[i]:indices[i+1]].reshape(s).astype(t) 
+                for i, (s, t) in enumerate(zip(shapes, types))]
+    def unravel_to_pytree(x):
+        nodes = unravel_to_list(x)
+        return jax.tree_util.tree_unflatten(treedef, nodes)
+    return jax.ShapeDtypeStruct((total_elems,), type), unravel_to_pytree
 
 from rich.text import Text as RichText
 from rich.progress import ProgressColumn
@@ -48,34 +59,6 @@ class MofNColumn(ProgressColumn):
             f"{completed:{total_width}d}/{total}",
             style="progress.percentage",
         )
-
-
-def display_image(image, width=None, height=None):
-    import numpy as np
-    from PIL import Image # type: ignore
-    from IPython import display
-    import io
-    import wandb
-
-    if isinstance(image, wandb.Image):
-        img = image._image
-        if not img and image._path:
-            return display.Image(filename=image._path,
-                                 width=width, height=height)
-    else:
-        if image.dtype != np.uint8:
-            image = np.array((255*image)).astype(np.uint8)
-        else:
-            image = np.array(image)
-        img = Image.fromarray(image)
-    imgByteArr = io.BytesIO()
-    # image.save expects a file-like as a argument
-    img.save(imgByteArr, format='PNG')
-    # Turn the BytesIO object back into a bytes object
-    imgByteArr = imgByteArr.getvalue()
-    return display.Image(data=imgByteArr,
-            width=width, height=height)
-
 
 class AttrMap:
     def __init__(self, *args, **kwargs):

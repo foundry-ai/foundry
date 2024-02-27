@@ -1,8 +1,11 @@
 import stanza.struct as struct
 
 from stanza.util.random import PRNGSequence
-from stanza.util import MofNColumn, dict_flatten
+from stanza.util import MofNColumn
 from stanza.data import Data, DataLoader
+
+# import all reporting datatypes
+from .reporting import *
 
 from typing import Any, TypeVar, Callable
 from functools import partial
@@ -28,7 +31,7 @@ logger = logging.getLogger(__name__)
 Sample = TypeVar("Sample")
 OptState = Any
 Vars = Any
-Stats = Any
+Metrics = Any
 
 # Training hooks
 @struct.dataclass
@@ -42,12 +45,12 @@ class TrainState:
     epoch_iteration: int
     opt_state: OptState
     vars: Vars
-    last_stats: Stats
+    metrics: Metrics
 
 @struct.dataclass
 class LossOutput:
     loss: ArrayLike
-    stats: Stats = None
+    metrics: Metrics = None
     var_updates: Vars = None
 
 def get_batch_size(batch):
@@ -65,7 +68,7 @@ def batch_loss(loss_fn):
             out_axes=LossOutput(
                 var_updates=None,
                 loss=0,
-                stats=0),
+                metrics=0),
             axis_name="batch"
         )
         batch_size = get_batch_size(batch)
@@ -73,12 +76,12 @@ def batch_loss(loss_fn):
         output = vmap_loss(vars, i,
             rng_batch, batch)
         var_updates = output.var_updates
-        stats = jax.tree_map(lambda x: jnp.mean(x, 0), output.stats)
+        stats = jax.tree_map(lambda x: jnp.mean(x, 0), output.metrics)
         loss = jnp.mean(output.loss)
-        return LossOutput(loss=loss, stats=stats, var_updates=var_updates)
+        return LossOutput(loss=loss, metrics=stats, var_updates=var_updates)
     return batched_loss
 
-@partial(jax.jit, static_argnums=(0,1))
+@partial(jax.jit, static_argnums=(0,1), donate_argnums=(2,3))
 def _update(loss_fn, optimizer, 
             opt_state, vars, iteration, rng, batch):
     def batch_loss(params, state):
@@ -88,18 +91,23 @@ def _update(loss_fn, optimizer,
     params = vars["params"]
     state = {k: v for k, v in vars.items() if k != "params"}
     grad_fn = jax.grad(batch_loss, argnums=0, has_aux=True)
+    grad_only_fn = lambda params, _: grad_fn(params, state)[0]
     grads, output =  grad_fn(params, state)
-    updates, opt_state = optimizer.update(grads, opt_state, params)
+    # grad_fn allows the use of the "sam" optimizer
+    updates, opt_state = optimizer.update(grads, opt_state, params, grad_fn=grad_only_fn)
     params = optax.apply_updates(params, updates)
     var_updates = output.var_updates if output.var_updates is not None else {}
     vars = {"params": params, **var_updates}
-    return opt_state, vars, output.stats
+    return opt_state, vars, output.metrics
 
 def fit(*, data : Data[Sample],
+        rng_key : jax.Array,
         optimizer : optax.GradientTransformation,
         batch_loss_fn : Callable[[Vars, jax.Array, jax.Array, Sample], LossOutput],
         init_vars : Vars, 
-        rng_key : jax.Array,
+        init_opt_state : OptState = None,
+        donate_init_vars : bool = False,
+        donate_init_opt_state : bool = False,
         max_epochs : int = None,
         max_iterations : int = None,
         batch_size : int,
@@ -123,8 +131,13 @@ def fit(*, data : Data[Sample],
         max_iterations = max_epochs * iterations_per_epoch
     if max_epochs is None:
         max_epochs = (max_iterations + iterations_per_epoch - 1) // iterations_per_epoch
-    vars = init_vars
-    opt_state = optimizer.init(vars["params"])
+
+    vars = init_vars if donate_init_vars else jax.tree_map(lambda x: jnp.copy(x), init_vars)
+    optimizer = optax.with_extra_args_support(optimizer)
+    if init_opt_state is None:
+        opt_state = optimizer.init(vars["params"])
+    else:
+        opt_state = init_opt_state if donate_init_opt_state else jax.tree_map(lambda x: jnp.copy(x), init_opt_state)
 
     pbar = Progress(
                 TextColumn("[progress.description]{task.description}"),
@@ -158,7 +171,7 @@ def fit(*, data : Data[Sample],
                         stats
                     )
                     for h in hooks:
-                        h(next(rng), state)
+                        h(rng, state)
                     iteration += 1
                     pbar.update(iteration_task, completed=i+1)
                     pbar.update(total_iteration_task, completed=iteration)
@@ -175,7 +188,7 @@ def fit(*, data : Data[Sample],
                 stats
             )
             for h in hooks:
-                h(next(rng), state)
+                h(rng, state)
     except (KeyboardInterrupt, BdbQuit):
         # Hard-kill wandb process on manual exit
         cmd = "ps aux|grep wandb|grep -v grep | awk '\''{print $2}'\''|xargs kill -9"
@@ -187,66 +200,90 @@ def fit(*, data : Data[Sample],
     return vars
 
 # Hook decorators
-def every_n_iterations(*hooks, n=1):
+def every_n_iterations(n, *hooks):
     if not hooks:
         return partial(every_n_iterations, n=n)
-    def wrapped(rng_key, state, **kwargs):
-        if state.epoch % n == 0 and \
-                state.epoch_iteration + 1 == state.iterations_per_epoch:
+    def wrapped(rng, state, **kwargs):
+        if state.iteration % n == 0:
             for h in hooks:
-                h(rng_key, state, **kwargs)
+                h(rng, state, **kwargs)
     if len(hooks) == 1:
         wrapped = functools.wraps(hooks[0])(wrapped)
     return wrapped
 
-def every_n_epochs(*hooks, n=1):
+def every_n_epochs(n, *hooks):
     if not hooks:
         return partial(every_n_epochs, n=n)
-    def wrapped(rng_key, state, **kwargs):
+    def wrapped(rng, state, **kwargs):
         if state.epoch % n == 0 and \
                 state.epoch_iteration == 0:
             for h in hooks:
-                h(rng_key, state, **kwargs)
+                h(rng, state, **kwargs)
     if len(hooks) == 1:
         wrapped = functools.wraps(hooks[0])(wrapped)
     return wrapped
 
-every_epoch = partial(every_n_epochs, n=1)
+every_epoch = partial(every_n_epochs, 1)
 
 # console logging hooks
-def console_logger(prefix=None, suffix=None):
-    def log_fn(rng_key, state, **kwargs):
-        flattened = dict_flatten(
-            state.last_stats,
+def console_logger(*data_hooks, logger=None, prefix=None, suffix=None, metrics=False):
+    logger = logger if logger is not None else logging.getLogger(__name__)
+    def log_hook(rng, state, *, log=None, **kwargs):
+        r = []
+        if log is not None:
+            r.append(log)
+        if metrics:
+            r.append(state.metrics)
+        for hook in data_hooks:
+            r.append(hook(rng, state, **kwargs))
+
+        flattened = dict_flatten(*r,
             prefix=prefix, suffix=suffix
         )
         p = f"epoch: {state.epoch:>3} iter: {state.iteration:>4}"
         for k, v in flattened.items():
             logger.info(f"{p} - {k}: {v}")
-    return log_fn
+    return log_hook
+
+def log_to(data_hook, *log_hooks):
+    def hook_fn(rng, state, log=None, **kwargs):
+        extra_log = data_hook(rng, state, **kwargs) if data_hook is not None else None
+        log = log, extra_log if log is not None else extra_log
+        for h in log_hooks:
+            h(rng, state, log=log)
+    return hook_fn
 
 # validation hook
-def validate(*, hooks, 
-            dataset, batch_loss_fn, 
-            batch_size
+def validate(*hooks,
+            data, batch_size,
+            batch_loss_fn,
+            log_hooks=[]
         ):
+    if log_hooks:
+        hooks = hooks + tuple(log_hooks)
+
     # the validation dataloader
-    dataloader = DataLoader(dataset,
-        batch_size=batch_size, shuffle=False
+    # note that this is shared across hook calls
+
+    dataloader = DataLoader(data,
+        batch_size=batch_size, shuffle=False,
     )
-    def hook_fn(rng_key, state, **kwargs):
+
+    @jax.jit
+    def metric_fn(vars: Vars, iteration: int, rng_key: jax.Array, batch: Sample):
+        output = batch_loss_fn(vars, iteration, rng_key, batch)
+        return output.metrics
+
+    def hook_fn(rng, state, *, log=None, **kwargs):
         all_stats = []
-        rng = PRNGSequence(rng_key)
         for batch in dataloader:
-            output = batch_loss_fn(
+            metrics = metric_fn(
                 state.vars, state.iteration,
                 next(rng), batch
             )
-            all_stats.append(output.stats)
+            all_stats.append(metrics)
         all_stats = jax.tree_map(lambda *x: jnp.stack(x, 0), *all_stats)
         all_stats = jax.tree_map(lambda x: jnp.mean(x, 0), all_stats)
-
-        state = struct.replace(state, last_stats=all_stats)
         for h in hooks:
-            h(next(rng), state)
+            h(rng, state, log=all_stats, **kwargs)
     return hook_fn

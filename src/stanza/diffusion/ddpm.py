@@ -2,6 +2,7 @@ from stanza import struct
 from functools import partial
 from typing import Optional, TypeVar, Callable
 
+import stanza.util
 import stanza.transform as T
 import jax.numpy as jnp
 import jax.flatten_util
@@ -199,8 +200,8 @@ class DDPMSchedule:
     @jax.jit
     def compute_denoised(self, noised_sample : Sample, t : jax.Array, data_batch : Sample) -> Sample:
         """Computes the true E[x_0 | x_t] given a batch of x_0's."""
-        noised_sample_flat, unflatten = jax.flatten_util.ravel_pytree(noised_sample)
-        data_batch_flat = jax.vmap(lambda x: jax.flatten_util.ravel_pytree(x)[0])(data_batch)
+        noised_sample_flat, unflatten = stanza.util.ravel_pytree(noised_sample)
+        data_batch_flat = jax.vmap(lambda x: stanza.util.ravel_pytree(x)[0])(data_batch)
         # compute the mean
         sqrt_alphas_prod = jnp.sqrt(self.alphas_cumprod[t])
         sqrt_one_minus_alphas_prod = jnp.sqrt(1 - self.alphas_cumprod[t])
@@ -248,7 +249,7 @@ class DDPMSchedule:
 
     @T.jit
     def sample(self, rng_key : jax.Array, model : Callable[[jax.Array, Sample, jax.Array], Sample], 
-                        example_sample : Sample, *, num_steps : Optional[int] = None,
+                        sample_structure: Sample, *, num_steps : Optional[int] = None,
                         final_time : Optional[int] = None, trajectory : bool = False):
         """ Runs the reverse process, given a denoiser model, for a number of steps. """
         if final_time is None:
@@ -257,8 +258,8 @@ class DDPMSchedule:
             num_steps = self.num_steps - final_time
         step_ratio = (self.num_steps - final_time) / num_steps
         # sample initial noise
-        sample_flat, unflatten = jax.flatten_util.ravel_pytree(example_sample)
-        random_sample = unflatten(jax.random.normal(rng_key, sample_flat.shape))
+        flat_structure, unflatten = stanza.util.ravel_pytree_structure(sample_structure)
+        random_sample = unflatten(jax.random.normal(rng_key, flat_structure.shape))
 
         if trajectory:
             # if we want to return the trajectory, do a scan.

@@ -1,7 +1,8 @@
-from typing import Callable, Generic, TypeVar, Optional, Union, Protocol, Iterable, Tuple
+from typing import Generic, TypeVar, Mapping, Tuple
 
 from stanza import struct
 from stanza.data import Data
+from stanza.data.normalizer import Normalizer
 from stanza.util.registry import Registry, from_module, transform_result
 
 import jax
@@ -12,7 +13,8 @@ T = TypeVar('T')
 
 @struct.dataclass
 class Dataset(Generic[T]):
-    splits: dict[str, Data[T]]
+    splits: Mapping[str, Data[T]]
+    normalizers: Mapping[str, Normalizer[T]]
 
 DatasetRegistry = Registry
 
@@ -25,7 +27,10 @@ class ImageClassDataset(Dataset[Tuple[jax.Array, jax.Array]]):
     classes: list[str]
 
     def as_image_dataset(self) -> ImageDataset:
-        return ImageDataset({k: v.map(lambda x: x[0]) for k, v in self.splits.items()})
+        return ImageDataset(
+            splits={k: v.map(lambda x: x[0]) for k, v in self.splits.items()},
+            normalizers={k: v.map(lambda x: x[0]) for k, v in self.normalizers.items()}
+        )
 
 image_class_datasets : DatasetRegistry[ImageClassDataset] = DatasetRegistry[Dataset]()
 """Datasets containing (image, label) pairs,

@@ -98,13 +98,13 @@ def _shuffle(rng_key, len):
     return jax.random.permutation(rng_key, jnp.arange(len))
 
 class DataLoader(Generic[T]):
-    def __init__(self, dataset : Data[T], *, batch_size : int =1,
+    def __init__(self, data: Data[T], *, batch_size : int =1,
                 shuffle : bool =False, rng_key : jax.Array = None, drop_jagged : bool =False,
                 num_workers : int = 1, chunksize : int =16):
         if shuffle and rng_key is None:
             raise ValueError("Must provide rng_key if shuffle=True")
         self.rng_key = rng_key
-        self.dataset = dataset
+        self.data = data
         self.batch_size = batch_size
         self.chunksize = chunksize
         self.shuffle = shuffle
@@ -112,7 +112,7 @@ class DataLoader(Generic[T]):
         self.pool = mp_pool.ThreadPool(max(num_workers,1))
     
         def _get_batch(indices):
-            batch = jax.vmap(lambda i: dataset[i])(indices)
+            batch = jax.vmap(lambda i: data[i])(indices)
             return jax.tree_map(
                 lambda x: jax.device_put(x), batch
             )
@@ -126,10 +126,10 @@ class DataLoader(Generic[T]):
     def __iter__(self) -> Iterator[T]:
         if self.shuffle:
             rng_key, subkey = jax.random.split(self.rng_key)
-            indices = _shuffle(subkey, len(self.dataset))
+            indices = _shuffle(subkey, len(self.data))
             self.rng_key = rng_key
         else:
-            indices = jnp.arange(len(self.dataset))
+            indices = jnp.arange(len(self.data))
         if len(indices) % self.batch_size != 0:
             final_batch_len = len(indices) % self.batch_size
             last_batch = indices[-final_batch_len:]
@@ -146,4 +146,7 @@ class DataLoader(Generic[T]):
         )
    
     def __len__(self) -> int:
-        return len(self.dataset) // self.batch_size
+        return (
+            len(self.data) // self.batch_size if self.drop_jagged else 
+            (len(self.data) + self.batch_size - 1) // self.batch_size
+        )

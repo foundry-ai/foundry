@@ -2,39 +2,35 @@ import functools
 import wandb
 
 from functools import partial
-from stanza.util import dict_flatten
+from stanza.train.reporting import Video, Image, dict_flatten
 from pathlib import Path
 
-def wandb_log(hook=None, run=None, prefix=None, suffix=None):
-    if hook is None:
-        return partial(wandb_log, run=run)
-    @functools.wraps(hook)
-    def wrapped(rng_key, state, **kwargs):
-        r = hook(rng_key, state, **kwargs)
-        if r is not None and run is not None:
+def convert(x):
+    if isinstance(x, Image):
+        return wandb.Image(x.data)
+    elif isinstance(x, Video):
+        return wandb.Video(x.data)
+    return x
+
+def wandb_log(*hooks, run=None, prefix=None, 
+              suffix=None, metrics=False, step_info=False):
+    def logger(rng, state, log=None, **kwargs):
+        if run is not None:
+            r = []
+            if log is not None: r.append(log)
+            if metrics: r.append(state.metrics)
+            if step_info: r.append({
+                "iteration": state.iteration,
+                "epoch": state.epoch,
+                "epoch_iteration": state.epoch_iteration
+            })
+            for hook in hooks: r.append(hook(rng, state, **kwargs))
             flattened = dict_flatten(
-                r,
+                *r,
                 prefix=prefix, suffix=suffix
             )
             wandb.log(flattened, step=state.iteration)
-    return wrapped
-
-def wandb_stat_logger(run=None, 
-                    prefix=None, suffix=None,
-                    log_step_info=True):
-    def log_fn(rng_key, state, **kwargs):
-        stats = state.last_stats
-        extra_info = {
-            "iteration": state.iteration,
-            "epoch": state.epoch,
-            "epoch_iteration": state.epoch_iteration
-        } if log_step_info else {}
-        flattened = dict_flatten(
-            stats, extra_info,
-            prefix=prefix, suffix=suffix
-        )
-        wandb.log(flattened, step=state.iteration)
-    return log_fn
+    return logger
 
 def wandb_checkpoint(run=None, dir="checkpoints",
                 format="epoch_{epoch}.ckpt"):
@@ -44,9 +40,9 @@ def wandb_checkpoint(run=None, dir="checkpoints",
     dir = Path(run.dir) / dir
     checkpointer = ocp.StandardCheckpointer()
 
-    def log_fn(rng_key, state, **kwargs):
+    def log_fn(rng, state, **kwargs):
         vars = state.vars
-        stats = state.last_stats
+        stats = state.metrics
         extra_info = {
             "iteration": state.iteration,
             "epoch": state.epoch,

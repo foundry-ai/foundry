@@ -1,5 +1,10 @@
 from stanza.datasets import DatasetRegistry, ImageDataset
 from stanza.data import Data, io
+from stanza.data.normalizer import ImageNormalizer
+
+import jax
+import jax.numpy as jnp
+
 from . import util as du
 
 class CelebAData(Data):
@@ -33,7 +38,12 @@ def _load_celeb_a(quiet=False, **kwargs):
     
     train_data = CelebAData(extract_path)
 
-    return ImageDataset(splits={"train": train_data})
+    return ImageDataset(
+        splits={"train": train_data},
+        normalizers={
+            "hypercube": ImageNormalizer(jax.ShapeDtypeStruct((218, 178, 3), jnp.uint8)), 
+        },
+    )
 
 
 registry = DatasetRegistry()

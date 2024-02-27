@@ -1,8 +1,9 @@
-from pathlib import Path
-import tarfile
+import jax
 import jax.numpy as jnp
+
 import pickle
 from stanza.data import PyTreeData
+from stanza.data import normalizer as nu
 from stanza.datasets import DatasetRegistry, ImageClassDataset
 from .util import download, extract, cache_path
 
@@ -47,6 +48,12 @@ def _load_cifar10(quiet=False):
     }
     return ImageClassDataset(
         splits=data,
+        normalizers={
+            "hypercube": nu.Compose(
+                (nu.ImageNormalizer(jax.ShapeDtypeStruct((32, 32, 3), jnp.uint8)),
+                    nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))
+            )
+        },
         classes=["airplane", "automobile", "bird", "cat", "deer",
                  "dog", "frog", "horse", "ship", "truck"]
     )
@@ -88,6 +95,12 @@ def _load_cifar100(quiet=False):
     }
     return ImageClassDataset(
         splits=data,
+        normalizers={
+            "hypercube": nu.Compose(
+                (nu.ImageNormalizer(jax.ShapeDtypeStruct((32, 32, 3), jnp.uint8)), 
+                    nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))
+            )
+        },
         classes=classes
     )
 

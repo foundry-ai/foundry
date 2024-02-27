@@ -1,6 +1,6 @@
 from stanza.datasets import ImageClassDataset, DatasetRegistry
 import stanza.data as du
-import stanza.util as util
+from stanza.data import normalizer as nu
 
 from .util import cache_path, download
 
@@ -29,7 +29,6 @@ def _load_mnist(quiet=False, **kwargs):
                 img = jnp.array(array.array("B", fh.read()),
                         dtype=jnp.uint8).reshape(num_data, rows, cols)
                 # Add channel dimension
-                img = img.astype(jnp.float32) / 255.
                 return jnp.expand_dims(img, -1)
 
         for job_name, filename in [
@@ -52,6 +51,12 @@ def _load_mnist(quiet=False, **kwargs):
             splits={
                 "train": du.PyTreeData(train_data),
                 "test": du.PyTreeData(test_data)
+            },
+            normalizers={
+                "hypercube": nu.Compose(
+                    (nu.ImageNormalizer(jax.ShapeDtypeStruct((28, 28, 1), jnp.uint8)), 
+                     nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))
+                )
             },
             classes=[str(i) for i in range(10)]
         )

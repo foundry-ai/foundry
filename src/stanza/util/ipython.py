@@ -30,7 +30,7 @@ pre {
 }
 </style>"""
 
-def from_image(array):
+def as_image(array):
     array = np.array(array)
     if array.ndim == 2:
         array = np.expand_dims(array, -1)
@@ -45,7 +45,7 @@ def from_image(array):
     img.save(path)
     return HBox([HTML(STYLE), Image.from_file(path)])
 
-def from_video(array, fps=28):
+def as_video(array, fps=28):
     array = np.array(array)
     if array.dtype == np.float32 or array.dtype == np.float64:
         array = (array*255).astype(np.uint8)
@@ -124,6 +124,12 @@ def _rich_jupyter_display(segments: Iterable[Segment], text: str):
     else:
         _add_to_rich_display(jupyter_renderable)
 
+def display(*objs, **kwargs):
+    global _current_output
+    # interrupt current output
+    _current_output = None
+    return IPython.display.display(*objs, **kwargs)
+
 def _rich_live_refresh(self):
     with self._lock:
         self._live_render.set_renderable(self.renderable)
@@ -137,8 +143,11 @@ def _rich_live_refresh(self):
             else:
                 if self.ipy_widget is None:
                     self.ipy_widget = Output()
-                    _add_to_rich_display(self.ipy_widget)
-                    # display(HBox([HTML(STYLE), self.ipy_widget]))
+                    # _add_to_rich_display(self.ipy_widget)
+                    display(HBox([HTML(STYLE), self.ipy_widget]))
+                    # Force the next output to create a new display
+                    global _current_output
+                    _current_output = None
 
                 with self.ipy_widget:
                     self.ipy_widget.clear_output(wait=True)
