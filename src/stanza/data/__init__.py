@@ -1,4 +1,5 @@
 import abc
+import itertools
 import jax
 import jax.numpy as jnp
 import multiprocessing.pool as mp_pool
@@ -107,6 +108,7 @@ class DataLoader(Generic[T]):
         self.batch_size = batch_size
         self.chunksize = chunksize
         self.shuffle = shuffle
+        self.drop_jagged = drop_jagged
         self.pool = mp_pool.ThreadPool(max(num_workers,1))
     
         def _get_batch(indices):
@@ -130,9 +132,14 @@ class DataLoader(Generic[T]):
             indices = jnp.arange(len(self.dataset))
         if len(indices) % self.batch_size != 0:
             final_batch_len = len(indices) % self.batch_size
+            last_batch = indices[-final_batch_len:]
             indices = indices[:-final_batch_len]
+        else:
+            last_batch = None
         indices = jnp.reshape(indices, (-1, self.batch_size))
         batch_indices = iter(indices)
+        if last_batch is not None and not self.drop_jagged:
+            batch_indices = itertools.chain(batch_indices, [last_batch])
         return self.pool.imap(
             self._get_batch,
             batch_indices, chunksize=self.chunksize

@@ -20,14 +20,7 @@ import tarfile
 import logging
 logger = logging.getLogger(__name__)
 
-# generic IO utilities
-
-def read_image(path):
-    return jnp.array(Image.open(path), dtype=jnp.uint8)
-
-
 # Downloading and extracting utilities...
-
 _DATA = Path(os.environ["HOME"]) / ".dataset_cache"
 
 def cache_path(key, filename=None):

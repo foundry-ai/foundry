@@ -1,14 +1,12 @@
-from bdb import BdbQuit
-import os
-import sys
 import stanza.struct as struct
+
 from stanza.util.random import PRNGSequence
 from stanza.util import MofNColumn, dict_flatten
-from stanza.data import DataLoader
+from stanza.data import Data, DataLoader
 
-from typing import Any
+from typing import Any, TypeVar, Callable
 from functools import partial
-
+from bdb import BdbQuit
 from rich.progress import (
     Progress, TextColumn, BarColumn, 
     TimeRemainingColumn, TimeElapsedColumn
@@ -21,11 +19,13 @@ import jax.numpy as jnp
 import functools
 
 import jax
+import os
 import optax # type: ignore
 
 import logging
-logger = logging.getLogger("stanza.train")
+logger = logging.getLogger(__name__)
 
+Sample = TypeVar("Sample")
 OptState = Any
 Vars = Any
 Stats = Any
@@ -33,7 +33,8 @@ Stats = Any
 # Training hooks
 @struct.dataclass
 class TrainState:
-    total_iterations: int
+    max_iterations: int
+    max_epochs: int
     iterations_per_epoch: int
 
     iteration: int
@@ -94,18 +95,34 @@ def _update(loss_fn, optimizer,
     vars = {"params": params, **var_updates}
     return opt_state, vars, output.stats
 
-def fit(*, dataset, optimizer, batch_loss_fn, init_vars, 
-        rng_key, num_epochs, batch_size, hooks=[],
+def fit(*, data : Data[Sample],
+        optimizer : optax.GradientTransformation,
+        batch_loss_fn : Callable[[Vars, jax.Array, jax.Array, Sample], LossOutput],
+        init_vars : Vars, 
+        rng_key : jax.Array,
+        max_epochs : int = None,
+        max_iterations : int = None,
+        batch_size : int,
+        hooks=[],
         trace_dir=None):
+    """A fit a model to data using a
+    given optimizer and loss function.
+    """
+    if max_epochs is None and max_iterations is None:
+        raise ValueError("max_epochs or max_iterations must be specified")
     batch_loss_fn = jax.jit(batch_loss_fn)
     rng = PRNGSequence(rng_key)
     dataloader = DataLoader(
-        dataset, batch_size=batch_size,
-        rng_key=next(rng), shuffle=True
+        data, batch_size=batch_size,
+        rng_key=next(rng), shuffle=True,
+        drop_jagged=True
     )
     iteration = 0
     iterations_per_epoch = len(dataloader)
-    total_iterations = num_epochs * iterations_per_epoch
+    if max_iterations is None:
+        max_iterations = max_epochs * iterations_per_epoch
+    if max_epochs is None:
+        max_epochs = (max_iterations + iterations_per_epoch - 1) // iterations_per_epoch
     vars = init_vars
     opt_state = optimizer.init(vars["params"])
 
@@ -116,8 +133,8 @@ def fit(*, dataset, optimizer, batch_loss_fn, init_vars,
                 TimeRemainingColumn(),
                 TimeElapsedColumn()
             )
-    total_iteration_task = pbar.add_task("Iteration", total=total_iterations)
-    epoch_task = pbar.add_task("Epoch", total=num_epochs)
+    total_iteration_task = pbar.add_task("Iteration", total=max_iterations)
+    epoch_task = pbar.add_task("Epoch", total=max_epochs)
     iteration_task = pbar.add_task("Epoch Iteration", total=iterations_per_epoch)
 
     if trace_dir is not None:
@@ -125,7 +142,7 @@ def fit(*, dataset, optimizer, batch_loss_fn, init_vars,
         jax.profiler.start_trace(trace_dir, create_perfetto_trace=True)
     try:
         with pbar:
-            for epoch in range(num_epochs):
+            for epoch in range(max_epochs):
                 pbar.reset(iteration_task)
                 for i, batch in enumerate(dataloader):
                     opt_state, vars, stats = _update(
@@ -134,7 +151,7 @@ def fit(*, dataset, optimizer, batch_loss_fn, init_vars,
                         iteration, next(rng), batch
                     )
                     state = TrainState(
-                        total_iterations,
+                        max_iterations, max_epochs,
                         iterations_per_epoch,
                         iteration, epoch, i,
                         opt_state, vars,
@@ -145,10 +162,12 @@ def fit(*, dataset, optimizer, batch_loss_fn, init_vars,
                     iteration += 1
                     pbar.update(iteration_task, completed=i+1)
                     pbar.update(total_iteration_task, completed=iteration)
+                    if iteration >= max_iterations:
+                        break
                 pbar.update(epoch_task, advance=1)
             # do one final hook call
             state = TrainState(
-                total_iterations,
+                max_iterations, max_epochs,
                 iterations_per_epoch,
                 iteration,
                 epoch + 1, 0,

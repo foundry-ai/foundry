@@ -1,15 +1,17 @@
 from stanza.datasets import DatasetRegistry, ImageDataset
-from stanza.data import IOData
-
+from stanza.data import Data, io
 from . import util as du
 
-class CelebAData(IOData):
+class CelebAData(Data):
     def __init__(self, path):
         self._path = path
-        super().__init__()
     
-    def _fetch(self, idx):
-        return du.read_image(self._path / f"{idx+1:06d}.jpg")
+    def __getitem__(self, idx):
+        return io.read_image(
+            self._path / "{:06d}.jpg", 
+            (218, 178, 3),
+            idx + 1
+        )
 
     def __len__(self):
         return 202599
