@@ -49,7 +49,7 @@ class TrainState:
 
 @struct.dataclass
 class LossOutput:
-    loss: ArrayLike
+    loss: ArrayLike = 0.
     metrics: Metrics = None
     var_updates: Vars = None
 

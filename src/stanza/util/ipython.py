@@ -32,10 +32,12 @@ pre {
 
 def as_image(array):
     array = np.array(array)
+    array = np.nan_to_num(array, copy=False, 
+                          nan=0, posinf=0, neginf=0)
     if array.ndim == 2:
         array = np.expand_dims(array, -1)
     if array.dtype == np.float32 or array.dtype == np.float64:
-        array = (array*255).astype(np.uint8)
+        array = (array*255).clip(0, 255).astype(np.uint8)
     if array.shape[-1] == 1:
         array = np.repeat(array, 3, axis=-1)
     img = PILImage.fromarray(array)
@@ -47,8 +49,10 @@ def as_image(array):
 
 def as_video(array, fps=28):
     array = np.array(array)
+    array = np.nan_to_num(array, copy=False, 
+                          nan=0, posinf=0, neginf=0)
     if array.dtype == np.float32 or array.dtype == np.float64:
-        array = (array*255).astype(np.uint8)
+        array = (array*255).clip(0, 255).astype(np.uint8)
     f = tempfile.mktemp() + ".mp4"
     id = uuid.uuid4()
     path = Path("/tmp") / "notebook" / (str(id) + ".mp4")

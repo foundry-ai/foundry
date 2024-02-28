@@ -312,7 +312,7 @@ class DiffusionUNet(UNet):
     time_embed_dim: int = 32
 
     @nn.compact
-    def __call__(self, x, *, timestep=None, time_embed=None,
+    def __call__(self, x, timestep=None, *, time_embed=None,
                             cond=None, cond_embed=None, train=False):
         if timestep is not None and time_embed is None:
             time_embed = nn.Sequential([

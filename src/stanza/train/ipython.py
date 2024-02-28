@@ -1,7 +1,7 @@
 from stanza.util.ipython import display
 from stanza.train.reporting import Reportable, dict_flatten
 
-def display_logger(*hooks, 
+def display_logger(*data_hooks, 
         metrics=False, step_info=False,
         prefix=None, suffix=None, graph_area=None):
     def logger(rng, state, log=None, **kwargs):
@@ -13,7 +13,7 @@ def display_logger(*hooks,
             "epoch": state.epoch,
             "epoch_iteration": state.epoch_iteration
         })
-        for hook in hooks: r.append(hook(rng, state, **kwargs))
+        for hook in data_hooks: r.append(hook(rng, state, **kwargs))
         flattened = dict_flatten(
             *r,
             prefix=prefix, suffix=suffix
