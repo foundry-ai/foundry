@@ -43,7 +43,7 @@ class DDPMSchedule:
     """
 
     @staticmethod
-    def make_linear(num_timesteps : int, beta_start : float =0.0001, beta_end : float=0.02,
+    def make_linear(num_timesteps : int, beta_start : float = 0.0001, beta_end : float = 0.02,
                     **kwargs):
         """ Makes a linear schedule for the DDPM. """
         return DDPMSchedule(
@@ -52,22 +52,35 @@ class DDPMSchedule:
         )
     
     @staticmethod
-    def make_squaredcos_cap_v2(num_timesteps : int, max_beta : float =0.999, **kwargs):
+    def make_squaredcos_cap_v2(num_timesteps : int, order: float = 2, max_beta : float = 0.999, **kwargs):
         """ Makes a squared cosine schedule for the DDPM.
             Uses alpha_bar(t) = cos^2((t + 0.008) / 1.008 * pi / 2)
             i.e. the alpha_bar is a squared cosine function.
 
-            This means a small amount of noise is added at the start, with
-            increasing noise added as time goes on.
+            This means a large amount of noise is added at the start, with
+            decreasing noise added as time goes on.
         """
         t1 = jnp.arange(num_timesteps, dtype=float)/num_timesteps
         t2 = (jnp.arange(num_timesteps, dtype=float) + 1)/num_timesteps
         def alpha_bar(t):
-            return jnp.square(jnp.cos((t + 0.008) / 1.008 * jnp.pi / 2))
+            return jnp.pow(jnp.cos((t + 0.008) / 1.008 * jnp.pi / 2), order)
         betas = jnp.minimum(1 - alpha_bar(t2) / alpha_bar(t1), max_beta)
         return DDPMSchedule(
             betas=jnp.concatenate((jnp.zeros((1,)), betas), axis=-1),
             **kwargs)
+    
+    @staticmethod
+    def make_scaled_linear_schedule(num_timesteps : int,
+                beta_start : float = 0.0001, beta_end : float = 0.02, **kwargs):
+        """ Makes a scaled linear (i.e quadratic) schedule for the DDPM.
+        """
+        betas = jnp.concatenate((jnp.zeros((1,)),
+            jnp.linspace(beta_start**0.5, beta_end**0.5, num_timesteps)**2),
+        axis=-1)
+        return DDPMSchedule(
+            betas=betas,
+            **kwargs
+        )
 
     @property
     def num_steps(self) -> int:
@@ -206,12 +219,16 @@ class DDPMSchedule:
         sqrt_alphas_prod = jnp.sqrt(self.alphas_cumprod[t])
         sqrt_one_minus_alphas_prod = jnp.sqrt(1 - self.alphas_cumprod[t])
 
+        # forward diffusion equation for diffusing t timesteps:
         # noised_sample = sqrt_alphas_prod * denoised + sqrt_one_minus_alphas_prod * noise
+
         noise = (noised_sample_flat[None,:] - sqrt_alphas_prod * data_batch_flat) / sqrt_one_minus_alphas_prod
         # the z^2 term for how far the noised_sample is from the data_batch
         z_sqr = jnp.sum(noise**2, axis=-1)
         log_likelihood = -0.5*z_sqr
         log_likelihood = log_likelihood - jax.scipy.special.logsumexp(log_likelihood, axis=0)
+        # log_likehood contains log p(x_0 | x_t) for all x_0's in the dataset
+
         # this is equivalent to the log-likelihood (up to a constant factor)
         denoised = jnp.sum(jnp.exp(log_likelihood)[:,None]*data_batch_flat, axis=0)
         return unflatten(denoised)
