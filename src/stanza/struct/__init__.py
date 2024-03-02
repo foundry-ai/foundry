@@ -1,7 +1,7 @@
 import sys
 import inspect
 import jax.tree_util
-import types
+import ast
 
 from functools import partial
 from typing import (
@@ -13,6 +13,9 @@ if sys.version_info >= (3, 11):
     from typing import dataclass_transform
 else:
     from typing_extensions import dataclass_transform
+
+import logging
+logger = logging.getLogger(__name__)
 
 class _MISSING_TYPE:
     def __repr__(self):
@@ -35,11 +38,15 @@ class Field:
         # instance and can be used to set fields
         # based on earlier fields. Either default, default_factory, or initializer
         # must be specified
-        'initializer'
+        'initializer',
+
+        'parse',
+        'pack'
     )
     def __init__(self, *, name, type, 
                  pytree_node=True, kw_only=False,
-                 default=MISSING, default_factory=MISSING, initializer=MISSING):
+                 default=MISSING, default_factory=MISSING, initializer=MISSING,
+                 parse=None, pack=None):
         self.name = name
         self.type = type
         self.pytree_node = pytree_node
@@ -47,6 +54,8 @@ class Field:
         self.default = default
         self.default_factory = default_factory
         self.initializer = initializer
+        self.parse = parse
+        self.pack = pack
 
     # if this is a required field
     @property
@@ -60,14 +69,29 @@ class Field:
 
 def field(*, pytree_node=True, kw_only=False, 
           default=MISSING, default_factory=MISSING,
-          initializer=MISSING):
+          initializer=MISSING, parse=None, pack=None):
+    # transform parse and pack into a dict if they are a list
+    if parse is not None and not isinstance(parse, dict):
+        if hasattr(parse, "format"):
+            parse = {parse.format: parse}
+        else:
+            parse = dict({f.format: f for f in parse})
+    if pack is not None and not isinstance(pack, dict):
+        if hasattr(pack, "packer"):
+            pack = {pack.packer: pack}
+        else:
+            pack = dict({f.packer: f for f in pack})
     return Field(name=None, type=None,
         pytree_node=pytree_node,
         kw_only=kw_only,
         default=default,
         default_factory=default_factory,
-        initializer=initializer
+        initializer=initializer,
+        parse=parse, pack=pack
     )
+
+
+
     
 def fields(struct):
     return struct.__struct_fields__.values()
@@ -80,6 +104,12 @@ def replace(struct, **kwargs):
         if k in kwargs: v = kwargs[k]
         object.__setattr__(s, k, v)
     return s
+
+def is_struct(cls):
+    return hasattr(cls, "__struct_fields__")
+
+def is_struct_instance(obj):
+    return is_struct(obj.__class__)
 
 class StructParams(NamedTuple):
     kw_only: bool
@@ -195,7 +225,7 @@ def _collect_fields(cls, params) -> Tuple[Dict[str, Field], Dict[str, Field], Di
 def _make_field_init(clazz, self_name, field):
     lines = []
     make_setter = lambda value: f"object.__setattr__({self_name},\"{field.name}\",{value})"
-    if field.required: 
+    if field.required or field.default is not MISSING: 
         lines.append(make_setter(field.name))
     else:
         lines.append(f"if {field.name} is not MISSING: " + make_setter(field.name))
@@ -213,6 +243,10 @@ def _make_init(clazz, fields, pos_fields, kw_fields, globals):
     for f in pos_fields.values():
         if f.required:
             args.append(f"{f.name}")
+        elif f.default is not MISSING:
+            # get the default value from the field in the class definition
+            # will be evaluated at method definition time, so no overhead
+            args.append(f"{f.name}=cls.__struct_fields__['{f.name}'].default")
         else:
             args.append(f"{f.name}=MISSING")
     if kw_fields:

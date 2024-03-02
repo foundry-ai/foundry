@@ -22,34 +22,16 @@ dependencies = [
     "shapely>=2.0.3",
     "pymunk>=6.6.0",
     "nbformat>=5.9.2",
+
+    # For google drive and docstring parsing
     "beautifulsoup4>=4.12.3",
+    "ast-comments>=1.2.1",
 ]
 requires-python = ">=3.10"
 readme = "README.md"
 license = {text = "MIT"}
 
 [project.optional-dependencies]
-cuda12_local = [
-    "jax==0.4.24",
-    "jaxlib==0.4.24",
-    "jax-cuda12-plugin==0.4.24",
-]
-cuda12_pip = [
-    "jax==0.4.24",
-    "jaxlib==0.4.24",
-    "jax-cuda12-plugin==0.4.24",
-    # nvidia pip cuda dependencies
-    "nvidia-cublas-cu12>=12.2.5.6",
-    "nvidia-cuda-cupti-cu12>=12.2.142",
-    "nvidia-cuda-nvcc-cu12>=12.2.140",
-    "nvidia-cuda-runtime-cu12>=12.2.140",
-    "nvidia-cudnn-cu12>=8.9",
-    "nvidia-cufft-cu12>=11.0.8.103",
-    "nvidia-cusolver-cu12>=11.5.2",
-    "nvidia-cusparse-cu12>=12.1.2.141",
-    "nvidia-nccl-cu12>=2.19.3",
-    "nvidia-nvjitlink-cu12>=12.2",
-]
 docs = [
     "sphinx>=7.2.6",
     "sphinx-design>=0.5.0",
@@ -59,6 +41,11 @@ docs = [
     "sphinx-autodoc-typehints>=2.0.0",
     "furo>=2024.1.29",
     "sphinx-toolbox>=3.5.0",
+]
+ipython = [
+    "ipykernel>=6.29.2",
+    "ipywidgets>=8.1.2",
+    "jupyterlab>=4.1.2",
 ]
 
 [project.scripts]

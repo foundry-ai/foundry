@@ -1,0 +1,47 @@
+[project]
+name = "stanza-examples"
+version = "0.1.0"
+description = "Default template for PDM package"
+authors = [
+    {name = "Daniel Pfrommer", email = "dan.pfrommer@gmail.com"},
+]
+dependencies = [
+    "stanza @ file:///${PROJECT_ROOT}/..",
+]
+requires-python = ">=3.10"
+readme = "README.md"
+license = {text = "MIT"}
+
+[project.optional-dependencies]
+cuda12_local = [
+    "jax==0.4.24",
+    "jaxlib==0.4.24",
+    "jax-cuda12-plugin==0.4.24",
+]
+cuda12_pip = [
+    "jax==0.4.24",
+    "jaxlib==0.4.24",
+    "jax-cuda12-plugin==0.4.24",
+    # nvidia pip cuda dependencies
+    "nvidia-cublas-cu12>=12.2.5.6",
+    "nvidia-cuda-cupti-cu12>=12.2.142",
+    "nvidia-cuda-nvcc-cu12>=12.2.140",
+    "nvidia-cuda-runtime-cu12>=12.2.140",
+    "nvidia-cudnn-cu12>=8.9",
+    "nvidia-cufft-cu12>=11.0.8.103",
+    "nvidia-cusolver-cu12>=11.5.2",
+    "nvidia-cusparse-cu12>=12.1.2.141",
+    "nvidia-nccl-cu12>=2.19.3",
+    "nvidia-nvjitlink-cu12>=12.2",
+]
+
+[tool.pdm]
+distribution = true
+
+[tool.pdm.dev-dependencies]
+dev = [
+    "ipykernel>=6.29.2",
+    "ipywidgets>=8.1.2",
+    "jupyterlab>=4.1.2",
+    "-e stanza @ file:///${PROJECT_ROOT}/..",
+]
