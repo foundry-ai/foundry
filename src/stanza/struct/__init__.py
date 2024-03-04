@@ -18,6 +18,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 class _MISSING_TYPE:
+    def __bool__(self):
+        return False
+
     def __repr__(self):
         return "Missing"
 
@@ -39,14 +42,11 @@ class Field:
         # based on earlier fields. Either default, default_factory, or initializer
         # must be specified
         'initializer',
-
-        'parse',
-        'pack'
     )
     def __init__(self, *, name, type, 
                  pytree_node=True, kw_only=False,
-                 default=MISSING, default_factory=MISSING, initializer=MISSING,
-                 parse=None, pack=None):
+                 default=MISSING, default_factory=MISSING,
+                 initializer=MISSING):
         self.name = name
         self.type = type
         self.pytree_node = pytree_node
@@ -54,13 +54,16 @@ class Field:
         self.default = default
         self.default_factory = default_factory
         self.initializer = initializer
-        self.parse = parse
-        self.pack = pack
 
     # if this is a required field
     @property
     def required(self):
         return self.default is MISSING and self.default_factory is MISSING and self.initializer is MISSING
+
+    def replace(self, **kwargs):
+        args = {k: getattr(self, k) for k in self.__slots__}
+        args.update(kwargs)
+        return Field(**args)
     
     def __repr__(self):
         return (f"Field(name={self.name}, type={self.type}, "
@@ -69,29 +72,14 @@ class Field:
 
 def field(*, pytree_node=True, kw_only=False, 
           default=MISSING, default_factory=MISSING,
-          initializer=MISSING, parse=None, pack=None):
-    # transform parse and pack into a dict if they are a list
-    if parse is not None and not isinstance(parse, dict):
-        if hasattr(parse, "format"):
-            parse = {parse.format: parse}
-        else:
-            parse = dict({f.format: f for f in parse})
-    if pack is not None and not isinstance(pack, dict):
-        if hasattr(pack, "packer"):
-            pack = {pack.packer: pack}
-        else:
-            pack = dict({f.packer: f for f in pack})
+          initializer=MISSING):
     return Field(name=None, type=None,
         pytree_node=pytree_node,
         kw_only=kw_only,
         default=default,
         default_factory=default_factory,
         initializer=initializer,
-        parse=parse, pack=pack
     )
-
-
-
     
 def fields(struct):
     return struct.__struct_fields__.values()
@@ -199,9 +187,7 @@ def _collect_fields(cls, params) -> Tuple[Dict[str, Field], Dict[str, Field], Di
         if not isinstance(f, Field):
             f = Field(name=None, type=None, kw_only=params.kw_only, default=f)
         # re-instantiate the field with the name and type
-        f = Field(name=name, type=_type, pytree_node=f.pytree_node,
-                  kw_only=f.kw_only or params.kw_only, default=f.default,
-            default_factory=f.default_factory, initializer=f.initializer)
+        f = f.replace(name=name, type=_type)
         annotation_fields[name] = f
 
     for name, value in cls.__dict__.items():
@@ -246,7 +232,7 @@ def _make_init(clazz, fields, pos_fields, kw_fields, globals):
         elif f.default is not MISSING:
             # get the default value from the field in the class definition
             # will be evaluated at method definition time, so no overhead
-            args.append(f"{f.name}=cls.__struct_fields__['{f.name}'].default")
+            args.append(f"{f.name}=cls.{f.name}")
         else:
             args.append(f"{f.name}=MISSING")
     if kw_fields:

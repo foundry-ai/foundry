@@ -1,5 +1,5 @@
 from stanza import struct, partial
-from stanza.struct import click
+from stanza.struct import args
 
 import optax
 

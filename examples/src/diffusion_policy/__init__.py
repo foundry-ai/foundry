@@ -1,4 +1,4 @@
-from stanza.struct import click
+from stanza.struct import args
 from stanza import struct
 
 from common import TrainConfig
@@ -7,7 +7,6 @@ from common import TrainConfig
 class Config:
     train: TrainConfig = TrainConfig()
 
-@click.command()
-@click.option("--config", type=Config, prefix_fields=False)
-def train(params):
-    pass
+@args.command(Config, "train")
+def train(config):
+    print(config)
