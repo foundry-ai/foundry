@@ -24,7 +24,14 @@ class Video(Reportable):
         display(as_video(self.data, self.fps))
 
 def _key_str(key):
-    return key.key
+    if isinstance(key, jax.tree_util.DictKey):
+        return key.key
+    elif isinstance(key, jax.tree_util.GetAttrKey):
+        return key.name
+    elif isinstance(key, jax.tree_util.SequenceKey):
+        return key.idx
+    else:
+        raise ValueError(f"Unknown key type: {key}")
 
 def dict_flatten(*trees, prefix=None, suffix=None):
     flattened = {}

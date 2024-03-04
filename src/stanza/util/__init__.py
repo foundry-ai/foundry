@@ -5,8 +5,6 @@ import jax.numpy as jnp
 
 from typing import Any
 
-MISSING = object()
-
 class FrozenInstanceError(AttributeError): pass
 
 from jax._src.api_util import flatten_axes
@@ -27,7 +25,6 @@ def ravel_pytree(pytree):
         return leaves.reshape((-1,)), unflatten
     return jax.flatten_util.ravel_pytree(pytree)
 
-
 def ravel_pytree_structure(pytree):
     leaves, treedef = jax.tree_util.tree_flatten(pytree)
     shapes, types = [l.shape for l in leaves], [l.dtype for l in leaves]
@@ -43,6 +40,24 @@ def ravel_pytree_structure(pytree):
         nodes = unravel_to_list(x)
         return jax.tree_util.tree_unflatten(treedef, nodes)
     return jax.ShapeDtypeStruct((total_elems,), type), unravel_to_pytree
+
+def _key_str(key):
+    if isinstance(key, jax.tree_util.DictKey):
+        return key.key
+    elif isinstance(key, jax.tree_util.GetAttrKey):
+        return key.name
+    elif isinstance(key, jax.tree_util.SequenceKey):
+        return str(key.idx)
+    else:
+        raise ValueError(f"Unknown key type: {key}")
+
+def flatten_to_dict(pytree):
+    leaves, treedef = jax.tree_util.tree_flatten_with_path(pytree)
+    paths = ['.'.join([_key_str(key) for key in path]) for path, _ in leaves]
+    nodes = [node for _, node in leaves]
+    d = {path: node for path, node in zip(paths, nodes)}
+    uf = lambda d: jax.tree_util.tree_unflatten(treedef, [d[k] for k in paths])
+    return d, uf
 
 from rich.text import Text as RichText
 from rich.progress import ProgressColumn
