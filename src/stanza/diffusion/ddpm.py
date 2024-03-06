@@ -72,8 +72,7 @@ class DDPMSchedule:
     @staticmethod
     def make_scaled_linear_schedule(num_timesteps : int,
                 beta_start : float = 0.0001, beta_end : float = 0.02, **kwargs):
-        """ Makes a scaled linear (i.e quadratic) schedule for the DDPM.
-        """
+        """ Makes a scaled linear (i.e quadratic) schedule for the DDPM. """
         betas = jnp.concatenate((jnp.zeros((1,)),
             jnp.linspace(beta_start**0.5, beta_end**0.5, num_timesteps)**2),
         axis=-1)

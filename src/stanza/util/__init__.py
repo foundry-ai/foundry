@@ -30,9 +30,10 @@ def ravel_pytree_structure(pytree):
     shapes, types = [l.shape for l in leaves], [l.dtype for l in leaves]
     type = jnp.result_type(*types) if leaves else jnp.float32
     with jax.ensure_compile_time_eval():
-        elems = jnp.array([0] + [jnp.prod(jnp.array(l.shape)) for l in leaves])
-        total_elems = jnp.sum(elems)
-        indices = tuple(jnp.cumsum(elems))
+        elems = jnp.array([0] + 
+                [jnp.prod(jnp.array(l.shape, dtype=jnp.uint32)) for l in leaves], dtype=jnp.uint32)
+        total_elems = jnp.sum(elems).item()
+        indices = tuple([i.item() for i in jnp.cumsum(elems)])
     def unravel_to_list(x):
         return [x[indices[i]:indices[i+1]].reshape(s).astype(t) 
                 for i, (s, t) in enumerate(zip(shapes, types))]
