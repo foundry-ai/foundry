@@ -2,11 +2,12 @@ import stanza.struct as struct
 import jax
 import jax.numpy as jnp
 import numpy as np
-import warnings
 import functools
-import types
 
-from typing import Any
+from typing import Any, TypeVar
+
+T = TypeVar('T')
+F = TypeVar('F')
 
 def is_array(element: Any) -> bool:
     """Returns `True` if `element` is a JAX array or NumPy array."""
@@ -32,32 +33,49 @@ class partial:
 class Static:
     value: Any = struct.field(pytree_node=False)
 
-def _internal(fun):
-    if not hasattr(fun, '__unwrapper__'):
-        @functools.wraps(fun)
-        def unwrapper(*args, **kwargs):
-            args, kwargs = jax.tree_util.tree_map(
-                lambda x: x.value if isinstance(x, Static) else x,
-                (args, kwargs), is_leaf=lambda x: isinstance(x, Static)
-            )
-            return fun(*args, **kwargs)
-        fun.__unwrapper__ = unwrapper
-    return fun.__unwrapper__
+def unjaxify_pytree(pytree: T) -> T:
+    return jax.tree_util.tree_map(
+        lambda x: x.value if isinstance(x, Static) else x,
+        pytree, is_leaf=lambda x: isinstance(x, Static)
+    )
 
-def _external(fun):
-    def wrapper(*args, **kwargs):
-        args, kwargs = jax.tree_util.tree_map(
-            lambda x: Static(x) if not is_array(x) else x,
-            (args, kwargs), 
-        )
+def jaxify_pytree(pytree : T) -> T:
+    return jax.tree_util.tree_map(
+        lambda x: Static(x) if not is_array(x) else x,
+        pytree
+    )
+
+class JaxFunction:
+    def __init__(self, fun):
+        self.__func__ = fun
+
+    def __call__(self, *args, **kwargs):
+        args, kwargs = unjaxify_pytree((args, kwargs))
+        return self.__func__(*args, **kwargs)
+
+class WrappedFuncion:
+    def __init__(self, fun):
+        self.__func__ = fun
+
+    def __call__(self, *args, **kwargs):
+        args, kwargs = jaxify_pytree((args, kwargs))
+        return self.__func__(*args, **kwargs)
+
+def jaxify_function(fun : F) -> F:
+    return JaxFunction(fun)
+
+def unjaxify_function(fun : F) -> F:
+    def wrapped(*args, **kwargs):
+        args, kwargs = jaxify_pytree((args, kwargs))
         return fun(*args, **kwargs)
-    return wrapper
+    wrapped = functools.wraps(fun)(wrapped)
+    return wrapped
 
-def jit(fun, **kwargs):
+def jit(fun : F, **kwargs) -> F:
     o_fun = fun
-    fun = _internal(fun)
+    fun = jaxify_function(fun)
     fun = jax.jit(fun, **kwargs)
-    fun = _external(fun)
+    fun = unjaxify_function(fun)
     fun = functools.wraps(o_fun)(fun)
     return fun
 
@@ -65,6 +83,7 @@ def jit(fun, **kwargs):
 from jax._src.api_util import flatten_axes
 from jax._src.api import _mapped_axis_size
 from jax._src.api import batching
+
 def pvmap(fun, in_axes=0, out_axes=0, axis_size=None, devices=None):
     zero_in_axes = jax.tree_map(lambda _: 0, in_axes)
     zero_out_axes = jax.tree_map(lambda _: 0, out_axes)

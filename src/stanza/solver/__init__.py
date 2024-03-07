@@ -23,7 +23,7 @@ class Objective:
     def extract_params(self, solver_state : SolverState):
         raise NotImplementedError("extract_params() must be implemented")
     
-    def replace_params(self, solver_state : SolverState, params : Params):
+    def replace_params(self, solver_state : SolverState, params : Params) -> SolverState:
         raise NotImplementedError("replace_params() must be implemented")
 
 class UnsupportedObectiveError(RuntimeError):

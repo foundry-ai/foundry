@@ -55,8 +55,12 @@ class iLQRSolver(Solver):
     @functools.partial(stanza.jit, static_argnames=("implicit_diff", "history"))
     def run(self, objective, *, implicit_diff=True, history=False) -> SolverResult:
         from stanza.policy.mpc import MinimizeMPCState
-        init_state = MinimizeMPCState(0, False, 
-                objective.initial_actions, 0., objective.initial_cost_state)
+        init_state = MinimizeMPCState(
+            jnp.zeros(()), jnp.array(False), 
+            objective.initial_actions,
+            jnp.zeros(()),
+            objective.initial_cost_state
+        )
         solve = stanza.partial(self._solve, history)
         if implicit_diff:
             solve = implicit_diff_solve(solve)
