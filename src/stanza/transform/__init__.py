@@ -111,7 +111,7 @@ def pvmap(fun, in_axes=0, out_axes=0, axis_size=None, devices=None):
                         for x, a in zip(args_flat, in_axes_flat)]
         (args, kwargs) = jax.tree_util.tree_unflatten(in_tree, args_flat)
 
-        pmapped = jax.pmap(vmapped, in_axes=zero_in_axes, out_axes=zero_out_axes, devices=devices)
+        pmapped = jax.pmap(vmapped, in_axes=zero_in_axes, out_axes=zero_out_axes, devices=devices[:pmap_axis_size])
         out = pmapped(*args, **kwargs)
         # reshape the output
         out_flat, out_tree = jax.tree_util.tree_flatten(out)
