@@ -84,10 +84,10 @@ def field(*, pytree_node=True, kw_only=False,
 def fields(struct) -> Iterable[Field]:
     return struct.__struct_fields__.values()
 
-def replace(struct, **kwargs):
-    cls = struct.__class__
+def replace(struct, cls=None, **kwargs):
+    cls = struct.__class__ if cls is None else cls
     s = cls.__new__(cls)
-    for k in struct.__struct_fields__.keys():
+    for k in cls.__struct_fields__.keys():
         v = getattr(struct, k)
         if k in kwargs: v = kwargs[k]
         object.__setattr__(s, k, v)
