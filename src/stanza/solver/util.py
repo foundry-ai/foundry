@@ -7,7 +7,7 @@ import stanza.transform
 from . import SolverResult
 from stanza import struct
 
-def implicit_diff_solve(solve):
+def implicit_diff_solve(solve, assume_psd=False):
     @functools.wraps(solve)
     @stanza.jit
     def diff_solve(objective, init_state):
@@ -56,7 +56,19 @@ def implicit_diff_solve(solve):
             # we have dx/dtheta = -(df/dx)^(-1) df/dtheta
             # equivalently we are solving
             # df/dx * dx' = -df/dtheta * dtheta
-            dx = jax.scipy.linalg.solve(dfdx, - dfdtheta @ dtheta)
+            # jax.debug.print('dfdx {}', dfdx)
+            # jax.debug.print('dfdtheta {}', dfdtheta)
+            # A = dfdx
+            # b = -(dfdtheta @ dtheta)
+            a = jnp.linalg.norm(dfdx, 'fro')
+            dfdx = dfdx / a
+            dfdtheta = dfdtheta / a
+            dx = jnp.linalg.solve(dfdx + 1e-4*jnp.eye(dfdx.shape[0]), -dfdtheta @ dtheta)
+            # U1, S1, V1T = jax.scipy.linalg.svd(dfdx / a)
+            # U2, S2, V2T = jax.scipy.linalg.svd(-dfdtheta / a)
+            # S2_hat = (U1.T @ U2) @ S2
+            # dxdtheta = V1T.T @ (S2_hat / S1) @ V2T
+            # dx = dxdtheta @ dtheta
             dres = jax.tree_map(jnp.zeros_like, res)
             out_tangents = dres, dx
             return out_primals, out_tangents
