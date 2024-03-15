@@ -50,7 +50,7 @@ class MinimizeMPC(Objective):
         return self.cost(cost_state, r.observations, r.actions)
     
     def optimality(self, solver_state):
-        return jax.grad(lambda cost_state, actions: self.eval(cost_state, actions)[1], argnums=1)(
+        return jax.grad(lambda s, a: self.eval(s, a)[1], argnums=1)(
             solver_state.cost_state, solver_state.actions
         )
 
