@@ -99,14 +99,15 @@ class DDPMSchedule:
         """
         sample_flat, unflatten = jax.flatten_util.ravel_pytree(sample)
         unfaltten_vmap = jax.vmap(unflatten)
-
-        noise_flat = jax.random.normal(rng_key, (self.num_steps,) + sample_flat.shape)
-        noise_scales = self.alphas_cumprod * self.betas
-
-        noise_flat = noise_flat * noise_scales[:,None]
+        noise_flat = jax.random.normal(rng_key, (self.num_steps + 1,) + sample_flat.shape)
         # sum up the noise added at each step
-        noise_flat = jnp.cumsum(noise_flat, axis=0)
-        noisy_flat = noise_flat + self.alphas_cumprod[:,None]*sample_flat[None,:]
+        def scan_fn(noise_accum, noise_beta):
+            noise, alpha, beta = noise_beta
+            noise_accum = jnp.sqrt(alpha)*noise_accum + noise*jnp.sqrt(beta)
+            return noise_accum, noise_accum
+        noise_flat = jax.lax.scan(scan_fn, jnp.zeros_like(noise_flat[0]),
+                                  (noise_flat, self.alphas, self.betas))[1]
+        noisy_flat = noise_flat + jnp.sqrt(self.alphas_cumprod[:,None])*sample_flat[None,:]
 
         noise = unfaltten_vmap(noise_flat)
         noisy = unfaltten_vmap(noisy_flat)
