@@ -135,6 +135,8 @@ def make_dataclass(cls, params):
     cls.__slots__ = tuple(field.name for field in fields.values())
     cls.__init__ = _make_init(cls, fields, pos_fields, kw_fields, globals)
     cls.__setattr__ = _make_frozen_setattr(cls)
+    cls.__setstate__ = _make_setstate(cls)
+    cls.__getstate__ = _make_getstate(cls)
     cls.__repr__ = lambda self: f"{cls.__name__}({', '.join(f'{k}={getattr(self, k)!r}' for k in fields)})"
 
     if not getattr(cls, '__doc__'):
@@ -257,6 +259,22 @@ def _make_frozen_setattr(cls):
         ["raise FrozenInstanceError(f'cannot set \"{name}\" on a frozen {cls.__name__}')"],
         locals={"FrozenInstanceError": FrozenInstanceError, "cls": cls}
                 
+    )
+
+def _make_setstate(cls):
+    return _create_fn(
+        "__setstate__",
+        ["self", "state"],
+        ["for k, v in zip(self.__slots__,state): object.__setattr__(self, k, v)"],
+        locals={"cls": cls}
+    )
+
+def _make_getstate(cls):
+    return _create_fn(
+        "__getstate__",
+        ["self"],
+        ["return tuple((getattr(self, k) for k in self.__slots__))"],
+        locals={"cls": cls}
     )
 
 # UTILITIES
