@@ -60,15 +60,24 @@ def implicit_diff_solve(solve, assume_psd=False):
             # jax.debug.print('dfdtheta {}', dfdtheta)
             # A = dfdx
             # b = -(dfdtheta @ dtheta)
-            a = jnp.linalg.norm(dfdx, 'fro')
+            a = jnp.linalg.norm(dfdtheta, 2)
             dfdx = dfdx / a
             dfdtheta = dfdtheta / a
-            dx = jnp.linalg.solve(dfdx + 1e-4*jnp.eye(dfdx.shape[0]), -dfdtheta @ dtheta)
-            # U1, S1, V1T = jax.scipy.linalg.svd(dfdx / a)
-            # U2, S2, V2T = jax.scipy.linalg.svd(-dfdtheta / a)
-            # S2_hat = (U1.T @ U2) @ S2
-            # dxdtheta = V1T.T @ (S2_hat / S1) @ V2T
-            # dx = dxdtheta @ dtheta
+            if True:
+                dx = jax.scipy.linalg.solve(dfdx + 1e-2*jnp.eye(dfdx.shape[0]), -dfdtheta @ dtheta)
+            else:
+                U1, S1, V1T = jax.scipy.linalg.svd(dfdx, full_matrices=False)
+                U2, S2, V2T = jax.scipy.linalg.svd(-dfdtheta, full_matrices=False)
+                # take the pseudo-inverse of dfdx
+                s_max = S2[0]
+                S1, S2 = S1 / s_max, S2 / s_max
+                # S1_inv = jnp.diag(1.0 / S1)
+                # S1_inv = jnp.diag(S1 / (S1**2 + 1e-8))
+                S1_inv = jnp.diag(jnp.where(S1 > 1e-5, 1.0 / S1, 0.0))
+                S2_hat = (U1.T @ U2) @ jnp.diag(S2)
+                # print(S1_inv.shape, S2_hat.shape, V2T.shape, V1T.shape)
+                dxdtheta = V1T.T @ ((S1_inv @ S2_hat) @ V2T)
+                dx = dxdtheta @ dtheta
             dres = jax.tree_map(jnp.zeros_like, res)
             out_tangents = dres, dx
             return out_primals, out_tangents

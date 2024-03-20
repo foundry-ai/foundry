@@ -189,11 +189,6 @@ def fit(*, data : Data[Sample],
             )
             for h in hooks:
                 h(rng, state)
-    except (KeyboardInterrupt, BdbQuit):
-        # Hard-kill wandb process on manual exit
-        cmd = "ps aux|grep wandb|grep -v grep | awk '\''{print $2}'\''|xargs kill -9"
-        os.system(cmd)
-        raise KeyboardInterrupt
     finally:
         if trace_dir is not None:
             jax.profiler.stop_trace()

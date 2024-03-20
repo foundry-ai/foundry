@@ -5,7 +5,7 @@
 groups = ["default", "cuda12_pip", "dev", "docs"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:823dd4ddb280b7f6a8de9dc2f2d84b9353b6b90fc6567107559743826565b24d"
+content_hash = "sha256:b7331caa1d602d5b2dfd15ef5a303f80d7fcc17e4ed309a537176a0f8a499093"
 
 [[package]]
 name = "absl-py"
@@ -479,6 +479,17 @@ dependencies = [
 files = [
     {file = "comm-0.2.1-py3-none-any.whl", hash = "sha256:87928485c0dfc0e7976fd89fc1e187023cf587e7c353e4a9b417555b44adf021"},
     {file = "comm-0.2.1.tar.gz", hash = "sha256:0bc91edae1344d39d3661dcbc36937181fdaddb304790458f8b044dbc064b89a"},
+]
+
+[[package]]
+name = "contextlib2"
+version = "21.6.0"
+requires_python = ">=3.6"
+summary = "Backports and enhancements for the contextlib module"
+groups = ["default"]
+files = [
+    {file = "contextlib2-21.6.0-py2.py3-none-any.whl", hash = "sha256:3fbdb64466afd23abaf6c977627b75b6139a5a3e8ce38405c5b413aed7a0471f"},
+    {file = "contextlib2-21.6.0.tar.gz", hash = "sha256:ab1e2bfe1d01d968e1b7e8d9023bc51ef3509bba217bb730cee3827e1ee82869"},
 ]
 
 [[package]]
@@ -1626,6 +1637,22 @@ groups = ["dev"]
 files = [
     {file = "mistune-3.0.2-py3-none-any.whl", hash = "sha256:71481854c30fdbc938963d3605b72501f5c10a9320ecd412c121c163a1c7d205"},
     {file = "mistune-3.0.2.tar.gz", hash = "sha256:fc7f93ded930c92394ef2cb6f04a8aabab4117a91449e72dcc8dfa646a508be8"},
+]
+
+[[package]]
+name = "ml-collections"
+version = "0.1.1"
+requires_python = ">=2.6"
+summary = "ML Collections is a library of Python collections designed for ML usecases."
+groups = ["default"]
+dependencies = [
+    "PyYAML",
+    "absl-py",
+    "contextlib2",
+    "six",
+]
+files = [
+    {file = "ml_collections-0.1.1.tar.gz", hash = "sha256:3fefcc72ec433aa1e5d32307a3e474bbb67f405be814ea52a2166bfc9dbe68cc"},
 ]
 
 [[package]]
@@ -3264,6 +3291,21 @@ groups = ["default", "dev"]
 files = [
     {file = "traitlets-5.14.1-py3-none-any.whl", hash = "sha256:2e5a030e6eff91737c643231bfcf04a65b0132078dad75e4936700b213652e74"},
     {file = "traitlets-5.14.1.tar.gz", hash = "sha256:8585105b371a04b8316a43d5ce29c098575c2e477850b62b848b964f1444527e"},
+]
+
+[[package]]
+name = "trajax"
+version = "0.0.1"
+git = "https://github.com/google/trajax"
+revision = "c94a637c5a397b3d4100153f25b4b165507b5b20"
+summary = "Accelerated, batchable, differentiable trajectory optimization with JAX."
+groups = ["default"]
+dependencies = [
+    "absl-py>=0.7.0",
+    "jax>=0.2.18",
+    "jaxlib>=0.1.69",
+    "ml-collections>=0.1.1",
+    "scipy>=1.0.0",
 ]
 
 [[package]]

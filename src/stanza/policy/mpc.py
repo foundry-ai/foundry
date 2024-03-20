@@ -22,6 +22,13 @@ import jax.experimental.host_callback
 
 # A special MinimizeMPC objective
 # which solvers can take
+@dataclass
+class MinimizeMPCState(SolverState):
+    params: Any
+    actions: Any
+    cost: float
+    cost_state: Any = None
+
 @dataclass(kw_only=True)
 class MinimizeMPC(Objective):
     # The actions. 
@@ -31,46 +38,46 @@ class MinimizeMPC(Objective):
     cost_fn: Callable
     model_fn: Callable
 
+    initial_params: Any = None
     initial_cost_state : Any = None
+    has_params: bool = field(default=False, pytree_node=False)
     has_state: bool = field(default=False, pytree_node=False)
     has_aux: bool = field(default=False, pytree_node=False)
 
-    def cost(self, cost_state, states, actions):
-        r = self.cost_fn(cost_state, states, actions) \
-            if self.has_state else self.cost_fn(states, actions)
+    def cost(self, cost_state, params, states, actions):
+        args = tuple()
+        if self.has_state: args += (cost_state,)
+        if self.has_params: args += (params,)
+        args += (states,actions)
+        r = self.cost_fn(*args)
         r = (r,) if not (self.has_state or self.has_aux) else r
         state, r = (r[0], r[1:]) if self.has_state else (None, r)
         cost, aux = (r[0], r[1]) if self.has_aux else (r[0], None)
         return state, cost, aux
 
-    def eval(self, cost_state, actions):
+    def eval(self, cost_state, params, actions):
         r = stanza.policy.rollout(
             self.model_fn, self.state0, policy=Actions(actions)
         )
-        return self.cost(cost_state, r.observations, r.actions)
+        return self.cost(cost_state, params, r.observations, r.actions)
     
-    def optimality(self, solver_state):
-        return jax.grad(lambda s, a: self.eval(s, a)[1], argnums=1)(
-            solver_state.cost_state, solver_state.actions
+    def optimality(self, solver_state : MinimizeMPCState):
+        return jax.grad(lambda s, p, a: self.eval(s, p, a)[1], argnums=(1,2))(
+            solver_state.cost_state, solver_state.params, solver_state.actions
         )
 
     def extract_params(self, solver_state):
-        return solver_state.actions
+        return solver_state.params, solver_state.actions
     
-    def replace_params(self, solver_state, actions):
-        return replace(solver_state, actions=actions)
+    def replace_params(self, solver_state, params):
+        params, actions = params
+        return replace(solver_state, actions=actions, params=params)
 
     def as_minimize(self):
         return Minimize(
             fun=self.eval,
             initial_params=self.initial_actions,
         )
-
-@dataclass
-class MinimizeMPCState(SolverState):
-    actions: Any
-    cost: float
-    cost_state: Any = None
 
 @dataclass(kw_only=True)
 class MPCState:

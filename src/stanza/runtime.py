@@ -9,6 +9,7 @@ import multiprocessing
 from rich.logging import RichHandler
 
 from pathlib import Path
+from bdb import BdbQuit
 
 
 import logging
@@ -104,4 +105,10 @@ def launch(entrypoint=None):
     logger.info(f"Launching {entrypoint_str}")
     # remove the "launch" argument
     sys.argv.pop(0)
-    entrypoint()
+    try:
+        entrypoint()
+    except (KeyboardInterrupt, BdbQuit):
+        # Hard-kill wandb process on manual exit
+        cmd = "ps aux|grep wandb|grep -v grep | awk '\''{print $2}'\''|xargs kill -9"
+        os.system(cmd)
+        logger.error("Exited due to Ctrl-C")
