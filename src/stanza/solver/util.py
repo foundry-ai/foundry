@@ -60,10 +60,10 @@ def implicit_diff_solve(solve, assume_psd=False):
             # jax.debug.print('dfdtheta {}', dfdtheta)
             # A = dfdx
             # b = -(dfdtheta @ dtheta)
-            a = jnp.linalg.norm(dfdtheta, 2)
-            dfdx = dfdx / a
-            dfdtheta = dfdtheta / a
-            if True:
+            if False:
+                a = jnp.linalg.norm(dfdtheta, 2)
+                dfdx = dfdx / a
+                dfdtheta = dfdtheta / a
                 dx = jax.scipy.linalg.solve(dfdx + 1e-2*jnp.eye(dfdx.shape[0]), -dfdtheta @ dtheta)
             else:
                 U1, S1, V1T = jax.scipy.linalg.svd(dfdx, full_matrices=False)
