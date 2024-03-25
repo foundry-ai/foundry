@@ -3,7 +3,7 @@ from stanza import struct
 from .core import StructFormat
 
 def dataclass_params(format="args",
-        fallback_default=struct.MISSING,
+        fallback_default=struct.UNDEFINED,
         required=None,
         **field_format_transforms):
     def decorator(cls):

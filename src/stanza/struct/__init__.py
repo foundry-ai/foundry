@@ -6,7 +6,7 @@ import ast
 from functools import partial
 from typing import (
     Dict, Tuple, NamedTuple, TypeVar, 
-    Callable, overload
+    Iterable, Callable, overload
 )
 
 if sys.version_info >= (3, 11):
@@ -17,14 +17,14 @@ else:
 import logging
 logger = logging.getLogger(__name__)
 
-class _MISSING_TYPE:
+class Undefined:
     def __bool__(self):
         return False
 
     def __repr__(self):
-        return "Missing"
-
-MISSING = _MISSING_TYPE()
+        return "Undefined"
+UNDEFINED = Undefined()
+del Undefined
 
 class Field:
     """A struct field class. Not to be instantiated directly. Use the field() function instead.
@@ -45,8 +45,8 @@ class Field:
     )
     def __init__(self, *, name, type, 
                  pytree_node=True, kw_only=False,
-                 default=MISSING, default_factory=MISSING,
-                 initializer=MISSING):
+                 default=UNDEFINED, default_factory=UNDEFINED,
+                 initializer=UNDEFINED):
         self.name = name
         self.type = type
         self.pytree_node = pytree_node
@@ -58,7 +58,7 @@ class Field:
     # if this is a required field
     @property
     def required(self):
-        return self.default is MISSING and self.default_factory is MISSING and self.initializer is MISSING
+        return self.default is UNDEFINED and self.default_factory is UNDEFINED and self.initializer is UNDEFINED
 
     def replace(self, **kwargs):
         args = {k: getattr(self, k) for k in self.__slots__}
@@ -71,8 +71,8 @@ class Field:
              f"default_factory={self.default_factory}, initializer={self.initializer})")
 
 def field(*, pytree_node=True, kw_only=False, 
-          default=MISSING, default_factory=MISSING,
-          initializer=MISSING):
+          default=UNDEFINED, default_factory=UNDEFINED,
+          initializer=UNDEFINED):
     return Field(name=None, type=None,
         pytree_node=pytree_node,
         kw_only=kw_only,
@@ -81,13 +81,13 @@ def field(*, pytree_node=True, kw_only=False,
         initializer=initializer,
     )
     
-def fields(struct):
+def fields(struct) -> Iterable[Field]:
     return struct.__struct_fields__.values()
 
-def replace(struct, **kwargs):
-    cls = struct.__class__
+def replace(struct, cls=None, **kwargs):
+    cls = struct.__class__ if cls is None else cls
     s = cls.__new__(cls)
-    for k in struct.__struct_fields__.keys():
+    for k in cls.__struct_fields__.keys():
         v = getattr(struct, k)
         if k in kwargs: v = kwargs[k]
         object.__setattr__(s, k, v)
@@ -135,6 +135,8 @@ def make_dataclass(cls, params):
     cls.__slots__ = tuple(field.name for field in fields.values())
     cls.__init__ = _make_init(cls, fields, pos_fields, kw_fields, globals)
     cls.__setattr__ = _make_frozen_setattr(cls)
+    cls.__setstate__ = _make_setstate(cls)
+    cls.__getstate__ = _make_getstate(cls)
     cls.__repr__ = lambda self: f"{cls.__name__}({', '.join(f'{k}={getattr(self, k)!r}' for k in fields)})"
 
     if not getattr(cls, '__doc__'):
@@ -183,7 +185,7 @@ def _collect_fields(cls, params) -> Tuple[Dict[str, Field], Dict[str, Field], Di
     annotations = inspect.get_annotations(cls)
     annotation_fields = {}
     for name, _type in annotations.items():
-        f = getattr(cls, name, MISSING)
+        f = getattr(cls, name, UNDEFINED)
         if not isinstance(f, Field):
             f = Field(name=None, type=None, kw_only=params.kw_only, default=f)
         # re-instantiate the field with the name and type
@@ -197,7 +199,7 @@ def _collect_fields(cls, params) -> Tuple[Dict[str, Field], Dict[str, Field], Di
     # add fields from annotations and delete them from the class if default
     for f in annotation_fields.values():
         fields[f.name] = f
-        if f.default is MISSING and hasattr(cls, f.name):
+        if f.default is UNDEFINED and hasattr(cls, f.name):
             delattr(cls, f.name)
         else:
             setattr(cls, f.name, f.default)
@@ -211,13 +213,13 @@ def _collect_fields(cls, params) -> Tuple[Dict[str, Field], Dict[str, Field], Di
 def _make_field_init(clazz, self_name, field):
     lines = []
     make_setter = lambda value: f"object.__setattr__({self_name},\"{field.name}\",{value})"
-    if field.required or field.default is not MISSING: 
+    if field.required or field.default is not UNDEFINED: 
         lines.append(make_setter(field.name))
     else:
-        lines.append(f"if {field.name} is not MISSING: " + make_setter(field.name))
-    if field.default_factory is not MISSING:
+        lines.append(f"if {field.name} is not UNDEFINED: " + make_setter(field.name))
+    if field.default_factory is not UNDEFINED:
         lines.append(f"else: " + make_setter(f"{self_name}.__struct_fields__['{field.name}'].default_factory()"))
-    elif field.initializer is not MISSING:
+    elif field.initializer is not UNDEFINED:
         lines.append(f"else: " + make_setter(f"{self_name}.__struct_fields__['{field.name}'].initializer({self_name})"))
     return lines
 
@@ -229,23 +231,23 @@ def _make_init(clazz, fields, pos_fields, kw_fields, globals):
     for f in pos_fields.values():
         if f.required:
             args.append(f"{f.name}")
-        elif f.default is not MISSING:
+        elif f.default is not UNDEFINED:
             # get the default value from the field in the class definition
             # will be evaluated at method definition time, so no overhead
             args.append(f"{f.name}=cls.{f.name}")
         else:
-            args.append(f"{f.name}=MISSING")
+            args.append(f"{f.name}=UNDEFINED")
     if kw_fields:
         args.append("*")
         for f in kw_fields.values():
-            args.append(f"{f.name}=MISSING")
+            args.append(f"{f.name}=cls.{f.name}")
     for f in fields.values():
         body_lines.extend(_make_field_init(clazz, self_name, f))
     return _create_fn(
         "__init__",
         [self_name] + args,
         body_lines,
-        locals={"cls": clazz, "MISSING": MISSING},
+        locals={"cls": clazz, "UNDEFINED": UNDEFINED},
         globals=globals
     )
 
@@ -259,17 +261,33 @@ def _make_frozen_setattr(cls):
                 
     )
 
+def _make_setstate(cls):
+    return _create_fn(
+        "__setstate__",
+        ["self", "state"],
+        ["for k, v in zip(self.__slots__,state): object.__setattr__(self, k, v)"],
+        locals={"cls": cls}
+    )
+
+def _make_getstate(cls):
+    return _create_fn(
+        "__getstate__",
+        ["self"],
+        ["return tuple((getattr(self, k) for k in self.__slots__))"],
+        locals={"cls": cls}
+    )
+
 # UTILITIES
 
 
 # ported from original dataclasses.py file, utility to create
 # a function with a given body and signature
 def _create_fn(name, args, body, *, globals=None, locals=None,
-               return_type=MISSING):
+               return_type=UNDEFINED):
     if locals is None:
         locals = {}
     return_annotation = ''
-    if return_type is not MISSING:
+    if return_type is not UNDEFINED:
         locals['__struct_return_type__'] = return_type
         return_annotation = '->__struct_return_type__'
     args = ','.join(args)

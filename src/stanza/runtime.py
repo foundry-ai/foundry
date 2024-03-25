@@ -5,10 +5,12 @@ import rich.jupyter
 import rich.logging
 import rich.terminal_theme
 import rich._log_render
+import subprocess
 import multiprocessing
 from rich.logging import RichHandler
 
 from pathlib import Path
+from bdb import BdbQuit
 
 
 import logging
@@ -92,16 +94,22 @@ def setup():
     setup_gc()
 
 def launch(entrypoint=None):
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-    os.environ["WANDB_SILENT"] = "true"
-    setup()
-    if entrypoint is None:
-        if len(sys.argv) < 2:
-            rich.print("[red]Must specify entrypoint[/red]")
-            sys.exit(1)
-        entrypoint_str = sys.argv[1]
-        entrypoint = _load_entrypoint(entrypoint_str)
-    logger.info(f"Launching {entrypoint_str}")
-    # remove the "launch" argument
-    sys.argv.pop(0)
-    entrypoint()
+    try:
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+        os.environ["WANDB_SILENT"] = "true"
+        setup()
+        if entrypoint is None:
+            if len(sys.argv) < 2:
+                rich.print("[red]Must specify entrypoint[/red]")
+                sys.exit(1)
+            entrypoint_str = sys.argv[1]
+            entrypoint = _load_entrypoint(entrypoint_str)
+        logger.info(f"Launching {entrypoint_str}")
+        # remove the "launch" argument
+        sys.argv.pop(0)
+        entrypoint()
+    except (KeyboardInterrupt, BdbQuit):
+        # Hard-kill wandb process on manual exit
+        cmd = "ps aux|grep wandb|grep -v grep | awk '\''{print $2}'\''|xargs kill -9"
+        os.system(cmd)
+        logger.error("Exited due to Ctrl-C")

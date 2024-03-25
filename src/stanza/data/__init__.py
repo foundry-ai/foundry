@@ -138,7 +138,8 @@ class DataLoader(Generic[T]):
             last_batch = None
         indices = jnp.reshape(indices, (-1, self.batch_size))
         batch_indices = iter(indices)
-        if last_batch is not None and not self.drop_jagged:
+        if last_batch is not None and \
+                (not self.drop_jagged or indices.shape[0] == 0):
             batch_indices = itertools.chain(batch_indices, [last_batch])
         return self.pool.imap(
             self._get_batch,

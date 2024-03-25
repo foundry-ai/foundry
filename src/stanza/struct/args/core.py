@@ -1,4 +1,4 @@
-from typing import Callable, Type, Generic, TypeVar
+from typing import Callable, Type, Generic, TypeVar, Any
 from rich.console import RenderableType
 from rich.text import Text
 from rich.table import Table
@@ -14,6 +14,9 @@ from .parser import OptionParser
 
 from stanza.struct.format import Context, Format, FormatProvider
 from stanza import struct
+
+class ArgParseError(Exception):
+    pass
 
 class Command:
     def __init__(self, callback: Callable,
@@ -65,7 +68,7 @@ class ArgConfig:
     prefix: str = ""
     name: str = None
     help_str: str = None
-    default: typing.Any = struct.MISSING
+    default: typing.Any = struct.UNDEFINED
     required: bool | None = None
 
 T = TypeVar('T')
@@ -82,7 +85,7 @@ class CliFormat(Format[T, list[str], None], Generic[T]):
         self.full_name = self.prefix + self.name if self.name else None
         self.default = config.default
         self.required = config.required if config.required is not None else \
-                        config.default is struct.MISSING
+                        config.default is struct.UNDEFINED
         self.help_str = config.help_str
 
         self._command_add_help = ctx.config.add_help
@@ -90,7 +93,7 @@ class CliFormat(Format[T, list[str], None], Generic[T]):
     def add_to_parser(self, parser: OptionParser):
         raise NotImplementedError
 
-    def handle_results(self, ns: argparse.Namespace) -> T:
+    def handle_results(self, ns: argparse.Namespace, default: Any = struct.UNDEFINED) -> T:
         raise NotImplementedError
 
     def help_entries(self) -> list[tuple[str, RenderableType, RenderableType]]:
@@ -118,8 +121,7 @@ class CliFormat(Format[T, list[str], None], Generic[T]):
         if self._command_add_help and res.help:
             rich.print(self.help(args[0]))
             sys.exit(0)
-        self.required = True
-        res = self.handle_results(res)
+        res = self.handle_results(res, None)
         # replace the argument
         # list with the remaining args
         args.clear()
@@ -140,19 +142,33 @@ class StructFormat(CliFormat[T], Generic[T]):
         self.cls = cls
         self.inline = inline
         self.struct_option = struct_option
-        self.field_formats = {}
+        self.field_formats : dict[str, CliFormat] = {}
         prefix = (
             self.prefix
             if inline or not self.name else 
             self.prefix + self.name + "."
         )
         for f in struct.fields(cls):
-            default = f.default \
-                if self.default is struct.MISSING else \
-                getattr(self.default, f.name)
+            # if we have a default value for the whole struct
+            # from the parent context, use that
+            if self.default is not struct.UNDEFINED:
+                default = getattr(self.default, f.name)
+            elif not self.required: 
+                # if this struct is not required in the parent ctx,
+                # the true default may not align with f.default
+                default = struct.UNDEFINED
+            else:
+                # note: if the default is based on initializer
+                # we can't instantiate it
+                if f.default_factory is not struct.UNDEFINED:
+                    default = f.default_factory()
+                else:
+                    default = f.default
+
             c = ctx.with_config(dataclasses.replace(ctx.config,
                 prefix=prefix,
                 default=default,
+                required=f.required and default is struct.UNDEFINED,
                 name=f.name
             ))
             format = c.format_for(f.type)
@@ -166,20 +182,32 @@ class StructFormat(CliFormat[T], Generic[T]):
         for f in self.field_formats.values():
             f.add_to_parser(parser)
     
-    def handle_results(self, ns: argparse.Namespace) -> T:
-        args = {}
-        for (n, f) in self.field_formats.items():
-            v = f.handle_results(ns)
-            if v is not struct.MISSING:
-                args[n] = v
-        if not args and not self.required:
-            return struct.MISSING
-        if self.default:
-            # If no arguments are parsed, return as "MISSING"
-            # rather than instantiating
-            return struct.replace(self.default, **args)
+    def handle_results(self, ns: argparse.Namespace, default: Any = struct.UNDEFINED) -> T:
+        default = self.default if default is struct.UNDEFINED else default
+        if default is not struct.UNDEFINED and default is not None:
+            args = {}
+            for (n, f) in self.field_formats.items():
+                dv = getattr(default, n, struct.UNDEFINED)
+                v = f.handle_results(ns, dv)
+                if v is not struct.UNDEFINED:
+                    args[n] = v
+            return struct.replace(default, **args)
         else:
-            return self.cls(**args)
+            # TODO: handle default being None
+            # build a new instance
+            instance = self.cls.__new__(self.cls)
+            for field in struct.fields(self.cls):
+                format = self.field_formats[field.name]
+                if field.default is not struct.UNDEFINED: v = field.default
+                elif field.default_factory is not struct.UNDEFINED: v = field.default_factory()
+                elif field.initializer is not struct.UNDEFINED: v = field.initializer(instance)
+                else: v = struct.UNDEFINED
+                if format is not None:
+                    v = format.handle_results(ns, v)
+                if v is struct.UNDEFINED:
+                    raise ArgParseError(f"Missing required field {field.name}")
+                object.__setattr__(instance, field.name, v)
+            return instance
     
     def help_entries(self) -> list[tuple[str, RenderableType, RenderableType]]:
         entries = []
@@ -203,19 +231,27 @@ class StructFormat(CliFormat[T], Generic[T]):
 class OptionFormat(CliFormat[T], Generic[T]):
     def __init__(self, ctx : Context, type: Type[T], nargs=1):
         super().__init__(ctx)
+        self.type = type
+        self.base_type = type
+        if type == typing.Optional[type]:
+            self.base_type = typing.get_args(type)[0]
         self.nargs = nargs
     
     def add_to_parser(self, parser: OptionParser):
         parser.add_option(name=self.full_name, nargs=self.nargs)
     
-    def handle_results(self, ns: argparse.Namespace) -> T:
+    def handle_results(self, ns: argparse.Namespace, default=struct.UNDEFINED) -> T:
+        default = default if default is not struct.UNDEFINED else self.default
         v = getattr(ns, self.full_name)
-        if v is None and not self.required:
-            return struct.MISSING
         if v is None:
-            return self.default
+            if self.required:
+                raise ArgParseError(f"Missing required option {self.full_name}")
+            else:
+                return default
         else:
-            return v
+            if len(v) > 1:
+                raise ArgParseError(f"Too many values for option {self.full_name}")
+            return self.base_type(v[0])
     
 class DefaultFormatProvider:
     def __call__(self, ctx: Context, type: Type[T]) -> CliFormat[T]:

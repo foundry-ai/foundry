@@ -9,8 +9,8 @@ import scipy
 class LinearSystem(Environment):
     def __init__(self, A, B, Q=None, R=None,
                 x0_min=None, x0_max=None,
-                xmax=None, xmin=None,
-                umax=None, umin=None):
+                x_max=None, x_min=None,
+                u_max=None, u_min=None):
         self.A = A
         self.B = B
 
@@ -18,26 +18,26 @@ class LinearSystem(Environment):
         self.R = R if R is not None else jnp.eye(B.shape[1])
         self.P = jnp.array(scipy.linalg.solve_discrete_are(self.A, self.B, self.Q, self.R,
                                               e=None, s=None, balanced=True))
-        self.xmin = xmin
-        self.xmax = xmax
-        self.umin = umin
-        self.umax = umax
-        self.x0_min = x0_min if x0_min is not None else xmin
-        self.x0_max = x0_max if x0_max is not None else xmax
+        self.x_min = x_min
+        self.x_max = x_max
+        self.u_min = u_min
+        self.u_max = u_max
+        self.x0_min = x0_min if x0_min is not None else x_min
+        self.x0_max = x0_max if x0_max is not None else x_max
 
     def sample_action(self, rng):
-        min = self.umin if self.umin else -1
-        max = self.umax if self.umax else 1
+        min = self.u_min if self.u_min is not None else -1
+        max = self.u_max if self.u_max is not None else 1
         return jax.random.uniform(rng, (self.B.shape[1],), jnp.float32, min, max)
 
     def sample_state(self, key):
-        min = self.xmin if self.xmin else -1
-        max = self.xmax if self.xmax else 1
+        min = self.x_min if self.x_min is not None else -1
+        max = self.x_max if self.x_max is not None else 1
         return jax.random.uniform(key, (self.A.shape[0],), jnp.float32, min, max)
     
     def reset(self, key):
-        min = self.x0_min if self.x0_min else -1
-        max = self.x0_max if self.x0_max else 1
+        min = self.x0_min if self.x0_min is not None else -1
+        max = self.x0_max if self.x0_max is not None else 1
         return jax.random.uniform(key, (self.A.shape[0],), jnp.float32, min, max)
     
     def step(self, state, action, rng_key = None):
@@ -53,18 +53,6 @@ class LinearSystem(Environment):
         u_cost = jnp.expand_dims(us,-2) @ self.R @ jnp.expand_dims(us, -1)
         xf_cost = jnp.expand_dims(xs[-1],-2) @ self.P @ jnp.expand_dims(xs[-1],-1)
         return jnp.sum(x_cost) + jnp.sum(u_cost) + jnp.sum(xf_cost)
-    
-    def constraints(self, xs, us):
-        constraints = []
-        if self.umax:
-            constraints.append(jnp.ravel(us - self.umax))
-        if self.umin:
-            constraints.append(jnp.ravel(self.umin - us))
-        if self.xmax:
-            constraints.append(jnp.ravel(xs - self.xmax))
-        if self.xmin:
-            constraints.append(jnp.ravel(self.xmin - xs))
-        return jnp.concatenate(constraints) if constraints else jnp.zeros(())
 
 env_registry = EnvironmentRegistry[LinearSystem]()
 env_registry.register("linear", LinearSystem)
@@ -74,4 +62,85 @@ env_registry.register("linear/double_integrator",
         B=jnp.array([[0], [1]]),
         Q=jnp.array([[1, 0], [0, 1]]),
         R=0.01*jnp.array([[1]]),
+        x0_min=jnp.array([-4, -4]),
+        x0_max=jnp.array([4, 4]),
+        x_min=jnp.array([-10, -10]),
+        x_max=jnp.array([10, 10]),
+        u_min=jnp.array([-1]),
+        u_max=jnp.array([1])
     ))
+# from 
+env_registry.register("linear/2d", 
+    partial(LinearSystem, 
+        A=jnp.array([[1.1, 1], [0, 1.1]]),
+        B=jnp.array([[0], [1]]),
+        Q=jnp.array([[1, 0], [0, 1]]),
+        R=0.01*jnp.array([[1]]),
+        x0_min=jnp.array([8, 8]),
+        x0_max=jnp.array([10, 10]),
+        x_min=jnp.array([-100]*2),
+        x_max=jnp.array([100]*2),
+        u_min=jnp.array([-10]),
+        u_max=jnp.array([10]),
+    ))
+env_registry.register("linear/3d",
+    partial(LinearSystem,
+        A = jnp.array([
+            [1.1, 0.86075747, 0.4110535],
+            [0., 1.1, 0.4110535],
+            [0., 0., 1.1]
+        ]),
+        B=jnp.array([[0], [0], [1.]]),
+        Q=jnp.eye(3),
+        R=jnp.eye(1),
+        x0_min=jnp.array([-8]*3),
+        x0_max=jnp.array([8]*3),
+        x_min=jnp.array([-100]*3),
+        x_max=jnp.array([100]*3),
+        u_min=jnp.array([-10]),
+        u_max=jnp.array([10]),
+    )
+)
+
+env_registry.register("linear/4d",
+    partial(LinearSystem,
+        A=jnp.array(
+            [[0.7, -0.1, 0.0, 0.0],
+             [0.2, -0.5, 0.1, 0.0],
+             [0.0, 0.1, 0.1, 0.0],
+             [0.5, 0.0, 0.5, 0.5]]
+        ),
+        B=jnp.array(
+            [[0.0, 0.1],
+             [0.1, 1.0],
+             [0.1, 0.0],
+             [0.0, 0.0]]
+        ),
+        Q=jnp.eye(4),
+        R=jnp.eye(2),
+        # x0_min=jnp.array([8]*4), x0_max=jnp.array([10]*4),
+        x_min=jnp.array([-100]*4), x_max=jnp.array([100]*4),
+        u_min=jnp.array([-10]), u_max=jnp.array([10]),
+    )
+)
+
+env_registry.register("linear/5d",
+    partial(LinearSystem,
+        A=jnp.array([
+            [1.1, 0.86075747, 0.4110535, 0.17953273, -0.3053808],
+            [0., 1.1, 0.4110535, 0.17953273, -0.3053808],
+            [0., 0., 1.1, 0.17953273, -0.3053808],
+            [0., 0., 0., 1.1, -0.3053808],
+            [0., 0., 0., 0., 1.1]
+        ]),
+        B=jnp.array([[0], [0], [0], [0], [1.]]),
+        Q=jnp.eye(5),
+        R=jnp.eye(1),
+        x0_min=jnp.array([-8]*5),
+        x0_max=jnp.array([8]*5),
+        x_min=jnp.array([-100]*5),
+        x_max=jnp.array([100]*5),
+        u_min=jnp.array([-10]),
+        u_max=jnp.array([10]),
+    )
+)

@@ -24,7 +24,7 @@ class OptaxSolver(IterativeSolver):
         if not isinstance(objective, Minimize) or objective.constraints:
             raise UnsupportedObectiveError("Can only handle unconstrained minimization objectives")
         return OptaxState(
-            iteration=0,
+            iteration=jnp.zeros((), dtype=jnp.int32),
             solved=jnp.array(False),
             state=objective.initial_state,
             params=objective.initial_params,
