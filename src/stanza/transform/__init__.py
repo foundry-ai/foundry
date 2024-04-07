@@ -29,56 +29,12 @@ class partial:
         keywords = {**self.keywords, **keywords}
         return self.func(*self.args, *args, **keywords)
 
-@struct.dataclass
-class Static:
-    value: Any = struct.field(pytree_node=False)
+from .lift import LoweredFunction, LiftedFunction
 
-def unjaxify_pytree(pytree: T) -> T:
-    return jax.tree_util.tree_map(
-        lambda x: x.value if isinstance(x, Static) else x,
-        pytree, is_leaf=lambda x: isinstance(x, Static)
-    )
-
-def jaxify_pytree(pytree : T) -> T:
-    return jax.tree_util.tree_map(
-        lambda x: Static(x) if not is_array(x) else x,
-        pytree
-    )
-
-class JaxFunction:
-    def __init__(self, fun):
-        self.__func__ = fun
-
-    def __call__(self, *args, **kwargs):
-        args, kwargs = unjaxify_pytree((args, kwargs))
-        return self.__func__(*args, **kwargs)
-
-class WrappedFuncion:
-    def __init__(self, fun):
-        self.__func__ = fun
-
-    def __call__(self, *args, **kwargs):
-        args, kwargs = jaxify_pytree((args, kwargs))
-        return self.__func__(*args, **kwargs)
-
-def jaxify_function(fun : F) -> F:
-    return JaxFunction(fun)
-
-def unjaxify_function(fun : F) -> F:
-    def wrapped(*args, **kwargs):
-        args, kwargs = jaxify_pytree((args, kwargs))
-        return fun(*args, **kwargs)
-    wrapped = functools.wraps(fun)(wrapped)
-    return wrapped
-
-def jit(fun : F, **kwargs) -> F:
-    o_fun = fun
-    fun = jaxify_function(fun)
-    fun = jax.jit(fun, **kwargs)
-    fun = unjaxify_function(fun)
-    fun = functools.wraps(o_fun)(fun)
-    return fun
-
+def jit(fun : F) -> F:
+    lifted = lift.lift(fun)
+    jitted = jax.jit(lifted)
+    return lift.lower(jitted)
 
 from jax._src.api_util import flatten_axes
 from jax._src.api import _mapped_axis_size

@@ -12,14 +12,32 @@ class OptimizerConfig:
     warmup_steps: int | None = None 
 
     def make_lr_schedule(self, iterations):
+        warmup_steps = 100 if self.warmup_steps is None else self.warmup_steps
+        if self.warmup_schedule is None:
+            warmup = None
+        elif self.warmup_schedule == "linear":
+            warmup = optax.linear_schedule(0, self.lr, warmup_steps)
+        elif self.warmup_schedule == "cosine":
+            warmup = optax.cosine_decay_schedule(0, warmup_steps, self.lr)
+        else:
+            raise ValueError(f"Unknown warmup schedule: {self.warmup_schedule}")
+        
+        if warmup is not None:
+            iterations = iterations - warmup_steps
+
         if self.lr_schedule == "constant":
-            return optax.constant_schedule(self.lr)
+            schedule = optax.constant_schedule(self.lr)
         elif self.lr_schedule == "linear":
-            return optax.linear_schedule(0, self.lr, iterations)
+            schedule = optax.linear_schedule(0, self.lr, iterations)
         elif self.lr_schedule == "cosine":
-            return optax.cosine_decay_schedule(self.lr, 0, iterations)
+            schedule = optax.cosine_decay_schedule(self.lr, iterations)
         else:
             raise ValueError(f"Unknown learning rate schedule: {self.lr_schedule}")
+
+        if warmup is None:
+            return schedule
+        else:
+            return optax.join_schedules([warmup, schedule], [warmup_steps])
 
     def make_optimizer(self, iterations):
         raise NotImplementedError()
@@ -33,14 +51,20 @@ class AdamConfig(OptimizerConfig):
     beta1: float = 0.9
     beta2: float = 0.999
     epsilon: float = 1e-8
+    weight_decay: float | None = 0.0001
 
     def make_optimizer(self, iterations):
-        return optax.adam(learning_rate=self.make_lr_schedule(iterations), 
-                          b1=self.beta1, b2=self.beta2, eps=self.epsilon)
+        if self.weight_decay is not None:
+            return optax.adamw(learning_rate=self.make_lr_schedule(iterations),
+                            b1=self.beta1, b2=self.beta2, eps=self.epsilon,
+                            weight_decay=self.weight_decay)
+        else:
+            return optax.adam(learning_rate=self.make_lr_schedule(iterations), 
+                            b1=self.beta1, b2=self.beta2, eps=self.epsilon)
 
     @staticmethod
     def default():
-        return AdamConfig(lr_schedule="cosine", warmup_schedule="linear")
+        return AdamConfig(lr_schedule="cosine", warmup_schedule="linear", warmup_steps=100)
 
 @struct.dataclass
 class SGDConfig(OptimizerConfig):
@@ -89,6 +113,8 @@ class TrainConfig:
     def fit(self, **kwargs):
         from stanza.train import fit
         data = kwargs.pop("data")
+        if self.epochs is None and self.iterations is None:
+            raise ValueError("Either epochs or iterations must be specified")
         iterations = self.iterations or (self.epochs * (len(data) // self.batch_size))
         return fit(
             data=data,

@@ -1,4 +1,4 @@
-from stanza import struct
+from stanza import struct, partial
 
 import jax.numpy as jnp
 import jax
@@ -12,7 +12,7 @@ class PCAState:
 
 # From https://github.com/alonfnt/pcax/blob/main/pcax/pca.py
 # used under the MIT license
-@jax.jit(static_argnames=("n_components", "n_iter"))
+@partial(jax.jit, static_argnames=("n_components", "n_iter"))
 def randomized_pca(x, n_components, rng, n_iter=5):
     """Randomized PCA based on Halko et al [https://doi.org/10.48550/arXiv.1007.5510]."""
     n_samples, n_features = x.shape
@@ -20,7 +20,7 @@ def randomized_pca(x, n_components, rng, n_iter=5):
     x = x - means
 
     # Generate n_features normal vectors of the given size
-    size = jnp.minimum(2 * n_components, n_features)
+    size = min(2 * n_components, n_features)
     Q = jax.random.normal(rng, shape=(n_features, size))
 
     def step_fn(q, _):

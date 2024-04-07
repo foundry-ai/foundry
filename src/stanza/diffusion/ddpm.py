@@ -44,7 +44,7 @@ class DDPMSchedule:
 
     @staticmethod
     def make_linear(num_timesteps : int, beta_start : float = 0.0001, beta_end : float = 0.02,
-                    **kwargs):
+                    **kwargs) -> "DDPMSchedule":
         """ Makes a linear schedule for the DDPM. """
         return DDPMSchedule(
             betas=jnp.concatenate((jnp.zeros((1,)), jnp.linspace(beta_start, beta_end, num_timesteps)), axis=-1),
@@ -52,7 +52,7 @@ class DDPMSchedule:
         )
     
     @staticmethod
-    def make_squaredcos_cap_v2(num_timesteps : int, order: float = 2, max_beta : float = 0.999, **kwargs):
+    def make_squaredcos_cap_v2(num_timesteps : int, order: float = 2, max_beta : float = 0.999, **kwargs) -> "DDPMSchedule":
         """ Makes a squared cosine schedule for the DDPM.
             Uses alpha_bar(t) = cos^2((t + 0.008) / 1.008 * pi / 2)
             i.e. the alpha_bar is a squared cosine function.

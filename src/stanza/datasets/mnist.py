@@ -53,6 +53,14 @@ def _load_mnist(quiet=False, **kwargs):
                 "test": du.PyTreeData(test_data)
             },
             normalizers={
+                "standard_dev": nu.Compose(
+                    (nu.Chain([
+                        nu.ImageNormalizer(jax.ShapeDtypeStruct((28, 28, 1), jnp.uint8)),
+                        nu.StdNormalizer(mean=jnp.array(0.1307), var=jnp.array(0.3081)**2,
+                                         std=jnp.array(0.3081)),
+                    ]), 
+                     nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))
+                ),
                 "hypercube": nu.Compose(
                     (nu.ImageNormalizer(jax.ShapeDtypeStruct((28, 28, 1), jnp.uint8)), 
                      nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))

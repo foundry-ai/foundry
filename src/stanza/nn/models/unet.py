@@ -6,7 +6,7 @@ import flax.linen.initializers as initializers
 from typing import Sequence, Callable, Any
 ModuleDef = Any
 
-import stanza.nn.activation as activations
+import stanza.nn.activations as activations
 from stanza.nn.attention import AttentionBlock
 from stanza.nn.embed import SinusoidalPosEmbed
 

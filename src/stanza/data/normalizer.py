@@ -1,5 +1,5 @@
 from typing import Any, Generic, Callable, TypeVar
-from stanza.struct import dataclass
+from stanza.struct import dataclass, field
 from stanza.data import PyTreeData
 
 import abc
@@ -146,7 +146,8 @@ class StdNormalizer:
     mean: Any = None
     var: Any = None
     count: int = 0
-    std: Any = None
+    std: Any = field(initializer=lambda self: jnp.sqrt(self.var) \
+                     if self.var is not None else None)
 
     @property
     def instance(self):

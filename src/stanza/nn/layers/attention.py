@@ -8,7 +8,7 @@ import functools
 
 from typing import Sequence, Callable, Any
 
-import stanza.nn.activation as activations
+import stanza.nn.activations as activations
 
 class AttentionPool2D(nn.Module):
     num_channels: int

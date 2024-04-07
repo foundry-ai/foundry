@@ -1,5 +1,6 @@
 import functools
 import wandb
+import numpy as np
 
 from functools import partial
 from stanza.train.reporting import Video, Image, dict_flatten
@@ -7,12 +8,12 @@ from pathlib import Path
 
 def convert(x):
     if isinstance(x, Image):
-        return wandb.Image(x.data)
+        return wandb.Image(np.array(x.data))
     elif isinstance(x, Video):
         return wandb.Video(x.data)
     return x
 
-def wandb_log(*hooks, run=None, prefix=None, 
+def wandb_logger(*hooks, run=None, prefix=None, 
               suffix=None, metrics=False, step_info=False):
     def logger(rng, state, log=None, **kwargs):
         if run is not None:
@@ -29,8 +30,11 @@ def wandb_log(*hooks, run=None, prefix=None,
                 *r,
                 prefix=prefix, suffix=suffix
             )
+            flattened = {k: convert(v) for k, v in flattened.items()}
             wandb.log(flattened, step=state.iteration)
     return logger
+
+wandb_log = wandb_logger
 
 def wandb_checkpoint(run=None, dir="checkpoints",
                 format="epoch_{epoch}.ckpt"):
