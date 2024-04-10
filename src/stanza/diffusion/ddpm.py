@@ -42,6 +42,47 @@ class DDPMSchedule:
        If None, no clipping is done.
     """
 
+    def visualize(self, type="matplotlib"):
+        if type == "matplotlib":
+            import matplotlib.pyplot as plt
+            import matplotlib.backends.backend_agg as backend
+            from matplotlib.figure import Figure
+            fig, ax = plt.subplots()
+            T = jnp.arange(self.num_steps + 1)
+            ax.plot(T, self.betas, label="beta")
+            ax.plot(T, self.alphas_cumprod, label="alpha_bar")
+            ax.legend()
+            return fig
+        elif type == "plotly":
+            from plotly import graph_objects as go
+            T = jnp.arange(self.num_steps + 1)
+            return go.Figure([
+                go.Scatter(x=T, y=self.betas, mode="lines", name="beta"),
+                go.Scatter(x=T, y=self.alphas_cumprod, mode="lines", name="alpha_bar"),
+            ], layout=dict(
+                margin=dict(l=20, r=20, t=20, b=20),
+                legend=dict(
+                    yanchor="top", y=0.98,
+                    xanchor="right", x=0.98,
+                    bgcolor="rgb(200, 210, 232)",
+                    bordercolor="rgb(190, 200, 220)",
+                    borderwidth=2
+                )
+            ))
+        else:
+            raise NotImplementedError(f"Visualizing DDPM schedules with type {type} is not supported.")
+
+    @staticmethod
+    def make_from_alpha_bars(alphas_cumprod : jax.Array, **kwargs) -> "DDPMSchedule":
+        """ Makes a DDPM schedule from the alphas_cumprod. """
+        t1 = jnp.roll(alphas_cumprod, 1, 0)
+        t1 = t1.at[0].set(1)
+        t2 = alphas_cumprod
+        betas = 1 - t2/t1
+        return DDPMSchedule(
+            betas=betas,
+            **kwargs)
+
     @staticmethod
     def make_linear(num_timesteps : int, beta_start : float = 0.0001, beta_end : float = 0.02,
                     **kwargs) -> "DDPMSchedule":
@@ -60,14 +101,15 @@ class DDPMSchedule:
             This means a large amount of noise is added at the start, with
             decreasing noise added as time goes on.
         """
-        t1 = jnp.arange(num_timesteps, dtype=float)/num_timesteps
-        t2 = (jnp.arange(num_timesteps, dtype=float) + 1)/num_timesteps
+        t = jnp.arange(num_timesteps, dtype=float)/num_timesteps
         def alpha_bar(t):
             return jnp.pow(jnp.cos((t + 0.008) / 1.008 * jnp.pi / 2), order)
-        betas = jnp.minimum(1 - alpha_bar(t2) / alpha_bar(t1), max_beta)
-        return DDPMSchedule(
-            betas=jnp.concatenate((jnp.zeros((1,)), betas), axis=-1),
-            **kwargs)
+        # make the first timestep start at index 1
+        alpha_bars = jnp.concatenate(
+            (jnp.ones((1,)), jax.vmap(alpha_bar)(t)),
+        axis=0)
+        alpha_bars = alpha_bars.at[-1].set(0)
+        return DDPMSchedule.make_from_alpha_bars(alpha_bars, **kwargs)
     
     @staticmethod
     def make_scaled_linear_schedule(num_timesteps : int,
@@ -101,14 +143,13 @@ class DDPMSchedule:
         unfaltten_vmap = jax.vmap(unflatten)
         noise_flat = jax.random.normal(rng_key, (self.num_steps + 1,) + sample_flat.shape)
         # sum up the noise added at each step
-        def scan_fn(noise_accum, noise_beta):
+        def scan_fn(prev_noise_accum, noise_beta):
             noise, alpha, beta = noise_beta
-            noise_accum = jnp.sqrt(alpha)*noise_accum + noise*jnp.sqrt(beta)
+            noise_accum = jnp.sqrt(alpha)*prev_noise_accum + noise*jnp.sqrt(beta)
             return noise_accum, noise_accum
         noise_flat = jax.lax.scan(scan_fn, jnp.zeros_like(noise_flat[0]),
                                   (noise_flat, self.alphas, self.betas))[1]
         noisy_flat = noise_flat + jnp.sqrt(self.alphas_cumprod[:,None])*sample_flat[None,:]
-
         noise = unfaltten_vmap(noise_flat)
         noisy = unfaltten_vmap(noisy_flat)
         return noisy, noise
@@ -194,7 +235,7 @@ class DDPMSchedule:
         if self.clip_sample_range is not None:
             pred_sample = jnp.clip(pred_sample, -self.clip_sample_range, self.clip_sample_range)
         return unflatten(pred_sample)
-    
+
     @jax.jit
     def output_from_denoised(self, noised_sample : Sample, t : jax.Array, denoised_sample : Sample) -> Sample:
         """Returns the output a model should give given an x_t to denoise to x_0."""
@@ -217,15 +258,19 @@ class DDPMSchedule:
         data_batch_flat = jax.vmap(lambda x: stanza.util.ravel_pytree(x)[0])(data_batch)
         # compute the mean
         sqrt_alphas_prod = jnp.sqrt(self.alphas_cumprod[t])
-        sqrt_one_minus_alphas_prod = jnp.sqrt(1 - self.alphas_cumprod[t])
+        one_minus_alphas_prod = 1 - self.alphas_cumprod[t]
 
         # forward diffusion equation for diffusing t timesteps:
         # noised_sample = sqrt_alphas_prod * denoised + sqrt_one_minus_alphas_prod * noise
 
-        noise = (noised_sample_flat[None,:] - sqrt_alphas_prod * data_batch_flat) / sqrt_one_minus_alphas_prod
-        # the z^2 term for how far the noised_sample is from the data_batch
-        z_sqr = jnp.sum(noise**2, axis=-1)
-        log_likelihood = -0.5*z_sqr
+        noise = (noised_sample_flat[None,:] - sqrt_alphas_prod * data_batch_flat)
+        # the magnitude of the noise added
+        noise_sqr = jnp.sum(noise**2, axis=-1)
+        # p(x_t | x_0) prop exp(-1/2(x - mu)^2/sigma^2)
+        log_likelihood = -0.5*noise_sqr / one_minus_alphas_prod
+        # p(x_0 | x_t) = p(x_t | x_0) p(x_0) / p(x_t)
+        # where p(x_0) is uniform, so we effectively just to normalize the log likelihood
+        # over the x_0's
         log_likelihood = log_likelihood - jax.scipy.special.logsumexp(log_likelihood, axis=0)
         # log_likehood contains log p(x_0 | x_t) for all x_0's in the dataset
 
@@ -292,10 +337,14 @@ class DDPMSchedule:
                 return (n_rng, x_prev), x_prev
             carry, out = jax.lax.scan(step, (rng_key, random_sample), (curr_timesteps, prev_timesteps))
             _, sample = carry
+            # add the initial noise to the front of the scan output
             out = jax.tree_map(lambda x, y: jnp.concatenate(
                                 [jnp.expand_dims(x,axis=0), y], axis=0
                             ), random_sample, out)
-            return sample, out
+            # reverse the trajectory along the time axis
+            # so that traj[0] = x_0, traj[T] = x_T
+            traj = jax.tree_map(lambda x: x[::-1, ...], out)
+            return sample, traj
         else:
             static_loop = isinstance(num_steps, int)
 

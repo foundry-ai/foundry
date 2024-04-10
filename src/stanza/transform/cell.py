@@ -1,6 +1,10 @@
 import jax
 import contextlib
 
+from typing import Generic, TypeVar
+
+T = TypeVar('T')
+
 _scope_object = None
 
 @contextlib.contextmanager
@@ -12,7 +16,7 @@ def use_scope(scope_object):
     _scope_object = _old_scope
 
 # Note: not a pytree node because it is mutable
-class Cell:
+class Cell(Generic[T]):
     def __init__(self, value=None):
         self._value = value
         self._scope = _scope_object
@@ -24,6 +28,9 @@ class Cell:
     def set(self, /, value):
         assert self._scope == _scope_object, "Cell is not in the current scope!"
         self._value = value
+    
+    def __repr__(self):
+        return f"Cell({self._value.__repr__()})"
 
 # Cells are pytree nodes, but note that they get unwrapped as FrozenCell
 # so that they cannot be mutated!
@@ -57,7 +64,7 @@ class CellRef:
     @staticmethod
     def extract_cells(tree, cells=None):
         # get all of the leaves in the tree that are cells
-        leaves = jax.tree_flatten(tree, is_leaf=lambda x: isinstance(x, Cell))
+        leaves, _ = jax.tree_flatten(tree, is_leaf=lambda x: isinstance(x, Cell))
         if not cells:
             new_cells = list({l for l in leaves if isinstance(l, Cell)})
             cells = new_cells
@@ -87,7 +94,7 @@ class CellRef:
         def map(c):
             if not isinstance(c, Cell): return c
             return CellRef(cell_idx[c])
-        return jax.tree_map(map, trees)
+        return jax.tree_map(map, trees, is_leaf=lambda x: isinstance(x, Cell))
 
     @staticmethod
     def resolve_cells(cells, tree):
@@ -95,6 +102,9 @@ class CellRef:
             lambda x: cells[x.index] if isinstance(x, CellRef) else x,
             tree, is_leaf=lambda x: isinstance(x, CellRef)
         )
+    
+    def __repr__(self):
+        return f"CellRef({self.index})"
 
 
 jax.tree_util.register_pytree_node(

@@ -1,6 +1,5 @@
 import jax
-import numpy as np
-import contextlib
+import jax.numpy as jnp
 import weakref
 
 from . import is_array
@@ -77,10 +76,10 @@ class LoweredFunction:
         return partial(self, obj)
 
     def __call__(self, *args, **kwargs):
-        # extract the mutables in the arguments
+        # extract the mutables in the argument
         cells = CellRef.extract_cells((args, kwargs))
         cell_states = [c._value for c in cells]
-        cell_states = CellRef.reference_cells(cells, cell_states)
+        cell_states, args, kwargs = CellRef.reference_cells(cells, (cell_states, args, kwargs))
         
         cell_states, args, kwargs = Static.static_wrap((cell_states, args, kwargs))
         # call the lifted function with the jaxified state, arguments

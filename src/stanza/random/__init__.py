@@ -2,7 +2,7 @@ import jax.random
 import jax.numpy
 
 from stanza import struct
-from stanza.transform.cell import Cell
+from stanza.transform.cell import Cell, FrozenCell
 
 def key_or_seed(key_or_seed):
     if isinstance(key_or_seed, int):
@@ -17,8 +17,11 @@ def key_or_seed(key_or_seed):
 
 @jax.tree_util.register_pytree_node_class
 class PRNGSequence:
-    def __init__(self, key_or_val):
-        self._cell = Cell(key_or_seed(key_or_val))
+    def __init__(self, key_or_val, _cell=None):
+        if _cell is not None:
+            self._cell = _cell
+        else:
+            self._cell = Cell(key_or_seed(key_or_val))
     
     def __next__(self):
         k, n = jax.jit(
@@ -30,7 +33,10 @@ class PRNGSequence:
     
     def tree_flatten(self):
         return ((self._cell,), None)
+
+    def __repr__(self):
+        return f"PRNGSequence({self._cell.__repr__()})"
     
     @classmethod
     def tree_unflatten(cls, _, children):
-        return cls(*children)
+        return cls(None, *children)
