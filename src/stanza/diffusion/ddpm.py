@@ -257,7 +257,7 @@ class DDPMSchedule:
             return unflatten(noise)
     
     @jax.jit
-    def compute_denoised(self, noised_sample : Sample, t : jax.Array, data_batch : Sample) -> Sample:
+    def compute_denoised(self, noised_sample : Sample, t : jax.Array, data_batch : Sample, data_mask : jax.Array = None) -> Sample:
         """Computes the true E[x_0 | x_t] given a batch of x_0's."""
         noised_sample_flat, unflatten = stanza.util.ravel_pytree(noised_sample)
         data_batch_flat = jax.vmap(lambda x: stanza.util.ravel_pytree(x)[0])(data_batch)
@@ -273,7 +273,8 @@ class DDPMSchedule:
         noise_sqr = jnp.sum(noise**2, axis=-1)
         # p(x_t | x_0) prop exp(-1/2(x - mu)^2/sigma^2)
         log_likelihood = -0.5*noise_sqr / jnp.maximum(one_minus_alphas_prod, 1e-5)
-        likelihood = jax.nn.softmax(log_likelihood)
+        likelihood = jax.nn.softmax(log_likelihood, where=data_mask, initial=jnp.min(log_likelihood))
+        likelihood = likelihood*data_mask if data_mask is not None else likelihood
         # # p(x_0 | x_t) = p(x_t | x_0) p(x_0) / p(x_t)
         # # where p(x_0) is uniform, so we effectively just to normalize the log likelihood
         # # over the x_0's
