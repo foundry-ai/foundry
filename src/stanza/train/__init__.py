@@ -1,6 +1,6 @@
 import stanza.struct as struct
 
-from stanza.util.random import PRNGSequence
+from stanza.random import PRNGSequence
 from stanza.util import MofNColumn
 from stanza.data import Data, DataLoader
 

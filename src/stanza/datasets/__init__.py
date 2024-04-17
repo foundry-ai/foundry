@@ -27,9 +27,17 @@ class ImageClassDataset(Dataset[Tuple[jax.Array, jax.Array]]):
     classes: list[str]
 
     def as_image_dataset(self) -> ImageDataset:
+        def map_normalizer(normalizer_builder):
+            def mapped(*args, **kwargs):
+                return normalizer_builder(*args, **kwargs).map(lambda x: x[0])
+            return mapped
+
         return ImageDataset(
             splits={k: v.map(lambda x: x[0]) for k, v in self.splits.items()},
-            normalizers={k: v.map(lambda x: x[0]) for k, v in self.normalizers.items()}
+            normalizers={
+                k: map_normalizer(v)
+                for k, v in self.normalizers.items()
+            }
         )
 
 image_class_datasets : DatasetRegistry[ImageClassDataset] = DatasetRegistry[Dataset]()

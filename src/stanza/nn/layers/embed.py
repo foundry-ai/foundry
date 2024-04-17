@@ -1,10 +1,10 @@
-import flax.linen as nn
+from stanza import struct
 import jax.numpy as jnp
 
-class SinusoidalPosEmbed(nn.Module):
-    dim: int
+@struct.dataclass
+class SinusoidalPosEmbed:
+    dim: int = struct.field(pytree_node=False)
 
-    @nn.compact
     def __call__(self, x):
         x = jnp.atleast_1d(x)
         assert len(x.shape) == 1
@@ -18,11 +18,11 @@ class SinusoidalPosEmbed(nn.Module):
         emb = jnp.concatenate((jnp.sin(emb), jnp.cos(emb)), axis=0)
         return emb.reshape((-1))
 
-class RandomOrLearnedSinusoidalEmbed(nn.Module):
-    dim: int
-    random: bool = False
+@struct.dataclass
+class RandomOrLearnedSinusoidalEmbed:
+    dim: int = struct.field(pytree_node=False)
+    random: bool = struct.field(pytree_node=False, default=False)
 
-    @nn.compact
     def __call__(self, x):
         assert len(x.shape) == 1
         assert self.dim % 2 == 0

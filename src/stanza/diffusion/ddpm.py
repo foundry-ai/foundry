@@ -42,58 +42,61 @@ class DDPMSchedule:
        If None, no clipping is done.
     """
 
-    def visualize(self, type="matplotlib"):
-        if type == "matplotlib":
-            import matplotlib.pyplot as plt
-            import matplotlib.backends.backend_agg as backend
-            from matplotlib.figure import Figure
-            fig, ax = plt.subplots()
-            T = jnp.arange(self.num_steps + 1)
-            ax.plot(T, self.betas, label="beta")
-            ax.plot(T, self.alphas_cumprod, label="alpha_bar")
-            ax.legend()
-            return fig
-        elif type == "plotly":
-            from plotly import graph_objects as go
-            T = jnp.arange(self.num_steps + 1)
-            return go.Figure([
-                go.Scatter(x=T, y=self.betas, mode="lines", name="beta"),
-                go.Scatter(x=T, y=self.alphas_cumprod, mode="lines", name="alpha_bar"),
-            ], layout=dict(
-                margin=dict(l=20, r=20, t=20, b=20),
-                legend=dict(
-                    yanchor="top", y=0.98,
-                    xanchor="right", x=0.98,
-                    bgcolor="rgb(200, 210, 232)",
-                    bordercolor="rgb(190, 200, 220)",
-                    borderwidth=2
-                )
-            ))
-        else:
-            raise NotImplementedError(f"Visualizing DDPM schedules with type {type} is not supported.")
+    def visualize(self):
+        from plotly import graph_objects as go
+        T = jnp.arange(self.num_steps + 1)
+        rev_variance = self.reverse_variance()
+        return go.Figure([
+            go.Scatter(x=T, y=self.betas, mode="lines", name="beta"),
+            go.Scatter(x=T, y=self.alphas_cumprod, mode="lines", name="alpha_bar"),
+            go.Scatter(x=T, y=rev_variance, mode="lines", name="beta_rev"),
+        ], layout=dict(
+            margin=dict(l=20, r=20, t=20, b=20),
+        ))
+    
+    def reverse_variance(self):
+        alpha_bars = self.alphas_cumprod[1:]
+        alpha_bars_prev = self.alphas_cumprod[:-1]
+        betas = self.betas[1:]
+        variance = (1 - alpha_bars_prev) / (1 - alpha_bars) * betas
+        variance = jnp.concatenate((jnp.zeros((1,)), variance), axis=0)
+        return variance
 
     @staticmethod
-    def make_from_alpha_bars(alphas_cumprod : jax.Array, **kwargs) -> "DDPMSchedule":
+    def make_from_alpha_bars(alphas_cumprod : jax.Array, max_beta : float = 1., **kwargs) -> "DDPMSchedule":
         """ Makes a DDPM schedule from the alphas_cumprod. """
         t1 = jnp.roll(alphas_cumprod, 1, 0)
         t1 = t1.at[0].set(1)
         t2 = alphas_cumprod
         betas = 1 - t2/t1
+        betas = jnp.clip(betas, 0, max_beta)
         return DDPMSchedule(
             betas=betas,
             **kwargs)
 
     @staticmethod
-    def make_linear(num_timesteps : int, beta_start : float = 0.0001, beta_end : float = 0.02,
+    def make_linear(num_timesteps : int, beta_start : float = 0.0001, beta_end : float = 0.1,
                     **kwargs) -> "DDPMSchedule":
+        beta_end = jnp.clip(beta_end, 0, 1)
+        beta_start = jnp.clip(beta_start, 0, 1)
+        betas = jnp.linspace(beta_start, beta_end, num_timesteps)
+        betas = jnp.concatenate((jnp.zeros((1,)), betas))
         """ Makes a linear schedule for the DDPM. """
         return DDPMSchedule(
-            betas=jnp.concatenate((jnp.zeros((1,)), jnp.linspace(beta_start, beta_end, num_timesteps)), axis=-1),
+            betas=betas,
             **kwargs
         )
     
     @staticmethod
-    def make_squaredcos_cap_v2(num_timesteps : int, order: float = 2, max_beta : float = 0.999, **kwargs) -> "DDPMSchedule":
+    def make_rescaled(num_timesteps, schedule, **kwargs):
+        """ Rescales a schedule to have a different number of timesteps. """
+        xs = jnp.linspace(0, 1, num_timesteps + 1)
+        old_xs = jnp.linspace(0, 1, schedule.num_steps + 1)
+        new_alphas_cumprod = jnp.interp(xs, old_xs, schedule.alphas_cumprod)
+        return DDPMSchedule.make_from_alpha_bars(new_alphas_cumprod, **kwargs)
+    
+    @staticmethod
+    def make_squaredcos_cap_v2(num_timesteps : int, order: float = 2, offset : float | None = None, max_beta : float = 0.999, **kwargs) -> "DDPMSchedule":
         """ Makes a squared cosine schedule for the DDPM.
             Uses alpha_bar(t) = cos^2((t + 0.008) / 1.008 * pi / 2)
             i.e. the alpha_bar is a squared cosine function.
@@ -102,14 +105,16 @@ class DDPMSchedule:
             decreasing noise added as time goes on.
         """
         t = jnp.arange(num_timesteps, dtype=float)/num_timesteps
+        offset = offset if offset is not None else 0.008
         def alpha_bar(t):
-            return jnp.pow(jnp.cos((t + 0.008) / 1.008 * jnp.pi / 2), order)
+            t = (t + offset) / (1 + offset)
+            return jnp.pow(jnp.cos(t * jnp.pi / 2), order)
         # make the first timestep start at index 1
         alpha_bars = jnp.concatenate(
             (jnp.ones((1,)), jax.vmap(alpha_bar)(t)),
         axis=0)
-        alpha_bars = alpha_bars.at[-1].set(0)
-        return DDPMSchedule.make_from_alpha_bars(alpha_bars, **kwargs)
+        # alpha_bars = alpha_bars.at[-1].set(0)
+        return DDPMSchedule.make_from_alpha_bars(alpha_bars, max_beta=max_beta, **kwargs)
     
     @staticmethod
     def make_scaled_linear_schedule(num_timesteps : int,
@@ -226,7 +231,7 @@ class DDPMSchedule:
         sample_flat, unflatten = jax.flatten_util.ravel_pytree(noised_sample)
         model_output_flat, _ = jax.flatten_util.ravel_pytree(model_output)
         if self.prediction_type == "epsilon":
-            pred_sample = (sample_flat - beta_prod_t ** (0.5) * model_output_flat) / alpha_prod_t ** (0.5)
+            pred_sample = (sample_flat - beta_prod_t ** (0.5) * model_output_flat) / jnp.maximum(1e-6, alpha_prod_t ** (0.5))
         elif self.prediction_type == "sample":
             pred_sample = model_output_flat
         else:
@@ -267,15 +272,16 @@ class DDPMSchedule:
         # the magnitude of the noise added
         noise_sqr = jnp.sum(noise**2, axis=-1)
         # p(x_t | x_0) prop exp(-1/2(x - mu)^2/sigma^2)
-        log_likelihood = -0.5*noise_sqr / one_minus_alphas_prod
-        # p(x_0 | x_t) = p(x_t | x_0) p(x_0) / p(x_t)
-        # where p(x_0) is uniform, so we effectively just to normalize the log likelihood
-        # over the x_0's
-        log_likelihood = log_likelihood - jax.scipy.special.logsumexp(log_likelihood, axis=0)
-        # log_likehood contains log p(x_0 | x_t) for all x_0's in the dataset
+        log_likelihood = -0.5*noise_sqr / jnp.maximum(one_minus_alphas_prod, 1e-5)
+        likelihood = jax.nn.softmax(log_likelihood)
+        # # p(x_0 | x_t) = p(x_t | x_0) p(x_0) / p(x_t)
+        # # where p(x_0) is uniform, so we effectively just to normalize the log likelihood
+        # # over the x_0's
+        # log_likelihood = log_likelihood - jax.scipy.special.logsumexp(log_likelihood, axis=0)
+        # # log_likehood contains log p(x_0 | x_t) for all x_0's in the dataset
 
         # this is equivalent to the log-likelihood (up to a constant factor)
-        denoised = jnp.sum(jnp.exp(log_likelihood)[:,None]*data_batch_flat, axis=0)
+        denoised = jnp.sum(likelihood[:,None]*data_batch_flat, axis=0)
         return unflatten(denoised)
 
     # This does a reverse process step
@@ -284,27 +290,29 @@ class DDPMSchedule:
                      timestep : jax.Array, delta_steps: jax.Array, model_output : Sample) -> Sample:
         """ Does a reverse step of the DDPM given a particular model output. Given x_t returns x_{t-delta_steps}. """
         chex.assert_trees_all_equal_shapes_and_dtypes(sample, model_output)
-        t = timestep
-        prev_t = timestep - delta_steps
-        alpha_prod_t = self.alphas_cumprod[t]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_t]
         sample_flat, unflatten = jax.flatten_util.ravel_pytree(sample)
         model_output_flat, _ = jax.flatten_util.ravel_pytree(model_output)
 
+        t = timestep
+        prev_t = timestep - delta_steps
+        alpha_t = self.alphas[t]
+        beta_t = self.betas[t]
+        alpha_prod_t = self.alphas_cumprod[t]
+        alpha_prod_t_prev = self.alphas_cumprod[prev_t]
+
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
-        current_alpha_t = alpha_prod_t / alpha_prod_t_prev
-        current_beta_t = 1 - current_alpha_t
 
         pred_sample = self.denoised_from_output(sample_flat, t, model_output_flat)
 
-        pred_original_sample_coeff = jnp.sqrt(alpha_prod_t_prev) * current_beta_t / beta_prod_t
-        current_sample_coeff = jnp.sqrt(current_alpha_t) * beta_prod_t_prev / beta_prod_t
+        pred_original_sample_coeff = jnp.sqrt(alpha_prod_t_prev) * beta_t / beta_prod_t
+        current_sample_coeff = jnp.sqrt(alpha_t) * beta_prod_t_prev / beta_prod_t
         pred_prev_sample = pred_original_sample_coeff * pred_sample + current_sample_coeff * sample_flat
 
-        variance = (1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * current_beta_t
+        variance = (1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * beta_t
+        # variance = current_beta_t
         # we always take the log of variance, so clamp it to ensure it's not 0
-        variance = jnp.clip(variance, a_min=1e-20)
+        # variance = jnp.clip(variance, a_min=1e-20)
         sigma = jnp.sqrt(variance)
         noise = sigma*jax.random.normal(rng_key, pred_prev_sample.shape)
         return unflatten(pred_prev_sample + noise)

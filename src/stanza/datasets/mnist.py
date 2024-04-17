@@ -47,24 +47,40 @@ def _load_mnist(quiet=False, **kwargs):
         test_images = parse_images(data_path / "t10k-images-idx3-ubyte.gz")
         test_labels = parse_labels(data_path / "t10k-labels-idx1-ubyte.gz")
         test_data = (test_images, test_labels)
+
+        train_normalized = du.PyTreeData((train_images.astype(jnp.float32) / 128.0) - 1)
         return ImageClassDataset(
             splits={
                 "train": du.PyTreeData(train_data),
                 "test": du.PyTreeData(test_data)
             },
             normalizers={
-                "standard_dev": nu.Compose(
+                "pixel_standard_dev": lambda: (nu.Compose(
                     (nu.Chain([
                         nu.ImageNormalizer(jax.ShapeDtypeStruct((28, 28, 1), jnp.uint8)),
-                        nu.StdNormalizer(mean=jnp.array(0.1307), var=jnp.array(0.3081)**2,
-                                         std=jnp.array(0.3081)),
+                        nu.StdNormalizer.from_data(train_normalized, component_wise=True)
                     ]), 
                      nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))
-                ),
-                "hypercube": nu.Compose(
+                )),
+                "standard_dev": lambda: (nu.Compose(
+                    (nu.Chain([
+                        nu.ImageNormalizer(jax.ShapeDtypeStruct((28, 28, 1), jnp.uint8)),
+                        nu.StdNormalizer.from_data(train_normalized, component_wise=False)
+                    ]), 
+                     nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))
+                )),
+                "pca": lambda dims=None: (nu.Compose(
+                    (nu.Chain([
+                        nu.ImageNormalizer(jax.ShapeDtypeStruct((28, 28, 1), jnp.uint8)),
+                        # transform to gaussian
+                        nu.PCANormalizer.from_data(train_normalized, dims=dims)
+                    ]), 
+                    nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))
+                )),
+                "hypercube": lambda: (nu.Compose(
                     (nu.ImageNormalizer(jax.ShapeDtypeStruct((28, 28, 1), jnp.uint8)), 
                      nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))
-                )
+                ))
             },
             classes=[str(i) for i in range(10)]
         )

@@ -9,17 +9,9 @@
     ```bash
     curl -sSL https://pdm-project.org/install-pdm.py | python3 -
     ```
- 3. For cpu only support, run
+ 3. To set up the stanza environment, run
     ```bash
-    pdm sync -d --only-keep
-    ```
-    For cuda support, run
-    ```bash
-    pdm sync -G cuda12_pip -d --only-keep
-    ```
-    for cuda support without installing cuda through pip, run
-    ```bash
-    pdm sync -G cuda12_local -d --only-keep
+    pdm install -d
     ```
  4. Then try some example scripts:
     ```bash

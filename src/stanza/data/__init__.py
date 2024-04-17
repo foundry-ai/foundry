@@ -53,7 +53,6 @@ class Mapped(Data[T]):
 # A pytorch dataset from a jax pytree
 class PyTreeData(Data[T]):
     def __init__(self, tree: T):
-        super().__init__()
         ns = jnp.array([x.shape[0] for x in jax.tree_leaves(tree)])
         n = ns[0]
         assert jnp.all(ns == n)
@@ -74,6 +73,10 @@ class PyTreeData(Data[T]):
             lambda x: x[off:off+length],
             self.tree
         )
+    
+    @staticmethod
+    def from_data(data : Data[T]) -> "PyTreeData[T]":
+        return PyTreeData(data.slice(0, len(data)))
 
 class IOData(Data[T], abc.ABC):
     def __init__(self):
@@ -86,12 +89,6 @@ class IOData(Data[T], abc.ABC):
     def __getitem__(self, idx : jax.Array) -> T:
         data = jax.pure_callback(self._fetch, self._ex, idx)
         return data
-
-def _get_batch(dataset, indices):
-    batch = jax.vmap(lambda i: dataset[i])(indices)
-    return jax.tree_map(
-        lambda x: jax.device_put(x), batch
-    )
 
 @partial(jax.jit,static_argnums=(1,))
 def _shuffle(rng_key, len):

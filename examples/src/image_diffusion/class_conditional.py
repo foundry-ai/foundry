@@ -1,7 +1,7 @@
 from stanza import struct, partial
 from stanza.struct.args import command
 
-from stanza.util.random import PRNGSequence
+from stanza.random import PRNGSequence
 from stanza.datasets import image_class_datasets
 from stanza.diffusion import DDPMSchedule
 

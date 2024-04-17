@@ -1,6 +1,6 @@
 from stanza import struct
 from stanza.util.pca import randomized_pca
-from stanza.util.random import PRNGSequence
+from stanza.random import PRNGSequence
 
 from typing import Generic, TypeVar
 from typing import Tuple, NamedTuple

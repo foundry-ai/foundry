@@ -20,14 +20,24 @@ class Cell(Generic[T]):
     def __init__(self, value=None):
         self._value = value
         self._scope = _scope_object
+    
+    @property
+    def frozen(self):
+        return False
 
-    def get(self):
+    def get(self) -> T:
         assert self._scope == _scope_object, "Cell is not in the current scope!"
         return self._value
     
-    def set(self, /, value):
+    def set(self, /, value : T):
         assert self._scope == _scope_object, "Cell is not in the current scope!"
         self._value = value
+
+    def thaw(self):
+        return Cell(self._value)
+    
+    def freeze(self):
+        return FrozenCell(self._value)
     
     def __repr__(self):
         return f"Cell({self._value.__repr__()})"
@@ -45,11 +55,21 @@ class FrozenCell:
     def __init__(self, value):
         self._value = value
     
+    @property
+    def frozen(self):
+        return False
+    
     def get(self):
         return self._value
     
     def set(self, /, value):
         raise RuntimeError("Cell is frozen!")
+
+    def thaw(self):
+        return Cell(self._value)
+    
+    def freeze(self):
+        return FrozenCell(self._value)
 
 jax.tree_util.register_pytree_node(
     FrozenCell,
