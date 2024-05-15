@@ -6,13 +6,13 @@ metric:
   name: test.accuracy
 parameters:
   dataset:
-    values: ["mnist", "cifar10"]
+    values: ["cifar10", "mnist"]
   model:
     values: ["WideResNet18", "MLPLarge"]
   optimizer:
     values: ["sgd", "adam"]
   epochs:
-    values: [100, 200, 400]
+    values: [50, 100, 400]
   sam_rho:
     values: [0, 0.05, 0.1]
   sam_start:
