@@ -3,7 +3,7 @@ name: sam_start_points_sweep
 method: grid
 metric:
   goal: maximize
-  name: test.accuracy
+  name: test/accuracy
 parameters:
   dataset:
     values: ["cifar10", "mnist"]

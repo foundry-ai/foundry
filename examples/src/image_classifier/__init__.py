@@ -135,9 +135,9 @@ def train(config: Config):
         init_vars=vars,
         donate_init_vars=True,
         hooks=[
-            stw.wandb_logger(run=wandb_run, metrics=True),
+            stw.wandb_logger(run=wandb_run, metrics=True, prefix="train/"),
             st.every_n_iterations(500,
-                st.console_logger(metrics=True)
+                st.console_logger(metrics=True, prefix="train.")
             ),
             st.every_n_iterations(500,
                 st.validate(
