@@ -22,9 +22,6 @@ class Collection:
     def __getitem__(self, key):
         vars = self._vars.get()
         return vars[key]
-    
-    def freeze(self):
-        return Collection(self._vars.freeze())
 
     def __repr__(self):
         return f"{self._vars.get()}"
@@ -74,34 +71,37 @@ class Variables:
         c[key] = value
         collection.set(c)
     
-    def freeze(self, mutable_collections=None):
-        mc = set() if mutable_collections is None else mutable_collections
-        return Variables(
-            FrozenCell({k: v.freeze(mutable_collections) for k,v in self._submodules.items()}),
-            FrozenCell({k: (v if k in mc else v.freeze()) for k,v in self._collections.items()}),
-        )
-    
-    def split(self, collections):
+    # will return a dictionary containing all variables in
+    # the specified collections
+    def pop(self, collections, prefix=None):
+        colls = self._collections.get()
+        rem_cols = {}
+
+        split_vars = {}
+        for c in collections:
+            if c not in colls:
+                split_vars[c] = {}
+                continue
+            split_vars[c] = colls
+
+        # add the prefix to the keys for each collection
+        if prefix is not None:
+            split_vars = {name: {f"{prefix}{k}": v for k, v in coll.items()} for name, coll in split_vars.items()}
+        for k, mod in self._submodules.get().items():
+            # split out the submodule
+            sub_prefix = f"{k}." if prefix is None else f"{prefix}{k}."
+            vars = mod.pop(collections, sub_prefix)
+            for c in collections:
+                split_vars[c].update(vars[c])
+        
+        return split_vars
         return Variables(
             self._submodules,
             FrozenCell({k: self._collections.get() for k in collections})
         )
     
-    def flatten(self):
-        sub_vars = {k: v.flatten() for k,v in self._submodules.get().items()}
-        # get all of the collections
-        collections = set(self._collections.get().keys()).union(*[set(v.keys()) for v in sub_vars.values()])
-        vars = {c: {} for c in collections}
-        # set the sub modules for each collection
-        for k, v in self.sub_vars:
-            for c, v in v.items():
-                vars[c][k] = v
-        for c, coll in self._collections.get().items():
-            vars[c].update(coll.get())
-        vars = {k: v for k,v in vars.items() if v}
-        # add the variables from this module
-        vars.update({k: v for k,v in self._collections.get().get(c, {}).items()})
-        return vars
+    def push(self, vars):
+        pass
 
     def __repr__(self):
         return f"{self._collections.get()}"

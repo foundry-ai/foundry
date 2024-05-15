@@ -1,6 +1,9 @@
 from stanza.datasets import ImageClassDataset, DatasetRegistry
 import stanza.data as du
 from stanza.data import normalizer as nu
+from stanza.data.transform import (
+    random_horizontal_flip, random_subcrop, random_cutout
+)
 
 from .util import cache_path, download
 
@@ -12,6 +15,10 @@ import struct
 import array
 import wandb
 import numpy as np
+
+def _standard_augmentations(rng_key, x):
+    x = random_subcrop(rng_key, x, (28, 28), 4)
+    return x
 
 def _load_mnist(quiet=False, **kwargs):
     with jax.default_device(jax.devices("cpu")[0]):
@@ -81,6 +88,9 @@ def _load_mnist(quiet=False, **kwargs):
                     (nu.ImageNormalizer(jax.ShapeDtypeStruct((28, 28, 1), jnp.uint8)), 
                      nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))
                 ))
+            },
+            transforms={
+                "standard_augmentations": lambda: _standard_augmentations
             },
             classes=[str(i) for i in range(10)]
         )

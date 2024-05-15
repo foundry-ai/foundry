@@ -5,7 +5,7 @@ from stanza.random import PRNGSequence
 from stanza.datasets import image_datasets
 from stanza.diffusion import DDPMSchedule
 
-from stanza.nn.models.unet import DiffusionUNet
+from net.unet import DiffusionUNet
 
 import stanza.util
 import stanza.train as st
@@ -44,7 +44,7 @@ def train(config: Config):
     )
     logger.info(f"Logging to [blue]{wandb_run.url}[/blue]")
 
-    normalizer = dataset.normalizers[config.normalizer]
+    normalizer = dataset.normalizers[config.normalizer]()
     schedule = DDPMSchedule.make_squaredcos_cap_v2(
         config.diffusion_steps
     )

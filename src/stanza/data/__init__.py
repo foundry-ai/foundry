@@ -6,7 +6,10 @@ import multiprocessing.pool as mp_pool
 
 from functools import partial
 
-from typing import TypeVar, Generic, Iterator, Generator, Callable, Optional
+from typing import (
+    TypeVar, Generic, Sequence,
+    Iterator, Generator, Callable, Optional
+)
 
 T = TypeVar('T')
 V = TypeVar('V')
@@ -95,11 +98,14 @@ def _shuffle(rng_key, len):
     return jax.random.permutation(rng_key, jnp.arange(len))
 
 class DataLoader(Generic[T]):
-    def __init__(self, data: Data[T], *, batch_size : int =1,
-                shuffle : bool =False, rng_key : jax.Array = None, drop_jagged : bool =False,
-                num_workers : int = 1, chunksize : int =16):
+    def __init__(self, data: Data[T], *, 
+                batch_size : int = 1,
+                shuffle : bool = False,
+                rng_key : jax.Array = None,
+                drop_jagged : bool = False,
+                num_workers : int = 1, chunksize : int = 16):
         if shuffle and rng_key is None:
-            raise ValueError("Must provide rng_key if shuffle=True")
+            raise ValueError("Must provide rng_key if shuffle=True or transforms are provided")
         self.rng_key = rng_key
         self.data = data
         self.batch_size = batch_size
@@ -127,6 +133,7 @@ class DataLoader(Generic[T]):
             self.rng_key = rng_key
         else:
             indices = jnp.arange(len(self.data))
+
         if len(indices) % self.batch_size != 0:
             final_batch_len = len(indices) % self.batch_size
             last_batch = indices[-final_batch_len:]
@@ -134,13 +141,15 @@ class DataLoader(Generic[T]):
         else:
             last_batch = None
         indices = jnp.reshape(indices, (-1, self.batch_size))
-        batch_indices = iter(indices)
         if last_batch is not None and \
                 (not self.drop_jagged or indices.shape[0] == 0):
-            batch_indices = itertools.chain(batch_indices, [last_batch])
+            indices = iter(indices)
+            indices = itertools.chain(indices, [last_batch])
+        else:
+            indices = iter(indices)
         return self.pool.imap(
             self._get_batch,
-            batch_indices, chunksize=self.chunksize
+            indices, chunksize=self.chunksize
         )
    
     def __len__(self) -> int:

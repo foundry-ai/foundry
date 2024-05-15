@@ -41,8 +41,9 @@ def _load_celeb_a(quiet=False, **kwargs):
     return ImageDataset(
         splits={"train": train_data},
         normalizers={
-            "hypercube": ImageNormalizer(jax.ShapeDtypeStruct((218, 178, 3), jnp.uint8)), 
+            "hypercube": lambda: ImageNormalizer(jax.ShapeDtypeStruct((218, 178, 3), jnp.uint8)), 
         },
+        transforms={}
     )
 
 

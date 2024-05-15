@@ -2,17 +2,26 @@ from stanza import struct, partial
 from stanza.struct import args
 
 import optax
+import jax
 
 @struct.dataclass
 class OptimizerConfig:
     lr: float = 1e-4
     lr_schedule: str = "constant"
+    cycles: int = 1
+    # length to multiply the number of
+    # iterations per cycle, every cycle
+    cycle_mult: float = 1.
     warmup_schedule: str | None = None
     # if none, will use a "good" value based on warmup_schedule and the number of iterations 
     warmup_steps: int | None = None 
 
     def make_lr_schedule(self, iterations):
-        warmup_steps = 100 if self.warmup_steps is None else self.warmup_steps
+        warmup_steps = (
+            100
+            if self.warmup_steps is None  and self.warmup_schedule is not None 
+            else (self.warmup_steps or 0)
+        )
         if self.warmup_schedule is None:
             warmup = None
         elif self.warmup_schedule == "linear":
@@ -21,19 +30,35 @@ class OptimizerConfig:
             warmup = optax.cosine_decay_schedule(0, warmup_steps, self.lr)
         else:
             raise ValueError(f"Unknown warmup schedule: {self.warmup_schedule}")
-        
         if warmup is not None:
             iterations = iterations - warmup_steps
 
         if self.lr_schedule == "constant":
-            schedule = optax.constant_schedule(self.lr)
+            schedule_builder = lambda s: optax.constant_schedule(self.lr)
         elif self.lr_schedule == "linear":
-            schedule = optax.linear_schedule(0, self.lr, iterations)
+            schedule_builder = lambda s: optax.linear_schedule(self.lr, 0., s)
         elif self.lr_schedule == "cosine":
-            schedule = optax.cosine_decay_schedule(self.lr, iterations)
+            schedule_builder = lambda s: optax.cosine_decay_schedule(self.lr, s)
         else:
             raise ValueError(f"Unknown learning rate schedule: {self.lr_schedule}")
 
+        if self.cycles > 1:
+            # total length is base*(1 + m + m^2 ... + m^(cycles - 1)) = 1/(1 - m)
+            if self.cycle_mult == 1.:
+                base_units = self.cycles
+            else:
+                base_units = 1/(1 - self.cycle_mult) - (self.cycle_mult ** self.cycles) / (1 - self.cycle_mult)
+            base_steps = iterations // base_units
+            schedules = []
+            boundaries = []
+            for i in range(self.cycles):
+                part_iterations = base_steps * (self.cycle_mult ** i)
+                schedules.append(schedule_builder(part_iterations))
+                if i == 1: boundaries.append(base_steps)
+                elif i > 1: boundaries.append(boundaries[-1] + part_iterations)
+            schedule = optax.join_schedules(schedules, boundaries)
+        else:
+            schedule = schedule_builder(iterations)
         if warmup is None:
             return schedule
         else:
@@ -64,38 +89,53 @@ class AdamConfig(OptimizerConfig):
 
     @staticmethod
     def default():
-        return AdamConfig(lr_schedule="cosine", warmup_schedule="linear", warmup_steps=100)
+        return AdamConfig(lr_schedule="cosine", warmup_schedule=None)
 
 @struct.dataclass
 class SGDConfig(OptimizerConfig):
     lr_schedule: str = "constant" # The learning rate schedule
     momentum: float | None = None
     nesterov: bool = False
+    weight_decay: float | None = None
 
     def make_optimizer(self, iterations):
-        return optax.sgd(learning_rate=self.make_lr_schedule(iterations),
+        optim = optax.sgd(learning_rate=self.make_lr_schedule(iterations),
                          momentum=self.momentum, nesterov=self.nesterov)
+        if self.weight_decay:
+            optim = optax.chain(optax.add_decayed_weights(self.weight_decay), optim)
+        return optim
 
 @struct.dataclass
-class SAMConfig(OptimizerConfig):
-    optimizer: OptimizerConfig = OptimizerConfig.default()
-    adv_optimizer: OptimizerConfig = SGDConfig(lr=5e-2) # rho = 0.05
+class SAMConfig:
+    forward: OptimizerConfig = OptimizerConfig.default()
+    backward: OptimizerConfig = SGDConfig(lr=5e-2) # rho = 0.05
+    start_percent: float = 0.
+    disable_backward: bool = False
     reset_backward_state: bool = True
     normalize: bool = True
 
     def make_optimizer(self, iterations):
-        import optax.contrib.sam as sam
+        import optax.contrib as sam
 
-        forward_opt = self.optimizer.make_optimizer(iterations)
-        backward_opt = self.adv_optimizer.make_optimizer(1 if self.reset_adv_state else iterations)
+        forward_opt = self.forward.make_optimizer(iterations)
+        if self.disable_backward:
+            return forward_opt
+        backward_opt = self.backward.make_optimizer(1 if self.reset_backward_state else iterations)
         # normalize before the backward optimizer
         backward_opt = optax.chain(sam.normalize(), backward_opt) if self.normalize else backward_opt
+        if self.start_percent > 0:
+            start_iter = int(self.start_percent * iterations)
+            backward_opt = optax.chain(
+                backward_opt,
+                optax.scale_by_schedule(lambda i: jax.lax.cond(i < start_iter, lambda: 0, lambda: 1))
+            )
         return sam.sam(
             optimizer=forward_opt,
             adv_optimizer=backward_opt,
             reset_state=self.reset_backward_state,
             opaque_mode=True
         )
+
 
 @struct.dataclass
 class TrainConfig:
@@ -119,7 +159,6 @@ class TrainConfig:
         return fit(
             data=data,
             batch_size=self.batch_size,
-            max_epochs=self.epochs,
             max_iterations=iterations,
             optimizer=self.optimizer.make_optimizer(iterations),
             **kwargs

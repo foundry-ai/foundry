@@ -1,7 +1,8 @@
-from typing import Generic, TypeVar, Mapping, Tuple
+from typing import Generic, TypeVar, Mapping, Tuple, Callable
 
 from stanza import struct
 from stanza.data import Data
+from stanza.data.transform import Transform
 from stanza.data.normalizer import Normalizer
 from stanza.util.registry import Registry, from_module, transform_result
 
@@ -14,7 +15,8 @@ T = TypeVar('T')
 @struct.dataclass
 class Dataset(Generic[T]):
     splits: Mapping[str, Data[T]]
-    normalizers: Mapping[str, Normalizer[T]]
+    normalizers: Mapping[str, Callable[[], Normalizer[T]]]
+    transforms: Mapping[str, Callable[[], Transform[T]]]
 
 DatasetRegistry = Registry
 

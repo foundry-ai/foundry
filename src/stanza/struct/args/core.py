@@ -164,6 +164,7 @@ class StructFormat(CliFormat[T], Generic[T]):
                     default = f.default_factory()
                 else:
                     default = f.default
+            f_type = type(default) if default is not struct.UNDEFINED and default is not None else f.type
 
             c = ctx.with_config(dataclasses.replace(ctx.config,
                 prefix=prefix,
@@ -171,7 +172,7 @@ class StructFormat(CliFormat[T], Generic[T]):
                 required=f.required and default is struct.UNDEFINED,
                 name=f.name
             ))
-            format = c.format_for(f.type)
+            format = c.format_for(f_type)
             if f.name in field_format_transforms:
                 format = field_format_transforms[f.name](format)
             self.field_formats[f.name] = format
@@ -251,6 +252,9 @@ class OptionFormat(CliFormat[T], Generic[T]):
         else:
             if len(v) > 1:
                 raise ArgParseError(f"Too many values for option {self.full_name}")
+            if self.base_type == bool:
+                v = v[0].lower()
+                return v == "t" or v == "true" or v == "y" or v == "yes"
             return self.base_type(v[0])
     
 class DefaultFormatProvider:

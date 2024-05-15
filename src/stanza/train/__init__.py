@@ -59,6 +59,13 @@ def get_batch_size(batch):
     assert np.all(ns == ns[0])
     return ns[0]
 
+@struct.dataclass
+class IterationInfo:
+    iteration: int
+    epoch: int
+    max_iteration: int
+    max_epoch: int
+
 # makes a loss_fn into a batch_loss_fn
 def batch_loss(loss_fn):
     @jax.jit
@@ -83,10 +90,12 @@ def batch_loss(loss_fn):
 
 @partial(jax.jit, static_argnums=(0,1), donate_argnums=(2,3))
 def _update(loss_fn, optimizer, 
-            opt_state, vars, iteration, rng, batch):
+            opt_state, vars, epoch, iteration,
+            max_epoch, max_iteration, rng, batch):
     def batch_loss(params, state):
         vars = {"params": params, **state}
-        output = loss_fn(vars, iteration, rng, batch)
+        info = IterationInfo(iteration, epoch, max_iteration, max_epoch)
+        output = loss_fn(vars, info, rng, batch)
         return output.loss, output
     params = vars["params"]
     state = {k: v for k, v in vars.items() if k != "params"}
@@ -103,7 +112,7 @@ def _update(loss_fn, optimizer,
 def fit(*, data : Data[Sample],
         rng_key : jax.Array,
         optimizer : optax.GradientTransformation,
-        batch_loss_fn : Callable[[Vars, jax.Array, jax.Array, Sample], LossOutput],
+        batch_loss_fn : Callable[[Vars, IterationInfo, jax.Array, Sample], LossOutput],
         init_vars : Vars, 
         init_opt_state : OptState = None,
         donate_init_vars : bool = False,
@@ -129,8 +138,8 @@ def fit(*, data : Data[Sample],
     iterations_per_epoch = len(dataloader)
     if max_iterations is None:
         max_iterations = max_epochs * iterations_per_epoch
-    if max_epochs is None:
-        max_epochs = (max_iterations + iterations_per_epoch - 1) // iterations_per_epoch
+    # recompute max_epochs based off of max_iterations
+    max_epochs = (max_iterations + iterations_per_epoch - 1) // iterations_per_epoch
 
     vars = init_vars if donate_init_vars else jax.tree_map(lambda x: jnp.copy(x), init_vars)
     optimizer = optax.with_extra_args_support(optimizer)
@@ -138,7 +147,6 @@ def fit(*, data : Data[Sample],
         opt_state = optimizer.init(vars["params"])
     else:
         opt_state = init_opt_state if donate_init_opt_state else jax.tree_map(lambda x: jnp.copy(x), init_opt_state)
-
     pbar = Progress(
                 TextColumn("[progress.description]{task.description}"),
                 BarColumn(finished_style=Style(color="green")),
@@ -161,7 +169,9 @@ def fit(*, data : Data[Sample],
                     opt_state, vars, stats = _update(
                         batch_loss_fn, optimizer,
                         opt_state, vars,
-                        iteration, next(rng), batch
+                        epoch, iteration, 
+                        max_epochs, max_iterations,
+                        next(rng), batch
                     )
                     state = TrainState(
                         max_iterations, max_epochs,

@@ -1,0 +1,25 @@
+program: image_classifier:run
+name: sam_start_points_sweep
+method: grid
+metric:
+  goal: maximize
+  name: test.accuracy
+parameters:
+  dataset:
+    values: ["mnist", "cifar10"]
+  model:
+    values: ["WideResNet18", "MLPLarge"]
+  optimizer:
+    values: ["sgd", "adam"]
+  epochs:
+    values: [100, 200, 400]
+  sam_rho:
+    values: [0, 0.05, 0.1]
+  sam_start:
+    values: [0, 0.5, 0.9]
+command:
+  - pdm
+  - run
+  - launch
+  - ${program}
+  - ${args}

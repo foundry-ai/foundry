@@ -6,6 +6,9 @@ from stanza.data import PyTreeData
 from stanza.data import normalizer as nu
 from stanza.datasets import DatasetRegistry, ImageClassDataset
 from .util import download, extract, cache_path
+from stanza.data.transform import (
+    random_horizontal_flip, random_subcrop, random_cutout
+)
 
 def _read_batch(file):
     dict = pickle.load(file, encoding="bytes")
@@ -14,6 +17,13 @@ def _read_batch(file):
     data = data.reshape((-1, 3, 32, 32))
     data = data.transpose((0, 2, 3, 1))
     return data, labels
+
+def _standard_augmentations(rng_key, x):
+    a, b, c = jax.random.split(rng_key, 3)
+    x = random_horizontal_flip(a, x)
+    x = random_subcrop(b, x, (32, 32), 4)
+    # x = random_cutout(c, x, 8, 0.1)
+    return x
 
 def _load_cifar10(quiet=False):
     tar_path = cache_path("cifar10", "cifar10.tar.gz")
@@ -46,13 +56,22 @@ def _load_cifar10(quiet=False):
         "train": train,
         "test": test
     }
+    train_normalized = PyTreeData((train_data.astype(jnp.float32) / 128.0) - 1)
     return ImageClassDataset(
         splits=data,
         normalizers={
-            "hypercube": nu.Compose(
+            "hypercube": lambda: nu.Compose(
                 (nu.ImageNormalizer(jax.ShapeDtypeStruct((32, 32, 3), jnp.uint8)),
                     nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))
+            ),
+            "standard_dev": lambda: nu.Compose(
+                (nu.Chain([nu.ImageNormalizer(jax.ShapeDtypeStruct((32, 32, 3), jnp.uint8)),
+                    nu.StdNormalizer.from_data(train_normalized, component_wise=False)]),
+                 nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))
             )
+        },
+        transforms={
+            "standard_augmentations": lambda: _standard_augmentations
         },
         classes=["airplane", "automobile", "bird", "cat", "deer",
                  "dog", "frog", "horse", "ship", "truck"]
@@ -96,7 +115,7 @@ def _load_cifar100(quiet=False):
     return ImageClassDataset(
         splits=data,
         normalizers={
-            "hypercube": nu.Compose(
+            "hypercube": lambda: nu.Compose(
                 (nu.ImageNormalizer(jax.ShapeDtypeStruct((32, 32, 3), jnp.uint8)), 
                     nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))
             )
