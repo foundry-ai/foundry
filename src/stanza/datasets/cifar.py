@@ -28,7 +28,7 @@ def _standard_augmentations(rng_key, x):
 def _load_cifar10(quiet=False):
     tar_path = cache_path("cifar10", "cifar10.tar.gz")
     download(tar_path,
-        job_name="CIFAFR-10",
+        job_name="CIFAR-10",
         url="https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz",
         md5="c58f30108f718f92721af3b95e74349a",
         quiet=quiet
@@ -80,7 +80,7 @@ def _load_cifar10(quiet=False):
 def _load_cifar100(quiet=False):
     tar_path = cache_path("cifar100", "cifar100.tar.gz")
     download(tar_path,
-        job_name="CIFAFR-100",
+        job_name="CIFAR-100",
         url="https://www.cs.toronto.edu/~kriz/cifar-100-python.tar.gz",
         md5="eb9058c3a382ffc7106e4002c42a8d85",
         quiet=quiet
@@ -119,6 +119,9 @@ def _load_cifar100(quiet=False):
                 (nu.ImageNormalizer(jax.ShapeDtypeStruct((32, 32, 3), jnp.uint8)), 
                     nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))
             )
+        },
+        transforms={
+            "standard_augmentations": lambda: _standard_augmentations
         },
         classes=classes
     )

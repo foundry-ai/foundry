@@ -73,10 +73,10 @@ class PyTreeData(Data[T]):
     
     def slice(self, off : int, length : int) -> T:
         return jax.tree_map(
-            lambda x: x[off:off+length],
+            lambda x: jax.lax.dynamic_slice(x, jnp.broadcast_to(jnp.array(off), (x.ndim,)), (length,) + x.shape[1:]),
             self.tree
         )
-    
+
     @staticmethod
     def from_data(data : Data[T]) -> "PyTreeData[T]":
         return PyTreeData(data.slice(0, len(data)))

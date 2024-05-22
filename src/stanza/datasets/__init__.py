@@ -18,6 +18,7 @@ class Dataset(Generic[T]):
     normalizers: Mapping[str, Callable[[], Normalizer[T]]]
     transforms: Mapping[str, Callable[[], Transform[T]]]
 
+
 DatasetRegistry = Registry
 
 @struct.dataclass
@@ -39,8 +40,14 @@ class ImageClassDataset(Dataset[Tuple[jax.Array, jax.Array]]):
             normalizers={
                 k: map_normalizer(v)
                 for k, v in self.normalizers.items()
-            }
+            },
+            transforms={}
         )
+
+@struct.dataclass
+class EnvDataset(Dataset[T], Generic[T]):
+    def create_env(self):
+        raise NotImplementedError()
 
 image_class_datasets : DatasetRegistry[ImageClassDataset] = DatasetRegistry[Dataset]()
 """Datasets containing (image, label) pairs,

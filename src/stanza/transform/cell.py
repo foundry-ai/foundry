@@ -84,7 +84,7 @@ class CellRef:
     @staticmethod
     def extract_cells(tree, cells=None):
         # get all of the leaves in the tree that are cells
-        leaves, _ = jax.tree_flatten(tree, is_leaf=lambda x: isinstance(x, Cell))
+        leaves, _ = jax.tree_util.tree_flatten(tree, is_leaf=lambda x: isinstance(x, Cell))
         if not cells:
             new_cells = list({l for l in leaves if isinstance(l, Cell)})
             cells = new_cells
@@ -101,7 +101,7 @@ class CellRef:
         queue = list(cells)
         while queue:
             c = queue.pop()
-            leaves = jax.tree_flatten(c._value, is_leaf=lambda x: isinstance(x, Cell))
+            leaves = jax.tree_util.tree_flatten(c._value, is_leaf=lambda x: isinstance(x, Cell))
             new_cells = {l for l in leaves if isinstance(l, Cell) and l not in visited_cells}
             cells.extend(new_cells)
             queue.extend(new_cells)
@@ -114,11 +114,11 @@ class CellRef:
         def map(c):
             if not isinstance(c, Cell): return c
             return CellRef(cell_idx[c])
-        return jax.tree_map(map, trees, is_leaf=lambda x: isinstance(x, Cell))
+        return jax.tree_util.tree_map(map, trees, is_leaf=lambda x: isinstance(x, Cell))
 
     @staticmethod
     def resolve_cells(cells, tree):
-        return jax.tree_map(
+        return jax.tree_util.tree_map(
             lambda x: cells[x.index] if isinstance(x, CellRef) else x,
             tree, is_leaf=lambda x: isinstance(x, CellRef)
         )

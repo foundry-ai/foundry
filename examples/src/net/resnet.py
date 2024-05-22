@@ -376,7 +376,6 @@ class ResNet(nn.Module):
         x = nn.Dense(self.n_classes)(x)
         return x
 
-# yapf: disable
 ResNet18 = partial(ResNet, stage_sizes=STAGE_SIZES[18],
                    stem_cls=ResNetStem, block_cls=ResNetBlock)
 ResNet34 = partial(ResNet, stage_sizes=STAGE_SIZES[34],
@@ -389,6 +388,11 @@ ResNet152 = partial(ResNet, stage_sizes=STAGE_SIZES[152],
                     stem_cls=ResNetStem, block_cls=ResNetBottleneckBlock)
 ResNet200 = partial(ResNet, stage_sizes=STAGE_SIZES[200],
                     stem_cls=ResNetStem, block_cls=ResNetBottleneckBlock)
+
+SkinnyResNet18 = partial(ResNet18, base_filters=32,
+                       block_cls=partial(ResNetBottleneckBlock, expansion=2))
+SkinnyResNet50 = partial(ResNet50, base_filters=32,
+                       block_cls=partial(ResNetBottleneckBlock, expansion=2))
 
 WideResNet18 = partial(ResNet18, base_filters=128,
                        block_cls=partial(ResNetBottleneckBlock, expansion=2))

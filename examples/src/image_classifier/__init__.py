@@ -7,6 +7,8 @@ import stanza.train.wandb as stw
 import stanza.train.wandb
 import stanza.util.summary
 
+from stanza.util.lanczos import net_sharpness_statistics
+
 from stanza.random import PRNGSequence
 from stanza.datasets import image_class_datasets
 
@@ -46,6 +48,9 @@ class Config:
     # sam-related parameters
     sam_rho: float | None = None # None if SAM is disabled
     sam_start: float = 0. # percentage of training through which to start sam
+
+    # sharpness measure
+    sharpness: bool = False
 
     # if we should also quantize the model
 
@@ -108,11 +113,10 @@ def train(config: Config):
 
     def loss_fn(params, _iteration, rng_key, sample, train=True):
         x, label = normalizer.normalize(sample)
-        x = augment(rng_key, x)
-
         if train:
+            x = augment(rng_key, x)
             logits_output, mutated = model.apply(params, x, 
-                                    mutable=("batch_stats",))
+                                                 mutable=("batch_stats",))
         else:
             logits_output = model.apply(params, x)
             mutated = {}
@@ -125,9 +129,27 @@ def train(config: Config):
             metrics=dict(cross_entropy=ce_loss, accuracy=accuracy),
             var_updates=mutated
         )
-
+    
     batch_loss = st.batch_loss(loss_fn)
-    val_batch_loss = st.batch_loss(partial(loss_fn, train=False))
+
+    def val_batch_loss(params, _iteration, rng_key, batch):
+        x, label = jax.vmap(normalizer.normalize)(batch)
+        logits_out = jax.vmap(model.apply, in_axes=(None,0))(params, x)
+        ce_loss = jnp.mean(optax.softmax_cross_entropy_with_integer_labels(logits_out, label))
+        accuracy = jnp.mean(1.*(jnp.argmax(logits_out, axis=-1) == label))
+
+        if config.sharpness:
+            def loss(params):
+                logits_out = jax.vmap(model.apply, in_axes=(None,0))(params, x)
+                return jnp.mean(optax.softmax_cross_entropy_with_integer_labels(logits_out, label))
+            sharpness_stats = net_sharpness_statistics(rng_key, loss, params)
+        else:
+            sharpness_stats = {}
+        return st.LossOutput(
+            loss=ce_loss,
+            metrics=dict(cross_entropy=ce_loss, accuracy=accuracy, sharpness=sharpness_stats)
+        )
+
     vars = train_config.fit(
         data=dataset.splits["train"],
         batch_loss_fn=batch_loss,

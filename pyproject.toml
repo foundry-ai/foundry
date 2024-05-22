@@ -25,6 +25,7 @@ dependencies = [
     "beautifulsoup4>=4.12.3",
     "ast-comments>=1.2.1",
     "trajax @ git+https://github.com/google/trajax",
+    "zarr>=2.18.1",
 ]
 requires-python = ">=3.10"
 readme = "README.md"
@@ -59,4 +60,5 @@ dev = [
     "ipywidgets>=8.1.2",
     "jupyterlab>=4.1.2",
     "pytest>=8.0.2",
+    "jaxlib>=0.4.24",
 ]

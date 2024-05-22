@@ -2,8 +2,8 @@ import functools
 import jax
 import jax.numpy as jnp
 
-import chex
-import stanza.transform
+import stanza
+import stanza.transform.lift as lift
 from . import SolverResult
 from stanza import struct
 
@@ -11,13 +11,12 @@ def implicit_diff_solve(solve, assume_psd=False):
     @functools.wraps(solve)
     @stanza.jit
     def diff_solve(objective, init_state):
-        optimality_fun = stanza.transform.jaxify_function(objective.optimality)
-        objective = stanza.transform.jaxify_pytree(objective)
-        init_state = stanza.transform.jaxify_pytree(init_state)
+        optimality_fun = lift.static_lower(objective.optimality)
+        objective = lift.Static.static_wrap(objective)
+        init_state = lift.Static.static_wrap(init_state)
         optimality_fun, optimality_args = jax.closure_convert(
             optimality_fun, init_state)
-
-        solve_fun = stanza.transform.jaxify_function(solve)
+        solve_fun = lift.static_lower(solve)
         solve_fun, solve_args = jax.closure_convert(
             solve_fun, objective, init_state)
 
@@ -78,7 +77,7 @@ def implicit_diff_solve(solve, assume_psd=False):
                 # print(S1_inv.shape, S2_hat.shape, V2T.shape, V1T.shape)
                 dxdtheta = V1T.T @ ((S1_inv @ S2_hat) @ V2T)
                 dx = dxdtheta @ dtheta
-            dres = jax.tree_map(jnp.zeros_like, res)
+            dres = jax.tree_util.tree_map(jnp.zeros_like, res)
             out_tangents = dres, dx
             return out_primals, out_tangents
         optimality_solve.defjvp(optimality_solve_jvp, symbolic_zeros=True)

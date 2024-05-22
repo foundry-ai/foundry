@@ -95,6 +95,12 @@ class LoweredFunction:
         res = CellRef.resolve_cells(ret_cells, res)
         return res
 
+def static_lower(function):
+    def lowered(*args, **kwargs):
+        args, kwargs = Static.static_unwrap((args, kwargs))
+        return function(*args, **kwargs)
+    return lowered
+
 _LIFT_CACHE = weakref.WeakKeyDictionary()
 _LOWER_CACHE = weakref.WeakKeyDictionary()
 

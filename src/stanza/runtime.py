@@ -95,7 +95,7 @@ def setup():
 
 def launch(entrypoint=None):
     try:
-        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+        # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
         os.environ["WANDB_SILENT"] = "true"
         setup()
         if entrypoint is None:
