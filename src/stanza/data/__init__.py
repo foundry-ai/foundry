@@ -134,23 +134,29 @@ class DataLoader(Generic[T]):
         else:
             indices = jnp.arange(len(self.data))
 
-        if len(indices) % self.batch_size != 0:
-            final_batch_len = len(indices) % self.batch_size
-            last_batch = indices[-final_batch_len:]
-            indices = indices[:-final_batch_len]
+        if self.batch_size is None:
+            def loader():
+                data = self._get_batch(indices)
+                yield data
+            return loader()
         else:
-            last_batch = None
-        indices = jnp.reshape(indices, (-1, self.batch_size))
-        if last_batch is not None and \
-                (not self.drop_jagged or indices.shape[0] == 0):
-            indices = iter(indices)
-            indices = itertools.chain(indices, [last_batch])
-        else:
-            indices = iter(indices)
-        return self.pool.imap(
-            self._get_batch,
-            indices, chunksize=self.chunksize
-        )
+            if len(indices) % self.batch_size != 0:
+                final_batch_len = len(indices) % self.batch_size
+                last_batch = indices[-final_batch_len:]
+                indices = indices[:-final_batch_len]
+            else:
+                last_batch = None
+            indices = jnp.reshape(indices, (-1, self.batch_size))
+            if last_batch is not None and \
+                    (not self.drop_jagged or indices.shape[0] == 0):
+                indices = iter(indices)
+                indices = itertools.chain(indices, [last_batch])
+            else:
+                indices = iter(indices)
+            return self.pool.imap(
+                self._get_batch,
+                indices, chunksize=self.chunksize
+            )
    
     def __len__(self) -> int:
         return (

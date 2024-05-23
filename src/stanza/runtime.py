@@ -85,7 +85,7 @@ def _load_entrypoint(entrypoint_string):
 
 def setup():
     cpu_cores = multiprocessing.cpu_count()
-    os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={cpu_cores}"
+    os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={cpu_cores} --xla_gpu_autotune_level=0"
     if rich.get_console().is_jupyter:
         from stanza.util.ipython import setup_rich_notebook_hook
         setup_rich_notebook_hook()
@@ -96,6 +96,7 @@ def setup():
 def launch(entrypoint=None):
     try:
         # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+        # os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'
         os.environ["WANDB_SILENT"] = "true"
         setup()
         if entrypoint is None:

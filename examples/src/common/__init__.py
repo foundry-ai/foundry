@@ -111,7 +111,6 @@ class SAMConfig:
     backward: OptimizerConfig = SGDConfig(lr=5e-2) # rho = 0.05
     start_percent: float = 0.
     disable_backward: bool = False
-    reset_backward_state: bool = True
     normalize: bool = True
 
     def make_optimizer(self, iterations):
@@ -120,7 +119,7 @@ class SAMConfig:
         forward_opt = self.forward.make_optimizer(iterations)
         if self.disable_backward:
             return forward_opt
-        backward_opt = self.backward.make_optimizer(1 if self.reset_backward_state else iterations)
+        backward_opt = self.backward.make_optimizer(iterations)
         # normalize before the backward optimizer
         backward_opt = optax.chain(sam.normalize(), backward_opt) if self.normalize else backward_opt
         if self.start_percent > 0:
@@ -132,7 +131,7 @@ class SAMConfig:
         return sam.sam(
             optimizer=forward_opt,
             adv_optimizer=backward_opt,
-            reset_state=self.reset_backward_state,
+            reset_state=False,
             opaque_mode=True
         )
 

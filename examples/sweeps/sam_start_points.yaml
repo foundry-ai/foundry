@@ -5,14 +5,16 @@ metric:
   goal: maximize
   name: test/accuracy
 parameters:
-  dataset:
-    value: "cifar10"
-  model:
-    values: ["WideResNet18", "WideResNet50"]
+  sharpness:
+    value: "true"
   optimizer:
     values: ["sgd", "adam"]
+  dataset:
+    values: ["mnist", "cifar10"]
+  model:
+    values: ["MLPLarge"]
   epochs:
-    values: [50, 100, 400]
+    values: [50]
   sam_rho:
     values: [0, 0.05, 0.1]
   sam_start:

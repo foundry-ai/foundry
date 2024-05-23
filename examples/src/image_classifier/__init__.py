@@ -7,7 +7,7 @@ import stanza.train.wandb as stw
 import stanza.train.wandb
 import stanza.util.summary
 
-from stanza.util.lanczos import net_sharpness_statistics
+from stanza.util import lanczos
 
 from stanza.random import PRNGSequence
 from stanza.datasets import image_class_datasets
@@ -35,7 +35,7 @@ class Config:
     summary: bool = False
     dataset: str = "cifar10"
     normalizer: str = "standard_dev"
-    model: str = "WideResNet18"
+    model: str = "SkinnyResNet18"
 
     lr: float | None = None
     lr_schedule: str = "cosine"
@@ -131,24 +131,25 @@ def train(config: Config):
         )
     
     batch_loss = st.batch_loss(loss_fn)
+    val_batch_loss = st.batch_loss(partial(loss_fn, train=False))
 
-    def val_batch_loss(params, _iteration, rng_key, batch):
-        x, label = jax.vmap(normalizer.normalize)(batch)
-        logits_out = jax.vmap(model.apply, in_axes=(None,0))(params, x)
-        ce_loss = jnp.mean(optax.softmax_cross_entropy_with_integer_labels(logits_out, label))
-        accuracy = jnp.mean(1.*(jnp.argmax(logits_out, axis=-1) == label))
-
+    def sharpness_stats(params, _iteration, rng_key, batch):
+        batch = jax.vmap(normalizer.normalize)(batch)
         if config.sharpness:
-            def loss(params):
-                logits_out = jax.vmap(model.apply, in_axes=(None,0))(params, x)
-                return jnp.mean(optax.softmax_cross_entropy_with_integer_labels(logits_out, label))
-            sharpness_stats = net_sharpness_statistics(rng_key, loss, params)
+            def loss(params, sample):
+                x, label = sample
+                logits_out = model.apply(params, x)
+                return optax.softmax_cross_entropy_with_integer_labels(logits_out, label)
+            hvp_at = partial(lanczos.net_batch_hvp, 
+                loss, batch, config.batch_size
+            )
+            sharpness_stats = lanczos.net_sharpness_statistics(rng_key, hvp_at, params)
         else:
             sharpness_stats = {}
         return st.LossOutput(
-            loss=ce_loss,
-            metrics=dict(cross_entropy=ce_loss, accuracy=accuracy, sharpness=sharpness_stats)
+            metrics=sharpness_stats
         )
+
 
     vars = train_config.fit(
         data=dataset.splits["train"],
@@ -163,9 +164,22 @@ def train(config: Config):
             ),
             st.every_n_iterations(500,
                 st.validate(
+                    data=dataset.splits["train"],
+                    batch_loss_fn=sharpness_stats,
+                    batch_size=8*config.batch_size,
+                    batches=1, # run on a single batch, 8*the regular size
+                               # we will scan over the 8 batches to sum up the hvp
+                    log_hooks=[
+                        st.wandb.wandb_logger(run=wandb_run, prefix="sharpness/"),
+                        st.console_logger(prefix="sharpness.")
+                    ]
+                ),
+            ),
+            st.every_n_iterations(500,
+                st.validate(
                     data=dataset.splits["test"],
                     batch_loss_fn=val_batch_loss,
-                    batch_size=config.batch_size,
+                    batch_size=None,
                     log_hooks=[
                         st.wandb.wandb_logger(run=wandb_run, prefix="test/"),
                         st.console_logger(prefix="test.")

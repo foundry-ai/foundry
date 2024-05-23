@@ -20,9 +20,9 @@ from jax.typing import ArrayLike
 
 import jax.numpy as jnp
 import functools
+import itertools
 
 import jax
-import os
 import optax # type: ignore
 
 import logging
@@ -260,8 +260,10 @@ def log_to(data_hook, *log_hooks):
 
 # validation hook
 def validate(*hooks,
-            data, batch_size,
+            data, 
             batch_loss_fn,
+            batch_size=None,
+            batches=None, # if we should use a fixed number of batches
             log_hooks=[]
         ):
     if log_hooks:
@@ -273,6 +275,13 @@ def validate(*hooks,
     dataloader = DataLoader(data,
         batch_size=batch_size, shuffle=False,
     )
+    if batches is not None:
+        dataloader_cycle = dataloader.cycle()
+        def iter_batches():
+            return itertools.islice(dataloader_cycle, batches)
+    else:
+        def iter_batches():
+            return iter(dataloader)
 
     @jax.jit
     def metric_fn(vars: Vars, iteration: int, rng_key: jax.Array, batch: Sample):
@@ -281,14 +290,14 @@ def validate(*hooks,
 
     def hook_fn(rng, state, *, log=None, **kwargs):
         all_stats = []
-        for batch in dataloader:
+        for batch in iter_batches():
             metrics = metric_fn(
                 state.vars, state.iteration,
                 next(rng), batch
             )
             all_stats.append(metrics)
-        all_stats = jax.tree_map(lambda *x: jnp.stack(x, 0), *all_stats)
-        all_stats = jax.tree_map(lambda x: jnp.mean(x, 0), all_stats)
+        all_stats = jax.tree_util.tree_map(lambda *x: jnp.stack(x, 0), *all_stats)
+        all_stats = jax.tree_util.tree_map(lambda x: jnp.mean(x, 0), all_stats)
         for h in hooks:
             h(rng, state, log=all_stats, **kwargs)
     return hook_fn

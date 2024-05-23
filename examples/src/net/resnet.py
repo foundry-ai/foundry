@@ -189,10 +189,11 @@ STAGE_SIZES = {
 
 class ResNetStem(nn.Module):
     conv_block_cls: ModuleDef = ConvBlock
+    base_filters: int = 64
 
     @nn.compact
     def __call__(self, x):
-        return self.conv_block_cls(64,
+        return self.conv_block_cls(self.base_filters,
                                    kernel_size=(7, 7),
                                    strides=(2, 2),
                                    padding=[(3, 3), (3, 3)])(x)
@@ -362,10 +363,11 @@ class ResNet(nn.Module):
         conv_block_cls = partial(self.conv_block_cls, 
                         conv_cls=self.conv_cls, 
                         norm_cls=self.norm_cls)
-        stem_cls = partial(self.stem_cls, conv_block_cls=conv_block_cls)
         block_cls = partial(self.block_cls, conv_block_cls=conv_block_cls)
-        x = stem_cls()(x)
-        x = self.pool_fn(x)
+        if self.stem_cls is not None:
+            stem_cls = partial(self.stem_cls, conv_block_cls=conv_block_cls, base_filters=self.base_filters)
+            x = stem_cls()(x)
+            x = self.pool_fn(x)
         for i, n_blocks in enumerate(self.stage_sizes):
             hsize = self.base_filters * 2**i
             for b in range(n_blocks):
@@ -389,9 +391,9 @@ ResNet152 = partial(ResNet, stage_sizes=STAGE_SIZES[152],
 ResNet200 = partial(ResNet, stage_sizes=STAGE_SIZES[200],
                     stem_cls=ResNetStem, block_cls=ResNetBottleneckBlock)
 
-SkinnyResNet18 = partial(ResNet18, base_filters=32,
+SmallResNet18 = partial(ResNet18, base_filters=32, stem_cls=None,
                        block_cls=partial(ResNetBottleneckBlock, expansion=2))
-SkinnyResNet50 = partial(ResNet50, base_filters=32,
+SmallResNet50 = partial(ResNet50, base_filters=32, stem_cls=None,
                        block_cls=partial(ResNetBottleneckBlock, expansion=2))
 
 WideResNet18 = partial(ResNet18, base_filters=128,

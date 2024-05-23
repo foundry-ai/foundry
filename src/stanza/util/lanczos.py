@@ -9,27 +9,76 @@ import jax
 import jax.flatten_util
 import jax.numpy as jnp
 
-def net_hvp(loss, params, v):
-    return jax.jvp(jax.grad(loss), [params], [v])[1]
 
-@partial(jax.jit, static_argnums=(1,))
-def net_sharpness_statistics(rng_key, loss, params, samples=5):
+# Takes in a loss
+def net_batch_hvp(loss, data, batch_size, params):
+    N = jax.tree_util.tree_flatten(data)[0][0].shape[0]
+    # if N is smaller than batch_size, use that
+    batch_size = min(N, batch_size)
+    batches = N // batch_size
+    # remove the remainder to make the data batch_size
+    remainder = N  - batches * batch_size
+    if remainder > 0:
+        data = jax.tree_util.tree_map(
+            lambda x: x[:-remainder]
+        )
+    data = jax.tree_util.tree_map(
+        lambda x: x.reshape((-1, batch_size) + x.shape[1:]), 
+        data
+    )
+    params_flat, uf = jax.flatten_util.ravel_pytree(params)
+    def hvp(v):
+        def batch_loss(batch, params_flat):
+            return jnp.mean(jax.vmap(loss, in_axes=(None, 0))(uf(params_flat), batch))
+        def hvp_scan(total, batch):
+            loss_flat = partial(batch_loss, batch)
+            def sub_hvp(v):
+                return jax.jvp(
+                    jax.grad(loss_flat), [params_flat], [v]
+                )[1]
+            w = sub_hvp(v)
+            total = total + w
+            return total, None
+        total , _ = jax.lax.scan(hvp_scan, jnp.zeros_like(params_flat), data)
+        w = total / batches
+        return w
+    return hvp
+
+def net_hvp(loss, params):
     params_flat, uf = jax.flatten_util.ravel_pytree(params)
     loss_flat = lambda p: loss(uf(p))
-    def net_hvp(v):
+    def hvp(v):
         return jax.jvp(
             jax.grad(loss_flat), [params_flat], [v]
         )[1]
-    order = min(params_flat.shape[0], 16)
-    tridiags, _ = jax.vmap(lanczos_alg, in_axes=(0, None, None, None))(
-        jax.random.split(rng_key, samples), net_hvp, params_flat.shape[0], order
-    )
+    return hvp
+
+@partial(jax.jit, static_argnums=(1,))
+def net_sharpness_statistics(rng_key, hvp_at, params, order=8, samples=1):
+    params_flat, _ = jax.flatten_util.ravel_pytree(params)
+    order = min(params_flat.shape[0], order)
+    hvp = hvp_at(params)
+    tridiags, _ = lanczos_alg(rng_key, hvp, params_flat.shape[0], order)
+    tridiags = jnp.expand_dims(tridiags, axis=0)
+    # alg = lambda rng_key: lanczos_alg(rng_key, net_hvp, params_flat.shape[0], order)
+    # tridiags, _ = jax.lax.map(alg, jax.random.split(rng_key, samples))
+    # tridiags, _ = jax.vmap(alg)(jax.random.split(rng_key, samples))
+
     eig_vals, all_weights = tridiag_to_eigv(tridiags)
-    q = jnp.array([5, 25, 50, 75, 95])
-    p = jnp.percentile(eig_vals, q, axis=0)
-    return {
-        f'lambda_percentile_{q[i]}': p[i] for i in range(len(q))
+    eig_vals = eig_vals.reshape((-1,))
+    sigmas = jnp.abs(eig_vals)
+    q = [5, 25, 50, 75, 95]
+    lam_p = jnp.percentile(eig_vals, jnp.array(q), axis=0)
+    sigma_p = jnp.percentile(sigmas, jnp.array(q), axis=0)
+    d = {
+        f'lambda_percentile_{q[i]:02}': lam_p[i] for i in range(len(q))
     }
+    d.update({
+        f'sigma_percentile_{q[i]:02}': sigma_p[i] for i in range(len(q))
+    })
+    d["lambda_trace"] = eig_vals.sum()
+    d["sigma_trace"] = sigmas.sum()
+    return d
 
 @partial(jax.jit, static_argnums=(1,2,3))
 def lanczos_density(rng_key, hvp, dim, order, samples=5, grid_len=10000):

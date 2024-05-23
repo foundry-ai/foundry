@@ -20,5 +20,6 @@ class MLPClassifier(nn.Module):
         x = nn.Dense(self.n_classes)(x)
         return x
 
-MLPSmall = partial(MLPClassifier, features=[64, 32, 32])
 MLPLarge = partial(MLPClassifier, features=[512, 512, 128])
+MLPMedium = partial(MLPClassifier, features=[128, 128, 64])
+MLPSmall = partial(MLPClassifier, features=[64, 32, 32])
