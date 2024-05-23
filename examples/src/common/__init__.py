@@ -1,8 +1,8 @@
-from stanza import struct, partial
-from stanza.struct import args
+from stanza import struct
 
 import optax
 import jax
+import jax.numpy as jnp
 
 @struct.dataclass
 class OptimizerConfig:
@@ -110,6 +110,7 @@ class SAMConfig:
     forward: OptimizerConfig = OptimizerConfig.default()
     backward: OptimizerConfig = SGDConfig(lr=5e-2) # rho = 0.05
     start_percent: float = 0.
+    run_percent: float = 1.
     disable_backward: bool = False
     normalize: bool = True
 
@@ -122,11 +123,15 @@ class SAMConfig:
         backward_opt = self.backward.make_optimizer(iterations)
         # normalize before the backward optimizer
         backward_opt = optax.chain(sam.normalize(), backward_opt) if self.normalize else backward_opt
-        if self.start_percent > 0:
+        if self.start_percent > 0 or self.run_percent < 1.:
             start_iter = int(self.start_percent * iterations)
+            end_iter = int((iterations - start_iter)*self.run_percent)
             backward_opt = optax.chain(
                 backward_opt,
-                optax.scale_by_schedule(lambda i: jax.lax.cond(i < start_iter, lambda: 0, lambda: 1))
+                optax.scale_by_schedule(
+                    lambda i: jax.lax.cond(
+                        jnp.logical_and(i < start_iter, i > end_iter), 
+                    lambda: 0, lambda: 1))
             )
         return sam.sam(
             optimizer=forward_opt,

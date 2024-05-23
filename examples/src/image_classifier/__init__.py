@@ -17,6 +17,7 @@ from common import TrainConfig, AdamConfig, SAMConfig, SGDConfig
 
 import net
 
+import flax
 import rich
 import wandb
 
@@ -35,7 +36,7 @@ class Config:
     summary: bool = False
     dataset: str = "cifar10"
     normalizer: str = "standard_dev"
-    model: str = "SkinnyResNet18"
+    model: str = "SmallResNet18"
 
     lr: float | None = None
     lr_schedule: str = "cosine"
@@ -48,6 +49,7 @@ class Config:
     # sam-related parameters
     sam_rho: float | None = None # None if SAM is disabled
     sam_start: float = 0. # percentage of training through which to start sam
+    sam_percent: float = 1. # percentage of training to use sam, if enabled
 
     # sharpness measure
     sharpness: bool = False
@@ -70,13 +72,23 @@ def train(config: Config):
             cycles=config.cycles,
             cycle_mult=config.cycle_mult
         )
+    wandb_run = wandb.init(
+        project="image_diffusion",
+        config=stanza.util.flatten_to_dict(config)[0]
+    )
 
     if config.sam_rho is not None and config.sam_rho > 0:
         optimizer = SAMConfig(
             forward=optimizer,
             backward=SGDConfig(config.sam_rho),
-            start_percent=config.sam_start
+            start_percent=config.sam_start,
+            run_percent=config.sam_percent
         )
+    elif config.sam_start > 0 or config.sam_percent < 1:
+        logger.error("SAM is disabled but SAM parameters are set")
+        wandb_run.finish()
+        return
+
     train_config = TrainConfig(
         batch_size=config.batch_size,
         epochs=config.epochs,
@@ -89,10 +101,6 @@ def train(config: Config):
         dataset.transforms["standard_augmentations"]()
         if "standard_augmentations" in dataset.transforms else
         lambda _r, x: x
-    )
-    wandb_run = wandb.init(
-        project="image_diffusion",
-        config=stanza.util.flatten_to_dict(config)[0]
     )
     logger.info(f"Logging to [blue]{wandb_run.url}[/blue]")
 
@@ -133,12 +141,15 @@ def train(config: Config):
     batch_loss = st.batch_loss(loss_fn)
     val_batch_loss = st.batch_loss(partial(loss_fn, train=False))
 
-    def sharpness_stats(params, _iteration, rng_key, batch):
+    def sharpness_stats(vars, _iteration, rng_key, batch):
         batch = jax.vmap(normalizer.normalize)(batch)
+        # only compute the sharpenss wrt trainable params
+        other_vars, params = flax.core.pop(vars, "params")
         if config.sharpness:
             def loss(params, sample):
+                vars = {"params": params, **other_vars}
                 x, label = sample
-                logits_out = model.apply(params, x)
+                logits_out = model.apply(vars, x)
                 return optax.softmax_cross_entropy_with_integer_labels(logits_out, label)
             hvp_at = partial(lanczos.net_batch_hvp, 
                 loss, batch, config.batch_size

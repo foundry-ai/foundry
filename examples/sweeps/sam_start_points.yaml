@@ -10,15 +10,17 @@ parameters:
   optimizer:
     values: ["sgd", "adam"]
   dataset:
-    values: ["mnist", "cifar10"]
+    values: ["cifar10"]
   model:
-    values: ["MLPLarge"]
+    values: ["SmallResNet18"]
   epochs:
-    values: [50]
+    values: [50, 100, 400]
   sam_rho:
     values: [0, 0.05, 0.1]
   sam_start:
     values: [0, 0.5, 0.9]
+  sam_percent:
+    values: [0.5, 1.]
 
 command:
   - pdm
