@@ -12,11 +12,11 @@ parameters:
   dataset:
     values: ["cifar10"]
   model:
-    values: ["SmallResNet18"]
+    values: ["SmallResNet50", "SmallResNet18"]
   epochs:
     values: [50, 100, 400]
   sam_rho:
-    values: [0, 0.05, 0.1]
+    values: [0.1, 0.05, 0.]
   sam_start:
     values: [0, 0.5, 0.9]
   sam_percent:

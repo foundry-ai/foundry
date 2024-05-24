@@ -191,12 +191,16 @@ class ResNetStem(nn.Module):
     conv_block_cls: ModuleDef = ConvBlock
     base_filters: int = 64
 
+    strides: Sequence[int] = (2, 2)
+    kernel_size: Tuple[int, int] = (7, 7)
+    padding: Sequence[Tuple[int, int]] = ((3, 3), (3, 3))
+
     @nn.compact
     def __call__(self, x):
         return self.conv_block_cls(self.base_filters,
-                                   kernel_size=(7, 7),
-                                   strides=(2, 2),
-                                   padding=[(3, 3), (3, 3)])(x)
+                                   kernel_size=self.kernel_size,
+                                   strides=self.strides,
+                                   padding=self.padding)(x)
 
 
 class ResNetDStem(nn.Module):
@@ -378,6 +382,22 @@ class ResNet(nn.Module):
         x = nn.Dense(self.n_classes)(x)
         return x
 
+# Small models are for CIFAR-10 size images (rather than ImageNet size)
+SmallResNet = partial(ResNet,
+    stem_cls=partial(ResNetStem, # smol stem boy
+        strides=(1, 1), kernel_size=(3, 3),
+        padding=((1, 1), (1, 1))
+    ),
+)
+SmallResNet18 = partial(SmallResNet,
+    stage_sizes=STAGE_SIZES[18],
+    block_cls=ResNetBlock
+)
+SmallResNet50 = partial(
+    SmallResNet,
+    stage_sizes=STAGE_SIZES[50]
+)
+
 ResNet18 = partial(ResNet, stage_sizes=STAGE_SIZES[18],
                    stem_cls=ResNetStem, block_cls=ResNetBlock)
 ResNet34 = partial(ResNet, stage_sizes=STAGE_SIZES[34],
@@ -391,10 +411,6 @@ ResNet152 = partial(ResNet, stage_sizes=STAGE_SIZES[152],
 ResNet200 = partial(ResNet, stage_sizes=STAGE_SIZES[200],
                     stem_cls=ResNetStem, block_cls=ResNetBottleneckBlock)
 
-SmallResNet18 = partial(ResNet18, base_filters=32, stem_cls=None,
-                       block_cls=partial(ResNetBottleneckBlock, expansion=2))
-SmallResNet50 = partial(ResNet50, base_filters=32, stem_cls=None,
-                       block_cls=partial(ResNetBottleneckBlock, expansion=2))
 
 WideResNet18 = partial(ResNet18, base_filters=128,
                        block_cls=partial(ResNetBottleneckBlock, expansion=2))
