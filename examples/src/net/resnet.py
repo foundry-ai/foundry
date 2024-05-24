@@ -387,16 +387,14 @@ SmallResNet = partial(ResNet,
     stem_cls=partial(ResNetStem, # smol stem boy
         strides=(1, 1), kernel_size=(3, 3),
         padding=((1, 1), (1, 1))
-    ),
+    )
 )
-SmallResNet18 = partial(SmallResNet,
-    stage_sizes=STAGE_SIZES[18],
-    block_cls=ResNetBlock
-)
-SmallResNet50 = partial(
-    SmallResNet,
-    stage_sizes=STAGE_SIZES[50]
-)
+
+SmallResNet18 = partial(SmallResNet, stage_sizes=STAGE_SIZES[18],
+                        block_cls=ResNetBlock)
+
+SmallResNet50 = partial(SmallResNet, stage_sizes=STAGE_SIZES[50],
+                        block_cls=ResNetBlock)
 
 ResNet18 = partial(ResNet, stage_sizes=STAGE_SIZES[18],
                    stem_cls=ResNetStem, block_cls=ResNetBlock)
