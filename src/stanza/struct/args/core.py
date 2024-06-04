@@ -12,7 +12,6 @@ import rich
 
 from .parser import OptionParser
 
-from stanza.struct.format import Context, Format, FormatProvider
 from stanza import struct
 
 class ArgParseError(Exception):

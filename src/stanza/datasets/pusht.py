@@ -23,17 +23,19 @@ class Chunk:
 
 @struct.dataclass
 class PushTDataset(EnvDataset[Step]):
-    pass
+    def create_env(self):
+        from stanza.envs.pusht import PushTEnv
+        return PushTEnv()
 
-def _load_pusht_data(zarr_path, test_trajs):
+def _load_pusht_data(zarr_path, train_trajs, test_trajs):
     with zarr.open(zarr_path) as zf:
-        steps = Step(
-            state=jnp.array(zf["data/state"]),
-            observation=None,
-            action=jnp.array(zf["data/action"]),
-        )
+        if train_trajs is None:
+            train_trajs = len(zf["meta/episode_ends"]) - test_trajs
+        total_trajs = train_trajs + test_trajs
+
         ends = jnp.array(zf["meta/episode_ends"])
         starts = jnp.roll(ends, 1).at[0].set(0)
+
         infos = SequenceInfo(
             id=jnp.arange(len(ends)),
             start_idx=starts,
@@ -41,30 +43,36 @@ def _load_pusht_data(zarr_path, test_trajs):
             length=ends-starts,
             info=None
         )
-        if test_trajs:
-            train_steps = jax.tree_map(lambda x: x[:starts[-test_trajs]], steps)
-            test_steps = jax.tree_map(lambda x: x[starts[-test_trajs]:], steps)
-            train_infos = jax.tree_map(lambda x: x[:-test_trajs], infos)
-            test_infos = jax.tree_map(lambda x: x[-test_trajs:], infos)
-            test_infos = struct.replace(test_infos,
-                start_idx=test_infos.start_idx - test_infos.start_idx[0],
-                end_idx=test_infos.end_idx - test_infos.start_idx[0]
-            )
-            splits = {
-                "train": SequenceData(PyTreeData(train_steps), PyTreeData(train_infos)),
-                "test": SequenceData(PyTreeData(test_steps), PyTreeData(test_infos))
-            }
-        else:
-            splits = {
-                "trian": SequenceData(PyTreeData(steps), PyTreeData(infos))
-            }
+        steps = Step(
+            state=zf["data/state"],
+            observation=None,
+            action=zf["data/action"]
+        )
+        # slice the data into train and test
+        train_steps = jax.tree_map(lambda x: jnp.array(x[:starts[-test_trajs]]), steps)
+        test_steps = jax.tree_map(lambda x: jnp.array(x[starts[-test_trajs]:]), steps)
+        train_infos = jax.tree_map(lambda x: x[:-test_trajs], infos)
+        test_infos = jax.tree_map(lambda x: x[-test_trajs:], infos)
+        # Adjust the start and end indices to be relative to the first episode
+        test_infos = struct.replace(test_infos,
+            start_idx=test_infos.start_idx - test_infos.start_idx[0],
+            end_idx=test_infos.end_idx - test_infos.start_idx[0]
+        )
+        train_infos = struct.replace(train_infos,
+            start_idx=train_infos.start_idx - train_infos.start_idx[0],
+            end_idx=train_infos.end_idx - train_infos.start_idx[0]
+        )
+        splits = {
+            "train": SequenceData(PyTreeData(train_steps), PyTreeData(train_infos)),
+            "test": SequenceData(PyTreeData(test_steps), PyTreeData(test_infos))
+        }
     return PushTDataset(
         splits=splits,
         normalizers={},
         transforms={}
     )
 
-def _load_pusht(quiet=False):
+def _load_pusht(quiet=False, train_trajs=None, test_trajs=10):
     zip_path = cache_path("pusht", "pusht_data.zarr.zip")
     download(zip_path,
         job_name="PushT (Diffusion Policy Data)",
@@ -72,7 +80,7 @@ def _load_pusht(quiet=False):
         md5="48a64828d7f2e1e8902a97b57ebd0bdd",
         quiet=quiet
     )
-    return _load_pusht_data(zip_path, 10)
+    return _load_pusht_data(zip_path, train_trajs, test_trajs)
 
 registry = DatasetRegistry[PushTDataset]()
 registry.register("pusht/chen", _load_pusht)

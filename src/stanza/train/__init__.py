@@ -272,14 +272,22 @@ def validate(*hooks,
     # the validation dataloader
     # note that this is shared across hook calls
 
-    dataloader = DataLoader(data,
-        batch_size=batch_size, shuffle=False,
-    )
     if batches is not None:
+        # if we are using random test
+        # batches
+        dataloader = DataLoader(data,
+            batch_size=batch_size, shuffle=True,
+            drop_jagged=True
+        )
         dataloader_cycle = dataloader.cycle()
         def iter_batches():
             return itertools.islice(dataloader_cycle, batches)
     else:
+        # otehrwise go through
+        # the entire dataset
+        dataloader = DataLoader(data,
+            batch_size=batch_size, shuffle=False,
+        )
         def iter_batches():
             return iter(dataloader)
 

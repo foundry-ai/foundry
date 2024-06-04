@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import jax
 import plotly.express as px
 
-import stanza.graphics.canvas as canvas
+import stanza.canvas as canvas
 
 from stanza.envs import Environment, EnvironmentRegistry
 

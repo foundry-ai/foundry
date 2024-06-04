@@ -1,4 +1,5 @@
 from stanza import struct
+from stanza.config import ConfigProvider
 
 import optax
 import jax
@@ -87,9 +88,8 @@ class AdamConfig(OptimizerConfig):
             return optax.adam(learning_rate=self.make_lr_schedule(iterations), 
                             b1=self.beta1, b2=self.beta2, eps=self.epsilon)
 
-    @staticmethod
-    def default():
-        return AdamConfig(lr_schedule="cosine", warmup_schedule=None)
+    def parse(self, config: ConfigProvider) -> "AdamConfig":
+        return config.get_struct(self)
 
 @struct.dataclass
 class SGDConfig(OptimizerConfig):
@@ -104,6 +104,9 @@ class SGDConfig(OptimizerConfig):
         if self.weight_decay:
             optim = optax.chain(optax.add_decayed_weights(self.weight_decay), optim)
         return optim
+
+    def parse(self, config: ConfigProvider) -> "SGDConfig":
+        return config.get_struct(self)
 
 @struct.dataclass
 class SAMConfig:
@@ -149,10 +152,7 @@ class TrainConfig:
     """The number of epochs to train for."""
     iterations: int | None = None
     """The number of iterations to train for."""
-
-    optimizer: OptimizerConfig = struct.field(
-        default=OptimizerConfig.default()
-    )
+    optimizer: OptimizerConfig = None
     
     def fit(self, **kwargs):
         from stanza.train import fit
@@ -167,3 +167,12 @@ class TrainConfig:
             optimizer=self.optimizer.make_optimizer(iterations),
             **kwargs
         )
+    
+    def parse(self, config: ConfigProvider) -> "TrainConfig":
+        defaults = TrainConfig()
+        res = config.get_struct(defaults, {"optimizer"})
+        optimizer = config.get_cases("optimizer", "The optimizer to use", {
+            "sgd": SGDConfig(),
+            "adam": AdamConfig()
+        }, "adam")
+        return struct.replace(res, optimizer=optimizer)

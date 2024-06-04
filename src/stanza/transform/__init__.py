@@ -29,11 +29,11 @@ class partial:
         keywords = {**self.keywords, **keywords}
         return self.func(*self.args, *args, **keywords)
 
-from .lift import LoweredFunction, LiftedFunction
+from . import lift
 
-def jit(fun : F) -> F:
+def jit(fun : F, **kwargs) -> F:
     lifted = lift.lift(fun)
-    jitted = jax.jit(lifted)
+    jitted = jax.jit(lifted, **kwargs)
     return lift.lower(jitted)
 
 from jax._src.api_util import flatten_axes

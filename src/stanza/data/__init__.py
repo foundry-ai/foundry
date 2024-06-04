@@ -25,6 +25,9 @@ class Data(abc.ABC, Generic[T]):
     def __getitem__(self, idx : int) -> T:
         ...
 
+    def as_pytree(self) -> "T":
+        return self.slice(0, len(self))
+
     def slice(self, off : int, length : int) -> T:
         off = off or 0
         length = length or len(self) - off
@@ -66,6 +69,7 @@ class PyTreeData(Data[T]):
         return self.n
 
     def __getitem__(self, idx : jax.Array) -> T:
+        assert idx.ndim == 0
         return jax.tree_map(
             lambda x: x[idx],
             self.tree

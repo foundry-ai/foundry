@@ -8,6 +8,7 @@ authors = [
 dependencies = [
     "stanza @ file:///${PROJECT_ROOT}/..",
     "aqtp>=0.7.3",
+    "brax>=0.10.4",
 ]
 requires-python = ">=3.10"
 readme = "README.md"

@@ -18,14 +18,15 @@ dependencies = [
     "wandb>=0.16.3",
     "matplotlib>=3.8.2",
     "plotly>=5.18.0",
-    "shapely>=2.0.3",
-    "pymunk>=6.6.0",
     "nbformat>=5.9.2",
     # For google drive and docstring parsing
     "beautifulsoup4>=4.12.3",
     "ast-comments>=1.2.1",
     "trajax @ git+https://github.com/google/trajax",
     "zarr>=2.18.1",
+    "mujoco-mjx>=3.1.6",
+    "ipywebrtc>=0.6.0",
+    "ipyevents>=2.0.2",
 ]
 requires-python = ">=3.10"
 readme = "README.md"

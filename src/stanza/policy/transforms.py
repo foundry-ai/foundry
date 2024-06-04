@@ -6,23 +6,16 @@ import jax
 import jax.numpy as jnp
 
 # Transform a (policy, state) into a new (policy, state)
-class PolicyTransform:
+class Transform:
     # Override these! Not __call__!
     def transform_policy(self, policy):
-        return policy
+        raise NotImplementedError("Must implement transform_policy()")
 
     def transform_policy_state(self, policy_state):
-        return policy_state
+        raise NotImplementedError("Must implement transform_policy_state()")
     
-    def as_environment_transform(self):
+    def transform_environment(self):
         raise NotImplementedError("Must implement as_environment_transform()")
-
-    # Do not override unless you also keep the return behavior
-    # Just override the above
-    def __call__(self, policy, policy_state=None):
-        tpol = self.transform_policy(policy)
-        return tpol if policy_state is None else \
-            (tpol, self.transform_policy_state(policy_state))
 
 @dataclass
 class RandomPolicy(Policy):
@@ -33,8 +26,8 @@ class RandomPolicy(Policy):
         return PolicyOutput(action=u)
 
 @dataclass
-class ChainedTransform(PolicyTransform):
-    transforms: List[PolicyTransform]
+class ChainedTransform(Transform):
+    transforms: List[Transform]
 
     def transform_policy(self, policy):
         for t in self.transforms:
@@ -53,10 +46,14 @@ def chain_transforms(*transforms):
 # Injects noise ontop of a given policy
 
 @dataclass
-class NoiseInjector(PolicyTransform):
+class NoiseInjector(Transform):
     sigma: float
-    def __call__(self, policy, policy_state):
-        return NoisyPolicy(policy, self.sigma), policy_state
+
+    def transform_policy(self, policy):
+        return NoisyPolicy(policy, self.sigma)
+
+    def transform_policy_state(self, policy_state):
+        return policy_state
 
 @dataclass
 class NoisyPolicy(Policy):
@@ -90,7 +87,7 @@ class ChunkedPolicyState:
     t: int = 0
 
 @dataclass
-class ChunkTransform(PolicyTransform):
+class ChunkTransform(Transform):
     # If None, no input/output batch dimension
     input_chunk_size: int = field(default=None, pytree_node=False)
     output_chunk_size: int = field(default=None, pytree_node=False)
@@ -177,17 +174,8 @@ class ChunkedPolicy(Policy):
                 reevaluate, index
             )
 
-## ----- SamplingTransform -----
-# A FreqTransform will run a policy at
-# a lower frequency, evaluating it every control_interval
-# number of steps. This is useful
-# if an expensive controller is combined
-# with a higher-frequency low-level controller.
-# This is equivalent to a ChunkPolicy where the output
-# gets replicated control_interval number of times
-
 @dataclass
-class ActionRepeater(PolicyTransform):
+class ActionRepeater(Transform):
     repeats : int = field(default=1, pytree_node=False)
 
     def transform_policy(self, policy):
@@ -235,31 +223,3 @@ class RepeatingPolicy(Policy):
         output = replace(sub_output,
             policy_state=RepeatingState(sub_output, t))
         return output
-
-@dataclass
-class FeedbackTransform(PolicyTransform):
-    def transform_policy(self, policy):
-        return FeedbackPolicy(policy)
-    
-    def transform_policy_state(self, policy_state):
-        return policy_state
-
-@dataclass
-class FeedbackPolicy(Policy):
-    policy: Policy = None
-    
-    @property
-    def rollout_length(self):
-        return self.policy.rollout_length
-
-    def __call__(self, input):
-        out = self.policy(input)
-        action, ref_state, ref_gain = out.action
-        action_flat, action_uf = jax.flatten_util.ravel_pytree(action)
-        obs_flat, _ = jax.flatten_util.ravel_pytree(input.observation)
-        ref_flat, _ = jax.flatten_util.ravel_pytree(ref_state)
-        action_mod = ref_gain @ (obs_flat - ref_flat)
-        action = action_uf(action_flat + action_mod)
-        return replace(out, action=action,
-            info=replace(out.info,
-                ref_state=ref_state, ref_gain=ref_gain))

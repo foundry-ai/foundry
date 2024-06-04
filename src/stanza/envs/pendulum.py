@@ -7,7 +7,7 @@ import math
 
 from typing import NamedTuple
 from stanza.struct import dataclass, field
-import stanza.graphics.canvas as canvas
+import stanza.canvas as canvas
 
 class State(NamedTuple):
     angle: jnp.ndarray

@@ -73,7 +73,7 @@ def train(config: Config):
             cycle_mult=config.cycle_mult
         )
     wandb_run = wandb.init(
-        project="image_diffusion",
+        project="image_classifier",
         config=stanza.util.flatten_to_dict(config)[0]
     )
 
@@ -199,7 +199,6 @@ def train(config: Config):
             ),
         ]
     )
-        
 
 @command(Config)
 def run(config: Config):

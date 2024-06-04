@@ -64,18 +64,20 @@ class SequenceData(Data, Generic[T,I]):
     
     def chunk(self, chunk_length: int, chunk_stride: int = 1) -> ChunkData[T,I]:
         total_chunks = 0
-        for i in range(len(self.infos)):
-            info = self.infos[i]
-            chunks = (info.length - chunk_length + chunk_stride) // chunk_stride
-            total_chunks += max(0, chunks)
+        infos = self.infos.slice(0, len(self.infos))
+        chunks = (infos.length - chunk_length + chunk_stride) // chunk_stride
+        chunks = jnp.maximum(0, chunks)
+        start_chunks = jnp.cumsum(chunks) - chunks[0]
+        total_chunks = jnp.sum(chunks)
         t_off, i_off = np.zeros((2, total_chunks), dtype=jnp.int32)
-        idx = 0
+
         for i in range(len(self.infos)):
-            info = self.infos[i]
-            chunks = (info.length - chunk_length + chunk_stride) // chunk_stride
-            t_off[idx:idx+chunks] = info.start_idx + np.arange(chunks) * chunk_stride
-            i_off[idx:idx+chunks] = i
-            idx += chunks
+            idx = start_chunks[i]
+            n_chunks = chunks[i]
+            t_off[idx:idx+n_chunks] = infos.start_idx[i] + np.arange(n_chunks) * chunk_stride
+            i_off[idx:idx+n_chunks] = i
+            idx += n_chunks
+        t_off, i_off = jnp.array(t_off), jnp.array(i_off)
 
         return ChunkData(
             elements=self.elements,
