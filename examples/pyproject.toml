@@ -10,7 +10,7 @@ dependencies = [
     "aqtp>=0.7.3",
     "brax>=0.10.4",
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 readme = "README.md"
 license = {text = "MIT"}
 
@@ -42,5 +42,5 @@ dev = [
     "ipykernel>=6.29.2",
     "ipywidgets>=8.1.2",
     "jupyterlab>=4.1.2",
-    "-e stanza @ file:///${PROJECT_ROOT}/..",
+    "-e stanza[ipython] @ file:///${PROJECT_ROOT}/..",
 ]

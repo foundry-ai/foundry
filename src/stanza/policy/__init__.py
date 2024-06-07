@@ -71,7 +71,6 @@ def rollout(model : Model, state0 : State,
             policy_rng_key : Optional[jax.Array] = None,
             # Apply a transform to the
             # policy before rolling out.
-            policy_transform : Optional[Callable[[Policy], Policy]] =None,
             length : Optional[int] = None, last_input : bool = False) -> Rollout[State, Action, Observation, Info]:
     """ Rollout a model in-loop with policy for a fixed length.
     The length must either be provided via ``policy.rollout_length``
@@ -80,9 +79,6 @@ def rollout(model : Model, state0 : State,
     If ``last_input`` is True, the policy is called again with the final
     state of the rollout to get a final action (so that the states and actions are the same length).
     """
-
-    if policy_transform is not None and policy is not None:
-        policy, policy_init_state = policy_transform(policy, policy_init_state)
     # Look for a fallback to the rollout length
     # in the policy. This is useful mainly for the Actions policy
     if length is None and hasattr(policy, 'rollout_length'):

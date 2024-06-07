@@ -37,9 +37,9 @@ class Circle(Geometry):
             if self.color is not None else ''
         return f"{mass}{pos}{color}"
     
-    def to_canvas(self):
-        color = self.color or canvas.colors.LightGray
-        pos = self.pos or (0., 0.)
+    def to_canvas(self, color=None):
+        color = color or self.color or canvas.colors.LightGray
+        pos = jnp.array([self.pos[0], -self.pos[1]])
         return canvas.fill(canvas.circle(
             center=pos, radius=self.radius
         ), color=color)
@@ -53,9 +53,9 @@ class Circle(Geometry):
 class Box(Geometry):
     half_size: tuple[float, float] = (0.5, 0.5)
 
-    def to_canvas(self):
-        color = self.color or canvas.colors.LightGray
-        x, y = self.pos or (0., 0.)
+    def to_canvas(self, color=None):
+        color = color or self.color or canvas.colors.LightGray
+        x, y = jnp.array([self.pos[0], -self.pos[1]])
         hx, hy = self.half_size
         return canvas.fill(canvas.box(
             (x - hx, y - hy), (x + hx, y + hy)
@@ -71,6 +71,9 @@ class Body:
     geom: list[Geometry]
     pos: tuple[float, float] = (0., 0.)
     rot: float = 0.
+    vel_damping: float = 0.01
+    rot_damping: float = 0.01
+    hinge: bool = True
 
     def to_xml(self):
         geoms = "\n\t\t".join(geom.to_xml() for geom in self.geom)
@@ -78,20 +81,32 @@ class Body:
         pos = f' pos="{self.pos[0]:.4} {self.pos[1]:.4} 0."' if self.pos else ''
         args = f'{name}{pos}'
         # Allow rotation in z plane and sliding in x,y
-        return f'''\t<body{args}>
-        \t\t<joint type="hinge" axis="0 0 1"/>
-        \t\t<joint type="slide" axis="1 0 0"/>
-        \t\t<joint type="slide" axis="0 1 0"/>
-        \t\t{geoms}
-        \t</body>'''
+        damping = self.vel_damping
+        rot_damping = self.rot_damping
+        if self.hinge:
+            return f'''\t<body{args}>
+            \t\t<joint type="hinge" axis="0 0 1" damping="{rot_damping}" stiffness="0"/>
+            \t\t<joint type="slide" axis="1 0 0" damping="{damping}" stiffness="0"/>
+            \t\t<joint type="slide" axis="0 1 0" damping="{damping}" stiffness="0"/>
+            \t\t{geoms}
+            \t</body>'''
+        else:
+            return f'''\t<body{args}>
+            \t\t<joint type="slide" axis="1 0 0" damping="{damping}" stiffness="0"/>
+            \t\t<joint type="slide" axis="0 1 0" damping="{damping}" stiffness="0"/>
+            \t\t{geoms}
+            \t</body>'''
 
 @struct.dataclass
 class BodyState:
-    pos: jax.Array
-    rot: jax.Array
+    pos: jax.Array = jnp.zeros((2,))
+    vel: jax.Array = jnp.zeros((2,))
+    rot: jax.Array = jnp.zeros(())
+    rot_vel: jax.Array = jnp.zeros(())
 
 TEMPLATE = """
 <mujoco>
+<option timestep="{dt}"/>
 <worldbody>
 {bodies}
 {geoms}
@@ -100,15 +115,15 @@ TEMPLATE = """
     <geom pos="{world_half_x:.4} 0 0" size="{world_x:.4} {world_y:.4} 0.1"   xyaxes="0 0 1 0 1 0" type="plane"/>
     <geom pos="0 -{world_half_y:.4} 0" size="{world_x:.4} {world_y:.4} 0.1"  xyaxes="0 0 1 1 0 0" type="plane"/>
     <geom pos="0 {world_half_y:.4} 0" size="{world_x:.4} {world_y:.4} 0.1"   xyaxes="1 0 0 0 0 1" type="plane"/>
-    <geom pos="0 0 0" size="{world_x:.4} {world_y:.4} 0.1"   type="plane"/>
 </worldbody>
 </mujoco>
 """
 
 class WorldBuilder:
-    def __init__(self, world_half_x, world_half_y):
+    def __init__(self, world_half_x, world_half_y, dt=0.002):
         self.bodies = []
         self.geometries = []
+        self.dt = dt
         self.world_half_x = float(world_half_x)
         self.world_half_y = float(world_half_y)
     
@@ -120,16 +135,18 @@ class WorldBuilder:
 
     def extract_state(self, mjx_data: mjx.Data):
         state = {}
-        pos = mjx_data.xpos[:,:2]
-        angle = 2*jax.numpy.acos(mjx_data.xquat[:,0])
-        for b, pos, angle in zip(self.bodies, pos, angle):
+        pos = mjx_data.xpos[1:,:2]
+        vel = mjx_data.cvel[1:,3:5]
+        w0 = mjx_data.xquat[1:,0] # cos(theta/2)
+        w3 = mjx_data.xquat[1:,3] # sin(theta/2)
+        angle = 2*jax.numpy.atan2(w3, w0)
+        avel = mjx_data.cvel[1:,2]
+        for b, pos, vel, angle, avel in zip(self.bodies, pos, vel, angle, avel):
             if b.name is not None:
-                pos = jnp.array(b.pos) + pos
-                angle = jnp.array(b.rot) + angle
-                state[b.name] = BodyState(pos, angle)
+                state[b.name] = BodyState(pos, vel, angle, avel)
         return state
     
-    def renderable(self, state: dict[str, BodyState]):
+    def renderable(self, state: dict[str, BodyState], colors : dict[str, tuple[float, float, float]] = {}):
         bodies = []
         for body in self.bodies:
             if body.name not in state: continue
@@ -138,17 +155,18 @@ class WorldBuilder:
             rot = body_state.rot
             geoms = []
             for geom in body.geom:
-                geoms.append(geom.to_canvas())
+                color = colors.get(body.name, None)
+                geoms.append(geom.to_canvas(color=color))
             geoms = canvas.stack(*geoms)
             bodies.append(canvas.transform(
-                geoms, translation=pos, rotation=rot
+                geoms, translation=jnp.array([pos[0], -pos[1]]), rotation=rot
             ))
         return canvas.stack(*bodies)
     
     def to_xml(self):
         bodies = "\n".join(body.to_xml() for body in self.bodies)
         geoms = "\n".join(geom.to_xml() for geom in self.geometries)
-        return TEMPLATE.format(
+        return TEMPLATE.format(dt=self.dt,
             world_half_x=self.world_half_x, world_x=2*self.world_half_x,
             world_half_y=self.world_half_y, world_y=2*self.world_half_y,
             bodies=bodies, geoms=geoms
@@ -159,27 +177,7 @@ class WorldBuilder:
         model = mujoco.MjModel.from_xml_string(xml)
         return mjx.put_model(model)
 
-@struct.dataclass
-class PlanarState:
-    mjx_data: mjx.Data
-
-@struct.dataclass
-class PlanarEnvironment(Environment):
-    half_width: float = struct.field(pytree_node=False, default=1.)
-    half_height: float = struct.field(pytree_node=False, default=1.)
-
-    @cached_property
-    def model(self):
-        return self.builder.load_model()
-
-    def sample_state(self, rng_key):
-        return self.reset(rng_key)
-    
-    def reset(self, rng_key):
-        mjx_data = mjx.make_data(self.model)
-        return PlanarState(mjx_data)
-
-    # Implement the following property:
-    @cached_property
-    def builder(self):
-        raise NotImplementedError()
+    def load_mj_model(self):
+        xml = self.to_xml()
+        model = mujoco.MjModel.from_xml_string(xml)
+        return model

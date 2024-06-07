@@ -37,9 +37,6 @@ class Data(abc.ABC, Generic[T]):
     def map(self, fn : Callable[[T], V]) -> "Mapped[V]":
         return Mapped(self, fn)
 
-    def cache(self) -> "Data[T]":
-        return PyTreeData(self.slice(0, len(self)))
-
 class Mapped(Data[T]):
     def __init__(self, dataset : Data[V], fn : Callable[[V], T]):
         self.dataset = dataset
@@ -84,18 +81,6 @@ class PyTreeData(Data[T]):
     @staticmethod
     def from_data(data : Data[T]) -> "PyTreeData[T]":
         return PyTreeData(data.slice(0, len(data)))
-
-class IOData(Data[T], abc.ABC):
-    def __init__(self):
-        ex = self._fetch(0)
-        self._ex = jax.tree_map(lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype), ex)
-
-    @abc.abstractmethod
-    def _fetch(self, idx: jax.Array) -> T: ...
-
-    def __getitem__(self, idx : jax.Array) -> T:
-        data = jax.pure_callback(self._fetch, self._ex, idx)
-        return data
 
 @partial(jax.jit,static_argnums=(1,))
 def _shuffle(rng_key, len):

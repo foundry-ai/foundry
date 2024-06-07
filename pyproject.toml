@@ -25,10 +25,8 @@ dependencies = [
     "trajax @ git+https://github.com/google/trajax",
     "zarr>=2.18.1",
     "mujoco-mjx>=3.1.6",
-    "ipywebrtc>=0.6.0",
-    "ipyevents>=2.0.2",
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 readme = "README.md"
 license = {text = "MIT"}
 
@@ -47,6 +45,8 @@ ipython = [
     "ipykernel>=6.29.2",
     "ipywidgets>=8.1.2",
     "jupyterlab>=4.1.2",
+    "ipywebrtc>=0.6.0",
+    "ipyevents>=2.0.2",
 ]
 
 [project.scripts]

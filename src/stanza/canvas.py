@@ -280,7 +280,7 @@ def stack(*renderables):
     return Stack(renderables)
 
 @struct.dataclass
-class BatchStack:
+class BatchStack(Renderable):
     renderables: Renderable
 
     @property
@@ -436,5 +436,8 @@ def image_grid(images, cols=None, rows=None):
 
 # colors
 class colors:
+    Red = (1., 0., 0.)
+    Green = (0., 1., 0.)
+    Blue = (0., 0., 1.)
     LightGreen = (0.565, 0.933, 0.565)
     LightSlateGray = (0.467, 0.533, 0.60)

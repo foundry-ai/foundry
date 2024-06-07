@@ -22,7 +22,7 @@ def nadaraya_watson(data, kernel, h):
         kernel_smoothing = lambda x, xi: kernel(jax.tree_map(lambda x,xi: (x-xi)/h, x,xi))
         log_smoothed = jax.vmap(kernel_smoothing, in_axes=[None, 0])(x, xs)
         smoothed = jax.nn.softmax(log_smoothed)
-        y_est = jnp.sum(smoothed*ys, axis=0)
+        y_est = jnp.sum(smoothed[:,None]*ys, axis=0)
         return y_uf(y_est)
     return estimator
 

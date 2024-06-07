@@ -1,4 +1,3 @@
-
 import time
 import numpy as np
 import tempfile
@@ -11,9 +10,15 @@ import IPython
 import io
 from PIL import Image as PILImage
 
+import jax
+import jax.numpy as jnp
+
+from stanza import struct
+
 from pathlib import Path
 from ipywebrtc.webrtc import ImageStream
 from ipywidgets import Video, Image, HBox, HTML, Output
+from ipyevents import Event
 from rich.segment import Segment
 from rich.control import Control
 from typing import Iterable
@@ -49,7 +54,7 @@ def as_image(array):
     path = Path("/tmp") / "notebook" / (str(id) + ".png")
     path.parent.mkdir(parents=True, exist_ok=True)
     img.save(path)
-    return HBox([HTML(STYLE), Image.from_file(path)])
+    return HBox([Image.from_file(path), HTML(STYLE)])
 
 def as_video(array, fps=28):
     array = np.array(array)
@@ -62,35 +67,7 @@ def as_video(array, fps=28):
     path = Path("/tmp") / "notebook" / (str(id) + ".mp4")
     path.parent.mkdir(parents=True, exist_ok=True)
     ffmpegio.video.write(path, fps, array)
-    return HBox([HTML(STYLE), Video.from_file(path)])
-
-from stanza.policy.interactive import InteractiveInput
-
-class Interactive:
-    def __init__(self):
-        self.stream = None
-
-    def update(self, array) -> InteractiveInput:
-        time.sleep(0.05)
-        array = np.array(array)
-        array = np.nan_to_num(array, copy=False, 
-                            nan=0, posinf=0, neginf=0)
-        if array.ndim == 2:
-            array = np.expand_dims(array, -1)
-        if array.dtype == np.float32 or array.dtype == np.float64:
-            array = (array*255).clip(0, 255).astype(np.uint8)
-        if array.shape[-1] == 1:
-            array = np.repeat(array, 3, axis=-1)
-        img = PILImage.fromarray(array)
-        img_byte_arr = io.BytesIO()
-        img.save(img_byte_arr, format='PNG')
-        img_byte_arr = img_byte_arr.getvalue()
-        if self.stream is None:
-            image = Image(value=img_byte_arr)
-            self.stream = ImageStream(image=image)
-            display(HBox([self.stream, HTML(STYLE)]))
-        else:
-            self.stream.image.value = img_byte_arr
+    return HBox([Video.from_file(path), HTML(STYLE)])
 
 # Some code to set up rich to display properly
 # (even in vscode) and to interact better with logging output

@@ -3,7 +3,7 @@ from stanza import struct
 
 from typing import Any, Generic, TypeVar
 
-import jax
+import pickle
 import jax.numpy as jnp
 import numpy as np
 
@@ -67,7 +67,7 @@ class SequenceData(Data, Generic[T,I]):
         infos = self.infos.slice(0, len(self.infos))
         chunks = (infos.length - chunk_length + chunk_stride) // chunk_stride
         chunks = jnp.maximum(0, chunks)
-        start_chunks = jnp.cumsum(chunks) - chunks[0]
+        start_chunks = jnp.cumsum(chunks) - chunks
         total_chunks = jnp.sum(chunks)
         t_off, i_off = np.zeros((2, total_chunks), dtype=jnp.int32)
 
@@ -85,3 +85,18 @@ class SequenceData(Data, Generic[T,I]):
             chunk_offsets=PyTreeData((t_off, i_off)),
             chunk_length=chunk_length
         )
+
+    def save(self, path):
+        elements = self.elements.as_pytree()
+        infos = self.infos.as_pytree()
+        with open(path, "wb") as f:
+            pickle.dump((elements, infos), f)
+
+    @staticmethod
+    def load(path):
+        with open(path, "rb") as f:
+            elements, infos = pickle.load(f)
+            return SequenceData(
+                elements=PyTreeData(elements),
+                infos=PyTreeData(infos)
+            )
