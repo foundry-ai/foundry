@@ -15,6 +15,8 @@ from functools import partial, cached_property
 
 from mujoco.mjx._src.forward import fwd_position, fwd_velocity
 from mujoco import mjx
+import mujoco
+import numpy as np
 import jax.numpy as jnp
 import jax.random
 
@@ -23,7 +25,7 @@ def builder() -> planar.WorldBuilder:
     world_scale = 1
     block_length = 4
     agent_radius = 0.5
-    builder = planar.WorldBuilder(world_scale, world_scale, 0.01)
+    builder = planar.WorldBuilder(world_scale, world_scale, 0.005)
     builder.add_body(planar.Body(name="agent", geom=[
         planar.Circle(
             radius=scale*agent_radius, 
@@ -87,8 +89,25 @@ class PushTEnv(Environment):
 
     @jax.jit
     def reset(self, rng_key):
+        a_pos, b_pos, b_rot, c = jax.random.split(rng_key, 4)
+        agent_pos = jax.random.uniform(a_pos, (2,), minval=-0.8, maxval=0.8)
+        block_rot = jax.random.uniform(b_pos, (), minval=-jnp.pi, maxval=jnp.pi)
+        block_pos = jax.random.uniform(b_rot, (2,), minval=-0.4, maxval=0.4)
+        # re-generate block positions
+        # while the block is too close to the agent
+        # (0.05 + 0.2)*sqrt(2) = 0.36 (approx)
+        def gen_pos(carry):
+            rng_key, _ = carry
+            rng_key, sk = jax.random.split(rng_key)
+            return (rng_key, jax.random.uniform(sk, (2,), minval=-0.4, maxval=0.4))
+        _, block_pos = jax.lax.while_loop(
+            lambda s: jnp.linalg.norm(s[1] - agent_pos) < 0.36,
+            gen_pos, (c, block_pos)
+        )
+        qpos = jnp.concatenate([agent_pos, block_pos, block_rot[jnp.newaxis]])
+        assert qpos.shape == MODEL.qpos0.shape
         return PushTState(
-            MODEL.qpos0,
+            qpos,
             jnp.zeros_like(MODEL.qpos0)
         )
     
@@ -107,7 +126,10 @@ class PushTEnv(Environment):
         if action is not None:
             xfrc_applied = data.xfrc_applied.at[1,:2].set(action)
             data = data.replace(xfrc_applied=xfrc_applied)
-        data = mjx.step(MODEL, data)
+        @jax.jit
+        def step_fn(_, data):
+            return mjx.step(MODEL, data)
+        data = jax.lax.fori_loop(0, 6, step_fn, data)
         return PushTState(data.qpos, data.qvel)
     
     @jax.jit
@@ -189,8 +211,8 @@ def brax_render(mj_model, data_seq):
 # Will run a PID controller under the hood
 @struct.dataclass
 class PositionControlTransform(Transform):
-    k_p : float = 10
-    k_v : float = 1
+    k_p : float = 15
+    k_v : float = 2
 
     def transform_policy(self, policy):
         return PositionControlPolicy(policy, self.k_p, self.k_v)
@@ -215,6 +237,7 @@ class PositionControlPolicy(Policy):
             block_pos=obs.block.position,
             block_rot=obs.block.rotation
         )
+        input = struct.replace(input, observation=obs)
         output = self.policy(input)
         a = self.k_p * (output.action - obs.agent.position) + self.k_v * (-obs.agent.velocity)
         return struct.replace(
@@ -240,3 +263,39 @@ class PositionalControlEnv(Wrapper):
         a = self.k_p * (action - obs.agent_pos) + self.k_v * (-obs.agent_vel)
         res = self.base.step(state, a, rng_key)
         return res
+
+@struct.dataclass
+class PositionObsTransform(Transform):
+    def transform_policy(self, policy):
+        return PositionObsPolicy(policy)
+    
+    def transform_env(self, env):
+        return PositionalObsEnv(env)
+
+@struct.dataclass
+class PositionObsPolicy(Policy):
+    policy: Policy
+
+    @property
+    def rollout_length(self):
+        return self.policy.rollout_length
+
+    def __call__(self, input):
+        obs = input.observation
+        obs = PushTPosObs(
+            agent_pos=obs.agent.position,
+            block_pos=obs.block.position,
+            block_rot=obs.block.rotation
+        )
+        input = struct.replace(input, observation=obs)
+        return self.policy(input)
+
+@struct.dataclass
+class PositionalObsEnv(Wrapper):
+    def observe(self, state):
+        obs = self.base.observe(state)
+        return PushTPosObs(
+            agent_pos=obs.agent_pos,
+            block_pos=obs.block_pos,
+            block_rot=obs.block_rot
+        )

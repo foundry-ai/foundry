@@ -54,18 +54,22 @@ class DemonstrationCollector:
 
         self.demonstration_slider = IntSlider(min=0, max=max(0,len(self.demonstrations) - 1))
         self.step_slider = IntSlider()
-        self.demonstration_slider.observe(self._demo_changed, names='value')
+        self.demonstration_slider.observe(lambda _: self._demo_changed(), names='value')
         self.step_slider.observe(self._step_changed, names='value')
 
+        self.interface.set_key_callback('c', self._toggle_collection)
+        self.interface.set_key_callback('r', self._reset_state)
 
         self.save_button = Button(description='Save')
         self.save_button.on_click(self._do_save)
         self.reset_button = Button(description='Reset (r)')
-        self.reset_button.on_click(self._reset_state)
+        self.reset_button.on_click(lambda _: self._reset_state())
         self.collect_button = Button(description='Collect (c)')
-        self.collect_button.on_click(self._toggle_collection)
+        self.collect_button.on_click(lambda _: self._toggle_collection())
         self.delete_button = Button(description='Delete')
-        self.delete_button.on_click(self._delete_demonstration)
+        self.delete_button.on_click(lambda _: self._delete_demonstration())
+        self.trim_button = Button(description='Trim')
+        self.trim_button.on_click(lambda _: self._trim_demonstration())
 
         self.countdown = Label(value='')
 
@@ -109,12 +113,12 @@ class DemonstrationCollector:
             demo = jax.tree_map(lambda x: x[start:end], elements)
             self.demonstrations.append(demo)
         self.demonstration_slider.max = max(0,len(self.demonstrations) - 1)
-        self._demo_changed(None)
+        self._demo_changed()
 
     def _ipython_display_(self):
         display(HBox([self.demonstration_slider, self.step_slider]))
         display(self.interface)
-        display(HBox([self.delete_button, self.reset_button, self.collect_button, self.save_button]))
+        display(HBox([self.delete_button, self.reset_button, self.collect_button, self.trim_button, self.save_button]))
         display(self.countdown)
     
     def _visualize(self):
@@ -131,8 +135,8 @@ class DemonstrationCollector:
     def _do_save(self, change):
         self.save(self.path)
     
-    def _reset_state(self, change):
-        if self.col_demonstration is not None:
+    def _reset_state(self):
+        if self.collect_task is not None:
             return
         r = next(self.rng)
         self.col_demonstration = [(self._reset_fn(r), self._sample_input)]
@@ -145,7 +149,7 @@ class DemonstrationCollector:
     def _step_changed(self, change):
         self._visualize()
     
-    def _demo_changed(self, change):
+    def _demo_changed(self):
         d = self.demonstration_slider.value
         if self.col_demonstration is not None and d < len(self.demonstrations):
             self._stop_collection()
@@ -173,7 +177,7 @@ class DemonstrationCollector:
             await asyncio.sleep(max(1/self.fps - elapsed, 0))
             t = time.time()
     
-    def _toggle_collection(self, change):
+    def _toggle_collection(self):
         if self.collect_task is None: self._start_collection()
         else: self._stop_collection()
         
@@ -195,13 +199,26 @@ class DemonstrationCollector:
         self.demonstration_slider.max = max(0,len(self.demonstrations) - 1)
         self.col_demonstration = None
 
-    def _delete_demonstration(self, change):
+    def _trim_demonstration(self):
+        if self.col_demonstration is not None:
+            return
+        if len(self.demonstrations) > 0:
+            d = min(self.demonstration_slider.value, len(self.demonstrations) - 1)
+            demonstration = self.demonstrations[d]
+            T = self.step_slider.value
+            trimmed = jax.tree_map(lambda x: x[:T + 1], demonstration)
+            self.demonstrations[d] = trimmed
+            self.step_slider.max = T
+
+    def _delete_demonstration(self):
         if self.col_demonstration is not None:
             return
         if len(self.demonstrations) > 0:
             d = min(self.demonstration_slider.value, len(self.demonstrations) - 1)
             del self.demonstrations[d]
             self.demonstration_slider.max = len(self.demonstrations) - 1
+            self._demo_changed()
+
 
 class StreamingInterface:
     def __init__(self, width, height):
@@ -209,6 +226,8 @@ class StreamingInterface:
 
         self._mouse_pos = jnp.zeros((2,))
         self._key_events = []
+
+        self._key_press_callbacks = {}
 
         self.array = 0.8*jnp.ones((width, height, 3))
         self.image = Image(value=self._to_bytes(self.array))
@@ -221,6 +240,9 @@ class StreamingInterface:
         assert array.shape[1] == self.array.shape[1]
         self.array = array
         self.image.value = self._to_bytes(array)
+    
+    def set_key_callback(self, key, callback):
+        self._key_press_callbacks[key] = callback
 
     def mouse_pos(self):
         return self._mouse_pos
@@ -240,6 +262,12 @@ class StreamingInterface:
             mouse_pos = jax.numpy.minimum(mouse_pos, limit) / limit
             mouse_pos = 2*mouse_pos - 1
             self._mouse_pos = jax.numpy.array([mouse_pos[0], -mouse_pos[1]])
+        elif event['type'] == 'keydown':
+            key = event['key']
+            if key in self._key_press_callbacks:
+                self._key_press_callbacks[key]()
+            else:
+                self._key_events.append(key)
 
     def _to_bytes(self, array):
         array = np.array(array)

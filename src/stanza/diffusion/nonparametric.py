@@ -26,17 +26,33 @@ def nadaraya_watson(data, kernel, h):
         return y_uf(y_est)
     return estimator
 
+def closest_diffuser(cond, data):
+    x, y = data
+    x = jax.vmap(lambda x: jax.flatten_util.ravel_pytree(x)[0])(x)
+    cond = jax.flatten_util.ravel_pytree(cond)[0]
+    dists = jnp.sum(jnp.square(x-cond[None,...]), axis=-1)
+    i = jnp.argmin(dists)
+    closest = jax.tree_map(lambda x: x[i], y)
+
+    @jax.jit
+    def closest_diffuser(_, noised_value, t):
+        return closest
+    return closest_diffuser
+
 def nw_cond_diffuser(cond, data, schedule, kernel, h):
     @jax.jit
     def diffuser(_, noised_value, t):
+        sqrt_alphas_prod = jnp.sqrt(schedule.alphas_cumprod[t])
+        one_minus_alphas_prod = 1 - schedule.alphas_cumprod[t]
         def comb_kernel(sample):
-            x, y = sample
-            # Use one_minus_alphas_prod as the kernel for the noised value
-            one_minus_alphas_prod = 1 - schedule.alphas_cumprod[t]
-            y = jax.tree_map(lambda x: x/one_minus_alphas_prod, y)
-            return kernel(x) + log_gaussian_kernel(y)
+            x, y_hat_diff = sample
+            x = jax.tree_map(lambda x: x/h, x)
+            # Use one_minus_alphas_prod as the kernel bandwidth for the noised value
+            y_diff = jax.tree_map(lambda x: x/one_minus_alphas_prod, y_hat_diff)
+            return kernel(x) + log_gaussian_kernel(y_diff)
         x, y = data
-        estimator_data = (x, y), y
+        y_hat = jax.tree_map(lambda x: x*sqrt_alphas_prod, y)
+        estimator_data = (x, y_hat), y
         estimator = nadaraya_watson(estimator_data, comb_kernel, h)
         return estimator((cond, noised_value))
     return diffuser

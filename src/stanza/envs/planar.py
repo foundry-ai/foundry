@@ -26,6 +26,7 @@ class Geometry:
 @struct.dataclass
 class Circle(Geometry):
     radius: float = 1.
+    com: tuple[float, float] = (0., 0.)
 
     @property
     def _geom_args(self):
@@ -52,6 +53,7 @@ class Circle(Geometry):
 @struct.dataclass
 class Box(Geometry):
     half_size: tuple[float, float] = (0.5, 0.5)
+    com: tuple[float, float] = (0., 0.)
 
     def to_canvas(self, color=None):
         color = color or self.color or canvas.colors.LightGray
@@ -74,6 +76,18 @@ class Body:
     vel_damping: float = 0.01
     rot_damping: float = 0.01
     hinge: bool = True
+    custom_com: tuple[float, float] = None
+
+    @property
+    def com(self):
+        if self.custom_com is not None:
+            return self.custom_com
+        com = jnp.sum(jnp.array([jnp.array(geom.com) * geom.mass for geom in self.geom]), axis=0)
+        return com
+
+    @com.setter
+    def com(self, value):
+        self.custom_com = value
 
     def to_xml(self):
         geoms = "\n\t\t".join(geom.to_xml() for geom in self.geom)
@@ -84,16 +98,17 @@ class Body:
         damping = self.vel_damping
         rot_damping = self.rot_damping
         if self.hinge:
+            com = self.com
             return f'''\t<body{args}>
-            \t\t<joint type="hinge" axis="0 0 1" damping="{rot_damping}" stiffness="0"/>
-            \t\t<joint type="slide" axis="1 0 0" damping="{damping}" stiffness="0"/>
-            \t\t<joint type="slide" axis="0 1 0" damping="{damping}" stiffness="0"/>
+            \t\t<joint type="slide" axis="1 0 0" damping="{damping}" stiffness="0" ref="{self.pos[0]:.4}"/>
+            \t\t<joint type="slide" axis="0 1 0" damping="{damping}" stiffness="0" ref="{self.pos[1]:.4}"/>
+            \t\t<joint type="hinge" axis="0 0 1" damping="{rot_damping}" stiffness="0" ref="{self.rot:.4}" pos="{com[0]} {com[1]} {com[2]}"/>
             \t\t{geoms}
             \t</body>'''
         else:
             return f'''\t<body{args}>
-            \t\t<joint type="slide" axis="1 0 0" damping="{damping}" stiffness="0"/>
-            \t\t<joint type="slide" axis="0 1 0" damping="{damping}" stiffness="0"/>
+            \t\t<joint type="slide" axis="1 0 0" damping="{damping}" stiffness="0" ref="{self.pos[0]:.4}"/>
+            \t\t<joint type="slide" axis="0 1 0" damping="{damping}" stiffness="0" ref="{self.pos[1]:.4}"/>
             \t\t{geoms}
             \t</body>'''
 
@@ -120,7 +135,7 @@ TEMPLATE = """
 """
 
 class WorldBuilder:
-    def __init__(self, world_half_x, world_half_y, dt=0.002):
+    def __init__(self, world_half_x, world_half_y, dt=0.005):
         self.bodies = []
         self.geometries = []
         self.dt = dt
