@@ -87,6 +87,8 @@ class Polygon(Geometry):
 def polygon(vertices):
     return Polygon(jnp.array(vertices))
 
+import optax
+
 @struct.dataclass
 class Circle(Geometry):
     center: jnp.ndarray
@@ -100,7 +102,8 @@ class Circle(Geometry):
         )
 
     def signed_distance(self, x):
-        return jnp.linalg.norm(x - self.center) - self.radius
+        d = optax.safe_norm(x - self.center, 1e-3)
+        return d - self.radius
 
 def circle(center, radius):
     return Circle(jnp.array(center), radius)
@@ -185,18 +188,36 @@ def _split_color(color):
         raise ValueError(f"Invalid color shape {color.shape}")
 
 @jax.jit
-def _composite(dist, color, background_color):
+def _aa_color(dist, color):
     alpha = _aa_alpha(dist)
     fc, alpha_a = _split_color(color)
-    bc, alpha_b = _split_color(background_color)
-    if bc.shape[0] == 1:
-        fc = jnp.mean(fc, axis=0, keepdims=True)
     alpha_a = alpha_a * alpha
-    alpha_o = alpha_a + alpha_b * (1-alpha_a)
-    color_o  = (alpha_a * fc + alpha_b * (1 - alpha_a) * bc) / alpha_o
-    if background_color.shape[0] == 4 or background_color.shape[0] == 2:
-        color_o = jnp.concatenate((color_o, alpha_o[None]), axis=0)
-    return color_o
+    return jnp.concatenate((fc, alpha_a[None]), axis=0)
+
+@jax.jit
+def _composite(colors):
+    c, alphas = jax.vmap(_split_color)(colors)
+    # trans_part[i] = product of 1 - alphas[j] for j > i
+    # i.e. the combined transparency of all the layers above i
+    trans_part = jnp.roll((1 - alphas)[::-1], 1).at[0].set(1)
+    trans_part = jnp.cumprod(trans_part)[::-1]
+    # the contribution of the ith layer
+    contrib = trans_part * alphas
+    alpha_o = jnp.sum(contrib, axis=0)
+    contrib = contrib / jnp.maximum(alpha_o, 1e-4)
+    color_o = jnp.sum(c * contrib[:,None], axis=0)
+    return jnp.concatenate((color_o, alpha_o[None]), axis=0)
+
+def _composite_pair(color_fg, color_bg):
+    c_fg, alpha_fg = _split_color(color_fg)
+    c_bg, alpha_bg = _split_color(color_bg)
+    if c_bg.shape[-1] == 1:
+        c_fg = jnp.mean(c_fg, axis=-1, keepdims=True)
+    elif c_fg.shape[-1] == 1 and c_bg.shape[-1] == 3:
+        c_fg = c_fg.repeat(3, axis=-1)
+    alpha_o = alpha_fg + alpha_bg*(1-alpha_fg)
+    color_o = (c_fg*alpha_fg + c_bg*alpha_bg*(1-alpha_fg))/jnp.maximum(alpha_o, 1e-4)
+    return jnp.concatenate((color_o, alpha_o[None]), axis=0)
 
 class Renderable:
     @property
@@ -214,11 +235,11 @@ class Renderable:
             coords_x = coords_x + offset[1]
         grid_x, grid_y = jnp.meshgrid(coords_x, coords_y)
         grid = jnp.stack((grid_x, grid_y), axis=-1)
-        dists, colors = jax.vmap(jax.vmap(self.color_distance, 
-                                          in_axes=(0, None)), 
-                                          in_axes=(0,None))(
-                                              grid, jnp.eye(2))
-        canvas = jax.vmap(jax.vmap(_composite))(dists, colors, canvas)
+        def render(x, background_color):
+            dist, c = self.color_distance(x, jnp.eye(2))
+            c = _aa_color(dist, c)
+            return _composite_pair(c, background_color)
+        canvas = jax.vmap(jax.vmap(render))(grid, canvas)
         return canvas
 
     def transform(self, translation=None, rotation=None, scale=None):
@@ -264,15 +285,21 @@ class Stack(Renderable):
     def color_distance(self, x, pixel_metric_hessian):
         if len(self.renderables) == 0:
             return jnp.inf, jnp.zeros(4)
-        dist, color = self.renderables[0].color_distance(x, pixel_metric_hessian)
-        for g in self.renderables[1:]:
+        dists = []
+        s_colors = []
+        grads = []
+        for g in self.renderables:
             (s_dist, s_color), grad = jax.value_and_grad(g.color_distance, 
                                             has_aux=True, argnums=0)(x, pixel_metric_hessian)
-            # use pixel-scaling for the antialiasing distance
-            scaling = jnp.dot(grad, pixel_metric_hessian @ grad)
-            aa_dist = s_dist * jnp.sqrt(scaling)
-            color = _composite(aa_dist, s_color, color)
-            dist = jnp.minimum(dist, s_dist)
+            dists.append(s_dist)
+            s_colors.append(s_color)
+            grads.append(grad)
+        dists, s_colors, grads = jnp.array(dists), jnp.array(s_colors), jnp.array(grads)
+        scalings = jax.vmap(lambda grad: jnp.sqrt(jnp.dot(grad, pixel_metric_hessian @ grad)))(grads)
+        aa_dist = dists * scalings
+        colors = jax.vmap(_aa_color)(aa_dist, s_colors)
+        color = _composite(colors)
+        dist = jnp.min(dists)
         return dist, color
 
 # Does an anti-aliases
@@ -293,19 +320,12 @@ class BatchStack(Renderable):
 
     def color_distance(self, x, pixel_metric_hessian):
         func = lambda g: jax.value_and_grad(g.color_distance, has_aux=True, argnums=0)(x, pixel_metric_hessian)
-        (distances, colors), grads = jax.vmap(func)(self.renderables)
-        dist, color = distances[0], colors[0]
-        def compose(carry, scan):
-            dist, color = carry
-            s_dist, s_color, grad = scan
-            scaling = jnp.dot(grad, pixel_metric_hessian @ grad)
-            aa_dist = s_dist * jnp.sqrt(scaling)
-            color = _composite(aa_dist, s_color, color)
-            dist = jnp.minimum(dist, s_dist)
-            return (dist, color), None
-        (dist, color), _ = jax.lax.scan(compose, 
-                    (dist, color), 
-                    (distances[1:], colors[1:], grads[1:]))
+        (dists, colors), grads = jax.vmap(func)(self.renderables)
+        scalings = jax.vmap(lambda grad: jnp.sqrt(jnp.dot(grad, pixel_metric_hessian @ grad)))(grads)
+        aa_dist = dists * scalings
+        colors = jax.vmap(_aa_color)(aa_dist, colors)
+        color = _composite(colors)
+        dist = jnp.min(dists)
         return dist, color
 
 def stack_batch(renderables):

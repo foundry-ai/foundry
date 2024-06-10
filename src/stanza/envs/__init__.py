@@ -3,7 +3,7 @@ import jax
 
 from stanza import struct
 from stanza.util.registry import Registry, from_module
-from typing import Optional
+from typing import Optional, Sequence
 
 State = typing.TypeVar("State")
 Action = typing.TypeVar("Action")

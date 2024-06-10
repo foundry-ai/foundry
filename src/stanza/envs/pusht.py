@@ -10,6 +10,7 @@ from stanza.util import AttrMap
 from stanza import canvas, struct
 
 import stanza.envs.planar as planar
+import shapely.geometry as sg
 
 from functools import partial, cached_property
 
@@ -36,14 +37,14 @@ def builder() -> planar.WorldBuilder:
     builder.add_body(planar.Body(name="block", geom=[
         planar.Box(
             half_size=(scale*block_length/2, scale/2),
-            mass=0.05, pos=(0., -scale/2),
+            mass=0.03, pos=(0., -scale/2),
             color=canvas.colors.LightSlateGray
         ),
         planar.Box(
             half_size=(scale/2, scale*(block_length - 1)/2),
-            mass=0.05, pos=(0., -scale-scale*(block_length - 1)/2),
+            mass=0.03, pos=(0., -scale-scale*(block_length - 1)/2),
             color=canvas.colors.LightSlateGray
-        )], pos=(-0.5, -0.5), vel_damping=5, rot_damping=0.5)
+        )], pos=(-0.5, -0.5), vel_damping=5, rot_damping=0.3)
     )
     return builder
 WORLD = builder()
@@ -111,12 +112,48 @@ class PushTEnv(Environment):
             jnp.zeros_like(MODEL.qpos0)
         )
     
+    # For computing the reward
+
+    @staticmethod
+    def _block_points(pos, rot):
+        block_body = WORLD.bodies[1]
+        com = block_body.com
+        center_a = jnp.array(block_body.geom[0].pos)
+        hs_a = jnp.array(block_body.geom[0].half_size)
+        center_b = jnp.array(block_body.geom[1].pos)
+        hs_b = jnp.array(block_body.geom[1].half_size)
+        points = jnp.array([
+            center_a + jnp.array([hs_a[0], -hs_a[1]]),
+            center_a + hs_a,
+            center_a + jnp.array([-hs_a[0], hs_a[1]]),
+            center_a - hs_a,
+            center_b + jnp.array([-hs_b[0], hs_b[1]]),
+            center_b - hs_b,
+            center_b + jnp.array([hs_b[0], -hs_b[1]]),
+            center_b + hs_b
+        ])
+        rotM = jnp.array([
+            [jnp.cos(rot), -jnp.sin(rot)],
+            [jnp.sin(rot), jnp.cos(rot)]
+        ])
+        points = jax.vmap(lambda v: rotM @ (v - com) + com)(points)
+        return points + pos
+
+    @staticmethod
+    def _overlap(pointsA, pointsB):
+        polyA = sg.Polygon(pointsA)
+        polyB = sg.Polygon(pointsB)
+        return polyA.intersection(polyB).area / polyA.area
+
     @jax.jit
-    def reward(self, state):
+    def reward(self, state, action, next_state):
+        obs = self.observe(next_state)
+        goal_points = self._block_points(self.goal_pos, self.goal_rot)
+        points = self._block_points(obs.block_pos, obs.block_rot)
         return jax.pure_callback(
-            PushTEnv._callback_reward,
+            PushTEnv._overlap,
             jax.ShapeDtypeStruct((), jnp.float32),
-            self, state
+            goal_points, points
         )
     
     @jax.jit
@@ -158,7 +195,6 @@ class PushTEnv(Environment):
         }, {"block": (0.1, 0.8, 0.1)})
         world = builder.renderable(state)
         world = canvas.stack(goal_t, world)
-
         translation = (builder.world_half_x, builder.world_half_y)
         scale = (width/(2*builder.world_half_x),
                  height/(2*builder.world_half_y))

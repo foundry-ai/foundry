@@ -5,7 +5,7 @@
 groups = ["default", "dev", "docs"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:ef39977fff1095dafa6c822f49328e88b5442ba4d44960e6d2b2a3e86f5b6d0e"
+content_hash = "sha256:f3030d7ee103afaf4ffd3996626769ee14b30028cdef6d5964b5329f6a99849c"
 
 [[package]]
 name = "absl-py"
@@ -50,10 +50,8 @@ requires_python = ">=3.8"
 summary = "High level compatibility layer for multiple asynchronous event loop implementations"
 groups = ["dev"]
 dependencies = [
-    "exceptiongroup>=1.0.2; python_version < \"3.11\"",
     "idna>=2.8",
     "sniffio>=1.1",
-    "typing-extensions>=4.1; python_version < \"3.11\"",
 ]
 files = [
     {file = "anyio-4.4.0-py3-none-any.whl", hash = "sha256:c1b2d8f46a8a812513012e1107cb0e68c17159a7a594208005a57dc776e1bdc7"},
@@ -190,7 +188,7 @@ files = [
 name = "asttokens"
 version = "2.4.1"
 summary = "Annotate AST trees with source code positions"
-groups = ["default", "dev"]
+groups = ["dev"]
 dependencies = [
     "six>=1.12.0",
 ]
@@ -205,9 +203,6 @@ version = "2.0.4"
 requires_python = ">=3.8"
 summary = "Simple LRU cache for asyncio"
 groups = ["dev"]
-dependencies = [
-    "typing-extensions>=4.0.0; python_version < \"3.11\"",
-]
 files = [
     {file = "async-lru-2.0.4.tar.gz", hash = "sha256:b8a59a5df60805ff63220b2a0c5b5393da5521b113cd5465a44eb037d81a5627"},
     {file = "async_lru-2.0.4-py3-none-any.whl", hash = "sha256:ff02944ce3c288c5be660c42dbcca0742b32c3b279d6dceda655190240b99224"},
@@ -472,7 +467,7 @@ name = "comm"
 version = "0.2.2"
 requires_python = ">=3.8"
 summary = "Jupyter Python Comm implementation, for usage in ipykernel, xeus-python etc."
-groups = ["default", "dev"]
+groups = ["dev"]
 dependencies = [
     "traitlets>=4",
 ]
@@ -588,7 +583,7 @@ name = "decorator"
 version = "5.1.1"
 requires_python = ">=3.5"
 summary = "Decorators for Humans"
-groups = ["default", "dev"]
+groups = ["dev"]
 files = [
     {file = "decorator-5.1.1-py3-none-any.whl", hash = "sha256:b8c3f85900b9dc423225913c5aace94729fe1fa9763b38939a95226f02d37186"},
     {file = "decorator-5.1.1.tar.gz", hash = "sha256:637996211036b6385ef91435e4fae22989472f9d571faba8927ba8253acbc330"},
@@ -739,23 +734,11 @@ files = [
 ]
 
 [[package]]
-name = "exceptiongroup"
-version = "1.2.1"
-requires_python = ">=3.7"
-summary = "Backport of PEP 654 (exception groups)"
-groups = ["default", "dev"]
-marker = "python_version < \"3.11\""
-files = [
-    {file = "exceptiongroup-1.2.1-py3-none-any.whl", hash = "sha256:5258b9ed329c5bbdd31a309f53cbfb0b155341807f6ff7606a1e801a891b29ad"},
-    {file = "exceptiongroup-1.2.1.tar.gz", hash = "sha256:a4785e48b045528f5bfe627b6ad554ff32def154f42372786903b7abcfe1aa16"},
-]
-
-[[package]]
 name = "executing"
 version = "2.0.1"
 requires_python = ">=3.5"
 summary = "Get the currently executing AST node of a frame, and other information"
-groups = ["default", "dev"]
+groups = ["dev"]
 files = [
     {file = "executing-2.0.1-py2.py3-none-any.whl", hash = "sha256:eac49ca94516ccc753f9fb5ce82603156e590b27525a8bc32cce8ae302eb61bc"},
     {file = "executing-2.0.1.tar.gz", hash = "sha256:35afe2ce3affba8ee97f2d69927fa823b08b472b7b994e36a52a964b93d16147"},
@@ -1071,20 +1054,6 @@ files = [
 ]
 
 [[package]]
-name = "ipyevents"
-version = "2.0.2"
-requires_python = ">=3.6"
-summary = "A custom widget for returning mouse and keyboard events to Python"
-groups = ["default"]
-dependencies = [
-    "ipywidgets>=7.6.0",
-]
-files = [
-    {file = "ipyevents-2.0.2-py3-none-any.whl", hash = "sha256:60c2a9e992bdc41e8577aa27e57b124efafa48a59a3bff886029fe5700d546b3"},
-    {file = "ipyevents-2.0.2.tar.gz", hash = "sha256:26e878b0c5854bc8b6bd6a2bd2c89b314ebe86fda642f4d2434051545bab258f"},
-]
-
-[[package]]
 name = "ipykernel"
 version = "6.29.4"
 requires_python = ">=3.8"
@@ -1115,11 +1084,10 @@ name = "ipython"
 version = "8.25.0"
 requires_python = ">=3.10"
 summary = "IPython: Productive Interactive Computing"
-groups = ["default", "dev"]
+groups = ["dev"]
 dependencies = [
     "colorama; sys_platform == \"win32\"",
     "decorator",
-    "exceptiongroup; python_version < \"3.11\"",
     "jedi>=0.16",
     "matplotlib-inline",
     "pexpect>4.3; sys_platform != \"win32\" and sys_platform != \"emscripten\"",
@@ -1127,7 +1095,6 @@ dependencies = [
     "pygments>=2.4.0",
     "stack-data",
     "traitlets>=5.13.0",
-    "typing-extensions>=4.6; python_version < \"3.12\"",
 ]
 files = [
     {file = "ipython-8.25.0-py3-none-any.whl", hash = "sha256:53eee7ad44df903a06655871cbab66d156a051fd86f3ec6750470ac9604ac1ab"},
@@ -1135,21 +1102,11 @@ files = [
 ]
 
 [[package]]
-name = "ipywebrtc"
-version = "0.6.0"
-summary = "WebRTC for Jupyter notebook/lab"
-groups = ["default"]
-files = [
-    {file = "ipywebrtc-0.6.0-py2.py3-none-any.whl", hash = "sha256:01a6c9d79ab937c280ce4635a149c7b681457e99ea779c00c7a6aa44ee6916f8"},
-    {file = "ipywebrtc-0.6.0.tar.gz", hash = "sha256:f8ac3cc02b3633b59f388aef67961cff57f90028fd303bb3886c63c3d631da13"},
-]
-
-[[package]]
 name = "ipywidgets"
 version = "8.1.3"
 requires_python = ">=3.7"
 summary = "Jupyter interactive widgets"
-groups = ["default", "dev"]
+groups = ["dev"]
 dependencies = [
     "comm>=0.1.3",
     "ipython>=6.1.0",
@@ -1231,7 +1188,7 @@ name = "jedi"
 version = "0.19.1"
 requires_python = ">=3.6"
 summary = "An autocompletion tool for Python that can be used for text editors."
-groups = ["default", "dev"]
+groups = ["dev"]
 dependencies = [
     "parso<0.9.0,>=0.8.3",
 ]
@@ -1462,7 +1419,6 @@ dependencies = [
     "jupyterlab-server<3,>=2.27.1",
     "notebook-shim>=0.2",
     "packaging",
-    "tomli>=1.2.2; python_version < \"3.11\"",
     "tornado>=6.2.0",
     "traitlets",
 ]
@@ -1507,7 +1463,7 @@ name = "jupyterlab-widgets"
 version = "3.0.11"
 requires_python = ">=3.7"
 summary = "Jupyter interactive widgets for JupyterLab"
-groups = ["default", "dev"]
+groups = ["dev"]
 files = [
     {file = "jupyterlab_widgets-3.0.11-py3-none-any.whl", hash = "sha256:78287fd86d20744ace330a61625024cf5521e1c012a352ddc0a3cdc2348becd0"},
     {file = "jupyterlab_widgets-3.0.11.tar.gz", hash = "sha256:dd5ac679593c969af29c9bed054c24f26842baa51352114736756bc035deee27"},
@@ -1685,7 +1641,7 @@ name = "matplotlib-inline"
 version = "0.1.7"
 requires_python = ">=3.8"
 summary = "Inline Matplotlib backend for Jupyter"
-groups = ["default", "dev"]
+groups = ["dev"]
 dependencies = [
     "traitlets",
 ]
@@ -2100,8 +2056,6 @@ requires_python = ">=3.9"
 summary = "Powerful data structures for data analysis, time series, and statistics"
 groups = ["default"]
 dependencies = [
-    "numpy>=1.22.4; python_version < \"3.11\"",
-    "numpy>=1.23.2; python_version == \"3.11\"",
     "numpy>=1.26.0; python_version >= \"3.12\"",
     "python-dateutil>=2.8.2",
     "pytz>=2020.1",
@@ -2148,7 +2102,7 @@ name = "parso"
 version = "0.8.4"
 requires_python = ">=3.6"
 summary = "A Python Parser"
-groups = ["default", "dev"]
+groups = ["dev"]
 files = [
     {file = "parso-0.8.4-py2.py3-none-any.whl", hash = "sha256:a418670a20291dacd2dddc80c377c5c3791378ee1e8d12bffc35420643d43f18"},
     {file = "parso-0.8.4.tar.gz", hash = "sha256:eb3a7b58240fb99099a345571deecc0f9540ea5f4dd2fe14c2a99d6b281ab92d"},
@@ -2158,7 +2112,7 @@ files = [
 name = "pexpect"
 version = "4.9.0"
 summary = "Pexpect allows easy control of interactive console applications."
-groups = ["default", "dev"]
+groups = ["dev"]
 marker = "sys_platform != \"win32\" and sys_platform != \"emscripten\""
 dependencies = [
     "ptyprocess>=0.5",
@@ -2278,7 +2232,7 @@ name = "prompt-toolkit"
 version = "3.0.45"
 requires_python = ">=3.7.0"
 summary = "Library for building powerful interactive command lines in Python"
-groups = ["default", "dev"]
+groups = ["dev"]
 dependencies = [
     "wcwidth",
 ]
@@ -2323,7 +2277,7 @@ files = [
 name = "ptyprocess"
 version = "0.7.0"
 summary = "Run a subprocess in a pseudo terminal"
-groups = ["default", "dev"]
+groups = ["dev"]
 marker = "sys_platform != \"win32\" and sys_platform != \"emscripten\" or os_name != \"nt\""
 files = [
     {file = "ptyprocess-0.7.0-py2.py3-none-any.whl", hash = "sha256:4b41f3967fce3af57cc7e94b888626c18bf37a083e3651ca8feeb66d492fef35"},
@@ -2334,7 +2288,7 @@ files = [
 name = "pure-eval"
 version = "0.2.2"
 summary = "Safely evaluate AST nodes without side effects"
-groups = ["default", "dev"]
+groups = ["dev"]
 files = [
     {file = "pure_eval-0.2.2-py3-none-any.whl", hash = "sha256:01eaab343580944bc56080ebe0a674b39ec44a945e6d09ba7db3cb8cec289350"},
     {file = "pure_eval-0.2.2.tar.gz", hash = "sha256:2b45320af6dfaa1750f543d714b6d1c520a1688dec6fd24d339063ce0aaa9ac3"},
@@ -2412,11 +2366,9 @@ summary = "pytest: simple powerful testing with Python"
 groups = ["dev"]
 dependencies = [
     "colorama; sys_platform == \"win32\"",
-    "exceptiongroup>=1.0.0rc8; python_version < \"3.11\"",
     "iniconfig",
     "packaging",
     "pluggy<2.0,>=1.5",
-    "tomli>=1; python_version < \"3.11\"",
 ]
 files = [
     {file = "pytest-8.2.1-py3-none-any.whl", hash = "sha256:faccc5d332b8c3719f40283d0d44aa5cf101cec36f88cde9ed8f2bc0538612b1"},
@@ -2926,6 +2878,26 @@ files = [
 ]
 
 [[package]]
+name = "shapely"
+version = "2.0.4"
+requires_python = ">=3.7"
+summary = "Manipulation and analysis of geometric objects"
+groups = ["default"]
+dependencies = [
+    "numpy<3,>=1.14",
+]
+files = [
+    {file = "shapely-2.0.4-cp312-cp312-macosx_10_9_universal2.whl", hash = "sha256:5bbd974193e2cc274312da16b189b38f5f128410f3377721cadb76b1e8ca5328"},
+    {file = "shapely-2.0.4-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:41388321a73ba1a84edd90d86ecc8bfed55e6a1e51882eafb019f45895ec0f65"},
+    {file = "shapely-2.0.4-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:0776c92d584f72f1e584d2e43cfc5542c2f3dd19d53f70df0900fda643f4bae6"},
+    {file = "shapely-2.0.4-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:c75c98380b1ede1cae9a252c6dc247e6279403fae38c77060a5e6186c95073ac"},
+    {file = "shapely-2.0.4-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c3e700abf4a37b7b8b90532fa6ed5c38a9bfc777098bc9fbae5ec8e618ac8f30"},
+    {file = "shapely-2.0.4-cp312-cp312-win32.whl", hash = "sha256:4f2ab0faf8188b9f99e6a273b24b97662194160cc8ca17cf9d1fb6f18d7fb93f"},
+    {file = "shapely-2.0.4-cp312-cp312-win_amd64.whl", hash = "sha256:03152442d311a5e85ac73b39680dd64a9892fa42bb08fd83b3bab4fe6999bfa0"},
+    {file = "shapely-2.0.4.tar.gz", hash = "sha256:5dc736127fac70009b8d309a0eeb74f3e08979e530cf7017f2f507ef62e6cfb8"},
+]
+
+[[package]]
 name = "six"
 version = "1.16.0"
 requires_python = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*"
@@ -3002,7 +2974,6 @@ dependencies = [
     "sphinxcontrib-jsmath",
     "sphinxcontrib-qthelp",
     "sphinxcontrib-serializinghtml>=1.1.9",
-    "tomli>=2; python_version < \"3.11\"",
 ]
 files = [
     {file = "sphinx-7.3.7-py3-none-any.whl", hash = "sha256:413f75440be4cacf328f580b4274ada4565fb2187d696a84970c23f77b64d8c3"},
@@ -3241,7 +3212,7 @@ files = [
 name = "stack-data"
 version = "0.6.3"
 summary = "Extract data from python stack frames and tracebacks for informative displays"
-groups = ["default", "dev"]
+groups = ["dev"]
 dependencies = [
     "asttokens>=2.1.0",
     "executing>=1.2.0",
@@ -3331,18 +3302,6 @@ files = [
 ]
 
 [[package]]
-name = "tomli"
-version = "2.0.1"
-requires_python = ">=3.7"
-summary = "A lil' TOML parser"
-groups = ["dev", "docs"]
-marker = "python_version < \"3.11\""
-files = [
-    {file = "tomli-2.0.1-py3-none-any.whl", hash = "sha256:939de3e7a6161af0c887ef91b7d41a53e7c5a1ca976325f429cb46ea9bc30ecc"},
-    {file = "tomli-2.0.1.tar.gz", hash = "sha256:de526c12914f0c550d15924c62d72abc48d6fe7364aa87328337a31007fe8a4f"},
-]
-
-[[package]]
 name = "toolz"
 version = "0.12.1"
 requires_python = ">=3.7"
@@ -3429,7 +3388,7 @@ name = "typing-extensions"
 version = "4.12.1"
 requires_python = ">=3.8"
 summary = "Backported and Experimental Type Hints for Python 3.8+"
-groups = ["default", "dev", "docs"]
+groups = ["default", "docs"]
 files = [
     {file = "typing_extensions-4.12.1-py3-none-any.whl", hash = "sha256:6024b58b69089e5a89c347397254e35f1bf02a907728ec7fee9bf0fe837d203a"},
     {file = "typing_extensions-4.12.1.tar.gz", hash = "sha256:915f5e35ff76f56588223f15fdd5938f9a1cf9195c0de25130c627e4d597f6d1"},
@@ -3502,7 +3461,7 @@ files = [
 name = "wcwidth"
 version = "0.2.13"
 summary = "Measures the displayed width of unicode strings in a terminal"
-groups = ["default", "dev"]
+groups = ["dev"]
 files = [
     {file = "wcwidth-0.2.13-py2.py3-none-any.whl", hash = "sha256:3da69048e4540d84af32131829ff948f1e022c1c6bdb8d6102117aac784f6859"},
     {file = "wcwidth-0.2.13.tar.gz", hash = "sha256:72ea0c06399eb286d978fdedb6923a9eb47e1c486ce63e9b4e64fc18303972b5"},
@@ -3545,7 +3504,7 @@ name = "widgetsnbextension"
 version = "4.0.11"
 requires_python = ">=3.7"
 summary = "Jupyter interactive widgets for Jupyter Notebook"
-groups = ["default", "dev"]
+groups = ["dev"]
 files = [
     {file = "widgetsnbextension-4.0.11-py3-none-any.whl", hash = "sha256:55d4d6949d100e0d08b94948a42efc3ed6dfdc0e9468b2c4b128c9a2ce3a7a36"},
     {file = "widgetsnbextension-4.0.11.tar.gz", hash = "sha256:8b22a8f1910bfd188e596fe7fc05dcbd87e810c8a4ba010bdb3da86637398474"},

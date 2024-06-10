@@ -25,6 +25,7 @@ dependencies = [
     "trajax @ git+https://github.com/google/trajax",
     "zarr>=2.18.1",
     "mujoco-mjx>=3.1.6",
+    "shapely>=2.0.4",
 ]
 requires-python = ">=3.12"
 readme = "README.md"

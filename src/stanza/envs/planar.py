@@ -17,6 +17,10 @@ class Geometry:
     color: tuple[float, float, float] = canvas.colors.LightSlateGray
 
     @property
+    def com(self):
+        return self.pos
+
+    @property
     def _geom_args(self):
         mass = f' mass="{self.mass:.4}"'
         pos = f' pos="{self.pos[0]:.4} {self.pos[1]:.4} 0.5"'
@@ -26,7 +30,6 @@ class Geometry:
 @struct.dataclass
 class Circle(Geometry):
     radius: float = 1.
-    com: tuple[float, float] = (0., 0.)
 
     @property
     def _geom_args(self):
@@ -53,7 +56,6 @@ class Circle(Geometry):
 @struct.dataclass
 class Box(Geometry):
     half_size: tuple[float, float] = (0.5, 0.5)
-    com: tuple[float, float] = (0., 0.)
 
     def to_canvas(self, color=None):
         color = color or self.color or canvas.colors.LightGray
@@ -102,7 +104,7 @@ class Body:
             return f'''\t<body{args}>
             \t\t<joint type="slide" axis="1 0 0" damping="{damping}" stiffness="0" ref="{self.pos[0]:.4}"/>
             \t\t<joint type="slide" axis="0 1 0" damping="{damping}" stiffness="0" ref="{self.pos[1]:.4}"/>
-            \t\t<joint type="hinge" axis="0 0 1" damping="{rot_damping}" stiffness="0" ref="{self.rot:.4}" pos="{com[0]} {com[1]} {com[2]}"/>
+            \t\t<joint type="hinge" axis="0 0 1" damping="{rot_damping}" stiffness="0" ref="{self.rot:.4}" pos="{com[0]:.4} {com[1]:.4} 0"/>
             \t\t{geoms}
             \t</body>'''
         else:
