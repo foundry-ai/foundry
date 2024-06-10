@@ -25,10 +25,19 @@ from stanza.util.ipython import STYLE
 class DemonstrationCollector:
     def __init__(self, path, env, interactive_policy, width, height, fps=30):
         self.path = path
+        
+        if len(jax.devices()) > 1:
+            for p in range(len(jax.devices()), 0, -1):
+                if 256 % p == 0:
+                    break
+            mesh = jax.sharding.Mesh(jax.devices()[:p], ('x',))
+            sharding = jax.sharding.NamedSharding(mesh, jax.sharding.PartitionSpec('x',))
+        else:
+            sharding = None
 
         self._step_fn = jax.jit(env.step)
         self._reset_fn = jax.jit(env.reset)
-        self._render_fn = jax.jit(env.render)
+        self._render_fn = jax.jit(env.render, out_shardings=sharding)
         self._policy = interactive_policy
         self.interface = StreamingInterface(width, height)
 
