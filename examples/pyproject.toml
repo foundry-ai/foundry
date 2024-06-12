@@ -10,6 +10,7 @@ dependencies = [
     "aqtp>=0.7.3",
     "jax==0.4.28",
     "jaxlib==0.4.28",
+    "seaborn>=0.13.2",
 ]
 requires-python = ">=3.12"
 readme = "README.md"
