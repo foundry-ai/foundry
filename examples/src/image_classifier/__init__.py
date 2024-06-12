@@ -47,7 +47,7 @@ class Config:
     optimizer: str = "adam"
 
     # sam-related parameters
-    sam_rho: float | None = None # None if SAM is disabled
+    sam_rho: float = 0. # None if SAM is disabled
     sam_start: float = 0. # percentage of training through which to start sam
     sam_percent: float = 1. # percentage of training to use sam, if enabled
 
