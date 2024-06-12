@@ -71,10 +71,10 @@ def train(config: Config):
             config.lr_schedule,
             cycles=config.cycles,
             cycle_mult=config.cycle_mult,
-            weight_decay=1e-4
+            weight_decay=1e-5
         )
     elif config.optimizer == "sgd":
-        optimizer = SGDConfig(config.lr or 1e-1,
+        optimizer = SGDConfig(config.lr or 2e-1,
             config.lr_schedule, weight_decay=1e-4,
             cycles=config.cycles,
             cycle_mult=config.cycle_mult
