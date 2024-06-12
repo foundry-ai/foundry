@@ -18,6 +18,8 @@ jobs:
           cache: true
       - name: Install dependencies
         run: sudo apt install libgeos-dev
+      - name: Re-lock lockfile
+        run: pdm lock -d -G docs
       - name: Install PDM dependencies
         run: pdm install -d -G docs
       - name: Build Documentation
