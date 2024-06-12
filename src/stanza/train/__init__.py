@@ -263,6 +263,7 @@ def validate(*hooks,
             data, 
             batch_loss_fn,
             batch_size=None,
+            rng_key=None, # the rng key to use for batches
             batches=None, # if we should use a fixed number of batches
             log_hooks=[]
         ):
@@ -273,11 +274,13 @@ def validate(*hooks,
     # note that this is shared across hook calls
 
     if batches is not None:
+        if rng_key is None:
+            raise ValueError("rng_key must be specified if batches is specified")
         # if we are using random test
         # batches
         dataloader = DataLoader(data,
             batch_size=batch_size, shuffle=True,
-            drop_jagged=True
+            drop_jagged=True, rng_key=rng_key
         )
         dataloader_cycle = dataloader.cycle()
         def iter_batches():

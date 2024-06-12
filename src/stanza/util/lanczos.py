@@ -76,8 +76,8 @@ def net_sharpness_statistics(rng_key, hvp_at, params, order=8, samples=1):
     d.update({
         f'sigma_percentile_{q[i]:02}': sigma_p[i] for i in range(len(q))
     })
-    d["lambda_trace"] = eig_vals.sum()
-    d["sigma_trace"] = sigmas.sum()
+    d["lambda_trace"] = jnp.mean(eig_vals) * params_flat.shape[0]
+    d["sigma_trace"] = jnp.mean(sigmas) * params_flat.shape[0]
     return d
 
 @partial(jax.jit, static_argnums=(1,2,3))

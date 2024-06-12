@@ -1,4 +1,4 @@
-from stanza.struct.args import command
+from stanza.config import ConfigProvider, command
 from stanza import struct
 
 import stanza.train as st
@@ -54,9 +54,16 @@ class Config:
     # sharpness measure
     sharpness: bool = False
 
+    @staticmethod
+    def parse(config: ConfigProvider) -> "Config":
+        defaults = Config()
+        res = config.get_struct(defaults)
+        return res
+
     # if we should also quantize the model
 
 def train(config: Config):
+    logger.info(f"Training {config}")
     rng = PRNGSequence(config.seed)
 
     if config.optimizer == "adam":
@@ -176,10 +183,12 @@ def train(config: Config):
             st.every_n_iterations(500,
                 st.validate(
                     data=dataset.splits["train"],
+                    
                     batch_loss_fn=sharpness_stats,
                     batch_size=8*config.batch_size,
                     batches=1, # run on a single batch, 8*the regular size
                                # we will scan over the 8 batches to sum up the hvp
+                    rng_key=next(rng),
                     log_hooks=[
                         st.wandb.wandb_logger(run=wandb_run, prefix="sharpness/"),
                         st.console_logger(prefix="sharpness.")
@@ -200,8 +209,7 @@ def train(config: Config):
         ]
     )
 
-@command(Config)
-def run(config: Config):
+@command
+def run(config: ConfigProvider):
     logger.setLevel(logging.DEBUG)
-    logger.info(f"Training {config}")
-    train(config)
+    train(Config.parse(config))
