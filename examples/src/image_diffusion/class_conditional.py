@@ -23,7 +23,7 @@ import wandb
 import logging
 logger = logging.getLogger(__name__)
 
-@struct.dataclass
+@dataclass
 class Config:
     seed: int = 42
     diffusion_steps: int = 50

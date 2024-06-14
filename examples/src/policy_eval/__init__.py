@@ -16,7 +16,7 @@ import stanza
 import logging
 logger = logging.getLogger(__name__)
 
-@struct.dataclass
+@dataclass
 class PolicyConfig:
     pass
 
@@ -27,7 +27,7 @@ class PolicyConfig:
     def train_policy(self, config, env, train_data):
         pass
 
-@struct.dataclass
+@dataclass
 class Config:
     seed: int = 42
     dataset: str = "pusht/chen"
@@ -40,14 +40,16 @@ class Config:
         defaults = Config()
         res = config.get_struct(defaults)
         from . import diffusion_policy
+        from . import diffusion_estimator
         policy = config.get_cases("policy", "The policy to use.", {
+            "diffusion_estimator": diffusion_estimator.DiffusionEstimatorConfig(),
             "diffusion_policy": diffusion_policy.DiffusionPolicyConfig()
-        }, "diffusion_policy")
+        }, "diffusion_estimator")
         return struct.replace(res,
             policy=policy
         )
 
-@struct.dataclass
+@dataclass
 class Sample:
     observations: jax.Array
     actions: jax.Array

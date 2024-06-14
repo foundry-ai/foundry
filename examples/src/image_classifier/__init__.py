@@ -30,7 +30,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@struct.dataclass
+@dataclass
 class Config:
     seed: int = 42
     summary: bool = False
