@@ -1,16 +1,16 @@
 from stanza.data import Data, PyTreeData
-from stanza import struct
-
 from typing import Any, Generic, TypeVar
+from dataclasses import dataclass, field
 
 import pickle
+import jax.tree_util
 import jax.numpy as jnp
 import numpy as np
 
 T = TypeVar('T')
 I = TypeVar('I')
 
-@struct.dataclass
+@dataclass
 class SequenceInfo(Generic[I]):
     id: int
     info: I
@@ -18,14 +18,17 @@ class SequenceInfo(Generic[I]):
     end_idx: int
     length: int
 
-@struct.dataclass
+@dataclass
 class Chunk(Generic[T,I]):
     sequence_id: int
     start_offset: int
     chunk: T
     info: I
 
-@struct.dataclass
+@partial(jax.tree_util.register_dataclass,
+         data_fields=['x', 'y'],
+         meta_fields=['op'])
+@dataclass
 class ChunkData(Data, Generic[T,I]):
     elements: Data[T]
     infos: Data[SequenceInfo[I]]
