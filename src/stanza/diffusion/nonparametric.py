@@ -4,6 +4,9 @@ import jax.numpy as jnp
 import stanza.util
 
 from scipy.special import binom
+from jax.scipy.special import factorial
+
+#jax.config.update("jax_debug_nans", True)
 
 def log_gaussian_kernel(x):
     x, _ = jax.flatten_util.ravel_pytree(x)
@@ -135,29 +138,190 @@ def nw_local_poly(rng_key, data, schedule, degree, cond_kernel, noised_value_ker
             jax.vmap(cond_K, in_axes=(None, 0))(cond, xs) + 
             jax.vmap(noised_value_K, in_axes=(None, 0))(noised_value, yts)
         )
-        prob = jnp.exp(log_prob)[:,None]
+        prob = jax.nn.softmax(log_prob)[:,None]
 
         poly_zs = expand_poly_features(degree, zs)
         poly_z = expand_poly_features(degree, z[None, :])
 
         M = poly_zs.T @ (prob * poly_zs)
         b = poly_zs.T @ (prob * ys)
+        # M =   jnp.sqrt(prob) * poly_zs
+        # b = jnp.sqrt(prob) * ys
         coeffs, _, _, _ = jnp.linalg.lstsq(M, b)
 
         y_est = jnp.dot(poly_z, coeffs)
-        jax.debug.print('{s}', s=jax.vmap(cond_K, in_axes=(None, 0))(cond, xs))
-        jax.debug.print('{s}', s=jax.vmap(noised_value_K, in_axes=(None, 0))(noised_value, yts))
+        # jax.debug.print('{s}', s=jax.vmap(cond_K, in_axes=(None, 0))(cond, xs))
+        # jax.debug.print('{s}', s=jax.vmap(noised_value_K, in_axes=(None, 0))(noised_value, yts))
         
         return noised_value_uf(y_est)
     
     return estimator
 
-def nw_local_poly_diffuser(cond, estimator):
+def nw_diffuser(cond, estimator):
     @jax.jit
     def diffuser(_, noised_value, t):
         return estimator(cond, noised_value, t)
     return diffuser
 
+def comb(n, k):
+    '''
+    Returns n choose k.
+    '''
+    return factorial(n) / (factorial(n-k) * factorial(k))
 
+def factorial2(n):
+    '''
+    Computes (n)!!, where n is an odd integer.
+    '''
+    n_half = (n-1)/2
+    return factorial(n) / (factorial(n_half) * jnp.power(2,n_half))
+
+def make_psi(degrees, Sigma, H):
+    '''
+    degrees: shape (d,) vector corresponding to [j_1,...,j_d]
+    Sigma: shape (d,) vector of noise variances
+    H: shape (d,) vector of bandwidth variances
+    Returns the function psi.
+    '''
+    def psi(cond):
+        dim = Sigma.shape[-1]
+        Sigma_sqrt = jnp.sqrt(Sigma)
+        Hinv = jnp.ones_like(H)/H
+        M = Sigma * Hinv + jnp.ones_like(Sigma)
+        Minv = jnp.ones_like(M)/M
+        c = Hinv * Sigma_sqrt * cond
+        K = jnp.power(2*jnp.pi, -dim/2) * jnp.sqrt( jnp.prod(Minv) * jnp.prod(Hinv)) \
+            * jnp.exp(-0.5*(cond.T @ (Hinv * cond) - c.T @ (Minv * c)))  
+        z = cond - Sigma_sqrt * Minv * c
+
+        def exp_monomial(z, sigma, var, degree):
+
+            def body_fn(i, carry):
+                i = 2*i
+                moment = jnp.pow(var, i//2) * factorial2(i-1) 
+                poly_z = jnp.pow(z, degree-i)
+                poly_sigma = jnp.pow(sigma, i)
+                binom_coeff = comb(degree, i)
+                return carry + moment * binom_coeff * poly_z * poly_sigma
+                # log_moment = (i//2) * jnp.log(var) + jnp.log(factorial2(i-1))
+                # poly_z = jnp.pow(z, degree-i)
+                # log_poly_sigma = i*jnp.log(sigma)
+                # log_binom_coeff = jnp.log(comb(degree, i))
+                # return carry + jnp.exp(log_moment + log_binom_coeff + log_poly_sigma) * poly_z
+            result = jnp.pow(z, degree) + jax.lax.fori_loop(1, (degree//2).astype(int) + 1, body_fn, 0)
+            return result
+        
+        prod_monomials = 1000
+        for i in range(dim):
+            prod_monomials *= exp_monomial(z[i], Sigma[i], Minv[i], degrees[i])
+        #jax.debug.print('{s}', s=prod_monomials)
+        return K * prod_monomials
+    
+    return psi
+
+def enumerate_degrees(num_features, degree):
+    '''
+    Returns an array of vectors of shape (num_features,) of nonnegative integers,
+    each summing to at most `degree`.
+    '''
+    num_poly_features = binom(degree + num_features, num_features).astype(int)
+    degree_vecs = jnp.empty((num_poly_features, num_features))
+    degree_vecs = degree_vecs.at[0, :].set(jnp.zeros((num_features,)))
+
+    features = jnp.eye(num_features)
+
+    if degree >= 1:
+        degree_vecs = degree_vecs.at[1:1+num_features, :].set(features)
+
+    if degree >= 2:
+        index = list(range(1, 1+num_features))
+        current_row = 1 + num_features
+        index.append(current_row)
+
+        for _ in range(2, degree + 1):
+            new_index = []
+            end = index[-1]
+
+            for feature_idx in range(num_features):
+                start = index[feature_idx]
+                new_index.append(current_row)
+                next_row = current_row + end - start
+                if next_row <= current_row:
+                    break
+                # XP[:, start:end] are terms of degree d - 1
+                # that exclude feature #feature_idx.
+                degree_vecs = degree_vecs.at[current_row:next_row, :].set(
+                    degree_vecs[start:end, :] + features[feature_idx : feature_idx + 1, :]
+                )
+                current_row = next_row
+
+            new_index.append(current_row)
+            index = new_index
+
+    return degree_vecs
+
+def nw_local_poly_closed(data, schedule, degree, h2):
+
+    def estimator(cond, noised_value, t):
+        xs, ys = data
+
+        # Flatten the data
+        vf = jax.vmap(lambda x: jax.flatten_util.ravel_pytree(x)[0])
+
+        x0 = jax.tree_map(lambda x: x[0], xs)
+        xs = vf(xs)
+        _, x_uf = jax.flatten_util.ravel_pytree(x0)
+
+        y0 = jax.tree_map(lambda x: x[0], ys)
+        ys = vf(ys)
+        _, y_uf = jax.flatten_util.ravel_pytree(y0)
+
+        # Flatten input
+        cond, cond_uf = jax.flatten_util.ravel_pytree(cond)
+        noised_value, noised_value_uf = jax.flatten_util.ravel_pytree(noised_value)
+
+        H = h2*jnp.ones((xs.shape[-1] + ys.shape[-1],))
+    
+        z = jnp.concatenate((cond, noised_value), -1)
+        alphas_prod = schedule.alphas_cumprod[t]
+        zs = jnp.concatenate((xs, jnp.sqrt(alphas_prod)*ys), -1)
+        num_features = z.shape[-1]
+        Sigma = jnp.zeros((xs.shape[-1],))
+        Sigma = jnp.append(
+            Sigma,
+            jnp.repeat(jnp.array([1-alphas_prod]), ys.shape[-1])
+        )
+        #jax.debug.print('{s}', s=Sigma)
+
+        degree_vecs = enumerate_degrees(num_features, degree)
+
+        # such that: degree_matrix[i, j, :] = degree_vecs[i, :] + degree_vecs[j, :]
+        degree_matrix = degree_vecs[None, :, :] + degree_vecs[:, None, :]
+        apply_psi = lambda deg_vec: jnp.sum(
+            jax.vmap(make_psi(deg_vec, Sigma, H))(zs - z),
+            axis=0
+        )
+        A = jax.vmap(jax.vmap(apply_psi))(degree_matrix)
+        #jax.debug.print('{s}', s=A)
 
         
+        apply_psi = lambda deg_vec: jnp.sum(
+            jax.vmap(make_psi(deg_vec, Sigma, H))(zs - z)[:, None] * ys,
+            axis=0
+        )
+        b = jax.vmap(apply_psi)(degree_vecs)
+        #jax.debug.print('{s}', s=b)
+
+        
+        coeffs, _, _, _ = jnp.linalg.lstsq(A, b)
+
+        poly_z = expand_poly_features(degree, z[None, :])
+        y_est = jnp.dot(poly_z, coeffs)
+
+        # jax.debug.print('{s}', s=estimate.shape)
+        
+        return noised_value_uf(y_est)
+    
+    return estimator
+
+
