@@ -1,3 +1,0 @@
-
-class FrozenDict(dict):
-    pass

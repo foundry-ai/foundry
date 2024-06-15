@@ -1,12 +1,12 @@
 import jax.flatten_util
-from stanza import struct, partial
+from stanza import dataclasses, partial
 
 import stanza.util
 import jax.numpy as jnp
 import jax
 
 
-@struct.dataclass
+@dataclasses.dataclass
 class PCAState:
     components: jax.Array
     mean: jax.Array

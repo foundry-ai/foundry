@@ -1,4 +1,4 @@
-from stanza import struct
+from stanza import dataclasses
 
 import jax
 import jax.numpy as jnp

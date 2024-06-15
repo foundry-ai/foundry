@@ -1,4 +1,4 @@
-from stanza import struct
+from stanza import dataclasses
 from stanza.util.pca import randomized_pca
 from stanza.random import PRNGSequence
 
@@ -14,7 +14,7 @@ import numpy as np
 L = TypeVar('L')
 
 
-@struct.dataclass
+@dataclasses.dataclass
 class TableNode:
     # 00s if leaf
     children: jax.Array
@@ -24,7 +24,7 @@ class TableNode:
     split_value: jax.Array
     mean: jax.Array
 
-@struct.dataclass
+@dataclasses.dataclass
 class DiffusionTable:
     nodes: TableNode
 

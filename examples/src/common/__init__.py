@@ -1,11 +1,11 @@
-from stanza import struct
+from stanza import dataclasses
 from stanza.config import ConfigProvider
 
 import optax
 import jax
 import jax.numpy as jnp
 
-@struct.dataclass
+@dataclasses.dataclass
 class OptimizerConfig:
     lr: float = 1e-4
     lr_schedule: str = "constant"
@@ -72,7 +72,7 @@ class OptimizerConfig:
     def default():
         return AdamConfig(lr_schedule="cosine", warmup_schedule="linear")
 
-@struct.dataclass
+@dataclasses.dataclass
 class AdamConfig(OptimizerConfig):
     beta1: float = 0.9
     beta2: float = 0.999
@@ -91,7 +91,7 @@ class AdamConfig(OptimizerConfig):
     def parse(self, config: ConfigProvider) -> "AdamConfig":
         return config.get_struct(self)
 
-@struct.dataclass
+@dataclasses.dataclass
 class SGDConfig(OptimizerConfig):
     lr_schedule: str = "constant" # The learning rate schedule
     momentum: float | None = None
@@ -108,7 +108,7 @@ class SGDConfig(OptimizerConfig):
     def parse(self, config: ConfigProvider) -> "SGDConfig":
         return config.get_struct(self)
 
-@struct.dataclass
+@dataclasses.dataclass
 class SAMConfig:
     forward: OptimizerConfig = OptimizerConfig.default()
     backward: OptimizerConfig = SGDConfig(lr=5e-2) # rho = 0.05
@@ -144,7 +144,7 @@ class SAMConfig:
         )
 
 
-@struct.dataclass
+@dataclasses.dataclass
 class TrainConfig:
     batch_size: int = 32
     """The batch size to use for training."""
@@ -175,4 +175,4 @@ class TrainConfig:
             "sgd": SGDConfig(),
             "adam": AdamConfig()
         }, "adam")
-        return struct.replace(res, optimizer=optimizer)
+        return dataclasses.replace(res, optimizer=optimizer)

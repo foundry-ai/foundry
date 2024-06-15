@@ -1,10 +1,10 @@
-from stanza import struct
+from stanza import dataclasses
 import jax
 
 class Reportable:
     pass
 
-@struct.dataclass
+@dataclasses.dataclass
 class Image(Reportable):
     data: jax.Array
 
@@ -13,7 +13,7 @@ class Image(Reportable):
         from stanza.util.ipython import as_image
         display(as_image(self.data))
 
-@struct.dataclass
+@dataclasses.dataclass
 class Video(Reportable):
     data: jax.Array
     fps: int = 28

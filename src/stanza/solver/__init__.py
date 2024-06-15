@@ -2,7 +2,7 @@ import jax
 import jax.flatten_util
 
 from typing import Callable, Any, Optional, NamedTuple
-from stanza.struct import dataclass, field, replace
+from stanza.dataclasses import dataclass, field, replace
 
 SolverState = Any
 Params = Any

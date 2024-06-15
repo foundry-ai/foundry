@@ -12,7 +12,7 @@ import numpy as np
 from PIL import Image
 from rich.progress import Progress
 from pathlib import Path
-from stanza import struct
+from stanza import dataclasses
 import zipfile
 import requests
 import tarfile
@@ -50,7 +50,7 @@ def download_and_extract(
     extract_to(download_path, extract_path, job_name=job_name,
         strip_folder=strip_folder, quiet=quiet)
     
-@struct.dataclass
+@dataclasses.dataclass
 class ExtractInfo:
     filename: str
     size: int

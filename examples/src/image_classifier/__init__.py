@@ -1,5 +1,5 @@
 from stanza.config import ConfigProvider, command
-from stanza import struct
+from stanza import dataclasses
 
 import stanza.train as st
 import stanza.train.wandb as stw
@@ -30,7 +30,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@struct.dataclass
+@dataclasses.dataclass
 class Config:
     seed: int = 42
     summary: bool = False

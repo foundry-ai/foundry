@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 from stanza import partial
 
-from stanza.struct import dataclass, field, replace
+from stanza.dataclasses import dataclass, field, replace
 from jax.random import PRNGKey
 
 from stanza.solver import (

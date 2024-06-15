@@ -114,3 +114,119 @@ def launch(entrypoint=None):
         cmd = "ps aux|grep wandb|grep -v grep | awk '\''{print $2}'\''|xargs kill -9"
         os.system(cmd)
         logger.error("Exited due to Ctrl-C")
+import argparse
+from . import ConfigProvider, NO_DEFAULT
+
+class Arguments:
+    def __init__(self, args):
+        self.args = args
+        self.options = []
+
+    def add_option(self, name : str, desc: str):
+        self.options.append((name, desc))
+    
+    def parse_option(self, name : str, desc: str):
+        self.add_option(name, desc)
+        parser = argparse.ArgumentParser(add_help=False, prog="")
+        parser.add_argument(f"--{name}", required=False, type=str)
+        ns, args = parser.parse_known_intermixed_args(self.args)
+        self.args = args
+        val = getattr(ns, name)
+        return val
+
+class ArgConfig(ConfigProvider):
+    def __init__(self, args : Arguments, prefix=None, active=True, cases=None):
+        self._args = args
+        self._prefix = prefix
+        self._cases = cases or []
+        self._active = active
+
+    def get(self, name: str, type: str, desc: str, default=NO_DEFAULT):
+        if self._prefix:
+            name = f"{self._prefix}_{name}"
+
+        if not self._active:
+            self._args.add_option(name, desc)
+            if default is NO_DEFAULT:
+                return type()
+            return default
+        else:
+            arg = self._args.parse_option(name, desc)
+            if arg is None and default is NO_DEFAULT:
+                raise ValueError(f"Argument {name} not provided")
+            if arg is None:
+                return default
+            if type is bool:
+                arg = arg.lower()
+                return arg == "true" or arg == "t" or arg == "y"
+            return type(arg)
+    
+    def scope(self, name: str, desc: str) -> "ConfigProvider":
+        prefix = name if not self._prefix else f"{self._prefix}_{name}"
+        return ArgConfig(self._args, prefix)
+    
+    def case(self, name: str, desc: str, active: bool):
+        return ArgConfig(self._args, self._prefix, active, self._cases + [name])
+import abc
+import functools
+import sys
+
+from typing import Callable, Type
+from stanza import dataclasses 
+
+
+class NoDefault:
+    pass
+
+NO_DEFAULT = NoDefault()
+
+class ConfigProvider(abc.ABC):
+    def get(self, name: str, type: Type, desc: str, default=NO_DEFAULT): ...
+    def scope(self, name: str, desc: str) -> "ConfigProvider": ...
+
+    # A method that returns a ConfigProvider
+    # that only get populated. If active is False
+    # the returned ConfigProvider can simply return
+    # default values
+    def case(self, name: str, desc: str, active: bool) -> "ConfigProvider": ...
+
+    def get_struct(self, default, ignore=set(), flatten=set()):
+        vals = {}
+        for field in dataclasses.fields(default):
+            if field.name in ignore:
+                continue
+            default_val = getattr(default, field.name)
+            type = field.type
+            if default_val is not None and hasattr(default_val, "parse"):
+                # if there is a parse() method, use it to parse the value
+                scope = self.scope(field.name, "") if field.name not in flatten else self
+                vals[field.name] = default_val.parse(scope)
+            elif (type is bool or type is int or type is float or type is str):
+                vals[field.name] = self.get(field.name, field.type, "", default_val)
+        return dataclasses.replace(default, **vals)
+
+    def get_cases(self, name: str, desc: str, cases: dict, default: str):
+        case = self.get(name, str, desc, default)
+        vals = {}
+        for case, c in cases.items():
+            if hasattr(c, "parse"):
+                vals[case] = c.parse(self.scope(name, ""))
+            else:
+                vals[case] = c
+        return vals.get(case, None)
+
+def command(fn: Callable):
+    from .arg import Arguments, ArgConfig
+
+    @functools.wraps(fn)
+    def main():
+        args = Arguments(sys.argv[1:])
+        config = ArgConfig(args)
+        # config_file = args.parse_option("config", "Path to the configuration file")
+        # if config_file is not None:
+        #     import yaml
+        #     with open(config_file, "r") as f:
+        #         y = yaml.load(f)
+        #         print(y)
+        return fn(config)
+    return main

@@ -19,7 +19,7 @@ from threading import Thread
 from stanza.data import PyTreeData
 from stanza.data.sequence import SequenceInfo, SequenceData
 from stanza.random import PRNGSequence
-from stanza.envs import SequenceRender
+from stanza.env import SequenceRender
 from stanza.util.ipython import STYLE
 
 class DemonstrationCollector:

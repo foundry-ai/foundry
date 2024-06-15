@@ -1,12 +1,12 @@
-import stanza.struct as struct
+import stanza.dataclasses as dataclasses
 
-@struct.dataclass
+@dataclasses.dataclass
 class A:
     x: int
     y: int = 0
-    z: int = struct.field(default=0)
+    z: int = dataclasses.field(default=0)
 
-@struct.dataclass(kw_only=True)
+@dataclasses.dataclass(kw_only=True)
 class B:
     a: int = None
 
