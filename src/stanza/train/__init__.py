@@ -1,7 +1,6 @@
 import stanza.struct as struct
 
 from stanza.random import PRNGSequence
-from stanza.util import MofNColumn
 from stanza.data import Data, DataLoader
 
 # import all reporting datatypes
@@ -9,12 +8,6 @@ from .reporting import *
 
 from typing import Any, TypeVar, Callable
 from functools import partial
-from bdb import BdbQuit
-from rich.progress import (
-    Progress, TextColumn, BarColumn, 
-    TimeRemainingColumn, TimeElapsedColumn
-)
-from rich.style import Style
 
 from jax.typing import ArrayLike
 
@@ -34,7 +27,7 @@ Vars = Any
 Metrics = Any
 
 # Training hooks
-@struct.dataclass
+@dataclass
 class TrainState:
     max_iterations: int
     max_epochs: int
@@ -47,19 +40,13 @@ class TrainState:
     vars: Vars
     metrics: Metrics
 
-@struct.dataclass
+@dataclass
 class LossOutput:
     loss: ArrayLike = 0.
     metrics: Metrics = None
     var_updates: Vars = None
 
-def get_batch_size(batch):
-    import numpy as np
-    ns = np.array([jnp.shape(x)[0] for x in jax.tree_util.tree_leaves(batch)])
-    assert np.all(ns == ns[0])
-    return ns[0]
-
-@struct.dataclass
+@dataclass
 class IterationInfo:
     iteration: int
     epoch: int
@@ -147,13 +134,8 @@ def fit(*, data : Data[Sample],
         opt_state = optimizer.init(vars["params"])
     else:
         opt_state = init_opt_state if donate_init_opt_state else jax.tree_map(lambda x: jnp.copy(x), init_opt_state)
-    pbar = Progress(
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(finished_style=Style(color="green")),
-                MofNColumn(),
-                TimeRemainingColumn(),
-                TimeElapsedColumn()
-            )
+
+    pbar = _make_pbar()
     total_iteration_task = pbar.add_task("Iteration", total=max_iterations)
     epoch_task = pbar.add_task("Epoch", total=max_epochs)
     iteration_task = pbar.add_task("Epoch Iteration", total=iterations_per_epoch)
@@ -312,3 +294,32 @@ def validate(*hooks,
         for h in hooks:
             h(rng, state, log=all_stats, **kwargs)
     return hook_fn
+
+from rich.progress import (
+    Progress, TextColumn, BarColumn, 
+    TimeRemainingColumn, TimeElapsedColumn, ProgressColumn
+)
+from rich.style import Style
+from rich.text import Text as RichText
+
+def _make_pbar():
+    return Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(finished_style=Style(color="green")),
+        MofNColumn(),
+        TimeRemainingColumn(),
+        TimeElapsedColumn()
+    )
+
+class MofNColumn(ProgressColumn):
+    def __init__(self):
+        super().__init__()
+
+    def render(self, task) -> RichText:
+        completed = int(task.completed)
+        total = int(task.total) if task.total is not None else "?"
+        total_width = len(str(total))
+        return RichText(
+            f"{completed:{total_width}d}/{total}",
+            style="progress.percentage",
+        )

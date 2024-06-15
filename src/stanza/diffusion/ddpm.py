@@ -1,17 +1,18 @@
 from stanza import struct
-from functools import partial
-from typing import Optional, TypeVar, Callable
+from stanza.dataclasses import dataclass, field
 
 import stanza.util
-import stanza.transform as T
 import jax.numpy as jnp
 import jax.flatten_util
 import jax
 import chex
 
+from functools import partial
+from typing import Optional, TypeVar, Callable
+
 Sample = TypeVar("Sample")
 
-@struct.dataclass
+@dataclass
 class DDPMSchedule:
     """A schedule for a DDPM model. Implements https://arxiv.org/abs/2006.11239. """
     betas: jnp.array
@@ -22,9 +23,9 @@ class DDPMSchedule:
        Note that betas[1] corresponds to beta_1 and betas[T] corresponds to beta_T.
        betas[0] should always be 0.
     """
-    alphas: jnp.array = struct.field(initializer=lambda x: 1  - x.betas)
+    alphas: jnp.array
     """ 1 - betas """
-    alphas_cumprod: jnp.array = struct.field(initializer=lambda x: jnp.cumprod(x.alphas))
+    alphas_cumprod: jnp.array
     """ The alphabar_t for the DDPM. alphabar_t = prod_(i=1)^t (1 - beta_i)
     Note that:
 
@@ -33,7 +34,7 @@ class DDPMSchedule:
         alphas_cumprod[1] = alphabar_1 = alpha_1 = (1 - beta_1)
 
     """
-    prediction_type: str = struct.field(default="epsilon", pytree_node=False)
+    prediction_type: str = field(default="epsilon", pytree_node=False)
     """ The type of prediction to make. If "epsilon", the model will predict the noise.
     If "sample", the model will predict the sample.
     """
@@ -42,25 +43,16 @@ class DDPMSchedule:
        If None, no clipping is done.
     """
 
-    def visualize(self):
-        from plotly import graph_objects as go
-        T = jnp.arange(self.num_steps + 1)
-        rev_variance = self.reverse_variance()
-        return go.Figure([
-            go.Scatter(x=T, y=self.betas, mode="lines", name="beta"),
-            go.Scatter(x=T, y=self.alphas_cumprod, mode="lines", name="alpha_bar"),
-            go.Scatter(x=T, y=rev_variance, mode="lines", name="beta_rev"),
-        ], layout=dict(
-            margin=dict(l=20, r=20, t=20, b=20),
-        ))
-    
-    def reverse_variance(self):
-        alpha_bars = self.alphas_cumprod[1:]
-        alpha_bars_prev = self.alphas_cumprod[:-1]
-        betas = self.betas[1:]
-        variance = (1 - alpha_bars_prev) / (1 - alpha_bars) * betas
-        variance = jnp.concatenate((jnp.zeros((1,)), variance), axis=0)
-        return variance
+    @staticmethod
+    def make_from_betas(betas: jax.Array, **kwargs) -> DDPMSchedule:
+        alphas = 1 - betas
+        alphas_cumprod = jnp.cumprod(alphas)
+        return DDPMSchedule(
+            alphas=alphas,
+            alphas_cumprod=alphas_cumprod,
+            betas=betas,
+            **kwargs
+        )
 
     @staticmethod
     def make_from_alpha_bars(alphas_cumprod : jax.Array, max_beta : float = 1., **kwargs) -> "DDPMSchedule":
@@ -127,6 +119,28 @@ class DDPMSchedule:
             betas=betas,
             **kwargs
         )
+
+    def visualize(self):
+        from plotly import graph_objects as go
+        T = jnp.arange(self.num_steps + 1)
+        rev_variance = self.reverse_variance
+        return go.Figure([
+            go.Scatter(x=T, y=self.betas, mode="lines", name="beta"),
+            go.Scatter(x=T, y=self.alphas_cumprod, mode="lines", name="alpha_bar"),
+            go.Scatter(x=T, y=rev_variance, mode="lines", name="beta_rev"),
+        ], layout=dict(
+            margin=dict(l=20, r=20, t=20, b=20),
+        ))
+    
+    @property
+    def reverse_variance(self):
+        alpha_bars = self.alphas_cumprod[1:]
+        alpha_bars_prev = self.alphas_cumprod[:-1]
+        betas = self.betas[1:]
+        variance = (1 - alpha_bars_prev) / (1 - alpha_bars) * betas
+        variance = jnp.concatenate((jnp.zeros((1,)), variance), axis=0)
+        return variance
+
 
     @property
     def num_steps(self) -> int:
@@ -318,10 +332,12 @@ class DDPMSchedule:
         noise = sigma*jax.random.normal(rng_key, pred_prev_sample.shape)
         return unflatten(pred_prev_sample + noise)
 
-    @T.jit
-    def sample(self, rng_key : jax.Array, model : Callable[[jax.Array, Sample, jax.Array], Sample], 
-                        sample_structure: Sample, *, num_steps : Optional[int] = None,
-                        final_time : Optional[int] = None, trajectory : bool = False):
+    @partial(jax.jit, static_argnums=(2,))
+    def sample(self, rng_key : jax.Array, 
+                    model : Callable[[jax.Array, Sample, jax.Array], Sample], 
+                    sample_structure: Sample, 
+                    *, num_steps : Optional[int] = None,
+                    final_time : Optional[int] = None, trajectory : bool = False):
         """ Runs the reverse process, given a denoiser model, for a number of steps. """
         if final_time is None:
             final_time = 0
@@ -377,7 +393,8 @@ class DDPMSchedule:
             _, sample = carry
             return sample
 
-    def loss(self, rng_key : jax.Array, model : Callable[[jax.Array, Sample, jax.Array], Sample],
+    def loss(self, rng_key : jax.Array, 
+             model : Callable[[jax.Array, Sample, jax.Array], Sample],
              sample : Sample, t : Optional[jax.Array] = None, *,
              model_has_state_updates=False):
         """

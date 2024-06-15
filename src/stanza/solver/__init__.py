@@ -2,7 +2,7 @@ import jax
 import jax.flatten_util
 
 from typing import Callable, Any, Optional, NamedTuple
-from stanza.struct import dataclass, field, replace
+from stanza.dataclasses import dataclass, field, replace
 
 SolverState = Any
 Params = Any
@@ -55,28 +55,15 @@ class MinimizeState(SolverState):
     params: Any
     aux: Any # auxiliary output of the objective
 
-# Fun <= 0
-@dataclass
-class IneqConstraint:
-    fun: Callable
-
-# Fun == 0
-@dataclass
-class EqConstraint:
-    fun: Callable
-
 # Minimize the passed-in function
 @dataclass(kw_only=True)
 class Minimize(Objective):
-    fun: Callable[[Any, Any], float]
+    fun: Callable[[Any, Any], float] = field(pytree_node=False)
     has_state: bool = field(default=False, pytree_node=False)
     has_aux: bool = field(default=False, pytree_node=False)
     initial_state: Any = None # Note that has_state needs to be true in order for this
                            # to be passed into the function!
     initial_params: Any = None
-
-    # Tuple of parameter constraints
-    constraints: tuple = ()
 
     # optimality is when grad wrt params is 0
     def optimality(self, opt_state):

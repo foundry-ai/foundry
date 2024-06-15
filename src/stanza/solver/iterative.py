@@ -1,7 +1,8 @@
-from stanza import partial
 from stanza.solver import Solver, Objective, SolverState, SolverResult
-from stanza.struct import dataclass, field, replace
+from stanza.dataclasses import dataclass, field, replace
 from stanza.solver.util import implicit_diff_solve
+
+from functools import partial
 
 import stanza.util
 
@@ -25,7 +26,8 @@ class IterativeSolver(Solver):
 
     def _do_step(self, kwargs, objective : Objective,
                                solver_state : SolverState):
-        state = self.update(objective, solver_state, **kwargs)
+        with jax.checking_leaks():
+            state = self.update(objective, solver_state, **kwargs)
         # if the objective has an early_terminate condition
         if objective.terminate_condition is not None:
             solved = jnp.logical_or(
@@ -58,7 +60,8 @@ class IterativeSolver(Solver):
 
     def run(self, objective, *, implicit_diff=True,
             history=False, **kwargs) -> SolverResult:
-        state = self.init(objective, **kwargs)
+        with jax.checking_leaks():
+            state = self.init(objective, **kwargs)
         solve = self._solve_scan if history else self._solve_loop
         solve = partial(solve, kwargs)
         if implicit_diff:

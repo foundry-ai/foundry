@@ -2,7 +2,7 @@
 A simple functional API for creating and manipulating 2D geometries 
 and rasterizing them onto a canvas.
 """
-from stanza import struct
+from stanza.dataclasses import dataclass, field
 from functools import partial
 
 import jax.numpy as jnp
@@ -29,7 +29,7 @@ class Geometry:
     #         scale=jnp.array(scale) if scale is not None else None
     #     )
 
-@struct.dataclass
+@dataclass
 class Box(Geometry):
     top_left: jnp.ndarray
     bottom_right: jnp.ndarray
@@ -62,7 +62,7 @@ def box(top_left, bottom_right):
     )
 rectangle = box
 
-@struct.dataclass
+@dataclass
 class Polygon(Geometry):
     vertices: jnp.ndarray
 
@@ -89,7 +89,7 @@ def polygon(vertices):
 
 import optax
 
-@struct.dataclass
+@dataclass
 class Circle(Geometry):
     center: jnp.ndarray
     radius: float
@@ -108,7 +108,7 @@ class Circle(Geometry):
 def circle(center, radius):
     return Circle(jnp.array(center), radius)
 
-@struct.dataclass
+@dataclass
 class Segment(Geometry):
     a: jnp.ndarray
     b: jnp.ndarray
@@ -133,7 +133,7 @@ def segment(a, b, thickness=1.):
 
 # Composed geometries
 
-@struct.dataclass
+@dataclass
 class Union(Geometry):
     geometries: List[Geometry]
 
@@ -153,7 +153,7 @@ class Union(Geometry):
 def union(*geoemtries):
     return Union(geoemtries)
 
-@struct.dataclass
+@dataclass
 class BatchUnion(Geometry):
     geometries: Geometry
 
@@ -256,7 +256,7 @@ def paint(canvas, *renderables):
         canvas = r.rasterize(canvas)
     return canvas
 
-@struct.dataclass
+@dataclass
 class Fill(Renderable):
     geometry: Geometry
     color: jnp.ndarray # must have 4 channels
@@ -274,7 +274,7 @@ def fill(geometry, color=jnp.array([0.,0.,0.,1.])):
     color = sanitize_color(color)
     return Fill(geometry, color)
 
-@struct.dataclass
+@dataclass
 class Stack(Renderable):
     renderables: List[Renderable]
 
@@ -306,7 +306,7 @@ class Stack(Renderable):
 def stack(*renderables):
     return Stack(renderables)
 
-@struct.dataclass
+@dataclass
 class BatchStack(Renderable):
     renderables: Renderable
 
@@ -331,7 +331,7 @@ class BatchStack(Renderable):
 def stack_batch(renderables):
     return BatchStack(renderables)
 
-@struct.dataclass
+@dataclass
 class TransformedRenderable(Renderable):
     renderable: Renderable
 

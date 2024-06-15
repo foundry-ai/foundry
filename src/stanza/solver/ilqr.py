@@ -1,6 +1,6 @@
 from typing import Any
 
-from stanza.struct import dataclass
+from stanza.dataclasses import dataclass
 from stanza.solver import (
     Solver, SolverResult, UnsupportedObectiveError
 )
@@ -17,8 +17,8 @@ import jax.numpy as jnp
 @dataclass
 class iLQRSolver(Solver):
     @staticmethod
-    @functools.partial(stanza.jit, static_argnums=(0,))
-    def _solve(history, objective, solver_state):
+    @jax.jit
+    def _solve(objective, solver_state):
         from stanza.policy.mpc import MinimizeMPC, MinimizeMPCState
         if not isinstance(objective, MinimizeMPC):
             raise UnsupportedObectiveError("iLQR only supports MinimizeMPC objectives")
@@ -34,7 +34,6 @@ class iLQRSolver(Solver):
         initial_params_flat = jnp.zeros((initial_actions_flat.shape[0],) + params_flat.shape)
         initial_params_flat = initial_params_flat.at[0].set(params_flat)
         T = initial_actions_flat.shape[0]
-
 
         # flatten everything
         def flat_model(state_param, action_param, t):

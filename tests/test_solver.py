@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 import optax
 
-from stanza import partial
+from functools import partial
 from stanza.solver import Minimize
 from stanza.solver.optax import OptaxSolver
 
