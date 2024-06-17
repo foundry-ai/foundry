@@ -1,10 +1,10 @@
 from stanza.policy import Policy, PolicyInput, PolicyOutput
-from stanza.envs import (
+from stanza.env import (
     Wrapper, RenderConfig, ImageRender, SequenceRender,
     Render
 )
 from typing import Callable, List, Any
-from stanza.struct import dataclass, replace, field
+from stanza.dataclasses import dataclass, replace, field
 
 import jax
 import jax.numpy as jnp

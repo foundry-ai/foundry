@@ -1,6 +1,6 @@
 from stanza import partial
 from stanza.solver import Solver, Objective, SolverState, SolverResult
-from stanza.struct import dataclass, field, replace
+from stanza.dataclasses import dataclass, field, replace
 from stanza.solver.util import implicit_diff_solve
 
 import stanza.util

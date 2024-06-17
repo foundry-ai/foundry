@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import stanza
 import stanza.transform.lift as lift
 from . import SolverResult
-from stanza import struct
+from stanza import dataclasses
 
 def implicit_diff_solve(solve, assume_psd=False):
     @functools.wraps(solve)
@@ -84,6 +84,6 @@ def implicit_diff_solve(solve, assume_psd=False):
 
         # make non-jaxtypes static
         res, x_flat = optimality_solve(objective, init_state, solve_args, theta_flat)
-        res = struct.replace(res, solution=objective.replace_params(res.solution, x_uf(x_flat)))
+        res = dataclasses.replace(res, solution=objective.replace_params(res.solution, x_uf(x_flat)))
         return res
     return diff_solve

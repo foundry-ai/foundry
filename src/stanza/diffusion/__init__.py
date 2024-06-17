@@ -1,6 +1,6 @@
 from .ddpm import DDPMSchedule
 
-from stanza import struct
+from stanza import dataclasses
 
 __all__ = [
     'DDPMSchedule',

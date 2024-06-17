@@ -1,4 +1,4 @@
-from stanza import struct
+from stanza import dataclasses
 from functools import partial
 from typing import Optional, TypeVar, Callable
 
@@ -11,7 +11,7 @@ import chex
 
 Sample = TypeVar("Sample")
 
-@struct.dataclass
+@dataclasses.dataclass
 class DDPMSchedule:
     """A schedule for a DDPM model. Implements https://arxiv.org/abs/2006.11239. """
     betas: jnp.array
@@ -22,9 +22,9 @@ class DDPMSchedule:
        Note that betas[1] corresponds to beta_1 and betas[T] corresponds to beta_T.
        betas[0] should always be 0.
     """
-    alphas: jnp.array = struct.field(initializer=lambda x: 1  - x.betas)
+    alphas: jnp.array = dataclasses.field(initializer=lambda x: 1  - x.betas)
     """ 1 - betas """
-    alphas_cumprod: jnp.array = struct.field(initializer=lambda x: jnp.cumprod(x.alphas))
+    alphas_cumprod: jnp.array = dataclasses.field(initializer=lambda x: jnp.cumprod(x.alphas))
     """ The alphabar_t for the DDPM. alphabar_t = prod_(i=1)^t (1 - beta_i)
     Note that:
 
@@ -33,7 +33,7 @@ class DDPMSchedule:
         alphas_cumprod[1] = alphabar_1 = alpha_1 = (1 - beta_1)
 
     """
-    prediction_type: str = struct.field(default="epsilon", pytree_node=False)
+    prediction_type: str = dataclasses.field(default="epsilon", pytree_node=False)
     """ The type of prediction to make. If "epsilon", the model will predict the noise.
     If "sample", the model will predict the sample.
     """

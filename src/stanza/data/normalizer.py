@@ -1,7 +1,7 @@
 from typing import Any, Generic, Callable, TypeVar
 
 import jax.flatten_util
-from stanza.struct import dataclass, field
+from stanza.dataclasses import dataclass, field
 from stanza.data import PyTreeData
 
 import abc

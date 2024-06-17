@@ -433,24 +433,24 @@ files = [
 
 [[package]]
 name = "etils"
-version = "1.9.1"
+version = "1.9.2"
 requires_python = ">=3.11"
 summary = "Collection of common python utils"
 groups = ["default"]
 files = [
-    {file = "etils-1.9.1-py3-none-any.whl", hash = "sha256:94a40a8a467fb6a52ad5b3465804d978c0025f6e9724170008d0a40e1fdeac1e"},
-    {file = "etils-1.9.1.tar.gz", hash = "sha256:552ac5467a679638889bdae7aeed8b9d4a2ae15d5c5ad7735692d5d4970fd599"},
+    {file = "etils-1.9.2-py3-none-any.whl", hash = "sha256:ecd79de1fbfea9b0d6924756cfa922b05ed3360c45cf2170767da4bee0001d20"},
+    {file = "etils-1.9.2.tar.gz", hash = "sha256:15dcd35ac0c0cc2404b46ac0846af3cc4e876fd3d80f36f57951e27e8b9d6379"},
 ]
 
 [[package]]
 name = "etils"
-version = "1.9.1"
+version = "1.9.2"
 extras = ["epath", "epy"]
 requires_python = ">=3.11"
 summary = "Collection of common python utils"
 groups = ["default"]
 dependencies = [
-    "etils==1.9.1",
+    "etils==1.9.2",
     "etils[epy]",
     "fsspec",
     "importlib-resources",
@@ -459,19 +459,19 @@ dependencies = [
     "zipp",
 ]
 files = [
-    {file = "etils-1.9.1-py3-none-any.whl", hash = "sha256:94a40a8a467fb6a52ad5b3465804d978c0025f6e9724170008d0a40e1fdeac1e"},
-    {file = "etils-1.9.1.tar.gz", hash = "sha256:552ac5467a679638889bdae7aeed8b9d4a2ae15d5c5ad7735692d5d4970fd599"},
+    {file = "etils-1.9.2-py3-none-any.whl", hash = "sha256:ecd79de1fbfea9b0d6924756cfa922b05ed3360c45cf2170767da4bee0001d20"},
+    {file = "etils-1.9.2.tar.gz", hash = "sha256:15dcd35ac0c0cc2404b46ac0846af3cc4e876fd3d80f36f57951e27e8b9d6379"},
 ]
 
 [[package]]
 name = "etils"
-version = "1.9.1"
+version = "1.9.2"
 extras = ["epath"]
 requires_python = ">=3.11"
 summary = "Collection of common python utils"
 groups = ["default"]
 dependencies = [
-    "etils==1.9.1",
+    "etils==1.9.2",
     "etils[epy]",
     "fsspec",
     "importlib-resources",
@@ -479,24 +479,24 @@ dependencies = [
     "zipp",
 ]
 files = [
-    {file = "etils-1.9.1-py3-none-any.whl", hash = "sha256:94a40a8a467fb6a52ad5b3465804d978c0025f6e9724170008d0a40e1fdeac1e"},
-    {file = "etils-1.9.1.tar.gz", hash = "sha256:552ac5467a679638889bdae7aeed8b9d4a2ae15d5c5ad7735692d5d4970fd599"},
+    {file = "etils-1.9.2-py3-none-any.whl", hash = "sha256:ecd79de1fbfea9b0d6924756cfa922b05ed3360c45cf2170767da4bee0001d20"},
+    {file = "etils-1.9.2.tar.gz", hash = "sha256:15dcd35ac0c0cc2404b46ac0846af3cc4e876fd3d80f36f57951e27e8b9d6379"},
 ]
 
 [[package]]
 name = "etils"
-version = "1.9.1"
+version = "1.9.2"
 extras = ["epy"]
 requires_python = ">=3.11"
 summary = "Collection of common python utils"
 groups = ["default"]
 dependencies = [
-    "etils==1.9.1",
+    "etils==1.9.2",
     "typing-extensions",
 ]
 files = [
-    {file = "etils-1.9.1-py3-none-any.whl", hash = "sha256:94a40a8a467fb6a52ad5b3465804d978c0025f6e9724170008d0a40e1fdeac1e"},
-    {file = "etils-1.9.1.tar.gz", hash = "sha256:552ac5467a679638889bdae7aeed8b9d4a2ae15d5c5ad7735692d5d4970fd599"},
+    {file = "etils-1.9.2-py3-none-any.whl", hash = "sha256:ecd79de1fbfea9b0d6924756cfa922b05ed3360c45cf2170767da4bee0001d20"},
+    {file = "etils-1.9.2.tar.gz", hash = "sha256:15dcd35ac0c0cc2404b46ac0846af3cc4e876fd3d80f36f57951e27e8b9d6379"},
 ]
 
 [[package]]
@@ -524,12 +524,12 @@ files = [
 
 [[package]]
 name = "fastjsonschema"
-version = "2.19.1"
+version = "2.20.0"
 summary = "Fastest Python implementation of JSON schema"
 groups = ["default", "dev"]
 files = [
-    {file = "fastjsonschema-2.19.1-py3-none-any.whl", hash = "sha256:3672b47bc94178c9f23dbb654bf47440155d4db9df5f7bc47643315f9c405cd0"},
-    {file = "fastjsonschema-2.19.1.tar.gz", hash = "sha256:e3126a94bdc4623d3de4485f8d468a12f02a67921315ddc87836d6e456dc789d"},
+    {file = "fastjsonschema-2.20.0-py3-none-any.whl", hash = "sha256:5875f0b0fa7a0043a91e93a9b8f793bcbbba9691e7fd83dca95c28ba26d21f0a"},
+    {file = "fastjsonschema-2.20.0.tar.gz", hash = "sha256:3d48fc5300ee96f5d116f10fe6f28d938e6008f59a6a025c2649475b87f76a23"},
 ]
 
 [[package]]

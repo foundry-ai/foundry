@@ -1,6 +1,6 @@
 from typing import Any
 
-from stanza.struct import dataclass
+from stanza.dataclasses import dataclass
 from stanza.solver import (
     Solver, SolverResult, UnsupportedObectiveError
 )

@@ -1,4 +1,4 @@
-import stanza.struct as struct
+import stanza.dataclasses as dataclasses
 
 from stanza.random import PRNGSequence
 from stanza.util import MofNColumn
@@ -34,7 +34,7 @@ Vars = Any
 Metrics = Any
 
 # Training hooks
-@struct.dataclass
+@dataclasses.dataclass
 class TrainState:
     max_iterations: int
     max_epochs: int
@@ -47,7 +47,7 @@ class TrainState:
     vars: Vars
     metrics: Metrics
 
-@struct.dataclass
+@dataclasses.dataclass
 class LossOutput:
     loss: ArrayLike = 0.
     metrics: Metrics = None
@@ -59,7 +59,7 @@ def get_batch_size(batch):
     assert np.all(ns == ns[0])
     return ns[0]
 
-@struct.dataclass
+@dataclasses.dataclass
 class IterationInfo:
     iteration: int
     epoch: int

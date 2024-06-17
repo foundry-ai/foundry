@@ -1,4 +1,4 @@
-from stanza import struct
+from stanza import dataclasses
 from stanza.config import ConfigProvider, command
 
 from common import TrainConfig, AdamConfig, SGDConfig
@@ -16,7 +16,7 @@ import stanza
 import logging
 logger = logging.getLogger(__name__)
 
-@dataclass
+@dataclasses.dataclass
 class PolicyConfig:
     pass
 
@@ -27,7 +27,7 @@ class PolicyConfig:
     def train_policy(self, config, env, train_data):
         pass
 
-@dataclass
+@dataclasses.dataclass
 class Config:
     seed: int = 42
     dataset: str = "pusht/chen"
@@ -44,12 +44,12 @@ class Config:
         policy = config.get_cases("policy", "The policy to use.", {
             "diffusion_estimator": diffusion_estimator.DiffusionEstimatorConfig(),
             "diffusion_policy": diffusion_policy.DiffusionPolicyConfig()
-        }, "diffusion_estimator")
-        return struct.replace(res,
+        }, "diffusion_policy")
+        return dataclasses.replace(res,
             policy=policy
         )
 
-@dataclass
+@dataclasses.dataclass
 class Sample:
     observations: jax.Array
     actions: jax.Array

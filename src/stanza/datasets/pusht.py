@@ -1,4 +1,4 @@
-from stanza import struct
+from stanza import dataclasses
 from stanza.datasets import EnvDataset
 from stanza.datasets import DatasetRegistry
 
@@ -11,20 +11,20 @@ import jax
 import jax.numpy as jnp
 import zarr
 
-@struct.dataclass
+@dataclasses.dataclass
 class Step:
     state: jax.Array
     observation: jax.Array
     action: jax.Array
 
-@struct.dataclass
+@dataclasses.dataclass
 class Chunk:
     pass
 
-@struct.dataclass
+@dataclasses.dataclass
 class PushTDataset(EnvDataset[Step]):
     def create_env(self):
-        from stanza.envs.pusht import PushTEnv
+        from stanza.env.mujoco.pusht import PushTEnv
         return PushTEnv()
 
 def _load_pusht_data(zarr_path, train_trajs, test_trajs):
@@ -54,11 +54,11 @@ def _load_pusht_data(zarr_path, train_trajs, test_trajs):
         train_infos = jax.tree_map(lambda x: x[:-test_trajs], infos)
         test_infos = jax.tree_map(lambda x: x[-test_trajs:], infos)
         # Adjust the start and end indices to be relative to the first episode
-        test_infos = struct.replace(test_infos,
+        test_infos = dataclasses.replace(test_infos,
             start_idx=test_infos.start_idx - test_infos.start_idx[0],
             end_idx=test_infos.end_idx - test_infos.start_idx[0]
         )
-        train_infos = struct.replace(train_infos,
+        train_infos = dataclasses.replace(train_infos,
             start_idx=train_infos.start_idx - train_infos.start_idx[0],
             end_idx=train_infos.end_idx - train_infos.start_idx[0]
         )

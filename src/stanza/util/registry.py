@@ -12,7 +12,6 @@ class Builders(typing.Protocol[T]):
 class Registry(Generic[T]):
     def __init__(self):
         self._registered = {} # type: dict[str, Builder[T]]
-        self._defered = []
     
     def register(self, name: str, loader: Callable, *, transform: Optional[Callable] = None):
         if transform is not None:
@@ -38,7 +37,14 @@ class Registry(Generic[T]):
     def items(self) -> Iterable[tuple[str, Builder[T]]]:
         return self._registry.items()
 
-    def create(self, name: str, **kwargs) -> T:
+    def __call__(self, name: str, /, **kwargs) -> T:
+        self.create(name, **kwargs)
+
+    def create(self, name: str, /, **kwargs) -> T:
+        parts = name.split("/")
+        for i in range(1, parts):
+            base = parts[:i]
+            args = parts[:i]
         if not name in self._registry:
             raise ValueError(f"Unknown registry entry: {name}")
         return self._registry[name](**kwargs)
