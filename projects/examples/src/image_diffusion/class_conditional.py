@@ -1,4 +1,4 @@
-from stanza import struct, partial
+from stanza import dataclasses, partial
 from stanza.struct.args import command
 
 from stanza.random import PRNGSequence
@@ -23,7 +23,7 @@ import wandb
 import logging
 logger = logging.getLogger(__name__)
 
-@dataclass
+@dataclasses.dataclass
 class Config:
     seed: int = 42
     diffusion_steps: int = 50

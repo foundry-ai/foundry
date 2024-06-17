@@ -1,19 +1,20 @@
 from stanza.datasets import DatasetRegistry, ImageDataset
 from stanza.data import Data, io
 from stanza.data.normalizer import ImageNormalizer
+from stanza.dataclasses import dataclass, field
 
 import jax
 import jax.numpy as jnp
 
 from . import util as du
 
+@dataclass
 class CelebAData(Data):
-    def __init__(self, path):
-        self._path = path
-    
+    path: str = field(pytree_node=False)
+
     def __getitem__(self, idx):
         return io.read_image(
-            self._path / "{:06d}.jpg", 
+            self.path / "{:06d}.jpg", 
             (218, 178, 3),
             idx + 1
         )
@@ -35,9 +36,7 @@ def _load_celeb_a(quiet=False, **kwargs):
             quiet=quiet,
             strip_folder="img_align_celeba"
         )
-    
     train_data = CelebAData(extract_path)
-
     return ImageDataset(
         splits={"train": train_data},
         normalizers={
@@ -45,7 +44,6 @@ def _load_celeb_a(quiet=False, **kwargs):
         },
         transforms={}
     )
-
 
 registry = DatasetRegistry()
 registry.register("celeb_a", _load_celeb_a)

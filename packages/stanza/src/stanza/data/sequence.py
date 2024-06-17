@@ -1,4 +1,6 @@
 from stanza.data import Data, PyTreeData
+from stanza import dataclasses
+
 from typing import Any, Generic, TypeVar
 from dataclasses import dataclass, field
 
@@ -10,7 +12,7 @@ import numpy as np
 T = TypeVar('T')
 I = TypeVar('I')
 
-@dataclass
+@dataclasses.dataclass
 class SequenceInfo(Generic[I]):
     id: int
     info: I
@@ -18,24 +20,21 @@ class SequenceInfo(Generic[I]):
     end_idx: int
     length: int
 
-@dataclass
+@dataclasses.dataclass
 class Chunk(Generic[T,I]):
     sequence_id: int
     start_offset: int
     chunk: T
     info: I
 
-@partial(jax.tree_util.register_dataclass,
-         data_fields=['x', 'y'],
-         meta_fields=['op'])
-@dataclass
+@dataclasses.dataclass
 class ChunkData(Data, Generic[T,I]):
     elements: Data[T]
     infos: Data[SequenceInfo[I]]
     # contains the timepoints, infos offsets
     # offset by points_offset, infos_offset
     chunk_offsets: Data[tuple[int, int]]
-    chunk_length: int = struct.field(pytree_node=False)
+    chunk_length: int = dataclasses.field(pytree_node=False)
 
     def __len__(self) -> int:
         return len(self.chunk_offsets)
@@ -51,7 +50,7 @@ class ChunkData(Data, Generic[T,I]):
             info=info.info
         )
 
-@struct.dataclass
+@dataclasses.dataclass
 class SequenceData(Data, Generic[T,I]):
     elements: Data[T]
     # contains the start, end, length

@@ -1,7 +1,7 @@
 import jax.random
 import jax.numpy
 
-from stanza import struct
+from stanza import dataclasses
 from stanza.transform.cell import Cell, FrozenCell
 
 def key_or_seed(key_or_seed):

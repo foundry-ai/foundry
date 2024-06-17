@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 from typing import Generic, TypeVar, Protocol, Callable, Optional
 from stanza import transform
-from stanza.struct import dataclass
+from stanza.dataclasses import dataclass
 from functools import partial
 
 # A policy is a function from PolicyInput --> PolicyOutput

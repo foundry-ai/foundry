@@ -6,7 +6,7 @@ from stanza.config import ConfigProvider
 from stanza.random import PRNGSequence
 from stanza.policy import PolicyInput, PolicyOutput
 
-from stanza import dataclass
+from stanza import dataclasses
 from stanza.diffusion import nonparametric
 
 import net
@@ -14,7 +14,8 @@ import jax
 import logging
 logger = logging.getLogger(__name__)
 
-@dataclass
+
+@dataclasses.dataclass
 class DiffusionPolicyConfig:
     seed: int = 42
     model: str = "estimator/gaussian"

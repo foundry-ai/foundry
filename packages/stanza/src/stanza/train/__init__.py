@@ -1,4 +1,4 @@
-import stanza.struct as struct
+import stanza.dataclasses as dataclasses
 
 from stanza.random import PRNGSequence
 from stanza.data import Data, DataLoader

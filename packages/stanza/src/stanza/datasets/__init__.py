@@ -1,6 +1,6 @@
 from typing import Generic, TypeVar, Mapping, Tuple, Callable
 
-from stanza import struct
+from stanza.dataclasses import dataclass
 from stanza.data import Data
 from stanza.data.transform import Transform
 from stanza.data.normalizer import Normalizer
@@ -12,7 +12,7 @@ logger = logging.getLogger("stanza.datasets")
 
 T = TypeVar('T')
 
-@struct.dataclass
+@dataclass
 class Dataset(Generic[T]):
     splits: Mapping[str, Data[T]]
     normalizers: Mapping[str, Callable[[], Normalizer[T]]]
@@ -20,11 +20,11 @@ class Dataset(Generic[T]):
 
 DatasetRegistry = Registry
 
-@struct.dataclass
+@dataclass
 class ImageDataset(Dataset[jax.Array]):
     pass
 
-@struct.dataclass
+@dataclass
 class ImageClassDataset(Dataset[Tuple[jax.Array, jax.Array]]):
     classes: list[str]
 
@@ -43,7 +43,7 @@ class ImageClassDataset(Dataset[Tuple[jax.Array, jax.Array]]):
             transforms={}
         )
 
-@struct.dataclass
+@dataclass
 class EnvDataset(Dataset[T], Generic[T]):
     def create_env(self):
         raise NotImplementedError()
