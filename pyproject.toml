@@ -1,66 +1,21 @@
 [project]
-name = "stanza"
+name = "stanza-meta"
 version = "0.1.0"
 description = "Default template for PDM package"
 authors = [
     {name = "Daniel Pfrommer", email = "dan.pfrommer@gmail.com"},
 ]
-dependencies = [
-    "jax>=0.4.24",
-    "rich>=13.7.0",
-    "flax>=0.8.1",
-    "optax>=0.1.9",
-    "pandas>=2.2.0",
-    "chex>=0.1.85",
-    "numpy>=1.26.4",
-    "ffmpegio>=0.9.0",
-    "einops>=0.7.0",
-    "wandb>=0.16.3",
-    "matplotlib>=3.8.2",
-    "plotly>=5.18.0",
-    "nbformat>=5.9.2",
-    # For google drive and docstring parsing
-    "beautifulsoup4>=4.12.3",
-    "ast-comments>=1.2.1",
-    "trajax @ git+https://github.com/google/trajax",
-    "zarr>=2.18.1",
-    "mujoco-mjx>=3.1.6",
-    "shapely>=2.0.4",
-]
+dependencies = []
 requires-python = ">=3.12"
 readme = "README.md"
 license = {text = "MIT"}
 
-[project.optional-dependencies]
-docs = [
-    "sphinx>=7.2.6",
-    "sphinx-design>=0.5.0",
-    "sphinx-remove-toctrees>=0.0.3",
-    "sphinx-copybutton>=0.5.2",
-    "sphinx-book-theme>=1.1.2",
-    "sphinx-autodoc-typehints>=2.0.0",
-    "furo>=2024.1.29",
-    "sphinx-toolbox>=3.5.0",
-]
-ipython = [
-    "ipykernel>=6.29.2",
-    "ipywidgets>=8.1.2",
-    "jupyterlab>=4.1.2",
-    "ipywebrtc>=0.6.0",
-    "ipyevents>=2.0.2",
-]
-
-[project.scripts]
-launch = "stanza.runtime:launch"
-
-[tool.pdm]
-distribution = true
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
 
 [tool.pdm.dev-dependencies]
 dev = [
-    "ipykernel>=6.29.2",
-    "ipywidgets>=8.1.2",
-    "jupyterlab>=4.1.2",
-    "pytest>=8.0.2",
-    "jaxlib>=0.4.24",
+    "-e stanza @ file:///${PROJECT_ROOT}/packages/stanza",
+    "-e stanza-examples @ file:///${PROJECT_ROOT}/projects/examples",
 ]
