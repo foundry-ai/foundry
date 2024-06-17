@@ -1,6 +1,6 @@
 from stanza.policy import Policy, PolicyInput, PolicyOutput
 from stanza.env import (
-    Wrapper, RenderConfig, ImageRender, SequenceRender,
+    EnvWrapper, RenderConfig, ImageRender, SequenceRender,
     Render
 )
 from typing import Callable, List, Any
@@ -75,7 +75,7 @@ class NoisyPolicy(Policy):
         return output
 
 @dataclass
-class NoisyEnvironment(Wrapper):
+class NoisyEnvironment(EnvWrapper):
     sigma: jax.Array
 
     def step(self, state, action, rng_key=None):
@@ -189,7 +189,7 @@ class ChunkedState:
     history: Any
 
 @dataclass
-class ChunkedEnvironment(Wrapper):
+class ChunkedEnvironment(EnvWrapper):
     obs_chunk_size: int | None = field(default=None, pytree_node=False)
     action_chunk_size: int | None = field(default=None, pytree_node=False)
 
@@ -293,7 +293,7 @@ class RepeatedState:
     history: Any
 
 @dataclass
-class RepeatingEnvironment(Wrapper):
+class RepeatingEnvironment(EnvWrapper):
     repeats: int = field(default=1, pytree_node=False)
 
     def sample_state(self, rng_key):

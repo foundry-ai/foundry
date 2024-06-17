@@ -1,7 +1,6 @@
 import jax
 import jax.numpy as jnp
 from typing import Generic, TypeVar, Protocol, Callable, Optional
-from stanza import transform
 from stanza.dataclasses import dataclass
 from functools import partial
 
@@ -55,7 +54,7 @@ class Policy(Protocol[Observation, Action, State, PolicyState, Info]):
 # stanza.jit can handle function arguments
 # and intelligently makes them static and allows
 # for vectorizing over functins.
-@partial(transform.jit, static_argnames=("length", "last_input"))
+@partial(jax.jit, static_argnames=("model", "policy", "length", "last_input"))
 def rollout(model : Model, state0 : State,
             # policy is optional. If policy is not supplied
             # it is assumed that model is for an autonomous system

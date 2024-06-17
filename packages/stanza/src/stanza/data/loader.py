@@ -1,5 +1,8 @@
-from typing import Generic, TypeVar
+from typing import Generic, TypeVar, Generator, Iterator
 from .core import Data
+
+import jax
+import jax.numpy as jnp
 
 T = TypeVar("T")
 

@@ -6,7 +6,7 @@ import plotly.express as px
 
 import stanza.canvas as canvas
 
-from stanza.envs import Environment, EnvironmentRegistry
+from stanza.env import Environment, EnvironmentRegistry
 
 class State(NamedTuple):
     x: jax.Array
@@ -20,7 +20,7 @@ class Action(NamedTuple):
     thrust: jax.Array
     torque: jax.Array
 
-class QuadrotorEnvironment(Environment[State, jax.Array, State]):
+class QuadrotorEnv(Environment[State, jax.Array, State]):
     def __init__(self):
         self.g = 9.8
         self.m = 0.8
@@ -146,5 +146,5 @@ class QuadrotorEnvironment(Environment[State, jax.Array, State]):
             return self._render_image(state, width=width, height=height,
                                       state_trajectory=state_trajectory)
 
-env_registry = EnvironmentRegistry[Environment]()
-env_registry.register("quadrotor_2d", QuadrotorEnvironment)
+environments = EnvironmentRegistry[QuadrotorEnv]()
+environments.register("", QuadrotorEnv)

@@ -147,7 +147,7 @@ class Union(Geometry):
         )
 
     def signed_distance(self, x):
-        distances = [g.signed_distance(x) for g in self.geometries]
+        distances = jnp.array([g.signed_distance(x) for g in self.geometries])
         return jnp.min(distances, axis=0)
 
 def union(*geoemtries):

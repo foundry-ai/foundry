@@ -1,4 +1,4 @@
-from stanza.envs import Environment
+from stanza.env import Environment, EnvironmentRegistry
 from stanza.policy import PolicyOutput
 
 import jax
@@ -106,5 +106,5 @@ class PendulumEnv(Environment):
             jnp.abs(state.vel - end_state.vel) < 0.03
         )
 
-def builder(name):
-    return PendulumEnv()
+environments = EnvironmentRegistry[PendulumEnv]()
+environments.register("", PendulumEnv)

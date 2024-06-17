@@ -3,7 +3,7 @@ Environments
 
 The :py:mod:`stanza.envs` module provides a standard way to define and manage jax-enabled environments.
 
-.. currentmodule:: stanza.envs
+.. currentmodule:: stanza.env
 
 An :py:class:`Environment` is an object supporting the following protocol:
 
@@ -17,19 +17,19 @@ An :py:class:`Environment` is an object supporting the following protocol:
 all methods *must* be jax-jitable.
 
 Similar to :py:mod:`stanza.datasets`, 
-the :py:attr:`stanza.envs.env_registry` provides an :py:class:`EnvironmentRegistry`
+the :py:attr:`stanza.env.environments` provides an :py:class:`EnvironmentRegistry`
 of all available environments.
 
 For instance a linear system can be instantiated as follows:
 
 .. code-block:: python
 
-    from stanza.envs import env_registry
+    from stanza.env import environments
 
     # creates a 1-d double integrator test system
-    double_integrator = env_registry.create("linear_system/double_integrator")
+    double_integrator = environments.create("linear_system/double_integrator")
     # can equivalently be created with
-    custom_di = env_registry.create("linear_system", 
+    custom_di = environments.create("linear_system", 
         A=jnp.array([[1, 1], [0, 1]]),
         B=jnp.array([[0], [1]]),
         Q=jnp.array([[1, 0], [0, 1]]),

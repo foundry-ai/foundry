@@ -49,18 +49,13 @@ class EnvDataset(Dataset[T], Generic[T]):
         raise NotImplementedError()
 
 env_datasets : DatasetRegistry[EnvDataset] = DatasetRegistry()
-env_datasets.defer(from_module(".pusht", "registry"))
+env_datasets.extend("pusht", from_module(".pusht", "datasets"))
 
 image_class_datasets : DatasetRegistry[ImageClassDataset] = DatasetRegistry[Dataset]()
 """Datasets containing (image, label) pairs,
-where label is one-hot encoded.
-"""
-image_class_datasets.defer(from_module(".mnist", "registry"))
-image_class_datasets.defer(from_module(".cifar", "registry"))
-
-image_datasets : DatasetRegistry[ImageDataset] = DatasetRegistry[Dataset]()
-image_datasets.defer(image_class_datasets, transform_result(lambda x: x.as_image_dataset()))
-image_datasets.defer(from_module(".celeb_a", "registry"))
+where label is one-hot encoded."""
+image_class_datasets.extend("mnist", from_module(".mnist", "datasets"))
+image_class_datasets.extend("cifar", from_module(".cifar", "datasets"))
 
 __all__ = [
     "Dataset",

@@ -1,5 +1,5 @@
 import typing
-from typing import Iterable, Callable, Any, Generic, Optional
+from typing import Iterator, Callable, Any, Generic, Optional
 
 T = typing.TypeVar('T')
 
@@ -16,7 +16,7 @@ class SingleBuilder(BuilderSet[T], Generic[T]):
 
     def __call__(self, path: str, **kwargs: dict[str, Any]) -> T:
         assert path == ""
-        return self.func(**kwargs)
+        return self.builder(**kwargs)
 
     def keys() -> Iterator[str]:
         return iter([""])
@@ -25,7 +25,7 @@ class Registry(Generic[T], BuilderSet[T]):
     def __init__(self):
         self._registry : dict[str, Builder[T]] = {}
 
-    def extend(self, path: str, builders: Builders):
+    def extend(self, path: str, builders: BuilderSet[T]):
         parts = path.split("/")
         if parts[-1] != "":
             parts.append("")
@@ -48,12 +48,16 @@ class Registry(Generic[T], BuilderSet[T]):
         if len(parts) == 0:
             raise ValueError("Must have non-zero length path")
         registry = self._registry
-        for i, p in parts[:-1]:
+
+        remainder = ""
+        for i, p in enumerate(parts[:-1]):
             if p in registry:
                 registry = registry[p]
             else:
-                remainder = "/".join(parts[i+1:])
+                remainder = "/".join(parts[i:])
                 break
+        if not "" in registry:
+            raise ValueError(f"{path} not found in {self._registry}!")
         return registry[""](remainder, **kwargs)
 
     def __call__(self, path: str, /, **kwargs) -> T:
@@ -80,8 +84,8 @@ def from_module(module_name, variable_name):
     pkg = inspect.getmodule(frm[0]).__name__
     def cb(*args, **kwargs):
         mod = importlib.import_module(module_name, package=pkg)
-        if not hasattr(mod, registry_name):
-            return
-        value = getattr(mod, registry_name)
+        if not hasattr(mod, variable_name):
+            raise RuntimeError(f"Not such variable: {variable_name} in {module_name}")
+        value = getattr(mod, variable_name)
         return value(*args, **kwargs)
     return cb

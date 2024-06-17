@@ -13,7 +13,7 @@ Public API
    stanza.data
    stanza.datasets
    stanza.diffusion
-   stanza.envs
+   stanza.env
    stanza.graphics
    stanza.policy
    stanza.runtime

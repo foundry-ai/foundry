@@ -1,4 +1,3 @@
-from stanza import struct
 from stanza.dataclasses import dataclass, field
 
 import stanza.util
@@ -44,7 +43,7 @@ class DDPMSchedule:
     """
 
     @staticmethod
-    def make_from_betas(betas: jax.Array, **kwargs) -> DDPMSchedule:
+    def make_from_betas(betas: jax.Array, **kwargs) -> "DDPMSchedule":
         alphas = 1 - betas
         alphas_cumprod = jnp.cumprod(alphas)
         return DDPMSchedule(
@@ -62,7 +61,7 @@ class DDPMSchedule:
         t2 = alphas_cumprod
         betas = 1 - t2/t1
         betas = jnp.clip(betas, 0, max_beta)
-        return DDPMSchedule(
+        return DDPMSchedule.make_from_betas(
             betas=betas,
             **kwargs)
 
@@ -74,7 +73,7 @@ class DDPMSchedule:
         betas = jnp.linspace(beta_start, beta_end, num_timesteps)
         betas = jnp.concatenate((jnp.zeros((1,)), betas))
         """ Makes a linear schedule for the DDPM. """
-        return DDPMSchedule(
+        return DDPMSchedule.make_from_betas(
             betas=betas,
             **kwargs
         )
@@ -115,7 +114,7 @@ class DDPMSchedule:
         betas = jnp.concatenate((jnp.zeros((1,)),
             jnp.linspace(beta_start**0.5, beta_end**0.5, num_timesteps)**2),
         axis=-1)
-        return DDPMSchedule(
+        return DDPMSchedule.make_from_betas(
             betas=betas,
             **kwargs
         )

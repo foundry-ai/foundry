@@ -1,4 +1,4 @@
-from stanza.envs import Environment, EnvironmentRegistry
+from stanza.env import Environment, EnvironmentRegistry
 
 import jax.numpy as jnp
 import jax.random
@@ -54,9 +54,9 @@ class LinearSystem(Environment):
         xf_cost = jnp.expand_dims(xs[-1],-2) @ self.P @ jnp.expand_dims(xs[-1],-1)
         return jnp.sum(x_cost) + jnp.sum(u_cost) + jnp.sum(xf_cost)
 
-env_registry = EnvironmentRegistry[LinearSystem]()
-env_registry.register("linear", LinearSystem)
-env_registry.register("linear/double_integrator", 
+environments = EnvironmentRegistry[LinearSystem]()
+environments.register("", LinearSystem)
+environments.register("double_integrator", 
     partial(LinearSystem, 
         A=jnp.array([[1, 1], [0, 1]]),
         B=jnp.array([[0], [1]]),
@@ -69,8 +69,7 @@ env_registry.register("linear/double_integrator",
         u_min=jnp.array([-1]),
         u_max=jnp.array([1])
     ))
-# from 
-env_registry.register("linear/2d", 
+environments.register("2d", 
     partial(LinearSystem, 
         A=jnp.array([[1.1, 1], [0, 1.1]]),
         B=jnp.array([[0], [1]]),
@@ -83,7 +82,7 @@ env_registry.register("linear/2d",
         u_min=jnp.array([-10]),
         u_max=jnp.array([10]),
     ))
-env_registry.register("linear/3d",
+environments.register("3d",
     partial(LinearSystem,
         A = jnp.array([
             [1.1, 0.86075747, 0.4110535],
@@ -102,7 +101,7 @@ env_registry.register("linear/3d",
     )
 )
 
-env_registry.register("linear/4d",
+environments.register("4d",
     partial(LinearSystem,
         A=jnp.array(
             [[0.7, -0.1, 0.0, 0.0],
@@ -123,8 +122,7 @@ env_registry.register("linear/4d",
         u_min=jnp.array([-10]), u_max=jnp.array([10]),
     )
 )
-
-env_registry.register("linear/5d",
+environments.register("5d",
     partial(LinearSystem,
         A=jnp.array([
             [1.1, 0.86075747, 0.4110535, 0.17953273, -0.3053808],

@@ -56,7 +56,7 @@ which will replay a given sequence of actions:
 
 .. code-block:: python
 
-    @struct.dataclass
+    @dataclass
     class Actions(Policy):
         actions: Any
 

@@ -1,15 +1,14 @@
-from stanza.envs import (
-    Wrapper, RenderConfig, 
+from stanza.env import (
+    EnvWrapper, RenderConfig, 
     ImageRender, SequenceRender,
-    HtmlRender, Environment
+    HtmlRender, Environment,
+    EnvironmentRegistry
 )
-from stanza.policy.transforms import Transform
+from stanza.policy.transforms import Transform, chain_transforms
 from stanza.policy import Policy
-from stanza.util import AttrMap
+from stanza.dataclasses import dataclass, field
+from stanza import canvas
 
-from stanza import canvas, struct
-
-import stanza.envs.planar as planar
 import shapely.geometry as sg
 
 from functools import partial, cached_property
@@ -21,37 +20,65 @@ import numpy as np
 import jax.numpy as jnp
 import jax.random
 
-def builder() -> planar.WorldBuilder:
-    scale = 0.1
-    world_scale = 1
-    block_length = 4
-    agent_radius = 0.5
-    builder = planar.WorldBuilder(world_scale, world_scale, 0.005)
-    builder.add_body(planar.Body(name="agent", geom=[
-        planar.Circle(
-            radius=scale*agent_radius, 
-            mass=0.1, color=(0.1, 0.1, 0.9)
-        )], pos=(0.5, 0.5), hinge=False,
-        vel_damping=0.1
-    ))
-    builder.add_body(planar.Body(name="block", geom=[
-        planar.Box(
-            half_size=(scale*block_length/2, scale/2),
-            mass=0.03, pos=(0., -scale/2),
-            color=canvas.colors.LightSlateGray
-        ),
-        planar.Box(
-            half_size=(scale/2, scale*(block_length - 1)/2),
-            mass=0.03, pos=(0., -scale-scale*(block_length - 1)/2),
-            color=canvas.colors.LightSlateGray
-        )], pos=(-0.5, -0.5), vel_damping=5, rot_damping=0.3)
-    )
-    return builder
-WORLD = builder()
-MODEL = WORLD.load_model()
+XML = """
+<mujoco>
+<option timestep="0.005"/>
+<worldbody>
+    # The manipulator agent body
+    <body pos="0.5 0.5 0" name="agent">
+        # TODO: Replace with cylinder when MJX supports
+        <geom type="sphere" size="0.05" pos="0 0 0.05" mass="0.1" rgba="0.1 0.1 0.9 1"/>
 
-@struct.dataclass
-class PushTObservation:
+        <joint type="slide" axis="1 0 0" damping="0.1" stiffness="0" ref="0.5"/>
+        <joint type="slide" axis="0 1 0" damping="0.1" stiffness="0" ref="0.5"/>
+    </body>
+    # The block body
+    <body pos="-0.5 -0.5 0" name="block">
+        # The horizontal box
+        <geom type="box" size="0.2 0.05 0.5" 
+            pos="0 -0.05 0.5" mass="0.03" rgba="0.467 0.533 0.6 1"/>
+        # The vertical box
+        <geom type="box" size="0.05 0.15 0.5"
+            pos="0 -0.25 0.5" mass="0.03" rgba="0.467 0.533 0.6 1"/>
+
+        <joint type="slide" axis="1 0 0" damping="5" stiffness="0" ref="-0.5"/>
+        <joint type="slide" axis="0 1 0" damping="5" stiffness="0" ref="-0.5"/>
+        # Hinge through the block COM (at 0, -0.15)
+        <joint type="hinge" axis="0 0 1" damping="0.3" stiffness="0" pos="0 -0.15 0"/>
+    </body>
+    # The boundary planes
+    <geom pos="-1 0 0" size="2 2 0.1"  xyaxes="0 1 0 0 0 1" type="plane"/>
+    <geom pos="1 0 0" size="2 2 0.1"   xyaxes="0 0 1 0 1 0" type="plane"/>
+    <geom pos="0 -1 0" size="2 2 0.1"  xyaxes="0 0 1 1 0 0" type="plane"/>
+    <geom pos="0 1 0" size="2 2 0.1"   xyaxes="1 0 0 0 0 1" type="plane"/>
+</worldbody>
+</mujoco>
+"""
+
+MJ_MODEL = None
+MJX_MODEL = None
+def load_mj_model():
+    global MJ_MODEL
+    if MJ_MODEL is None:
+        MJ_MODEL = mujoco.MjModel.from_xml_string(XML)
+    return MJ_MODEL
+
+def load_mjx_model():
+    global MJX_MODEL
+    if MJX_MODEL is None:
+        model = load_mj_model()
+        with jax.ensure_compile_time_eval():
+            MJX_MODEL = mjx.put_model(model)
+    return MJX_MODEL
+
+def _quat_to_angle(quat):
+    w0 = quat[0] # cos(theta/2)
+    w3 = quat[3] # sin(theta/2)
+    angle = 2*jax.numpy.atan2(w3, w0)
+    return angle
+
+@dataclass
+class PushTObs:
     agent_pos: jnp.array
     agent_vel: jnp.array
 
@@ -61,23 +88,23 @@ class PushTObservation:
     block_rot: jnp.array
     block_rot_vel: jnp.array
 
-@struct.dataclass
+@dataclass
 class PushTPosObs:
     agent_pos: jnp.array
     block_pos: jnp.array
     block_rot: jnp.array
 
-@struct.dataclass
+@dataclass
 class PushTState:
     q: jax.Array
     qd: jax.Array
 
-@struct.dataclass
+@dataclass
 class PushTEnv(Environment):
     success_threshold: float = 0.9
 
-    goal_pos : jax.Array = jnp.array([-0.3, -0.3])
-    goal_rot : jax.Array = jnp.array(jnp.pi/4)
+    goal_pos : jax.Array = field(default_factory=lambda: jnp.array([-0.3, -0.3]))
+    goal_rot : jax.Array = field(default_factory=lambda: jnp.array(jnp.pi/4))
 
     @jax.jit
     def sample_action(self, rng_key: jax.Array):
@@ -106,22 +133,18 @@ class PushTEnv(Environment):
             gen_pos, (c, block_pos)
         )
         qpos = jnp.concatenate([agent_pos, block_pos, block_rot[jnp.newaxis]])
-        assert qpos.shape == MODEL.qpos0.shape
         return PushTState(
             qpos,
-            jnp.zeros_like(MODEL.qpos0)
+            jnp.zeros_like(qpos)
         )
     
     # For computing the reward
 
     @staticmethod
     def _block_points(pos, rot):
-        block_body = WORLD.bodies[1]
-        com = block_body.com
-        center_a = jnp.array(block_body.geom[0].pos)
-        hs_a = jnp.array(block_body.geom[0].half_size)
-        center_b = jnp.array(block_body.geom[1].pos)
-        hs_b = jnp.array(block_body.geom[1].half_size)
+        com = jnp.array([0, -0.15])
+        center_a, hs_a = jnp.array([0, -0.05]), jnp.array([0.2, 0.05])
+        center_b, hs_b = jnp.array([0, -0.25]), jnp.array([0.05, 0.2])
         points = jnp.array([
             center_a + jnp.array([hs_a[0], -hs_a[1]]),
             center_a + hs_a,
@@ -136,7 +159,8 @@ class PushTEnv(Environment):
             [jnp.cos(rot), -jnp.sin(rot)],
             [jnp.sin(rot), jnp.cos(rot)]
         ])
-        points = jax.vmap(lambda v: rotM @ (v - com) + com)(points)
+        points = jax.vmap(lambda v: rotM @ v)(points)
+        # points = jax.vmap(lambda v: rotM @ (v - com) + com)(points)
         return points + pos
 
     @staticmethod
@@ -158,46 +182,71 @@ class PushTEnv(Environment):
     
     @jax.jit
     def step(self, state, action, rng_key=None):
-        data = mjx.make_data(MODEL)
+        data = mjx.make_data(load_mjx_model())
         data = data.replace(qpos=state.q, qvel=state.qd)
         if action is not None:
             xfrc_applied = data.xfrc_applied.at[1,:2].set(action)
             data = data.replace(xfrc_applied=xfrc_applied)
         @jax.jit
         def step_fn(_, data):
-            return mjx.step(MODEL, data)
+            return mjx.step(load_mjx_model(), data)
         data = jax.lax.fori_loop(0, 6, step_fn, data)
         return PushTState(data.qpos, data.qvel)
     
     @jax.jit
     def observe(self, state):
-        mjx_data = mjx.make_data(MODEL)
+        mjx_data = mjx.make_data(load_mjx_model())
         mjx_data = mjx_data.replace(qpos=state.q, qvel=state.qd)
-        mjx_data = mjx.forward(MODEL, mjx_data)
-        state = WORLD.extract_state(mjx_data)
-        return PushTObservation(
-            state['agent'].pos,
-            state['agent'].vel,
-            state['block'].pos,
-            state['block'].vel,
-            state['block'].rot,
-            state['block'].rot_vel
+        mjx_data = mjx.forward(load_mjx_model(), mjx_data)
+        return PushTObs(
+            # Extract agent pos, vel
+            agent_pos=mjx_data.xpos[1,:2],
+            agent_vel=mjx_data.cvel[1,3:5],
+            # Extract block pos, vel, angle, angular vel
+            block_pos=mjx_data.xpos[2,:2],
+            block_rot=_quat_to_angle(mjx_data.xquat[2,:4]),
+            block_vel=mjx_data.cvel[2,3:5],
+            block_rot_vel=mjx_data.cvel[2,2],
         )
-    
+
+    @staticmethod
+    def _render_block(pos, rot, color):
+        com = jnp.array([0, -0.15])
+        geom = canvas.fill(canvas.union(
+            canvas.box((-0.2, 0), (0.2, 0.1)),
+            canvas.box((-0.05, 0.1), (0.05, 0.4))
+        ), color=color)
+        return canvas.transform(geom,
+            #canvas.transform(geom, translation=-com),
+            translation=pos*jnp.array([1, -1]),#com + pos*jnp.array([1, -1]),
+            rotation=rot
+        )
+
+    @staticmethod
+    def _render_agent(pos, color):
+        return canvas.fill(
+            canvas.circle(pos * jnp.array([1, -1]), 0.05),
+            color=color
+        )
+
     @partial(jax.jit, static_argnums=(2,3))
-    def _render_image(self, state, width, height):
+    def _render_image(self, obs : PushTObs, width : int, height : int):
         image = 0.95*jnp.ones((width, height, 3))
         # render just the block at its target position
-        goal_state = planar.BodyState(pos=self.goal_pos, rot=self.goal_rot)
-        builder = WORLD
-        goal_t = builder.renderable({
-            "block": goal_state
-        }, {"block": (0.1, 0.8, 0.1)})
-        world = builder.renderable(state)
-        world = canvas.stack(goal_t, world)
-        translation = (builder.world_half_x, builder.world_half_y)
-        scale = (width/(2*builder.world_half_x),
-                 height/(2*builder.world_half_y))
+        goal_t = PushTEnv._render_block(
+            self.goal_pos, self.goal_rot,
+            (0.1, 0.8, 0.1)
+        )
+        curr_t = PushTEnv._render_block(
+            obs.block_pos, obs.block_rot,
+            canvas.colors.LightSlateGray
+        )
+        agent = PushTEnv._render_agent(
+            obs.agent_pos, canvas.colors.Blue
+        )
+        world = canvas.stack(goal_t, curr_t, agent)
+        translation = (1, 1)
+        scale = (width/2, height/2)
         world = canvas.transform(world,
             translation=translation,
             scale=scale
@@ -207,19 +256,16 @@ class PushTEnv(Environment):
 
     @jax.jit
     def render(self, config: RenderConfig, state: PushTState) -> jax.Array:
-        data = mjx.make_data(MODEL)
-        data = data.replace(qpos=state.q, qvel=state.qd)
-        data = mjx.forward(MODEL, data)
         if type(config) == ImageRender:
-            state = WORLD.extract_state(data)
-            return self._render_image(state, config.width, config.height)
+            obs = PushTEnv.observe(self, state)
+            return self._render_image(obs, config.width, config.height)
         if type(config) == SequenceRender:
-            state = WORLD.extract_state(data)
-            return self._render_image(state, config.width, config.height)
+            obs = PushTEnv.observe(self, state)
+            return self._render_image(obs, config.width, config.height)
         elif type(config) == HtmlRender:
             if data.qpos.ndim == 1:
                 data = jax.tree_map(lambda x: x[None], data)
-            return brax_render(WORLD.load_mj_model(), data)
+            return brax_render(load_mj_model(), data)
 
 def brax_to_state(sys, data):
     import brax.mjx.pipeline as pipeline
@@ -245,19 +291,19 @@ def brax_render(mj_model, data_seq):
         
 # A state-feedback adapter for the PushT environment
 # Will run a PID controller under the hood
-@struct.dataclass
-class PositionControlTransform(Transform):
+@dataclass
+class PositionalControlTransform(Transform):
     k_p : float = 15
     k_v : float = 2
 
     def transform_policy(self, policy):
-        return PositionControlPolicy(policy, self.k_p, self.k_v)
+        return PositionalControlPolicy(policy, self.k_p, self.k_v)
     
     def transform_env(self, env):
         return PositionalControlEnv(env, self.k_p, self.k_v)
 
-@struct.dataclass
-class PositionControlPolicy(Policy):
+@dataclass
+class PositionalControlPolicy(Policy):
     policy: Policy
     k_p : float = 20
     k_v : float = 2
@@ -267,32 +313,16 @@ class PositionControlPolicy(Policy):
         return self.policy.rollout_length
 
     def __call__(self, input):
-        obs = input.observation
-        obs = PushTPosObs(
-            agent_pos=obs.agent.position,
-            block_pos=obs.block.position,
-            block_rot=obs.block.rotation
-        )
-        input = struct.replace(input, observation=obs)
         output = self.policy(input)
         a = self.k_p * (output.action - obs.agent.position) + self.k_v * (-obs.agent.velocity)
         return struct.replace(
-            output, action=a,
-            info=AttrMap(output.info, target_pos=output.action)
+            output, action=a
         )
 
-@struct.dataclass
-class PositionalControlEnv(Wrapper):
+@dataclass
+class PositionalControlEnv(EnvWrapper):
     k_p : float = 10
     k_v : float = 2
-
-    def observe(self, state):
-        obs = self.base.observe(state)
-        return PushTPosObs(
-            agent_pos=obs.agent_pos,
-            block_pos=obs.block_pos,
-            block_rot=obs.block_rot
-        )
 
     def step(self, state, action, rng_key=None):
         obs = PushTEnv.observe(self.base, state)
@@ -300,16 +330,16 @@ class PositionalControlEnv(Wrapper):
         res = self.base.step(state, a, rng_key)
         return res
 
-@struct.dataclass
-class PositionObsTransform(Transform):
+@dataclass
+class PositionalObsTransform(Transform):
     def transform_policy(self, policy):
-        return PositionObsPolicy(policy)
+        return PositionalObsPolicy(policy)
     
     def transform_env(self, env):
         return PositionalObsEnv(env)
 
-@struct.dataclass
-class PositionObsPolicy(Policy):
+@dataclass
+class PositionalObsPolicy(Policy):
     policy: Policy
 
     @property
@@ -326,8 +356,8 @@ class PositionObsPolicy(Policy):
         input = struct.replace(input, observation=obs)
         return self.policy(input)
 
-@struct.dataclass
-class PositionalObsEnv(Wrapper):
+@dataclass
+class PositionalObsEnv(EnvWrapper):
     def observe(self, state):
         obs = self.base.observe(state)
         return PushTPosObs(
@@ -335,3 +365,15 @@ class PositionalObsEnv(Wrapper):
             block_pos=obs.block_pos,
             block_rot=obs.block_rot
         )
+
+
+
+environments = EnvironmentRegistry[PushTEnv]()
+environments.register("", PushTEnv)
+def _make_positional(**kwargs):
+    env = PushTEnv(**kwargs)
+    return chain_transforms(
+        PositionalControlTransform(),
+        PositionalObsTransform
+    ).transform_env(env)
+environments.register("positional", _make_positional)

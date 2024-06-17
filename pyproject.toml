@@ -16,6 +16,7 @@ build-backend = "pdm.backend"
 
 [tool.pdm.dev-dependencies]
 dev = [
-    "-e stanza @ file:///${PROJECT_ROOT}/packages/stanza",
+    "-e stanza[ipython,docs] @ file:///${PROJECT_ROOT}/packages/stanza",
     "-e stanza-examples @ file:///${PROJECT_ROOT}/projects/examples",
+    "pytest>=8.2.2",
 ]

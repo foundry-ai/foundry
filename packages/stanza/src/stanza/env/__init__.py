@@ -1,7 +1,7 @@
 import typing
 import jax
 
-from stanza import struct
+from stanza.dataclasses import dataclass, field
 from stanza.util.registry import Registry, from_module
 from typing import Optional, Sequence
 
@@ -32,8 +32,8 @@ class Environment(typing.Protocol[State, Action, Observation]):
     def render(self, config: RenderConfig[Render], 
                state : State, **kwargs) -> Render: ...
 
-@struct.dataclass
-class Wrapper(Environment[State, Action, Observation]):
+@dataclass
+class EnvWrapper(Environment[State, Action, Observation]):
     base: Environment[State, Action, Observation]
 
     def sample_state(self, rng_key : jax.Array) -> State:
@@ -63,22 +63,25 @@ class Wrapper(Environment[State, Action, Observation]):
                state : State, **kwargs) -> Render:
         return self.base.render(config, state, **kwargs)
 
-@struct.dataclass
+@dataclass
 class ImageRender(RenderConfig[jax.Array]):
-    width: int = struct.field(pytree_node=False, default=256)
-    height: int = struct.field(pytree_node=False, default=256)
+    width: int = field(pytree_node=False, default=256)
+    height: int = field(pytree_node=False, default=256)
 
-@struct.dataclass
+@dataclass
 class SequenceRender(ImageRender): ...
 
 class HtmlRender(RenderConfig[str]): ...
 
 EnvironmentRegistry = Registry
 
-env_registry = EnvironmentRegistry[Environment]()
+environments = EnvironmentRegistry[Environment]()
 # env_registry.defer(register_module(".pusht", "env_registry"))
-env_registry.defer(from_module(".linear", "env_registry"))
-env_registry.defer(from_module(".quadrotor_2d", "env_registry"))
+environments.extend("controls", from_module(".controls", "environments"))
+environments.extend("mujoco", from_module(".mujoco", "environments"))
+
+def create(path: str, /, **kwargs):
+    return environments.create(path, **kwargs)
 
 __all__ = [
     "State", "Action", "Observation", "Render",
