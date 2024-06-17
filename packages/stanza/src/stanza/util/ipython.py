@@ -13,8 +13,6 @@ from PIL import Image as PILImage
 import jax
 import jax.numpy as jnp
 
-from stanza import struct
-
 from pathlib import Path
 from ipywebrtc.webrtc import ImageStream
 from ipywidgets import Video, Image, HBox, HTML, Output

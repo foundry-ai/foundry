@@ -1,4 +1,7 @@
-from typing import Generic
+from typing import Generic, TypeVar
+from .core import Data
+
+T = TypeVar("T")
 
 class DataLoader(Generic[T]):
     def __init__(self, data: Data[T], *, 

@@ -8,8 +8,10 @@ import rich._log_render
 import subprocess
 import multiprocessing
 import argparse
+import abc
 
-from typing import Literal, Sequence
+from typing import Literal, Sequence, Callable, Type
+from dataclasses import MISSING, replace
 from rich.text import Text
 from rich.logging import RichHandler
 from pathlib import Path
@@ -84,7 +86,7 @@ def command(fn: Callable):
     def main():
         setup()
         args = Arguments(sys.argv[1:])
-        config = ArgumentsConfig(args)
+        config = ArgumentsProvider(args)
         try:
             return fn(config)
         except (KeyboardInterrupt, BdbQuit):
@@ -95,29 +97,30 @@ def command(fn: Callable):
     return main
 
 class ConfigProvider(abc.ABC):
-    def get(self, name: str, type: Type, desc: str, default=NO_DEFAULT): ...
+    def get(self, name: str, type: Type, desc: str, default=MISSING): ...
     def scope(self, name: str, desc: str) -> "ConfigProvider": ...
 
     # A method that returns a ConfigProvider
-    # that only get populated. If active is False
-    # the returned ConfigProvider can simply return
-    # default values
+    # that only get populated if active is True
     def case(self, name: str, desc: str, active: bool) -> "ConfigProvider": ...
 
-    def get_struct(self, default, ignore=set(), flatten=set()):
+    def get_dataclass(self, default, ignore=set(), flatten=set()):
         vals = {}
-        for field in struct.fields(default):
+        for field in fields(default):
             if field.name in ignore:
                 continue
             default_val = getattr(default, field.name)
             type = field.type
+            if type == typing.Optional[type]:
+                type = typing.get_args(type)[0]
             if default_val is not None and hasattr(default_val, "parse"):
                 # if there is a parse() method, use it to parse the value
                 scope = self.scope(field.name, "") if field.name not in flatten else self
                 vals[field.name] = default_val.parse(scope)
             elif (type is bool or type is int or type is float or type is str):
                 vals[field.name] = self.get(field.name, field.type, "", default_val)
-        return struct.replace(default, **vals)
+            else: raise RuntimeError(f"Unable to parse {field.name}")
+        return replace(default, **vals)
 
     def get_cases(self, name: str, desc: str, cases: dict, default: str):
         case = self.get(name, str, desc, default)
@@ -153,7 +156,7 @@ class ArgumentsConfig(ConfigProvider):
         self._cases = cases or []
         self._active = active
 
-    def get(self, name: str, type: str, desc: str, default=NO_DEFAULT):
+    def get(self, name: str, type: str, desc: str, default=MISSING):
         if self._prefix:
             name = f"{self._prefix}_{name}"
 
