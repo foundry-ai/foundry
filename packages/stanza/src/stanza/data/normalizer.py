@@ -147,9 +147,8 @@ class DummyNormalizer(Generic[T], Normalizer[T]):
 class StdNormalizer:
     mean: Any = None
     var: Any = None
+    std: Any = None
     count: int = 0
-    std: Any = field(initializer=lambda self: jnp.sqrt(self.var) \
-                     if self.var is not None else None)
 
     @property
     def structure(self):
@@ -206,7 +205,8 @@ class StdNormalizer:
             m_a, m_b, mean_delta
         )
         new_var = jax.tree_map(lambda x: x/total, m2)
-        return StdNormalizer(new_mean, new_var, total)
+        new_std = jax.tree_map(lambda x: jnp.sqrt(new_var), new_var)
+        return StdNormalizer(new_mean, new_var, new_std, total)
 
     @staticmethod
     def from_data(data, component_wise=True):
@@ -216,18 +216,26 @@ class StdNormalizer:
         if component_wise:
             mean = jnp.mean(data_flat, axis=0)
             var = jnp.var(data_flat, axis=0)
-            return StdNormalizer(unflatten(mean), unflatten(var), data.shape[0])
+            std = jnp.sqrt(var)
+            return StdNormalizer(
+                unflatten(mean), unflatten(var),
+                unflatten(std), data.shape[0]
+            )
         else:
             mean = jnp.mean(data_flat, axis=0)
             var = jnp.var(jnp.linalg.norm(data_flat - mean[None,:], axis=-1), axis=0)
             var = var*jnp.ones_like(data_flat[0])
-            return StdNormalizer(unflatten(mean), unflatten(var), data.shape[0])
+            std = jnp.sqrt(var)
+            return StdNormalizer(
+                unflatten(mean), unflatten(var), 
+                unflatten(std), data.shape[0]
+            )
 
     @staticmethod
     def empty_for(sample):
         zeros = jax.tree_map(lambda x: jnp.zeros_like(x), sample)
         ones = jax.tree_map(lambda x: jnp.ones_like(x), sample)
-        return StdNormalizer(zeros, ones, jnp.zeros(()))
+        return StdNormalizer(zeros, ones, ones, jnp.zeros(()))
 
 @dataclass
 class PCANormalizer:

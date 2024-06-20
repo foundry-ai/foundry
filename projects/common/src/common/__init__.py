@@ -1,11 +1,11 @@
-from stanza import dataclasses
-from stanza.config import ConfigProvider
+from stanza.dataclasses import dataclass, field, replace
+from stanza.runtime import ConfigProvider
 
 import optax
 import jax
 import jax.numpy as jnp
 
-@dataclasses.dataclass
+@dataclass
 class OptimizerConfig:
     lr: float = 1e-4
     lr_schedule: str = "constant"
@@ -72,7 +72,7 @@ class OptimizerConfig:
     def default():
         return AdamConfig(lr_schedule="cosine", warmup_schedule="linear")
 
-@dataclasses.dataclass
+@dataclass
 class AdamConfig(OptimizerConfig):
     beta1: float = 0.9
     beta2: float = 0.999
@@ -89,9 +89,9 @@ class AdamConfig(OptimizerConfig):
                             b1=self.beta1, b2=self.beta2, eps=self.epsilon)
 
     def parse(self, config: ConfigProvider) -> "AdamConfig":
-        return config.get_struct(self)
+        return config.get_dataclass(self)
 
-@dataclasses.dataclass
+@dataclass
 class SGDConfig(OptimizerConfig):
     lr_schedule: str = "constant" # The learning rate schedule
     momentum: float | None = None
@@ -106,9 +106,9 @@ class SGDConfig(OptimizerConfig):
         return optim
 
     def parse(self, config: ConfigProvider) -> "SGDConfig":
-        return config.get_struct(self)
+        return config.get_dataclass(self)
 
-@dataclasses.dataclass
+@dataclass
 class SAMConfig:
     forward: OptimizerConfig = OptimizerConfig.default()
     backward: OptimizerConfig = SGDConfig(lr=5e-2) # rho = 0.05
@@ -144,7 +144,7 @@ class SAMConfig:
         )
 
 
-@dataclasses.dataclass
+@dataclass
 class TrainConfig:
     batch_size: int = 32
     """The batch size to use for training."""
@@ -169,10 +169,9 @@ class TrainConfig:
         )
     
     def parse(self, config: ConfigProvider) -> "TrainConfig":
-        defaults = TrainConfig()
-        res = config.get_struct(defaults, {"optimizer"})
+        res = config.get_dataclass(self, {"optimizer"})
         optimizer = config.get_cases("optimizer", "The optimizer to use", {
             "sgd": SGDConfig(),
             "adam": AdamConfig()
         }, "adam")
-        return dataclasses.replace(res, optimizer=optimizer)
+        return replace(res, optimizer=optimizer)

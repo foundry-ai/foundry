@@ -1,0 +1,16 @@
+[project]
+name = "stanza-common"
+version = "0.1.0"
+description = "Common utilities for projects"
+authors = [
+    {name = "Daniel Pfrommer", email = "dan.pfrommer@gmail.com"},
+]
+dependencies = [
+    "stanza",
+]
+requires-python = ">=3.12"
+readme = "README.md"
+license = {text = "MIT"}
+
+[tool.pdm]
+distribution = true

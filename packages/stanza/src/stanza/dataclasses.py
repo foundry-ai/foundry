@@ -10,7 +10,7 @@ def fields(cls):
 def dataclass(cls=None, **kwargs):
     if cls is None:
         return partial(dataclass, **kwargs)
-    cls = dcls.dataclass(frozen=True, **kwargs)(cls)
+    cls = dcls.dataclass(frozen=True, unsafe_hash=True, **kwargs)(cls)
     fields = dcls.fields(cls)
     data_fields = [f.name for f in fields if (not f.metadata) and f.metadata.get('pytree_node', True)]
     meta_fields = [f.name for f in fields if f.metadata and (not f.metadata.get('pytree_node', True))]

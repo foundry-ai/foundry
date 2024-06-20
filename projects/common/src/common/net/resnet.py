@@ -2,9 +2,6 @@ import jax.numpy as jnp
 from flax import linen as nn
 import flax
 
-import aqt.jax.v2.flax.aqt_flax as aqt
-import aqt.jax.v2.config as aqt_config
-
 from functools import partial
 from typing import (
     Callable, Optional, Sequence, Tuple,
@@ -14,7 +11,6 @@ from typing import (
 ModuleDef = Callable[..., Callable]
 # InitFn = Callable[[PRNGKey, Shape, DType], Array]
 InitFn = Callable[[Any, Iterable[int], Any], Any]
-
 
 class ConvBlock(nn.Module):
     n_filters: int

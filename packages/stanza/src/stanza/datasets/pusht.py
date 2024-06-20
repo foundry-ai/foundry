@@ -1,9 +1,11 @@
-from stanza import dataclasses
+from stanza.dataclasses import dataclass, replace
 from stanza.datasets import EnvDataset
 from stanza.datasets import DatasetRegistry
 
 from stanza.data import PyTreeData
-from stanza.data.sequence import SequenceInfo, SequenceData
+from stanza.data.sequence import (
+    SequenceInfo, SequenceData, Step
+)
 
 from .util import download, cache_path
 
@@ -11,68 +13,69 @@ import jax
 import jax.numpy as jnp
 import zarr
 
-@dataclasses.dataclass
-class Step:
-    state: jax.Array
-    observation: jax.Array
-    action: jax.Array
-
-@dataclasses.dataclass
-class Chunk:
-    pass
-
-@dataclasses.dataclass
+@dataclass
 class PushTDataset(EnvDataset[Step]):
     def create_env(self):
-        from stanza.env.mujoco.pusht import PushTEnv
-        return PushTEnv()
+        from stanza.env.mujoco.pusht import (
+            PushTEnv,
+            PositionalControlTransform,
+            PositionalObsTransform
+        )
+        from stanza.policy.transforms import chain_transforms
+        env = PushTEnv()
+        env = chain_transforms(
+            PositionalControlTransform(),
+            PositionalObsTransform()
+        ).transform_env(env)
+        return env
 
-def _load_pusht_data(zarr_path, train_trajs, test_trajs):
+def load_pytorch_pusht_data(zarr_path, max_trajectories=None):
+    from stanza.env.mujoco.pusht import PushTState, COM
     with zarr.open(zarr_path) as zf:
-        if train_trajs is None:
-            train_trajs = len(zf["meta/episode_ends"]) - test_trajs
-        total_trajs = train_trajs + test_trajs
-
-        ends = jnp.array(zf["meta/episode_ends"])
+        if max_trajectories is None:
+            max_trajectories = len(zf["meta/episode_ends"])
+        ends = jnp.array(zf["meta/episode_ends"][:max_trajectories])
         starts = jnp.roll(ends, 1).at[0].set(0)
-
+        last_end = ends[-1]
         infos = SequenceInfo(
-            id=jnp.arange(len(ends)),
             start_idx=starts,
             end_idx=ends,
             length=ends-starts,
             info=None
         )
-        steps = Step(
-            state=zf["data/state"],
-            observation=None,
-            action=zf["data/action"]
-        )
-        # slice the data into train and test
-        train_steps = jax.tree_map(lambda x: jnp.array(x[:starts[-test_trajs]]), steps)
-        test_steps = jax.tree_map(lambda x: jnp.array(x[starts[-test_trajs]:]), steps)
-        train_infos = jax.tree_map(lambda x: x[:-test_trajs], infos)
-        test_infos = jax.tree_map(lambda x: x[-test_trajs:], infos)
-        # Adjust the start and end indices to be relative to the first episode
-        test_infos = dataclasses.replace(test_infos,
-            start_idx=test_infos.start_idx - test_infos.start_idx[0],
-            end_idx=test_infos.end_idx - test_infos.start_idx[0]
-        )
-        train_infos = dataclasses.replace(train_infos,
-            start_idx=train_infos.start_idx - train_infos.start_idx[0],
-            end_idx=train_infos.end_idx - train_infos.start_idx[0]
-        )
-        splits = {
-            "train": SequenceData(PyTreeData(train_steps), PyTreeData(train_infos)),
-            "test": SequenceData(PyTreeData(test_steps), PyTreeData(test_infos))
-        }
-    return PushTDataset(
-        splits=splits,
-        normalizers={},
-        transforms={}
-    )
 
-def _load_pusht(quiet=False, train_trajs=None, test_trajs=10):
+        @jax.vmap
+        def convert_states(state):
+            agent_pos = jnp.array([1, -1])*((state[:2] - 256) / 252)
+            block_pos = jnp.array([1, -1])*((state[2:4] - 256) / 252)
+            block_rot = -state[4]
+            # our rotation q is around the block center of mass
+            # while theirs is around block_pos
+            # we need to adjust the position accordingly
+            # our_true_block_pos = our_block_body_q_pos + com_offset - our_q_rot @ com_offset
+            # we substitute our_true_pos for block_pos and solve
+            rotM = jnp.array([
+                [jnp.cos(block_rot), -jnp.sin(block_rot)],
+                [jnp.sin(block_rot), jnp.cos(block_rot)]
+            ])
+            com = jnp.array([0, -COM])
+            block_pos = block_pos + rotM @ com - com
+
+            q = jnp.concatenate([agent_pos, block_pos, block_rot[None]])
+            return PushTState(q=q, qd=jnp.zeros_like(q))
+
+        @jax.vmap
+        def convert_actions(action):
+            return action / 256 - 1
+
+        steps = Step(
+            state=convert_states(jnp.array(zf["data/state"][:last_end])),
+            observation=None,
+            action=convert_actions(jnp.array(zf["data/action"][:last_end]))
+        )
+    return SequenceData(PyTreeData(steps), PyTreeData(infos))
+
+def load_chen_pusht_data(max_trajectories=None, quiet=False):
     zip_path = cache_path("pusht", "pusht_data.zarr.zip")
     download(zip_path,
         job_name="PushT (Diffusion Policy Data)",
@@ -80,7 +83,15 @@ def _load_pusht(quiet=False, train_trajs=None, test_trajs=10):
         md5="48a64828d7f2e1e8902a97b57ebd0bdd",
         quiet=quiet
     )
-    return _load_pusht_data(zip_path, train_trajs, test_trajs)
+    return load_pytorch_pusht_data(zip_path, max_trajectories)
 
-registry = DatasetRegistry[PushTDataset]()
-registry.register("pusht/chen", _load_pusht)
+def load_chen_pusht(quiet=False, train_trajs=None, test_trajs=10):
+    return PushTDataset(
+        splits={},
+        normalizers={},
+        transforms={}
+    )
+
+datasets = DatasetRegistry[PushTDataset]()
+datasets.register("", load_chen_pusht)
+datasets.register("chen", load_chen_pusht)

@@ -4,7 +4,7 @@ from stanza.dataclasses import dataclass
 from stanza.data import Data
 from stanza.data.transform import Transform
 from stanza.data.normalizer import Normalizer
-from stanza.util.registry import Registry, from_module, transform_result
+from stanza.util.registry import Registry, from_module
 
 import jax
 import logging

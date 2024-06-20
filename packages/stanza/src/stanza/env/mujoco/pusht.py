@@ -20,31 +20,33 @@ import numpy as np
 import jax.numpy as jnp
 import jax.random
 
-XML = """
+AGENT_RADIUS=15/252
+BLOCK_SCALE=30/252
+COM = 0.5*(BLOCK_SCALE/2) + 0.5*(2.5*BLOCK_SCALE)
+XML = f"""
 <mujoco>
 <option timestep="0.005"/>
 <worldbody>
     # The manipulator agent body
     <body pos="0.5 0.5 0" name="agent">
         # TODO: Replace with cylinder when MJX supports
-        <geom type="sphere" size="0.05" pos="0 0 0.05" mass="0.1" rgba="0.1 0.1 0.9 1"/>
-
+        <geom type="sphere" size="{AGENT_RADIUS:.4}" pos="0 0 {AGENT_RADIUS:.4}" mass="0.1" rgba="0.1 0.1 0.9 1"/>
         <joint type="slide" axis="1 0 0" damping="0.1" stiffness="0" ref="0.5"/>
         <joint type="slide" axis="0 1 0" damping="0.1" stiffness="0" ref="0.5"/>
     </body>
     # The block body
     <body pos="-0.5 -0.5 0" name="block">
         # The horizontal box
-        <geom type="box" size="0.2 0.05 0.5" 
-            pos="0 -0.05 0.5" mass="0.03" rgba="0.467 0.533 0.6 1"/>
+        <geom type="box" size="{2*BLOCK_SCALE:.4} {0.5*BLOCK_SCALE} 0.5" 
+            pos="0 -{0.5*BLOCK_SCALE:.4} 0.5" mass="0.03" rgba="0.467 0.533 0.6 1"/>
         # The vertical box
-        <geom type="box" size="0.05 0.15 0.5"
-            pos="0 -0.25 0.5" mass="0.03" rgba="0.467 0.533 0.6 1"/>
+        <geom type="box" size="{0.5*BLOCK_SCALE:.4} {1.5*BLOCK_SCALE:.4} 0.5"
+            pos="0 -{2.5*BLOCK_SCALE} 0.5" mass="0.03" rgba="0.467 0.533 0.6 1"/>
 
         <joint type="slide" axis="1 0 0" damping="5" stiffness="0" ref="-0.5"/>
         <joint type="slide" axis="0 1 0" damping="5" stiffness="0" ref="-0.5"/>
-        # Hinge through the block COM (at 0, -0.15)
-        <joint type="hinge" axis="0 0 1" damping="0.3" stiffness="0" pos="0 -0.15 0"/>
+        # Hinge through the block COM
+        <joint type="hinge" axis="0 0 1" damping="0.3" stiffness="0" pos="0 {-COM:.4} 0"/>
     </body>
     # The boundary planes
     <geom pos="-1 0 0" size="2 2 0.1"  xyaxes="0 1 0 0 0 1" type="plane"/>
@@ -95,6 +97,12 @@ class PushTPosObs:
     block_rot: jnp.array
 
 @dataclass
+class PushTKeypointObs:
+    agent_pos: jnp.array
+    block_pos: jnp.array
+    block_end: jnp.array
+
+@dataclass
 class PushTState:
     q: jax.Array
     qd: jax.Array
@@ -103,8 +111,8 @@ class PushTState:
 class PushTEnv(Environment):
     success_threshold: float = 0.9
 
-    goal_pos : jax.Array = field(default_factory=lambda: jnp.array([-0.3, -0.3]))
-    goal_rot : jax.Array = field(default_factory=lambda: jnp.array(jnp.pi/4))
+    goal_pos : jax.Array = field(default_factory=lambda: jnp.array([0, 0]))
+    goal_rot : jax.Array = field(default_factory=lambda: jnp.array(-jnp.pi/4))
 
     @jax.jit
     def sample_action(self, rng_key: jax.Array):
@@ -212,9 +220,13 @@ class PushTEnv(Environment):
     @staticmethod
     def _render_block(pos, rot, color):
         com = jnp.array([0, -0.15])
+        # geom = canvas.fill(canvas.union(
+        #     canvas.box((-0.2, 0), (0.2, 0.1)),
+        #     canvas.box((-0.05, 0.1), (0.05, 0.4))
+        # ), color=color)
         geom = canvas.fill(canvas.union(
-            canvas.box((-0.2, 0), (0.2, 0.1)),
-            canvas.box((-0.05, 0.1), (0.05, 0.4))
+            canvas.box((-2*BLOCK_SCALE, 0), (2*BLOCK_SCALE, BLOCK_SCALE)),
+            canvas.box((-BLOCK_SCALE/2, BLOCK_SCALE), (BLOCK_SCALE/2, 4*BLOCK_SCALE))
         ), color=color)
         return canvas.transform(geom,
             #canvas.transform(geom, translation=-com),
@@ -225,7 +237,7 @@ class PushTEnv(Environment):
     @staticmethod
     def _render_agent(pos, color):
         return canvas.fill(
-            canvas.circle(pos * jnp.array([1, -1]), 0.05),
+            canvas.circle(pos * jnp.array([1, -1]), AGENT_RADIUS),
             color=color
         )
 
@@ -238,6 +250,7 @@ class PushTEnv(Environment):
             (0.1, 0.8, 0.1)
         )
         curr_t = PushTEnv._render_block(
+            # self.goal_pos, self.goal_rot,
             obs.block_pos, obs.block_rot,
             canvas.colors.LightSlateGray
         )
@@ -314,6 +327,8 @@ class PositionalControlPolicy(Policy):
 
     def __call__(self, input):
         output = self.policy(input)
+        if output.action is None:
+            return struct.replace(output, action=jnp.zeros((2,)))
         a = self.k_p * (output.action - obs.agent.position) + self.k_v * (-obs.agent.velocity)
         return struct.replace(
             output, action=a
@@ -325,8 +340,11 @@ class PositionalControlEnv(EnvWrapper):
     k_v : float = 2
 
     def step(self, state, action, rng_key=None):
-        obs = PushTEnv.observe(self.base, state)
-        a = self.k_p * (action - obs.agent_pos) + self.k_v * (-obs.agent_vel)
+        if action is not None:
+            obs = PushTEnv.observe(self.base, state)
+            a = self.k_p * (action - obs.agent_pos) + self.k_v * (-obs.agent_vel)
+        else:
+            a = jnp.zeros((2,))
         res = self.base.step(state, a, rng_key)
         return res
 
@@ -366,7 +384,46 @@ class PositionalObsEnv(EnvWrapper):
             block_rot=obs.block_rot
         )
 
+@dataclass
+class KeypointObsTransform(Transform):
+    def transform_policy(self, policy):
+        return KeypointObsPolicy(policy)
+    
+    def transform_env(self, env):
+        return KeypointObsEnv(env)
 
+@dataclass
+class KeypointObsPolicy(Policy):
+    policy: Policy
+
+    @property
+    def rollout_length(self):
+        return self.policy.rollout_length
+
+    def __call__(self, input):
+        obs = input.observation
+        obs = PushTPosObs(
+            agent_pos=obs.agent.position,
+            block_pos=obs.block.position,
+            block_rot=obs.block.rotation
+        )
+        input = struct.replace(input, observation=obs)
+        return self.policy(input)
+
+@dataclass
+class KeypointObsEnv(EnvWrapper):
+    def observe(self, state):
+        obs = self.base.observe(state)
+        rotM = jnp.array([
+            [jnp.cos(obs.block_rot), -jnp.sin(obs.block_rot)],
+            [jnp.sin(obs.block_rot), jnp.cos(obs.block_rot)]
+        ])
+        end = rotM @ jnp.array([0, -4*BLOCK_SCALE]) + obs.block_pos
+        return PushTKeypointObs(
+            agent_pos=obs.agent_pos,
+            block_pos=obs.block_pos,
+            block_end=end
+        )
 
 environments = EnvironmentRegistry[PushTEnv]()
 environments.register("", PushTEnv)

@@ -9,9 +9,11 @@ import subprocess
 import multiprocessing
 import argparse
 import abc
+import functools
+import typing
 
 from typing import Literal, Sequence, Callable, Type
-from dataclasses import MISSING, replace
+from dataclasses import MISSING, replace, fields
 from rich.text import Text
 from rich.logging import RichHandler
 from pathlib import Path
@@ -119,18 +121,18 @@ class ConfigProvider(abc.ABC):
                 vals[field.name] = default_val.parse(scope)
             elif (type is bool or type is int or type is float or type is str):
                 vals[field.name] = self.get(field.name, field.type, "", default_val)
-            else: raise RuntimeError(f"Unable to parse {field.name}")
+            elif default_val is MISSING: raise RuntimeError(f"Unable to parse {field.name}")
         return replace(default, **vals)
 
     def get_cases(self, name: str, desc: str, cases: dict, default: str):
-        case = self.get(name, str, desc, default)
+        case_choice = self.get(name, str, desc, default)
         vals = {}
         for case, c in cases.items():
             if hasattr(c, "parse"):
                 vals[case] = c.parse(self.scope(name, ""))
             else:
                 vals[case] = c
-        return vals.get(case, None)
+        return vals.get(case_choice, None)
 
 class Arguments:
     def __init__(self, args):
@@ -149,7 +151,7 @@ class Arguments:
         val = getattr(ns, name)
         return val
 
-class ArgumentsConfig(ConfigProvider):
+class ArgumentsProvider(ConfigProvider):
     def __init__(self, args : Arguments, prefix=None, active=True, cases=None):
         self._args = args
         self._prefix = prefix
@@ -162,12 +164,12 @@ class ArgumentsConfig(ConfigProvider):
 
         if not self._active:
             self._args.add_option(name, desc)
-            if default is NO_DEFAULT:
+            if default is MISSING:
                 return type()
             return default
         else:
             arg = self._args.parse_option(name, desc)
-            if arg is None and default is NO_DEFAULT:
+            if arg is None and default is MISSING:
                 raise ValueError(f"Argument {name} not provided")
             if arg is None:
                 return default
@@ -178,7 +180,7 @@ class ArgumentsConfig(ConfigProvider):
     
     def scope(self, name: str, desc: str) -> "ConfigProvider":
         prefix = name if not self._prefix else f"{self._prefix}_{name}"
-        return ArgConfig(self._args, prefix)
+        return ArgumentsProvider(self._args, prefix)
     
     def case(self, name: str, desc: str, active: bool):
-        return ArgConfig(self._args, self._prefix, active, self._cases + [name])
+        return ArgumentsProvider(self._args, self._prefix, active, self._cases + [name])

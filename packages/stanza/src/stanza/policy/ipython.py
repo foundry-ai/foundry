@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+import logging
 import os.path
 import io
 import time
@@ -17,15 +18,19 @@ from PIL import Image as PILImage
 from threading import Thread
 
 from stanza.data import PyTreeData
-from stanza.data.sequence import SequenceInfo, SequenceData
+from stanza.data.sequence import SequenceInfo, SequenceData, Step
 from stanza.random import PRNGSequence
 from stanza.env import SequenceRender
 from stanza.util.ipython import STYLE
 
+logger = logging.getLogger(__name__)
+
 class DemonstrationCollector:
-    def __init__(self, path, env, interactive_policy, width, height, fps=30):
-        self.path = path
-        
+    def __init__(self, env, interactive_policy, 
+                demonstrations, save, width, height, fps=30):
+        self.demonstrations = demonstrations
+        self._save_fn = save
+
         if len(jax.devices()) > 1:
             for p in range(len(jax.devices()), 0, -1):
                 if 256 % p == 0:
@@ -48,23 +53,23 @@ class DemonstrationCollector:
         self._render_fn(SequenceRender(width, height), s)
 
         self.env = env
-        self.demonstrations = []
         self.fps = fps
         self.width = width
         self.height = height
         self.rng = PRNGSequence(42)
 
         # The currently collecting demonstration
-        self.col_demonstration = None
+        self.curr_demonstration = None
+        self.curr_state = None
         self.collect_task = None
 
         # The reseted state, if we want to collect a new demonstration
         self.reset_state = None
 
-        self.demonstration_slider = IntSlider(min=0, max=max(0,len(self.demonstrations) - 1))
+        self.demonstration_slider = IntSlider(min=0, max=len(demonstrations))
         self.step_slider = IntSlider()
         self.demonstration_slider.observe(lambda _: self._demo_changed(), names='value')
-        self.step_slider.observe(self._step_changed, names='value')
+        self.step_slider.observe(lambda _: self._step_changed(), names='value')
 
         self.interface.set_key_callback('c', self._toggle_collection)
         self.interface.set_key_callback('r', self._reset_state)
@@ -88,41 +93,12 @@ class DemonstrationCollector:
             self.loop.run_forever()
         self.loop_thread = Thread(target=run_loop, daemon=True)
         self.loop_thread.start()
-
-        if os.path.exists(self.path):
-            self.load(self.path)
+        self._visualize()
     
-    def save(self, path):
-        elements = jax.tree_util.tree_map(
-            lambda *x: jnp.concatenate(x, axis=0), *self.demonstrations
-        )
-        def length(demo):
-            return jax.tree_util.tree_flatten(demo)[0][0].shape[0]
-        id = jnp.arange(len(self.demonstrations))
-        lengths = jnp.array([length(d) for d in self.demonstrations])
-        end_idx = jnp.cumsum(lengths)
-        start = end_idx - lengths
-        infos = SequenceInfo(
-            id=id,
-            info=None,
-            start_idx=start,
-            end_idx=end_idx,
-            length=lengths
-        )
-        data = SequenceData(PyTreeData(elements), PyTreeData(infos))
-        data.save(path)
-
-    def load(self, path):
-        data = SequenceData.load(path)
-        infos = data.infos.as_pytree()
-        elements = data.elements.as_pytree()
-        for t in range(len(infos.id)):
-            start = infos.start_idx[t]
-            end = infos.end_idx[t]
-            demo = jax.tree_map(lambda x: x[start:end], elements)
-            self.demonstrations.append(demo)
-        self.demonstration_slider.max = max(0,len(self.demonstrations) - 1)
-        self._demo_changed()
+    def save(self):
+        if self.demonstrations is None:
+            return
+        self._save_fn(self.demonstrations)
 
     def _ipython_display_(self):
         display(HBox([self.demonstration_slider, self.step_slider]))
@@ -131,57 +107,70 @@ class DemonstrationCollector:
         display(self.countdown)
     
     def _visualize(self):
-        if self.col_demonstration is None and len(self.demonstrations) > 0:
-            d = min(self.demonstration_slider.value, len(self.demonstrations) - 1)
-            T = self.step_slider.value
-            demonstration = self.demonstrations[d]
-            state = jax.tree_map(lambda x: x[T], demonstration[0])
-        elif self.col_demonstration is not None:
-            state = self.col_demonstration[-1][0]
+        d = self.demonstration_slider.value
+        T = self.step_slider.value
+        if (len(self.demonstrations) > 0) and \
+                (d < len(self.demonstrations)):
+            dem = self.demonstrations[d]
+            T = min(T, len(dem) - 1)
+            state = self.demonstrations[d][T].state
+        elif self.curr_state is not None and self.curr_demonstration is not None:
+            T = min(T, len(self.curr_demonstration))
+            if T < len(self.curr_demonstration):
+                state = self.curr_demonstration[self.step_slider.value].state
+            else:
+                state = self.curr_state
+        else:
+            return
         image = self._render_fn(SequenceRender(self.width, self.height), state)
         self.interface.update(image)
     
     def _do_save(self, change):
-        self.save(self.path)
+        self.save()
     
     def _reset_state(self):
         if self.collect_task is not None:
             return
         r = next(self.rng)
-        self.col_demonstration = [(self._reset_fn(r), self._sample_input)]
-        self._visualize()
+        self.curr_demonstration = []
+        self.curr_state = self._reset_fn(r)
         self.demonstration_slider.max = len(self.demonstrations)
         self.demonstration_slider.value = len(self.demonstrations)
         self.step_slider.value = 0
         self.step_slider.max = 0
+        self._visualize()
 
-    def _step_changed(self, change):
+    def _step_changed(self):
         self._visualize()
     
     def _demo_changed(self):
         d = self.demonstration_slider.value
-        if self.col_demonstration is not None and d < len(self.demonstrations):
-            self._stop_collection()
-        if self.col_demonstration is None and len(self.demonstrations) > 0:
-            max_T = jax.tree_util.tree_flatten(self.demonstrations[d])[0][0].shape[0]
-            self.step_slider.max = max_T
-            self.step_slider.value = min(max_T, self.step_slider.value)
+        if d < len(self.demonstrations):
+            self.demonstration_slider.max = max(0, len(self.demonstrations) - 1)
+            if self.curr_demonstration is not None:
+                self._stop_collection()
+                return
+        if d == len(self.demonstrations) and self.curr_demonstration is not None:
+            max_T = len(self.curr_demonstration)
+        else:
+            max_T = len(self.demonstrations[d]) - 1
+        self.step_slider.max = max_T
+        self.step_slider.value = min(max_T, self.step_slider.value)
         self._visualize()
     
     async def _collect(self):
         t = time.time()
-        if self.col_demonstration is None:
+        if self.curr_demonstration is None or self.curr_state is None:
             return
-        state = self.col_demonstration[-1][0]
-        self.demonstration_slider.value = len(self.demonstrations) 
-        self.demonstration_slider.max = len(self.demonstrations) 
+        state = self.curr_state
         while True:
             elapsed = time.time() - t
             action = self._policy(self.interface.mouse_pos())
-            self.col_demonstration.append((state, action))
+            self.curr_demonstration.append(Step(state, None, action))
             state = self._step_fn(state, action)
-            self.step_slider.max = len(self.col_demonstration)
-            self.step_slider.value = len(self.col_demonstration)
+            self.curr_state = state
+            self.step_slider.max = len(self.curr_demonstration)
+            self.step_slider.value = len(self.curr_demonstration)
             self._visualize()
             await asyncio.sleep(max(1/self.fps - elapsed, 0))
             t = time.time()
@@ -199,17 +188,17 @@ class DemonstrationCollector:
             self.collect_task.cancel()
         self.collect_task = None
         self.collect_button.description = 'Collect (c)'
-        if self.col_demonstration is not None and len(self.col_demonstration) > 1:
-            states, actions = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), *self.col_demonstration)
-            # remove the dummy action as the start, last state at the end
-            actions = jax.tree_map(lambda x: x[1:], actions)
-            states = jax.tree_map(lambda x: x[:-1], states)
-            self.demonstrations.append((states, actions))
-        self.demonstration_slider.max = max(0,len(self.demonstrations) - 1)
-        self.col_demonstration = None
+        if self.curr_demonstration is not None and len(self.curr_demonstration) > 0:
+            steps = jax.tree_util.tree_map(lambda *xs: jnp.stack(xs), *self.curr_demonstration)
+            self.demonstrations = self.demonstrations.append(
+                SequenceData.from_trajectory(PyTreeData(steps))
+            )
+            self.curr_demonstration = None
+            self.curr_state = None
+            self._demo_changed()
 
     def _trim_demonstration(self):
-        if self.col_demonstration is not None:
+        if self.curr_demonstration is not None:
             return
         if len(self.demonstrations) > 0:
             d = min(self.demonstration_slider.value, len(self.demonstrations) - 1)
@@ -220,7 +209,7 @@ class DemonstrationCollector:
             self.step_slider.max = T
 
     def _delete_demonstration(self):
-        if self.col_demonstration is not None:
+        if self.curr_demonstration is not None:
             return
         if len(self.demonstrations) > 0:
             d = min(self.demonstration_slider.value, len(self.demonstrations) - 1)

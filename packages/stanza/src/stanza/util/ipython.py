@@ -47,7 +47,6 @@ def as_image(array):
         array = (array*255).clip(0, 255).astype(np.uint8)
     if array.shape[-1] == 1:
         array = np.repeat(array, 3, axis=-1)
-    print(array.shape)
     img = PILImage.fromarray(array)
     id = uuid.uuid4()
     path = Path("/tmp") / "notebook" / (str(id) + ".png")
