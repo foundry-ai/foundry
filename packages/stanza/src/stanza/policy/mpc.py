@@ -5,8 +5,6 @@ import stanza.policy
 
 from typing import Any, Callable
 
-from stanza import partial
-
 from stanza.dataclasses import dataclass, field, replace
 from jax.random import PRNGKey
 
