@@ -35,8 +35,8 @@ class MinimizeMPC(Objective):
     initial_actions: Any
     state0: Any
 
-    cost_fn: Callable
-    model_fn: Callable
+    cost_fn: Callable = field(pytree_node=False)
+    model_fn: Callable = field(pytree_node=False)
 
     initial_params: Any = None
     initial_cost_state : Any = None

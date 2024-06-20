@@ -20,6 +20,9 @@ import numpy as np
 import jax.numpy as jnp
 import jax.random
 
+GOAL_POS = jnp.array([0, 0])
+GOAL_ROT = jnp.array(-jnp.pi/4)
+
 AGENT_RADIUS=15/252
 BLOCK_SCALE=30/252
 COM = 0.5*(BLOCK_SCALE/2) + 0.5*(2.5*BLOCK_SCALE)
@@ -103,6 +106,13 @@ class PushTKeypointObs:
     block_end: jnp.array
 
 @dataclass
+class PushTKeypointRelObs:
+    agent_block_pos: jnp.array
+    agent_block_end: jnp.array
+    rel_block_pos: jnp.array
+    rel_block_end: jnp.array
+
+@dataclass
 class PushTState:
     q: jax.Array
     qd: jax.Array
@@ -110,9 +120,6 @@ class PushTState:
 @dataclass
 class PushTEnv(Environment):
     success_threshold: float = 0.9
-
-    goal_pos : jax.Array = field(default_factory=lambda: jnp.array([0, 0]))
-    goal_rot : jax.Array = field(default_factory=lambda: jnp.array(-jnp.pi/4))
 
     @jax.jit
     def sample_action(self, rng_key: jax.Array):
@@ -180,7 +187,7 @@ class PushTEnv(Environment):
     @jax.jit
     def reward(self, state, action, next_state):
         obs = self.observe(next_state)
-        goal_points = self._block_points(self.goal_pos, self.goal_rot)
+        goal_points = self._block_points(GOAL_POS, GOAL_ROT)
         points = self._block_points(obs.block_pos, obs.block_rot)
         return jax.pure_callback(
             PushTEnv._overlap,
@@ -246,11 +253,10 @@ class PushTEnv(Environment):
         image = 0.95*jnp.ones((width, height, 3))
         # render just the block at its target position
         goal_t = PushTEnv._render_block(
-            self.goal_pos, self.goal_rot,
+            GOAL_POS, GOAL_ROT,
             (0.1, 0.8, 0.1)
         )
         curr_t = PushTEnv._render_block(
-            # self.goal_pos, self.goal_rot,
             obs.block_pos, obs.block_rot,
             canvas.colors.LightSlateGray
         )
@@ -330,7 +336,7 @@ class PositionalControlPolicy(Policy):
         if output.action is None:
             return struct.replace(output, action=jnp.zeros((2,)))
         a = self.k_p * (output.action - obs.agent.position) + self.k_v * (-obs.agent.velocity)
-        return struct.replace(
+        return replace(
             output, action=a
         )
 
@@ -371,7 +377,7 @@ class PositionalObsPolicy(Policy):
             block_pos=obs.block.position,
             block_rot=obs.block.rotation
         )
-        input = struct.replace(input, observation=obs)
+        input = replace(input, observation=obs)
         return self.policy(input)
 
 @dataclass
@@ -387,28 +393,10 @@ class PositionalObsEnv(EnvWrapper):
 @dataclass
 class KeypointObsTransform(Transform):
     def transform_policy(self, policy):
-        return KeypointObsPolicy(policy)
+        raise NotImplementedError()
     
     def transform_env(self, env):
         return KeypointObsEnv(env)
-
-@dataclass
-class KeypointObsPolicy(Policy):
-    policy: Policy
-
-    @property
-    def rollout_length(self):
-        return self.policy.rollout_length
-
-    def __call__(self, input):
-        obs = input.observation
-        obs = PushTPosObs(
-            agent_pos=obs.agent.position,
-            block_pos=obs.block.position,
-            block_rot=obs.block.rotation
-        )
-        input = struct.replace(input, observation=obs)
-        return self.policy(input)
 
 @dataclass
 class KeypointObsEnv(EnvWrapper):
@@ -424,6 +412,42 @@ class KeypointObsEnv(EnvWrapper):
             block_pos=obs.block_pos,
             block_end=end
         )
+
+@dataclass
+class RelKeypointTransform(Transform):
+    def transform_policy(self, policy):
+        raise NotImplementedError()
+    
+    def transform_env(self, env):
+        return RelKeypointEnv(env)
+
+@dataclass
+class RelKeypointEnv(EnvWrapper):
+    def observe(self, state):
+        obs = self.base.observe(state)
+        rotM = jnp.array([
+            [jnp.cos(obs.block_rot), -jnp.sin(obs.block_rot)],
+            [jnp.sin(obs.block_rot), jnp.cos(obs.block_rot)]
+        ])
+        end = rotM @ jnp.array([0, -4*BLOCK_SCALE]) + obs.block_pos
+
+        rotM = jnp.array([
+            [jnp.cos(GOAL_ROT), -jnp.sin(GOAL_ROT)],
+            [jnp.sin(GOAL_ROT), jnp.cos(GOAL_ROT)]
+        ])
+        goal_end = rotM @ jnp.array([0, -4*BLOCK_SCALE]) + GOAL_POS
+        return PushTKeypointRelObs(
+            agent_block_pos=obs.agent_pos - obs.block_pos,
+            agent_block_end=obs.agent_pos - end,
+            rel_block_pos=obs.block_pos - GOAL_POS,
+            rel_block_end=end - goal_end,
+        )
+
+    def step(self, state, action, rng_key=None):
+        # obs = self.base.observe(state)
+        # action = action + obs.block_pos
+        res = self.base.step(state, action, rng_key)
+        return res
 
 environments = EnvironmentRegistry[PushTEnv]()
 environments.register("", PushTEnv)
