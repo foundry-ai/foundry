@@ -157,9 +157,10 @@ class PushTEnv(Environment):
 
     @staticmethod
     def _block_points(pos, rot):
-        com = jnp.array([0, -0.15])
-        center_a, hs_a = jnp.array([0, -0.05]), jnp.array([0.2, 0.05])
-        center_b, hs_b = jnp.array([0, -0.25]), jnp.array([0.05, 0.2])
+        center_a, hs_a = jnp.array([0, -BLOCK_SCALE/2]), \
+                        jnp.array([2*BLOCK_SCALE, BLOCK_SCALE/2])
+        center_b, hs_b = jnp.array([0, -2.5*BLOCK_SCALE]), \
+                        jnp.array([BLOCK_SCALE/2, 1.5*BLOCK_SCALE])
         points = jnp.array([
             center_a + jnp.array([hs_a[0], -hs_a[1]]),
             center_a + hs_a,
