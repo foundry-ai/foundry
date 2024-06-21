@@ -10,9 +10,8 @@ from jax.random import PRNGKey
 
 from stanza.solver import (
     Solver, SolverState, Minimize, 
-    UnsupportedObectiveError, Objective, EqConstraint
+    UnsupportedObectiveError, Objective
 )
-from stanza.solver.newton import NewtonSolver
 from stanza.solver.ilqr import iLQRSolver
 from stanza.policy import Actions, PolicyOutput
 

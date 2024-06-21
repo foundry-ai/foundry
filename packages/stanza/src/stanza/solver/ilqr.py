@@ -78,7 +78,7 @@ class iLQRSolver(Solver):
         res = MinimizeMPCState(it, jnp.array(True), params, actions, cost, None)
         return SolverResult(res, None)
 
-    @functools.partial(stanza.jit, static_argnames=("implicit_diff", "history"))
+    @functools.partial(jax.jit, static_argnames=("implicit_diff", "history"))
     def run(self, objective, *, implicit_diff=True, history=False) -> SolverResult:
         from stanza.policy.mpc import MinimizeMPCState
         init_state = MinimizeMPCState(
@@ -88,7 +88,7 @@ class iLQRSolver(Solver):
             jnp.zeros(()),
             objective.initial_cost_state
         )
-        solve = stanza.partial(self._solve, history)
+        solve = functools.partial(self._solve, history)
         if implicit_diff:
             solve = implicit_diff_solve(solve)
         return solve(objective, init_state)
