@@ -7,10 +7,13 @@ def key_or_seed(key_or_seed):
     if isinstance(key_or_seed, int):
         key_or_seed = jax.random.key(key_or_seed)
     elif (hasattr(key_or_seed, "shape") and
-            hasattr(key_or_seed, "dtype") and \
-            key_or_seed.dtype == jax.numpy.uint32):
+        hasattr(key_or_seed, "dtype") and \
+        (key_or_seed.dtype == jax.numpy.uint32 or \
+         jax.dtypes.issubdtype(key_or_seed.dtype,
+         jax.dtypes.prng_key))):
         key_or_seed = key_or_seed
     else:
+        print(key_or_seed.dtype == jax.dtypes.prng_key)
         raise ValueError("Not key or seed!")
     return key_or_seed
 

@@ -1,65 +1,35 @@
+import jax
 import functools
 import wandb
 import numpy as np
 
 from functools import partial
-from stanza.train.reporting import Video, Image, dict_flatten
+from stanza.train.reporting import Video, Image, as_log_dict
 from pathlib import Path
 
-def convert(x):
+def _map_reportable(x):
     if isinstance(x, Image):
         return wandb.Image(np.array(x.data))
     elif isinstance(x, Video):
         return wandb.Video(x.data)
-    return x
+    return None
 
-def wandb_logger(*hooks, run=None, prefix=None, 
-              suffix=None, metrics=False, step_info=False):
-    def logger(rng, state, log=None, **kwargs):
-        if run is not None:
-            r = []
-            if log is not None: r.append(log)
-            if metrics: r.append(state.metrics)
-            if step_info: r.append({
-                "iteration": state.iteration,
-                "epoch": state.epoch,
-                "epoch_iteration": state.epoch_iteration
-            })
-            for hook in hooks: r.append(hook(rng, state, **kwargs))
-            flattened = dict_flatten(
-                *r,
-                prefix=prefix, suffix=suffix
-            )
-            flattened = {k: convert(v) for k, v in flattened.items()}
-            wandb.log(flattened, step=state.iteration)
-    return logger
+def _log_cb(run, iteration, data_dict, reportable_dict):
+    iteration = int(iteration)
+    run = run if run is not None else wandb.run
+    items = dict({k: v.item() for (k, v) in data_dict.items()})
+    for k, v in reportable_dict.items():
+        v = _map_reportable(v)
+        items[k] = v
+    run.log(items, step=iteration)
 
-wandb_log = wandb_logger
-
-def wandb_checkpoint(run=None, dir="checkpoints",
-                format="epoch_{epoch}.ckpt"):
-    import orbax.checkpoint as ocp
-
-    run = run or wandb.run
-    dir = Path(run.dir) / dir
-    checkpointer = ocp.StandardCheckpointer()
-
-    def log_fn(rng, state, **kwargs):
-        vars = state.vars
-        stats = state.metrics
-        extra_info = {
-            "iteration": state.iteration,
-            "epoch": state.epoch,
-        }
-        metadata = dict_flatten(stats, extra_info)
-        name = format.format(**extra_info)
-        path = dir / name
-        checkpointer.save(path, vars)
-        # log to wandb
-        artifact = wandb.Artifact(name, "model", metadata=metadata)
-        if path.is_dir():
-            artifact.add_dir(path)
-        else:
-            artifact.add_file(path)
-        run.log_artifact(artifact)
-    return log_fn
+@partial(jax.jit,
+        static_argnames=("run", "join", "prefix", "suffix")
+    )
+def log(iteration, *data, run=None, join=".", prefix=None, suffix=None):
+    data, reportables = as_log_dict(*data, join=join, prefix=prefix, suffix=suffix)
+    jax.experimental.io_callback(
+        partial(_log_cb, run), None, 
+        iteration, data, reportables,
+        ordered=True
+    )

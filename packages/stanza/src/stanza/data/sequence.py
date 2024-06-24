@@ -81,6 +81,10 @@ class SequenceData(Generic[T,I]):
             sequences=self.sequences.append(data.sequences.map(add_idx))
         )
 
+    # For transforming into Data[T]
+    # types that can be loaded.
+
+    # Will truncate the sequences
     def uniform_truncated(self, length: int) -> Data[T]:
         infos = self.sequences.as_pytree()
         mask = infos.length < length
