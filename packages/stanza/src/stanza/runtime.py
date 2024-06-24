@@ -31,14 +31,17 @@ class CustomLogRender(rich._log_render.LogRender):
         return output
 
 LOGGING_SETUP = False
-def setup_logger():
+def setup_logger(show_path=True):
     global LOGGING_SETUP
     FORMAT = "%(name)s - %(message)s"
     if not LOGGING_SETUP:
         console = rich.get_console()
-        handler = RichHandler(markup=True,
-                              rich_tracebacks=True,
-                              show_path=not console.is_jupyter)
+        handler = RichHandler(
+            markup=True,
+            rich_tracebacks=True,
+            show_path=show_path,
+            console=console
+        )
         renderer = CustomLogRender(
             show_time=handler._log_render.show_time,
             show_level=handler._log_render.show_level,
@@ -73,13 +76,14 @@ def setup_gc():
         gc.callbacks.pop()
 
 def setup():
+    jupyter = rich.get_console().is_jupyter
     cpu_cores = multiprocessing.cpu_count()
     os.environ["WANDB_SILENT"] = "true"
     os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={cpu_cores}"
-    if rich.get_console().is_jupyter:
+    if jupyter:
         from stanza.util.ipython import setup_rich_notebook_hook
         setup_rich_notebook_hook()
-    setup_logger()
+    setup_logger(not jupyter)
     setup_jax_cache()
     setup_gc()
 

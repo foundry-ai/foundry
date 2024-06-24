@@ -1,10 +1,12 @@
-from stanza import dataclasses
+from stanza.dataclasses import dataclass
+
+import stanza.util
 import jax
 
 class Reportable:
     pass
 
-@dataclasses.dataclass
+@dataclass
 class Image(Reportable):
     data: jax.Array
 
@@ -13,7 +15,7 @@ class Image(Reportable):
         from stanza.util.ipython import as_image
         display(as_image(self.data))
 
-@dataclasses.dataclass
+@dataclass
 class Video(Reportable):
     data: jax.Array
     fps: int = 28
@@ -33,19 +35,30 @@ def _key_str(key):
     else:
         raise ValueError(f"Unknown key type: {key}")
 
-def dict_flatten(*trees, prefix=None, suffix=None):
-    flattened = {}
+def as_log_dict(*trees, join=".", prefix=None, suffix=None):
+    data = {}
+    reportables = {}
     for t in trees:
-        paths_nodes = jax.tree_util.tree_flatten_with_path(
-            t, is_leaf=lambda x: isinstance(x, Reportable))[0]
-        flattened.update({
-            '.'.join([_key_str(p) for p in path]): node
-            for (path, node) in paths_nodes
-        })
-    if prefix is not None:
-        flattened = {f"{prefix}{k}": v for k, v in flattened.items()}
-    if suffix is not None:
-        flattened = {f"{k}{suffix}": v for k, v in flattened.items()}
-    return flattened
+        data_entries = jax.tree.map(
+            lambda x: (None if isinstance(x, Reportable) else x), 
+            t, is_leaf=lambda x: isinstance(x, Reportable)
+        )
+        reportable_entries = jax.tree.map(
+            lambda x: x if isinstance(x, Reportable) else None, 
+            t, is_leaf=lambda x: isinstance(x, Reportable)
+        )
+        # flatten data_entries, reportable_entries
+        # to dictionaries
+        data_entries, _ = stanza.util.flatten_to_dict(data_entries,
+            join=join, prefix=prefix, suffix=suffix,
+            is_leaf=lambda x: isinstance(x, Reportable)
+        )
+        reportable_entries, _ = stanza.util.flatten_to_dict(reportable_entries,
+            join=join, prefix=prefix, suffix=suffix,
+            is_leaf=lambda x: isinstance(x, Reportable)
+        )
+        data.update(data_entries)
+        reportables.update(reportable_entries)
+    return data, reportables
 
-__all__ = ["Reportable", "Image", "Video", "dict_flatten"]
+__all__ = ["Reportable", "Image", "Video", "as_log_dict"]

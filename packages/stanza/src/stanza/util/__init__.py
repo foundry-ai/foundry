@@ -16,14 +16,6 @@ def axis_size(pytree, axes_tree) -> int:
     assert all(x == axis_sizes_[0] for x in axis_sizes_)
     return axis_sizes_[0]
 
-def ravel_pytree(pytree):
-    leaves, treedef = jax.tree_util.tree_flatten(pytree)
-    if len(leaves) == 0:
-        def unflatten(x):
-            return jax.tree_util.tree_unflatten(treedef, x.reshape(leaves.shape))
-        return leaves.reshape((-1,)), unflatten
-    return jax.flatten_util.ravel_pytree(pytree)
-
 def ravel_pytree_structure(pytree):
     leaves, treedef = jax.tree_util.tree_flatten(pytree)
     shapes, types = [l.shape for l in leaves], [l.dtype for l in leaves]
@@ -51,10 +43,17 @@ def _key_str(key):
     else:
         raise ValueError(f"Unknown key type: {key}")
 
-def flatten_to_dict(pytree):
-    leaves, treedef = jax.tree_util.tree_flatten_with_path(pytree)
-    paths = ['.'.join([_key_str(key) for key in path]) for path, _ in leaves]
+def flatten_to_dict(pytree, *, join='.', prefix=None,
+                    suffix=None, is_leaf=None):
+    def make_path_str(path):
+        path = join.join([_key_str(key) for key in path])
+        if prefix is not None: path = prefix + path
+        if suffix is not None: path = path + suffix
+        return path
+
+    leaves, treedef = jax.tree_util.tree_flatten_with_path(pytree, is_leaf=is_leaf)
+    paths = [make_path_str(path) for path, _ in leaves]
     nodes = [node for _, node in leaves]
-    d = {path: node for path, node in zip(paths, nodes)}
-    uf = lambda d: jax.tree_util.tree_unflatten(treedef, [d[k] for k in paths])
+    d = {path: node for path, node in zip(paths, nodes) if node is not None}
+    uf = lambda d: jax.tree_util.tree_unflatten(treedef, [d.get(k,None) for k in paths])
     return d, uf
