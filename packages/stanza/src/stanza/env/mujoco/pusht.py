@@ -283,14 +283,14 @@ class PushTEnv(Environment):
             obs = PushTEnv.observe(self, state)
             return self._render_image(obs, config.width, config.height)
         elif type(config) == HtmlRender:
-            if data.qpos.ndim == 1:
-                data = jax.tree_map(lambda x: x[None], data)
-            return brax_render(load_mj_model(), data)
+            if state.q.ndim == 1:
+                state = jax.tree_map(lambda x: x[None], state)
+            return brax_render(load_mj_model(), state)
 
 def brax_to_state(sys, data):
     import brax.mjx.pipeline as pipeline
     from brax.base import Contact, Motion, System, Transform
-    q, qd = data.qpos, data.qvel
+    q, qd = data.q, data.qd
     x = Transform(pos=data.xpos[1:], rot=data.xquat[1:])
     cvel = Motion(vel=data.cvel[1:, 3:], ang=data.cvel[1:, :3])
     offset = data.xpos[1:, :] - data.subtree_com[sys.body_rootid[1:]]

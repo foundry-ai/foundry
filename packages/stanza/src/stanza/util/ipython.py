@@ -4,7 +4,6 @@ import tempfile
 import ffmpegio
 import uuid
 import rich.jupyter
-import rich.terminal_theme
 import rich.live
 import io
 import os

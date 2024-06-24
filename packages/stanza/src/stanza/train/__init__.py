@@ -1,10 +1,12 @@
-from stanza.data import Data, DataStream, DataLoader
+from stanza.data import Data, DataStream
 from stanza.dataclasses import dataclass
 from stanza.random import PRNGSequence
 # import all reporting datatypes
 from .reporting import *
 
-from typing import Any, TypeVar, Callable, Generic, Generator
+from typing import (
+    Any, TypeVar, Callable, Generic, Generator
+)
 from jax.typing import ArrayLike
 from functools import partial
 from contextlib import contextmanager
