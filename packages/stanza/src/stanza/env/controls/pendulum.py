@@ -1,4 +1,4 @@
-from stanza.env import Environment, EnvironmentRegistry
+from stanza.env import Environment, EnvironmentRegistry, EnvWrapper
 from stanza.policy import PolicyOutput
 
 import jax
@@ -6,8 +6,10 @@ import jax.numpy as jnp
 import math
 
 from typing import NamedTuple
-from stanza.struct import dataclass, field
+from stanza.dataclasses import dataclass, field
 import stanza.canvas as canvas
+from stanza.policy import PolicyInput
+from stanza.policy.mpc import MPC
 
 class State(NamedTuple):
     angle: jnp.ndarray
@@ -17,11 +19,11 @@ class State(NamedTuple):
 class PendulumEnv(Environment):
     sub_steps : int = field(default=1, pytree_node=False)
     dt : float = 0.2
-    target_goal : State = State(angle=jnp.array(math.pi), vel=jnp.array(0))
+    target_goal : State = State(angle=jnp.array([math.pi]), vel=jnp.array([0]))
 
     def sample_action(self, rng_key):
         return jax.random.uniform(
-            rng_key, shape=(), minval=-1.0, maxval=1.0)
+            rng_key, shape=(1,), minval=-1.0, maxval=1.0)
 
     # Sample state should be like reset(),
     # but whereas reset() is meant to be a distribution
@@ -29,15 +31,15 @@ class PendulumEnv(Environment):
     # give a distribution with support over all possible (or reasonable) states
     def sample_state(self, rng_key):
         k1, k2 = jax.random.split(rng_key)
-        angle = jax.random.uniform(k1, shape=(), 
+        angle = jax.random.uniform(k1, shape=(1,), 
                     minval=-2, maxval=2*math.pi + 2)
-        vel = jax.random.uniform(k2, shape=(), minval=-2, maxval=2)
+        vel = jax.random.uniform(k2, shape=(1,), minval=-2, maxval=2)
         return State(angle, vel)
 
     def reset(self, key):
         # pick random position between +/- radians from center
-        angle = jax.random.uniform(key,shape=(), minval=-1,maxval=+1)
-        vel = jnp.zeros(())
+        angle = jax.random.uniform(key,shape=(1,), minval=-1,maxval=+1)
+        vel = jnp.zeros((1,))
         return State(angle, vel)
 
     def step(self, state, action, rng_key):
@@ -65,7 +67,7 @@ class PendulumEnv(Environment):
         xf_cost = diff[-1]
         u_cost = jnp.sum(actions**2)
         cost = 100*xf_cost + 2*x_cost + u_cost
-        return cost
+        return cost[0]
 
     def reward(self, state, action, next_state):
         end_state = self.target_goal
@@ -105,6 +107,7 @@ class PendulumEnv(Environment):
             jnp.abs(state.angle - end_state.angle) < 0.03,
             jnp.abs(state.vel - end_state.vel) < 0.03
         )
+    
 
 environments = EnvironmentRegistry[PendulumEnv]()
 environments.register("", PendulumEnv)

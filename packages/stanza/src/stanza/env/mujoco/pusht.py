@@ -7,6 +7,7 @@ from stanza.env import (
 from stanza.policy.transforms import Transform, chain_transforms
 from stanza.policy import Policy
 from stanza.dataclasses import dataclass, field
+import dataclasses
 from stanza import canvas
 
 import shapely.geometry as sg
@@ -334,9 +335,9 @@ class PositionalControlPolicy(Policy):
     def __call__(self, input):
         output = self.policy(input)
         if output.action is None:
-            return struct.replace(output, action=jnp.zeros((2,)))
-        a = self.k_p * (output.action - obs.agent.position) + self.k_v * (-obs.agent.velocity)
-        return replace(
+            return dataclasses.replace(output, action=jnp.zeros((2,)))
+        a = self.k_p * (output.action - output.agent.position) + self.k_v * (-output.agent.velocity)
+        return dataclasses.replace(
             output, action=a
         )
 
@@ -377,7 +378,7 @@ class PositionalObsPolicy(Policy):
             block_pos=obs.block.position,
             block_rot=obs.block.rotation
         )
-        input = replace(input, observation=obs)
+        input = dataclasses.replace(input, observation=obs)
         return self.policy(input)
 
 @dataclass

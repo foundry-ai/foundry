@@ -26,7 +26,7 @@ class iLQRSolver(Solver):
         params_flat, params_uf = jax.flatten_util.ravel_pytree(objective.initial_params)
         state0_flat, state_uf = jax.flatten_util.ravel_pytree(objective.state0)
         a0 = jax.tree_map(lambda x: x[0], solver_state.actions)
-        _, action_uf = jax.flatten_util.ravel_pytree(a0)
+        a0_flat, action_uf = jax.flatten_util.ravel_pytree(a0)
 
         initial_actions_flat = jax.vmap(
             lambda x: jax.flatten_util.ravel_pytree(x)[0]
@@ -38,7 +38,7 @@ class iLQRSolver(Solver):
         # flatten everything
         def flat_model(state_param, action_param, t):
             state, state_param = state_param[:len(state0_flat)], state_param[len(state0_flat):]
-            action, action_param = action_param[:len(a0)], action_param[len(a0):]
+            action, action_param = action_param[:len(a0_flat)], action_param[len(a0_flat):]
 
             state, action = state_uf(state), action_uf(action)
             state = objective.model_fn(state, action, None)
@@ -48,12 +48,12 @@ class iLQRSolver(Solver):
 
         def flat_cost(state_param, action_param, t):
             state, state_param = state_param[:len(state0_flat)], state_param[len(state0_flat):]
-            action, action_param = action_param[:len(a0)], action_param[len(a0):]
+            action, action_param = action_param[:len(a0_flat)], action_param[len(a0_flat):]
             # if t == 0, use the action parameters, otherwise use the state parameters
             param = jax.lax.cond(t == 0, lambda: action_param, lambda: state_param)
 
             states = jnp.zeros((T+1,) + state0_flat.shape)
-            actions = jnp.zeros((T,) + a0.shape)
+            actions = jnp.zeros((T,) + a0_flat.shape)
             states = states.at[t].set(state)
             actions = jax.lax.cond(t > T, lambda: actions, lambda: actions.at[t].set(action))
 
@@ -88,7 +88,7 @@ class iLQRSolver(Solver):
             jnp.zeros(()),
             objective.initial_cost_state
         )
-        solve = functools.partial(self._solve, history)
+        solve = functools.partial(self._solve)
         if implicit_diff:
             solve = implicit_diff_solve(solve)
         return solve(objective, init_state)
