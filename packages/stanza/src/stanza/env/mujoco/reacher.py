@@ -16,9 +16,10 @@ from stanza.env import (
 )
 from stanza.policy import Policy, PolicyInput
 from stanza.policy.transforms import Transform, chain_transforms
-from stanza.env.mujoco.utils import _quat_to_angle
+from stanza.packages.stanza.src.stanza.env.mujoco.util import _quat_to_angle, brax_render
 from stanza import canvas
 from stanza.policy.mpc import MPC
+from jax.random import PRNGKey
 
 
 XML = """
@@ -28,6 +29,7 @@ XML = """
 		<joint armature="1" damping="1" limited="true"/>
 		<geom contype="0" friction="1 0.1 0.1" rgba="0.7 0.7 0 1"/>
 	</default>
+	<option iterations="1"/>
 	<option gravity="0 0 -9.81" integrator="RK4" timestep="0.01"/>
 	<worldbody>
 		<!-- Arena -->
@@ -113,7 +115,7 @@ class ReacherEnv(Environment):
     body0_id = load_mj_model().body("body0").id
     body1_id = load_mj_model().body("body1").id
     fingertip_id = load_mj_model().body("fingertip").id
-    target_pos = jnp.array([0.1, -0.1])
+    target_pos = load_mj_model().body("target").pos[:2]
 
     @jax.jit
     def sample_action(self, rng_key: jax.Array):
@@ -126,7 +128,6 @@ class ReacherEnv(Environment):
 
     @jax.jit
     def reset(self, rng_key : jax.Array): 
-        
         b0_rot, b1_rot = jax.random.split(rng_key, 2)
         body0_rot = jax.random.uniform(b0_rot, (), minval=-jnp.pi, maxval=jnp.pi)
         body1_rot = jax.random.uniform(b1_rot, (), minval=-jnp.pi, maxval=jnp.pi)
@@ -142,15 +143,11 @@ class ReacherEnv(Environment):
         data = mjx.make_data(load_mjx_model())
         data = data.replace(qpos=state.q, qvel=state.qd)
         if action is not None:
-            # apply torques to the joints
-            #xfrc_applied = data.xfrc_applied.at[self.fingertip_id,0:2].set(action)
-            xfrc_applied = data.xfrc_applied.at[self.body0_id,0:2].set(action[0])
-            xfrc_applied = xfrc_applied.at[self.body1_id,0:2].set(action[1])
-            data = data.replace(xfrc_applied=xfrc_applied)
+            data = data.replace(ctrl=action)
         @jax.jit
-        def step_fn(_, data):
-            return mjx.step(load_mjx_model(), data)
-        data = jax.lax.fori_loop(0, 6, step_fn, data)
+        def step_fn(data, _):
+            return mjx.step(load_mjx_model(), data), None
+        data, _ = jax.lax.scan(step_fn, data, length=1)
         return ReacherState(data.qpos, data.qvel)
     
     @jax.jit
@@ -173,7 +170,7 @@ class ReacherEnv(Environment):
     def reward(self, state, action, next_state) -> jax.Array:
         obs = self.observe(next_state)
         reward_dist = -jnp.linalg.norm(obs.fingertip_pos - self.target_pos)
-        reward_control = -jnp.square(action).sum()
+        reward_control = -jnp.sum(jnp.square(action))
         return reward_dist + reward_control
 
     
@@ -216,6 +213,10 @@ class ReacherEnv(Environment):
         if type(config) == ImageRender or type(config) == SequenceRender:
             obs = ReacherEnv.observe(self, state)
             return self._render_image(obs, config.width, config.height)
+        elif type(config) == HtmlRender:
+            if data.qpos.ndim == 1:
+                data = jax.tree_map(lambda x: x[None], data)
+            return brax_render(load_mj_model(), data)
         
 
 # def compute_goal_rot(action_pos):
@@ -239,52 +240,54 @@ class ReacherEnv(Environment):
 #     return jnp.arcsin(jnp.cross(v1, v2) / (jnp.linalg.norm(v1) * jnp.linalg.norm(v2)))
 
 
-
+'''
 @dataclass
 class MPCTransform(Transform):
-
     def transform_policy(self, policy):
-        return MPCPolicy(policy)
-    
+        raise NotImplementedError()
+
     def transform_env(self, env):
         return MPCEnv(env)
 
-@dataclass
-class MPCPolicy(Policy):
-    policy: Policy
-
-    @property
-    def rollout_length(self):
-        return self.policy.rollout_length
-
-    def __call__(self, input):
-        obs = input.observation
-        obs = ReacherPosObs(
-            fingertip_pos=obs.fingertip.position,
-            body0_pos=obs.body0.position,
-            body0_rot=obs.body0.rotation,
-            body1_pos=obs.body1.position,
-            body1_rot=obs.body1.rotation
-        )
-        output = self.policy(input)
-        a = 0
-        return dataclasses.replace(
-            output, action=a
-        )
 
 @dataclass
 class MPCEnv(EnvWrapper):
-
     def step(self, state, action, rng_key=None):
-        obs = ReacherEnv.observe(self.base, state)
-        cost_fn = lambda state: jnp.square(ReacherEnv.observe(self.base, state).fingertip_pos - action).sum()
+        cost_fn = lambda state: jnp.sum(jnp.square(ReacherEnv.observe(self.base, state).fingertip_pos - action))
         mpc = MPC(
             action_sample=(jnp.array([0]), jnp.array([0])),
-            cost_fn = lambda states, actions: cost_fn(states),
+            cost_fn = lambda states, actions: cost_fn(jax.tree_util.tree_map(lambda x: x[-1], states)),
             model_fn = lambda env_state, action, _: self.base.step(env_state, action),
-            horizon_length=10
+            horizon_length=5
         )
         a = mpc(PolicyInput(state))
+        res = self.base.step(state, a.action, rng_key)
+        return res
+'''
+
+@dataclass
+class PositionalControlTransform(Transform):
+    k_p : float = 15
+    k_v : float = 2
+
+    def transform_policy(self, policy):
+        raise NotImplementedError()
+    
+    def transform_env(self, env):
+        return PositionalControlEnv(env, self.k_p, self.k_v)
+
+
+@dataclass
+class PositionalControlEnv(EnvWrapper):
+    k_p : float = 10
+    k_v : float = 2
+
+    def step(self, state, action, rng_key=None):
+        if action is not None:
+            obs = ReacherEnv.observe(self.base, state)
+            a = self.k_p * (action - obs.fingertip_pos) + self.k_v * (-obs.body0_rot_vel)
+        else:
+            a = jnp.zeros((2,))
         res = self.base.step(state, a, rng_key)
         return res
 
@@ -335,7 +338,7 @@ environments.register("", ReacherEnv)
 def _make_positional(**kwargs):
     env = ReacherEnv(**kwargs)
     return chain_transforms(
-        MPCTransform(),
+        PositionalControlTransform(),
         PositionalObsTransform
     ).transform_env(env)
 environments.register("positional", _make_positional)
