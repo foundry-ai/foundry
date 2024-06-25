@@ -9,6 +9,7 @@ from stanza.policy import Policy
 from stanza.dataclasses import dataclass, field
 import dataclasses
 from stanza import canvas
+from stanza.env.mujoco import MujocoEnvironment, MujocoState
 
 import shapely.geometry as sg
 
@@ -61,28 +62,6 @@ XML = f"""
 </mujoco>
 """
 
-MJ_MODEL = None
-MJX_MODEL = None
-def load_mj_model():
-    global MJ_MODEL
-    if MJ_MODEL is None:
-        MJ_MODEL = mujoco.MjModel.from_xml_string(XML)
-    return MJ_MODEL
-
-def load_mjx_model():
-    global MJX_MODEL
-    if MJX_MODEL is None:
-        model = load_mj_model()
-        with jax.ensure_compile_time_eval():
-            MJX_MODEL = mjx.put_model(model)
-    return MJX_MODEL
-
-def _quat_to_angle(quat):
-    w0 = quat[0] # cos(theta/2)
-    w3 = quat[3] # sin(theta/2)
-    angle = 2*jax.numpy.atan2(w3, w0)
-    return angle
-
 @dataclass
 class PushTObs:
     agent_pos: jnp.array
@@ -113,14 +92,15 @@ class PushTKeypointRelObs:
     rel_block_pos: jnp.array
     rel_block_end: jnp.array
 
-@dataclass
-class PushTState:
-    q: jax.Array
-    qd: jax.Array
 
 @dataclass
-class PushTEnv(Environment):
+class PushTEnv(MujocoEnvironment):
     success_threshold: float = 0.9
+
+    @cached_property
+    def mj_model(self):
+        with jax.ensure_compile_time_eval():
+            return mujoco.MjModel.from_xml_string(XML)
 
     @jax.jit
     def sample_action(self, rng_key: jax.Array):
@@ -149,7 +129,7 @@ class PushTEnv(Environment):
             gen_pos, (c, block_pos)
         )
         qpos = jnp.concatenate([agent_pos, block_pos, block_rot[jnp.newaxis]])
-        return PushTState(
+        return MujocoState(
             qpos,
             jnp.zeros_like(qpos)
         )
@@ -198,30 +178,17 @@ class PushTEnv(Environment):
         )
     
     @jax.jit
-    def step(self, state, action, rng_key=None):
-        data = mjx.make_data(load_mjx_model())
-        data = data.replace(qpos=state.q, qvel=state.qd)
-        if action is not None:
-            xfrc_applied = data.xfrc_applied.at[1,:2].set(action)
-            data = data.replace(xfrc_applied=xfrc_applied)
-        @jax.jit
-        def step_fn(_, data):
-            return mjx.step(load_mjx_model(), data)
-        data = jax.lax.fori_loop(0, 6, step_fn, data)
-        return PushTState(data.qpos, data.qvel)
-    
-    @jax.jit
     def observe(self, state):
-        mjx_data = mjx.make_data(load_mjx_model())
+        mjx_data = mjx.make_data(self.mjx_model)
         mjx_data = mjx_data.replace(qpos=state.q, qvel=state.qd)
-        mjx_data = mjx.forward(load_mjx_model(), mjx_data)
+        mjx_data = mjx.forward(self.mjx_model, mjx_data)
         return PushTObs(
             # Extract agent pos, vel
             agent_pos=mjx_data.xpos[1,:2],
             agent_vel=mjx_data.cvel[1,3:5],
             # Extract block pos, vel, angle, angular vel
             block_pos=mjx_data.xpos[2,:2],
-            block_rot=_quat_to_angle(mjx_data.xquat[2,:4]),
+            block_rot=MujocoEnvironment._quat_to_angle(mjx_data.xquat[2,:4]),
             block_vel=mjx_data.cvel[2,3:5],
             block_rot_vel=mjx_data.cvel[2,2],
         )
@@ -276,7 +243,7 @@ class PushTEnv(Environment):
         return image
 
     @jax.jit
-    def render(self, config: RenderConfig, state: PushTState) -> jax.Array:
+    def render(self, config: RenderConfig, state: MujocoState) -> jax.Array:
         if type(config) == ImageRender:
             obs = PushTEnv.observe(self, state)
             return self._render_image(obs, config.width, config.height)
@@ -286,29 +253,9 @@ class PushTEnv(Environment):
         elif type(config) == HtmlRender:
             if state.q.ndim == 1:
                 state = jax.tree_map(lambda x: x[None], state)
-            return brax_render(load_mj_model(), state)
+            return MujocoEnvironment.brax_render(self.mj_model, state)
 
-def brax_to_state(sys, data):
-    import brax.mjx.pipeline as pipeline
-    from brax.base import Contact, Motion, System, Transform
-    q, qd = data.q, data.qd
-    x = Transform(pos=data.xpos[1:], rot=data.xquat[1:])
-    cvel = Motion(vel=data.cvel[1:, 3:], ang=data.cvel[1:, :3])
-    offset = data.xpos[1:, :] - data.subtree_com[sys.body_rootid[1:]]
-    offset = Transform.create(pos=offset)
-    xd = offset.vmap().do(cvel)
-    data = pipeline._reformat_contact(sys, data)
-    return pipeline.State(q=q, qd=qd, x=x, xd=xd, **data.__dict__)
 
-def brax_render(mj_model, data_seq):
-    import brax
-    import brax.io.mjcf
-    import brax.io.html
-    sys = brax.io.mjcf.load_model(mj_model)
-    T = data_seq.xpos.shape[0]
-    states = jax.vmap(brax_to_state, in_axes=(None, 0))(sys, data_seq)
-    states = [jax.tree_map(lambda x: x[i], states) for i in range(T)]
-    return brax.io.html.render(sys, states)
         
 # A state-feedback adapter for the PushT environment
 # Will run a PID controller under the hood

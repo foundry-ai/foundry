@@ -5,7 +5,7 @@ import mujoco
 from mujoco import mjx
 
 import dataclasses
-from functools import partial
+from functools import partial, cached_property
 
 from stanza.dataclasses import dataclass, field
 from stanza.env import (
@@ -14,9 +14,9 @@ from stanza.env import (
     HtmlRender, Environment,
     EnvironmentRegistry
 )
+from stanza.env.mujoco import MujocoEnvironment, MujocoState
 from stanza.policy import Policy, PolicyInput
 from stanza.policy.transforms import Transform, chain_transforms
-from stanza.packages.stanza.src.stanza.env.mujoco.util import _quat_to_angle, brax_render
 from stanza import canvas
 from stanza.policy.mpc import MPC
 from jax.random import PRNGKey
@@ -66,22 +66,6 @@ XML = """
 """
 
 
-MJ_MODEL = None
-MJX_MODEL = None
-def load_mj_model():
-    global MJ_MODEL
-    if MJ_MODEL is None:
-        MJ_MODEL = mujoco.MjModel.from_xml_string(XML)
-    return MJ_MODEL
-
-def load_mjx_model():
-    global MJX_MODEL
-    if MJX_MODEL is None:
-        model = load_mj_model()
-        with jax.ensure_compile_time_eval():
-            MJX_MODEL = mjx.put_model(model)
-    return MJX_MODEL
-
 @dataclass
 class ReacherObs:
     fingertip_pos: jnp.array
@@ -103,19 +87,19 @@ class ReacherPosObs:
     body1_pos: jnp.array
     body1_rot: jnp.array
 
-@dataclass
-class ReacherState:
-    q: jax.Array
-    qd: jax.Array
 
 @dataclass
-class ReacherEnv(Environment):
+class ReacherEnv(MujocoEnvironment):
+    body0_id: int = 1
+    body1_id: int = 2
+    fingertip_id: int = 3
+    target_id: int = 4
+    target_pos: jax.Array = field(default_factory=lambda:jnp.array([-0.1, 0.1]))
 
-    target_id = load_mj_model().body("target").id
-    body0_id = load_mj_model().body("body0").id
-    body1_id = load_mj_model().body("body1").id
-    fingertip_id = load_mj_model().body("fingertip").id
-    target_pos = load_mj_model().body("target").pos[:2]
+    @cached_property
+    def mj_model(self):
+        with jax.ensure_compile_time_eval():
+            return mujoco.MjModel.from_xml_string(XML)
 
     @jax.jit
     def sample_action(self, rng_key: jax.Array):
@@ -133,36 +117,24 @@ class ReacherEnv(Environment):
         body1_rot = jax.random.uniform(b1_rot, (), minval=-jnp.pi, maxval=jnp.pi)
 
         qpos = jnp.concatenate([body0_rot[jnp.newaxis], body1_rot[jnp.newaxis], self.target_pos])
-        return ReacherState(
+        return MujocoState(
             qpos,
             jnp.zeros_like(qpos)
         )
-
-    @jax.jit
-    def step(self, state, action, rng_key = None): 
-        data = mjx.make_data(load_mjx_model())
-        data = data.replace(qpos=state.q, qvel=state.qd)
-        if action is not None:
-            data = data.replace(ctrl=action)
-        @jax.jit
-        def step_fn(data, _):
-            return mjx.step(load_mjx_model(), data), None
-        data, _ = jax.lax.scan(step_fn, data, length=1)
-        return ReacherState(data.qpos, data.qvel)
     
     @jax.jit
     def observe(self, state): 
-        mjx_data = mjx.make_data(load_mjx_model())
+        mjx_data = mjx.make_data(self.mjx_model)
         mjx_data = mjx_data.replace(qpos=state.q, qvel=state.qd)
-        mjx_data = mjx.forward(load_mjx_model(), mjx_data)
+        mjx_data = mjx.forward(self.mjx_model, mjx_data)
         return ReacherObs(
             fingertip_pos=mjx_data.xpos[self.fingertip_id,:2],
             fingertip_vel=mjx_data.cvel[self.fingertip_id, 3:5],
             body0_pos=mjx_data.xpos[self.body0_id,:2],
-            body0_rot=_quat_to_angle(mjx_data.xquat[self.body0_id,:4]),
+            body0_rot=MujocoEnvironment._quat_to_angle(mjx_data.xquat[self.body0_id,:4]),
             body0_rot_vel=mjx_data.cvel[self.body0_id, 2],
             body1_pos=mjx_data.xpos[self.body1_id,:2],
-            body1_rot=_quat_to_angle(mjx_data.xquat[self.body1_id,:4]),
+            body1_rot=MujocoEnvironment._quat_to_angle(mjx_data.xquat[self.body1_id,:4]),
             body1_rot_vel=mjx_data.cvel[self.body1_id, 2]
         )
     
@@ -209,14 +181,14 @@ class ReacherEnv(Environment):
         return image
     
     @jax.jit
-    def render(self, config: RenderConfig, state: ReacherState) -> jax.Array:
+    def render(self, config: RenderConfig, state: MujocoState) -> jax.Array:
         if type(config) == ImageRender or type(config) == SequenceRender:
             obs = ReacherEnv.observe(self, state)
             return self._render_image(obs, config.width, config.height)
         elif type(config) == HtmlRender:
             if data.qpos.ndim == 1:
                 data = jax.tree_map(lambda x: x[None], data)
-            return brax_render(load_mj_model(), data)
+            return MujocoEnvironment.brax_render(ReacherEnv.mj_model, data)
         
 
 # def compute_goal_rot(action_pos):
