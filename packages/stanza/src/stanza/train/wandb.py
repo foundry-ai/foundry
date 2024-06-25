@@ -2,16 +2,25 @@ import jax
 import functools
 import wandb
 import numpy as np
+import tempfile
+import ffmpegio
 
 from functools import partial
 from stanza.train.reporting import Video, Image, as_log_dict
 from pathlib import Path
 
-def _map_reportable(x):
+def map_reportable(x):
     if isinstance(x, Image):
         return wandb.Image(np.array(x.data))
     elif isinstance(x, Video):
-        return wandb.Video(x.data)
+        array = np.array(x.data)
+        array = np.nan_to_num(array, copy=False, 
+                            nan=0, posinf=0, neginf=0)
+        if array.dtype == np.float32 or array.dtype == np.float64:
+            array = (array*255).clip(0, 255).astype(np.uint8)
+        f = tempfile.mktemp() + ".mp4"
+        ffmpegio.video.write(f, x.fps, array)
+        return wandb.Video(f)
     return None
 
 def _log_cb(run, iteration, data_dict, reportable_dict):
@@ -19,7 +28,7 @@ def _log_cb(run, iteration, data_dict, reportable_dict):
     run = run if run is not None else wandb.run
     items = dict({k: v.item() for (k, v) in data_dict.items()})
     for k, v in reportable_dict.items():
-        v = _map_reportable(v)
+        v = map_reportable(v)
         items[k] = v
     run.log(items, step=iteration)
 

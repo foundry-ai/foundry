@@ -1,4 +1,4 @@
-from typing import Generic, TypeVar, Mapping, Tuple, Callable
+from typing import Generic, TypeVar, Mapping, Tuple, Callable, Any
 
 from stanza.dataclasses import dataclass
 from stanza.data import Data
@@ -56,6 +56,14 @@ image_class_datasets : DatasetRegistry[ImageClassDataset] = DatasetRegistry[Data
 where label is one-hot encoded."""
 image_class_datasets.extend("mnist", from_module(".mnist", "datasets"))
 image_class_datasets.extend("cifar", from_module(".cifar", "datasets"))
+
+
+datasets : DatasetRegistry[Dataset] = DatasetRegistry[Dataset]()
+datasets.extend("image_class", image_class_datasets)
+datasets.extend("env", env_datasets)
+
+def load(path: str, /, **kwargs : dict[str, Any]):
+    return datasets.create(path, **kwargs)
 
 __all__ = [
     "Dataset",

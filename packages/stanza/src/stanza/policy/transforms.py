@@ -140,7 +140,6 @@ class ChunkedPolicy(Policy):
                     lambda x, y: jnp.roll(x, -1, axis=0).at[-1,...].set(y), 
                     policy_state.input_chunk, (input.observation, input.state)
                 )
-
         def reevaluate():
             output = self.policy(PolicyInput(
                 obs_batch,

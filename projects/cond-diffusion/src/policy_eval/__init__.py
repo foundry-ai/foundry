@@ -1,17 +1,26 @@
 from stanza import dataclasses
+from stanza.dataclasses import dataclass, replace
 from stanza.runtime import ConfigProvider, command
+from stanza.datasets import env_datasets
+from stanza.random import PRNGSequence
+from stanza.env import ImageRender
+from stanza.train.reporting import Video
 
 from common import net, TrainConfig, AdamConfig, SGDConfig
 
-from stanza.datasets import env_datasets
-from stanza.random import PRNGSequence
+from jax.experimental import mesh_utils
+from jax.sharding import PositionalSharding
+
 from functools import partial
+
 
 import stanza.policy
 import stanza.util
-
 import stanza.util
+import stanza.train.reporting
+import stanza.train.wandb
 import jax
+import jax.numpy as jnp
 import functools
 import wandb
 import stanza
@@ -32,89 +41,123 @@ class PolicyConfig:
 @dataclasses.dataclass
 class Config:
     seed: int = 42
-    dataset: str = "pusht/chen"
-    obs_length: int = 2
+    dataset: str = "pusht/chi"
+    obs_length: int = 1
     action_length: int = 8
     policy: PolicyConfig = None
+    timesteps: int = 300
 
     @staticmethod
     def parse(config: ConfigProvider) -> "Config":
         defaults = Config()
-        res = config.get_dataclass(defaults)
+
         from . import diffusion_policy
         from . import diffusion_estimator
-        policy = config.get_cases("policy", "The policy to use.", {
-            "diffusion_estimator": diffusion_estimator.DiffusionEstimatorConfig(),
-            "diffusion_policy": diffusion_policy.DiffusionPolicyConfig()
-        }, "diffusion_estimator")
-        return dataclasses.replace(res,
-            policy=policy
-        )
+        # Check for a default policy override
+        policy = config.get("policy", str, default=None)
+        if policy == "diffusion_policy":
+            defaults = replace(defaults, policy=diffusion_policy.DiffusionPolicyConfig())
+        elif policy == "diffusion_estimator":
+            defaults = replace(defaults, policy=diffusion_estimator.DiffusionEstimatorConfig())
+        else:
+            defaults = replace(defaults, policy=diffusion_estimator.DiffusionEstimatorConfig())
+        return config.get_dataclass(defaults)
 
 @dataclasses.dataclass
 class Sample:
     observations: jax.Array
     actions: jax.Array
 
-def process_data(config, data):
+def process_data(config, env, data):
     data = data.chunk(
-        config.action_length + config.obs_length - 1
+        config.action_length + config.obs_length
     )
     def process_chunk(sample):
-        obs = (sample.chunk.observation \
-            if sample.chunk.observation is not None else \
-            sample.chunk.state
-        )[:config.obs_length]
+        obs = sample.elements.state
+        obs = jax.tree.map(lambda x: x[:config.obs_length], obs)
+        obs = jax.vmap(env.observe)(obs)
         return Sample(
             obs,
-            sample.chunk.action[config.obs_length - 1:]
+            sample.elements.action[-config.action_length:]
         )
     return data.map(process_chunk)
 
-def eval(env, policy, ref_traj, rng_key):
-    T = stanza.util.axis_size(ref_traj, 0)
+def eval(env, policy, T, x0, rng_key):
     r = stanza.policy.rollout(
         env.step, x0, 
-        policy, env.observe,
+        policy, observe=env.observe,
         policy_rng_key=rng_key,
         length=T
     )
     pre_states, post_states = (
-        jax.tree_util.map(lambda x: x[:-1], r.states),
-        jax.tree_util.map(lambda x: x[1:], r.states)
+        jax.tree.map(lambda x: x[:-1], r.states),
+        jax.tree.map(lambda x: x[1:], r.states)
     )
     rewards = jax.vmap(env.reward)(pre_states, r.actions, post_states)
-    return jnp.max(rewards, axis=-1)
+    video = jax.vmap(
+        lambda x: (env.render(ImageRender(64, 64), x)*255).astype(jnp.uint8)
+    )(r.states)
+    return jnp.max(rewards, axis=-1), video
 
-def evaluate(env, test_data, policy, rng_key):
-    print(jax.tree_map(lambda x: x.shape, test_data.as_pytree()))
-    x0s = jax.tree_util.tree_map(
-        lambda x: x[0], test_data.as_pytree()
-    )
+def evaluate(env, x0s, T, policy, rng_key):
     N = stanza.util.axis_size(x0s, 0)
-    return jax.vmap(partial(eval, env, policy))(
+
+    # shard the x0s
+    sharding = PositionalSharding(
+        mesh_utils.create_device_mesh((8,), jax.devices()[:8])
+    ).reshape((8,1))
+    x0s = jax.lax.with_sharding_constraint(x0s, sharding)
+
+    rewards, videos = jax.vmap(partial(eval, env, policy, T))(
         x0s,
         jax.random.split(rng_key, N)
     )
+    # reshape all the videos into a single video
+    video = jax.vmap(
+        lambda x: stanza.canvas.image_grid(x), 
+        in_axes=1, out_axes=0
+    )(videos)
+    return {
+        "mean_reward": jnp.mean(rewards),
+        "std_reward": jnp.std(rewards),
+        "test_demonstrations": Video(video)
+    }
 
 def main(config : Config):
     logger.info(f"Running {config}")
+    rng = PRNGSequence(jax.random.key(config.seed))
 
     logger.info(f"Loading dataset [blue]{config.dataset}[/blue]")
     dataset = env_datasets.create(config.dataset)
     env = dataset.create_env()
-    train_data = process_data(config, dataset.splits["train"])
-    test_data = dataset.splits["test"].uniform_truncated(300)
+    train_data = process_data(config, env, dataset.splits["train"])
+
+    test_data = dataset.splits["test"].truncate(1)
+    x0s = test_data.map(lambda x: jax.tree.map(lambda x: x[0], x.state)).as_pytree()
+    eval = functools.partial(evaluate, env, x0s, config.timesteps)
+
     wandb_run = wandb.init(
         project="policy_eval",
         config=stanza.util.flatten_to_dict(config)[0]
     )
     logger.info(f"Logging to [blue]{wandb_run.url}[/blue]")
-    eval = functools.partial(evaluate, env, test_data)
-    policy = config.policy.train_policy(wandb_run, train_data, eval)
+
+    policy = config.policy.train_policy(
+        wandb_run, train_data, eval, rng
+    )
     logger.info(f"Performing final evaluation...")
-    stats = jax.jit(partial(eval,policy))(jax.random.key(42))
-    wandb_run.summary.update(stanza.util.flatten_to_dict(stats)[0])
+
+    output = jax.jit(partial(eval,policy))(jax.random.key(42))
+    # get the metrics and final reportables
+    # from the eval output
+    metrics, reportables = stanza.train.reporting.as_log_dict(output)
+    for k, v in metrics.items():
+        logger.info(f"{k}: {v}")
+    wandb_run.summary.update(metrics)
+    wandb_run.log({
+        k: stanza.train.wandb.map_reportable(v)
+        for (k,v) in reportables.items()
+    })
     wandb_run.finish()
 
 @command

@@ -15,17 +15,19 @@ import zarr
 
 @dataclass
 class PushTDataset(EnvDataset[Step]):
-    def create_env(self):
+    def create_env(self, obs="positional", **kwargs):
         from stanza.env.mujoco.pusht import (
             PushTEnv,
             PositionalControlTransform,
-            PositionalObsTransform
+            PositionalObsTransform,
+            KeypointObsTransform
         )
         from stanza.policy.transforms import chain_transforms
         env = PushTEnv()
         env = chain_transforms(
             PositionalControlTransform(),
-            PositionalObsTransform()
+            KeypointObsTransform()
+            # PositionalObsTransform()
         ).transform_env(env)
         return env
 
@@ -75,7 +77,7 @@ def load_pytorch_pusht_data(zarr_path, max_trajectories=None):
         )
     return SequenceData(PyTreeData(steps), PyTreeData(infos))
 
-def load_chen_pusht_data(max_trajectories=None, quiet=False):
+def load_chi_pusht_data(max_trajectories=None, quiet=False):
     zip_path = cache_path("pusht", "pusht_data.zarr.zip")
     download(zip_path,
         job_name="PushT (Diffusion Policy Data)",
@@ -85,13 +87,16 @@ def load_chen_pusht_data(max_trajectories=None, quiet=False):
     )
     return load_pytorch_pusht_data(zip_path, max_trajectories)
 
-def load_chen_pusht(quiet=False, train_trajs=None, test_trajs=10):
+def load_chi_pusht(quiet=False, train_trajs=None, test_trajs=10):
+    data = load_chi_pusht_data()
+    train = data.slice(0, len(data) - 16)
+    test = data.slice(len(data) - 16, 16)
     return PushTDataset(
-        splits={},
+        splits={"train": train, "test": test},
         normalizers={},
         transforms={}
     )
 
 datasets = DatasetRegistry[PushTDataset]()
-datasets.register("", load_chen_pusht)
-datasets.register("chen", load_chen_pusht)
+datasets.register(load_chi_pusht)
+datasets.register("chi", load_chi_pusht)

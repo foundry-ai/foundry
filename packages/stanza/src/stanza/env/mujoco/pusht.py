@@ -4,6 +4,7 @@ from stanza.env import (
     HtmlRender, Environment,
     EnvironmentRegistry
 )
+from stanza.env.mujoco
 from stanza.policy.transforms import Transform, chain_transforms
 from stanza.policy import Policy
 from stanza.dataclasses import dataclass, field
@@ -28,14 +29,14 @@ BLOCK_SCALE=30/252
 COM = 0.5*(BLOCK_SCALE/2) + 0.5*(2.5*BLOCK_SCALE)
 XML = f"""
 <mujoco>
-<option timestep="0.005"/>
+<option timestep="0.05"/>
 <worldbody>
     # The manipulator agent body
     <body pos="0.5 0.5 0" name="agent">
         # TODO: Replace with cylinder when MJX supports
         <geom type="sphere" size="{AGENT_RADIUS:.4}" pos="0 0 {AGENT_RADIUS:.4}" mass="0.1" rgba="0.1 0.1 0.9 1"/>
-        <joint type="slide" axis="1 0 0" damping="0.1" stiffness="0" ref="0.5"/>
-        <joint type="slide" axis="0 1 0" damping="0.1" stiffness="0" ref="0.5"/>
+        <joint type="slide" axis="1 0 0" damping="0.1" stiffness="0" ref="0.5" name="agent_x"/>
+        <joint type="slide" axis="0 1 0" damping="0.1" stiffness="0" ref="0.5" name="agent_y"/>
     </body>
     # The block body
     <body pos="-0.5 -0.5 0" name="block">
@@ -57,6 +58,10 @@ XML = f"""
     <geom pos="0 -1 0" size="2 2 0.1"  xyaxes="0 0 1 1 0 0" type="plane"/>
     <geom pos="0 1 0" size="2 2 0.1"   xyaxes="1 0 0 0 0 1" type="plane"/>
 </worldbody>
+<actuator>
+    <motor ctrllimited="true" ctrlrange="-10.0 10.0" gear="1.0" joint="agent_x"/>
+    <motor ctrllimited="true" ctrlrange="-10.0 10.0" gear="1.0" joint="agent_y"/>
+</actuator>
 </mujoco>
 """
 
@@ -112,10 +117,6 @@ class PushTKeypointRelObs:
     rel_block_pos: jnp.array
     rel_block_end: jnp.array
 
-@dataclass
-class PushTState:
-    q: jax.Array
-    qd: jax.Array
 
 @dataclass
 class PushTEnv(Environment):
@@ -201,12 +202,13 @@ class PushTEnv(Environment):
         data = mjx.make_data(load_mjx_model())
         data = data.replace(qpos=state.q, qvel=state.qd)
         if action is not None:
-            xfrc_applied = data.xfrc_applied.at[1,:2].set(action)
-            data = data.replace(xfrc_applied=xfrc_applied)
+            data = data.replace(ctrl=action)
+
         @jax.jit
         def step_fn(_, data):
             return mjx.step(load_mjx_model(), data)
-        data = jax.lax.fori_loop(0, 6, step_fn, data)
+        data = mjx.step(load_mjx_model(), data)
+        # data = jax.lax.fori_loop(0, 6, step_fn, data)
         return PushTState(data.qpos, data.qvel)
     
     @jax.jit
@@ -343,17 +345,24 @@ class PositionalControlPolicy(Policy):
 
 @dataclass
 class PositionalControlEnv(EnvWrapper):
-    k_p : float = 10
+    k_p : float = 50
     k_v : float = 2
 
     def step(self, state, action, rng_key=None):
+        obs = PushTEnv.observe(self.base, state)
         if action is not None:
-            obs = PushTEnv.observe(self.base, state)
             a = self.k_p * (action - obs.agent_pos) + self.k_v * (-obs.agent_vel)
-        else:
+        else: 
             a = jnp.zeros((2,))
-        res = self.base.step(state, a, rng_key)
-        return res
+        return self.base.step(state, a, None)
+        # def step_fn(_, state):
+        #     obs = PushTEnv.observe(self.base, state)
+        #     if action is not None:
+        #         a = self.k_p * (action - obs.agent_pos) + self.k_v * (-obs.agent_vel)
+        #     else: 
+        #         a = jnp.zeros((2,))
+        #     return self.base.step(state, a, None)
+        # return jax.lax.fori_loop(0, 6, step_fn, state)
 
 @dataclass
 class PositionalObsTransform(Transform):

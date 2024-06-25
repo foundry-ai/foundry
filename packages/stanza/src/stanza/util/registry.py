@@ -38,7 +38,11 @@ class Registry(Generic[T], BuilderSet[T]):
                 raise ValueError("Cannot override registry")
         registry[""] = builders
 
-    def register(self, path: str, builder: Builder):
+    def register(self, path: str, builder: Builder = None, /):
+        if builder is None:
+            builder = path
+            path = None
+        if path is None: path = ""
         self.extend(path, SingleBuilder(builder))
 
     def create(self, path: str, /, **kwargs) -> T:

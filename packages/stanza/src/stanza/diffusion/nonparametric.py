@@ -49,9 +49,8 @@ def nw_cond_diffuser(cond, data, schedule, kernel, h):
         one_minus_alphas_prod = 1 - schedule.alphas_cumprod[t]
         def comb_kernel(sample):
             x, y_hat_diff = sample
-            x = jax.tree_map(lambda x: x/h, x)
-            # Use one_minus_alphas_prod as the kernel bandwidth for the noised value
-            y_diff = jax.tree_map(lambda x: x/one_minus_alphas_prod, y_hat_diff)
+            x = jax.tree.map(lambda x: x/h, x)
+            y_diff = jax.tree.map(lambda x: x/one_minus_alphas_prod, y_hat_diff)
             return kernel(x) + log_gaussian_kernel(y_diff)
         x, y = data
         y_hat = jax.tree_map(lambda x: x*sqrt_alphas_prod, y)

@@ -103,12 +103,8 @@ def command(fn: Callable):
     return main
 
 class ConfigProvider(abc.ABC):
-    def get(self, name: str, type: Type, desc: str, default=MISSING): ...
-    def scope(self, name: str, desc: str) -> "ConfigProvider": ...
-
-    # A method that returns a ConfigProvider
-    # that only get populated if active is True
-    def case(self, name: str, desc: str, active: bool) -> "ConfigProvider": ...
+    def get(self, name: str, type: Type, desc: str="", default=MISSING): ...
+    def scope(self, name: str, desc: str="") -> "ConfigProvider": ...
 
     def get_dataclass(self, default, ignore=set(), flatten=set()):
         vals = {}
@@ -127,16 +123,6 @@ class ConfigProvider(abc.ABC):
                 vals[field.name] = self.get(field.name, field.type, "", default_val)
             elif default_val is MISSING: raise RuntimeError(f"Unable to parse {field.name}")
         return replace(default, **vals)
-
-    def get_cases(self, name: str, desc: str, cases: dict, default: str):
-        case_choice = self.get(name, str, desc, default)
-        vals = {}
-        for case, c in cases.items():
-            if hasattr(c, "parse"):
-                vals[case] = c.parse(self.scope(name, ""))
-            else:
-                vals[case] = c
-        return vals.get(case_choice, None)
 
 class Arguments:
     def __init__(self, args):
@@ -162,7 +148,7 @@ class ArgumentsProvider(ConfigProvider):
         self._cases = cases or []
         self._active = active
 
-    def get(self, name: str, type: str, desc: str, default=MISSING):
+    def get(self, name: str, type: str, desc: str = "", default=MISSING):
         if self._prefix:
             name = f"{self._prefix}_{name}"
 
@@ -182,9 +168,6 @@ class ArgumentsProvider(ConfigProvider):
                 return arg == "true" or arg == "t" or arg == "y"
             return type(arg)
     
-    def scope(self, name: str, desc: str) -> "ConfigProvider":
+    def scope(self, name: str, desc: str="") -> "ConfigProvider":
         prefix = name if not self._prefix else f"{self._prefix}_{name}"
         return ArgumentsProvider(self._args, prefix)
-    
-    def case(self, name: str, desc: str, active: bool):
-        return ArgumentsProvider(self._args, self._prefix, active, self._cases + [name])
