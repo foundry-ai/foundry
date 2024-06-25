@@ -90,6 +90,7 @@ def rollout(model : Model, state0 : State,
         length = length + 1
     if observe is None:
         observe = lambda x: x
+    
 
     def scan_fn(comb_state, _):
         env_state, policy_state, policy_rng, model_rng = comb_state
