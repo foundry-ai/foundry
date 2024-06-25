@@ -57,3 +57,34 @@ def flatten_to_dict(pytree, *, join='.', prefix=None,
     d = {path: node for path, node in zip(paths, nodes) if node is not None}
     uf = lambda d: jax.tree_util.tree_unflatten(treedef, [d.get(k,None) for k in paths])
     return d, uf
+
+from functools import _NOT_FOUND
+from typing import GenericAlias
+
+class jax_cached_property:
+    def __init__(self, func):
+        self.func = func
+        self.attrname = None
+        self.__doc__ = func.__doc__
+        self.cache = {}
+
+    def __set_name__(self, owner, name):
+        if self.attrname is None:
+            self.attrname = name
+        elif name != self.attrname:
+            raise TypeError(
+                "Cannot assign the same jax_cached_property to two different names "
+                f"({self.attrname!r} and {name!r})."
+            )
+
+    def __get__(self, instance, owner=None):
+        if instance is None:
+            return self
+        treedef = jax.tree.structure(instance)
+        val = self.cache.get(treedef, _NOT_FOUND)
+        if val is _NOT_FOUND:
+            val = self.func(instance)
+            self.cache[treedef] = val
+        return val
+
+    __class_getitem__ = classmethod(GenericAlias)

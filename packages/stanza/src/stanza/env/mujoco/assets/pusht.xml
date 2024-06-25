@@ -1,0 +1,36 @@
+
+<mujoco>
+<option timestep="0.05"/>
+<worldbody>
+    # The manipulator agent body
+    <body pos="0.5 0.5 0" name="agent">
+        # TODO: Replace with cylinder when MJX supports
+        <geom type="sphere" size="0.05952" pos="0 0 0.05952" mass="0.1" rgba="0.1 0.1 0.9 1"/>
+        <joint type="slide" axis="1 0 0" damping="0.1" stiffness="0" ref="0.5" name="agent_x"/>
+        <joint type="slide" axis="0 1 0" damping="0.1" stiffness="0" ref="0.5" name="agent_y"/>
+    </body>
+    # The block body
+    <body pos="-0.5 -0.5 0" name="block">
+        # The horizontal box
+        <geom type="box" size="0.2381 0.05952380952380952 0.5" 
+            pos="0 -0.05952 0.5" mass="0.03" rgba="0.467 0.533 0.6 1"/>
+        # The vertical box
+        <geom type="box" size="0.05952 0.1786 0.5"
+            pos="0 -0.2976190476190476 0.5" mass="0.03" rgba="0.467 0.533 0.6 1"/>
+
+        <joint type="slide" axis="1 0 0" damping="5" stiffness="0" ref="-0.5"/>
+        <joint type="slide" axis="0 1 0" damping="5" stiffness="0" ref="-0.5"/>
+        # Hinge through the block COM
+        <joint type="hinge" axis="0 0 1" damping="0.3" stiffness="0" pos="0 -0.1786 0"/>
+    </body>
+    # The boundary planes
+    <geom pos="-1 0 0" size="2 2 0.1"  xyaxes="0 1 0 0 0 1" type="plane"/>
+    <geom pos="1 0 0" size="2 2 0.1"   xyaxes="0 0 1 0 1 0" type="plane"/>
+    <geom pos="0 -1 0" size="2 2 0.1"  xyaxes="0 0 1 1 0 0" type="plane"/>
+    <geom pos="0 1 0" size="2 2 0.1"   xyaxes="1 0 0 0 0 1" type="plane"/>
+</worldbody>
+<actuator>
+    <motor ctrllimited="true" ctrlrange="-10.0 10.0" gear="1.0" joint="agent_x"/>
+    <motor ctrllimited="true" ctrlrange="-10.0 10.0" gear="1.0" joint="agent_y"/>
+</actuator>
+</mujoco>

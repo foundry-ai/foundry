@@ -25,47 +25,6 @@ import jax.random
 GOAL_POS = jnp.array([0, 0])
 GOAL_ROT = jnp.array(-jnp.pi/4)
 
-AGENT_RADIUS=15/252
-BLOCK_SCALE=30/252
-COM = 0.5*(BLOCK_SCALE/2) + 0.5*(2.5*BLOCK_SCALE)
-XML = f"""
-<mujoco>
-<option timestep="0.05"/>
-<worldbody>
-    # The manipulator agent body
-    <body pos="0.5 0.5 0" name="agent">
-        # TODO: Replace with cylinder when MJX supports
-        <geom type="sphere" size="{AGENT_RADIUS:.4}" pos="0 0 {AGENT_RADIUS:.4}" mass="0.1" rgba="0.1 0.1 0.9 1"/>
-        <joint type="slide" axis="1 0 0" damping="0.1" stiffness="0" ref="0.5" name="agent_x"/>
-        <joint type="slide" axis="0 1 0" damping="0.1" stiffness="0" ref="0.5" name="agent_y"/>
-    </body>
-    # The block body
-    <body pos="-0.5 -0.5 0" name="block">
-        # The horizontal box
-        <geom type="box" size="{2*BLOCK_SCALE:.4} {0.5*BLOCK_SCALE} 0.5" 
-            pos="0 -{0.5*BLOCK_SCALE:.4} 0.5" mass="0.03" rgba="0.467 0.533 0.6 1"/>
-        # The vertical box
-        <geom type="box" size="{0.5*BLOCK_SCALE:.4} {1.5*BLOCK_SCALE:.4} 0.5"
-            pos="0 -{2.5*BLOCK_SCALE} 0.5" mass="0.03" rgba="0.467 0.533 0.6 1"/>
-
-        <joint type="slide" axis="1 0 0" damping="5" stiffness="0" ref="-0.5"/>
-        <joint type="slide" axis="0 1 0" damping="5" stiffness="0" ref="-0.5"/>
-        # Hinge through the block COM
-        <joint type="hinge" axis="0 0 1" damping="0.3" stiffness="0" pos="0 {-COM:.4} 0"/>
-    </body>
-    # The boundary planes
-    <geom pos="-1 0 0" size="2 2 0.1"  xyaxes="0 1 0 0 0 1" type="plane"/>
-    <geom pos="1 0 0" size="2 2 0.1"   xyaxes="0 0 1 0 1 0" type="plane"/>
-    <geom pos="0 -1 0" size="2 2 0.1"  xyaxes="0 0 1 1 0 0" type="plane"/>
-    <geom pos="0 1 0" size="2 2 0.1"   xyaxes="1 0 0 0 0 1" type="plane"/>
-</worldbody>
-<actuator>
-    <motor ctrllimited="true" ctrlrange="-10.0 10.0" gear="1.0" joint="agent_x"/>
-    <motor ctrllimited="true" ctrlrange="-10.0 10.0" gear="1.0" joint="agent_y"/>
-</actuator>
-</mujoco>
-"""
-
 @dataclass
 class PushTObs:
     agent_pos: jnp.array
@@ -95,7 +54,6 @@ class PushTKeypointRelObs:
     agent_block_end: jnp.array
     rel_block_pos: jnp.array
     rel_block_end: jnp.array
-
 
 @dataclass
 class PushTEnv(MujocoEnvironment):
