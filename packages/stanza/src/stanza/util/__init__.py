@@ -61,7 +61,7 @@ def flatten_to_dict(pytree, *, join='.', prefix=None,
 from functools import _NOT_FOUND
 from typing import GenericAlias
 
-class jax_cached_property:
+class jax_static_property:
     def __init__(self, func):
         self.func = func
         self.attrname = None
