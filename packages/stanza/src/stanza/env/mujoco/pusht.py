@@ -162,7 +162,7 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
                 2, 2
             )
             image = canvas.paint(image, target, world)
-            return (255*image).astype(jnp.uint8)
+            return image
         else:
             raise ValueError("Unsupported render config")
 

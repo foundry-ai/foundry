@@ -117,7 +117,7 @@ class DemonstrationCollector:
                 (d < len(self.demonstrations)):
             dem = self.demonstrations[d]
             T = min(T, len(dem) - 1)
-            state = self.demonstrations[d][T].state
+            state = self.demonstrations[d][T].reduced_state
         elif self.curr_state is not None and self.curr_demonstration is not None:
             T = min(T, len(self.curr_demonstration))
             if T < len(self.curr_demonstration):
