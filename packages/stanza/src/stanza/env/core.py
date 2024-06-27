@@ -105,7 +105,6 @@ class EnvWrapper(Environment[State, ReducedState, Action]):
         return self.base.render(state, config)
 
     def __getattr__(self, name):
-        print(name)
         return getattr(self.base, name)
 
 @dataclass

@@ -46,10 +46,6 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
     world_scale : float = field(default=2, pytree_node=False)
 
     @jax_static_property
-    def planar(self):
-        return True
-
-    @jax_static_property
     def xml(self):
         with (resources.files(assets) / "pusht.xml").open("r") as f:
             xml = f.read()

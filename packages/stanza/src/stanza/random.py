@@ -13,7 +13,6 @@ def key_or_seed(key_or_seed):
          jax.dtypes.prng_key))):
         key_or_seed = key_or_seed
     else:
-        print(key_or_seed.dtype == jax.dtypes.prng_key)
         raise ValueError("Not key or seed!")
     return key_or_seed
 

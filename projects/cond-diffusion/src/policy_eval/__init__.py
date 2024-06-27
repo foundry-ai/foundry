@@ -1,7 +1,7 @@
 from stanza import dataclasses
 from stanza.dataclasses import dataclass, replace
 from stanza.runtime import ConfigProvider, command
-from stanza.datasets import env_datasets
+from stanza.datasets.env import datasets
 from stanza.random import PRNGSequence
 from stanza.env import ImageRender
 from stanza.train.reporting import Video
@@ -73,8 +73,8 @@ def process_data(config, env, data):
         config.action_length + config.obs_length
     )
     def process_chunk(sample):
-        obs = sample.elements.state
-        obs = jax.tree.map(lambda x: x[:config.obs_length], obs)
+        obs = jax.tree.map(lambda x: x[:config.obs_length], sample.elements.reduced_state)
+        obs = jax.vmap(env.full_state)(obs)
         obs = jax.vmap(env.observe)(obs)
         return Sample(
             obs,
@@ -95,7 +95,7 @@ def eval(env, policy, T, x0, rng_key):
     )
     rewards = jax.vmap(env.reward)(pre_states, r.actions, post_states)
     video = jax.vmap(
-        lambda x: (env.render(ImageRender(64, 64), x)*255).astype(jnp.uint8)
+        lambda x: (env.render(x, ImageRender(64, 64))*255).astype(jnp.uint8)
     )(r.states)
     return jnp.max(rewards, axis=-1), video
 
@@ -103,10 +103,10 @@ def evaluate(env, x0s, T, policy, rng_key):
     N = stanza.util.axis_size(x0s, 0)
 
     # shard the x0s
-    sharding = PositionalSharding(
-        mesh_utils.create_device_mesh((8,), jax.devices()[:8])
-    ).reshape((8,1))
-    x0s = jax.lax.with_sharding_constraint(x0s, sharding)
+    # sharding = PositionalSharding(
+    #     mesh_utils.create_device_mesh((8,), jax.devices()[:8])
+    # ).reshape((8,1))
+    # x0s = jax.lax.with_sharding_constraint(x0s, sharding)
 
     rewards, videos = jax.vmap(partial(eval, env, policy, T))(
         x0s,
@@ -128,12 +128,16 @@ def main(config : Config):
     rng = PRNGSequence(jax.random.key(config.seed))
 
     logger.info(f"Loading dataset [blue]{config.dataset}[/blue]")
-    dataset = env_datasets.create(config.dataset)
+    dataset = datasets.create(config.dataset)
     env = dataset.create_env()
     train_data = process_data(config, env, dataset.splits["train"])
 
     test_data = dataset.splits["test"].truncate(1)
-    x0s = test_data.map(lambda x: jax.tree.map(lambda x: x[0], x.state)).as_pytree()
+    x0s = test_data.map(
+        lambda x: env.full_state(
+            jax.tree.map(lambda x: x[0], x.reduced_state)
+        )
+    ).as_pytree()
     eval = functools.partial(evaluate, env, x0s, config.timesteps)
 
     wandb_run = wandb.init(

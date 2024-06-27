@@ -86,7 +86,6 @@ def _load_robomimic_hdf5(hdf5_path, max_trajectories=None):
         states = jnp.array([]).reshape(0,dim_state)
         dim_action = jnp.asarray(data["demo_0"]["actions"][:,:]).shape[-1]
         actions = jnp.array([]).reshape(0,dim_action)
-        print(dim_state, dim_action)
 
 
         start_idx = [0]
