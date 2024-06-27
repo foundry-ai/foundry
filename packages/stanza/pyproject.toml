@@ -27,7 +27,8 @@ dependencies = [
     "mujoco-mjx>=3.1.6",
     "shapely>=2.0.4",
     "robosuite>=1.4",
-    "brax>=0.10.5"
+    "brax>=0.10.5",
+    "sentencepiece>=0.2.0",
 ]
 requires-python = ">=3.12"
 readme = "README.md"

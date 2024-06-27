@@ -356,8 +356,8 @@ class TransformedRenderable(Renderable):
                 c, s = jnp.cos(self.rotation), jnp.sin(self.rotation)
                 M = jnp.array(((c,-s),(s,c))) if self.rotation is not None else jnp.eye(2)
                 M_inv = jnp.array(((c,s),(-s,c))) if self.rotation is not None else jnp.eye(2)
-                pixel_metric_hessian = M_inv @ pixel_metric_hessian @ M_inv.T
-                x = M @ x
+                pixel_metric_hessian = M @ pixel_metric_hessian @ M.T
+                x = M_inv @ x
             return self.renderable.color_distance(x, pixel_metric_hessian)
         # renormalize the distance
         # so that the gradient is norm 1

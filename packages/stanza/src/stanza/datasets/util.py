@@ -121,6 +121,10 @@ def extract_to(archive_path : Path, dest : Path, *,
     dest.mkdir(parents=True, exist_ok=True)
     extract(archive_path, handler, job_name=job_name, quiet=quiet)
 
+# ----------------
+# Download utility
+# ----------------
+
 def download(path, *, job_name=None,
              url=None, gdrive_id=None, md5=None, quiet=False):
     path = Path(path)
@@ -218,8 +222,3 @@ def _download_url(path, url, job_name=None, quiet=False,
                 for data in response.iter_content(block_size):
                     f.write(data)
                     pbar.update(task, advance=len(data))
-
-# def download_gdrive(path, id, quiet=False):
-#     import gdown
-#     with open(path, "wb") as f:
-#         gdown.download(id=id, output=f, quiet=quiet)

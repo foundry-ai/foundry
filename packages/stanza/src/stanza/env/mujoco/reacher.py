@@ -121,7 +121,7 @@ class ReacherEnv(MujocoEnvironment):
             qpos,
             jnp.zeros_like(qpos)
         )
-    
+
     @jax.jit
     def observe(self, state): 
         mjx_data = mjx.make_data(self.mjx_model)

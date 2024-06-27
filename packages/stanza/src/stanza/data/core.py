@@ -31,7 +31,7 @@ class DataStream(Generic[T]):
         raise NotImplementedError()
 
     # Optional to implement
-    def shuffle(self, rng_key: jax.Array) -> "DataStream[T]":
+    def shuffle(self, rng_key: jax.Array, resample=False) -> "DataStream[T]":
         raise NotImplementedError()
     
     # Optional to override
@@ -197,10 +197,6 @@ jax.tree_util.register_pytree_node(
     lambda _, c: PyTreeData(c[0])
 )
 
-@partial(jax.jit,static_argnums=(1,))
-def _shuffle(rng_key, len):
-    return jax.random.permutation(rng_key, jnp.arange(len))
-
 
 @dataclass
 class IndexedDataStream(DataStream[T]):
@@ -210,24 +206,28 @@ class IndexedDataStream(DataStream[T]):
     indices: jax.Array | None
     shuffle_key: jax.Array | None
 
+    resample : bool = field(pytree_node=False)
     batch_size: int = field(pytree_node=False)
     max_offset: int = field(pytree_node=False)
 
     @staticmethod
-    def create(data, batch_size, shuffle_key=None):
+    def create(data, batch_size, shuffle_key=None, resample=False):
         batch_size = min(len(data), batch_size)
         max_offset = len(data)
         max_offset = max_offset - (max_offset % batch_size)
-        if shuffle_key is not None:
+
+        if shuffle_key is not None and resample:
             r, shuffle_key = jax.random.split(shuffle_key)
             indices = jax.random.permutation(r, max_offset)
         else:
             indices = None
+
         return IndexedDataStream(
             data=data,
             offset=jnp.zeros((), dtype=jnp.uint32),
             indices=indices,
             shuffle_key=shuffle_key,
+            resaple=resample,
             batch_size=batch_size,
             max_offset=max_offset
         )
@@ -238,10 +238,14 @@ class IndexedDataStream(DataStream[T]):
     
     @partial(jax.jit, donate_argnums=(1,2,3))
     def _next(self, offset, indices, shuffle_key):
-        if indices is None:
+        if self.resample:
+            shuffle_key, r = jax.random.split(shuffle_key)
+            idxs = jax.random.randint(r, (), minval=0, maxval=self.max_offset)
+            data = jax.vmap(lambda x: self.data[x])(idxs)
+        elif indices is not None:
+            idxs = jax.lax.dynamic_slice(indices, offset[None], (self.batch_size,))
             data = self.data.slice(offset, self.batch_size).as_pytree()
         else:
-            idxs = jax.lax.dynamic_slice(indices, offset[None], (self.batch_size,))
             data = jax.vmap(lambda i: self.data[i])(idxs)
         stream = replace(self,
             offset=offset + self.batch_size,
@@ -257,7 +261,7 @@ class IndexedDataStream(DataStream[T]):
     
     @partial(jax.jit, donate_argnums=(1,2,3))
     def _reset(self, offset, indices, shuffle_key):
-        if shuffle_key is not None:
+        if self.resample:
             shuffle_key, r = jax.random.split(shuffle_key)
             indices = jax.random.permutation(shuffle_key, self.max_offset)
         else:
@@ -269,13 +273,15 @@ class IndexedDataStream(DataStream[T]):
             batch_size=self.batch_size,
             max_offset=self.max_offset
         )
-    
+
     def reset(self):
         return self._reset(self.offset, self.indices, self.shuffle_key)
 
-    def shuffle(self, rng_key: jax.Array) -> "IndexedDataStream[T]":
+    def shuffle(self, rng_key: jax.Array, resample : bool = False) -> "IndexedDataStream[T]":
         return IndexedDataStream.create(
-            self.data, self.batch_size, rng_key
+            self.data, self.batch_size,
+            shuffle_key=rng_key,
+            resample=resample
         )
 
 @dataclass

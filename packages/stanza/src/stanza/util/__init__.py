@@ -80,11 +80,41 @@ class jax_static_property:
     def __get__(self, instance, owner=None):
         if instance is None:
             return self
-        treedef = jax.tree.structure(instance)
+        nodes, treedef = jax.tree.flatten(instance)
         val = self.cache.get(treedef, _NOT_FOUND)
         if val is _NOT_FOUND:
-            val = self.func(instance)
+            # map node values to none so they can't be used
+            nodes = [None for _ in range(len(nodes))]
+            instance = jax.tree.unflatten(treedef, nodes)
+
+            with jax.ensure_compile_time_eval():
+                val = self.func(instance)
             self.cache[treedef] = val
         return val
 
     __class_getitem__ = classmethod(GenericAlias)
+
+from weakref import WeakKeyDictionary
+
+
+STATIC_CACHE_MAP = WeakKeyDictionary
+
+class jax_static_cache:
+    def __init__(self, func):
+        self.func = func
+        if func not in STATIC_CACHE_MAP:
+            self.cache = {}
+            STATIC_CACHE_MAP[func] = self.cache
+        else:
+            self.cache = STATIC_CACHE_MAP[func]
+
+    def __call__(self, *args, **kwargs):
+        nodes, treedef = jax.tree.flatten((args, kwargs))
+
+        val = self.cache.get(treedef, _NOT_FOUND)
+        if val is _NOT_FOUND:
+            # map node values to none so they can't be used
+            nodes = [None for _ in range(len(nodes))]
+            args, kwargs = jax.tree.unflatten(treedef, nodes)
+            val = self.func(args, kwargs)
+        return val

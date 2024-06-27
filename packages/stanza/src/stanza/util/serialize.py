@@ -14,7 +14,6 @@ def pack_treedef(treedef):
 def unpack_treedef(treedef_packed):
     pass
 
-
 def _zarr_keystr(path):
     pass
 

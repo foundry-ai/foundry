@@ -15,7 +15,7 @@ I = TypeVar('I')
 # use this as the element type
 @dataclass
 class Step:
-    state: jax.Array
+    reduced_state: jax.Array
     observation: jax.Array
     action: jax.Array
 

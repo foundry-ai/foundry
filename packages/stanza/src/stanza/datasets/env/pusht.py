@@ -1,13 +1,13 @@
 from stanza.dataclasses import dataclass, replace
-from stanza.datasets import EnvDataset
 from stanza.datasets import DatasetRegistry
+from stanza.datasets.env import EnvDataset
 
 from stanza.data import PyTreeData
 from stanza.data.sequence import (
     SequenceInfo, SequenceData, Step
 )
 
-from .util import download, cache_path
+from ..util import download, cache_path
 
 import jax
 import jax.numpy as jnp
@@ -32,7 +32,7 @@ class PushTDataset(EnvDataset[Step]):
         return env
 
 def load_pytorch_pusht_data(zarr_path, max_trajectories=None):
-    from stanza.env.mujoco.pusht import PushTState, COM
+    from stanza.env.mujoco import SystemState
     with zarr.open(zarr_path) as zf:
         if max_trajectories is None:
             max_trajectories = len(zf["meta/episode_ends"])
@@ -60,18 +60,24 @@ def load_pytorch_pusht_data(zarr_path, max_trajectories=None):
                 [jnp.cos(block_rot), -jnp.sin(block_rot)],
                 [jnp.sin(block_rot), jnp.cos(block_rot)]
             ])
-            com = jnp.array([0, -COM])
+            block_scale = 30/252
+            com = 0.5*(block_scale/2) + 0.5*(2.5*block_scale)
+            com = jnp.array([0, -com])
             block_pos = block_pos + rotM @ com - com
 
             q = jnp.concatenate([agent_pos, block_pos, block_rot[None]])
-            return PushTState(q=q, qd=jnp.zeros_like(q))
+            return SystemState(
+                time=jnp.ones(()), 
+                qpos=q, qvel=jnp.zeros_like(q),
+                act=jnp.zeros((0,))
+            )
 
         @jax.vmap
         def convert_actions(action):
             return action / 256 - 1
 
         steps = Step(
-            state=convert_states(jnp.array(zf["data/state"][:last_end])),
+            reduced_state=convert_states(jnp.array(zf["data/state"][:last_end])),
             observation=None,
             action=convert_actions(jnp.array(zf["data/action"][:last_end]))
         )

@@ -18,9 +18,9 @@ from PIL import Image as PILImage
 from threading import Thread
 
 from stanza.data import PyTreeData
-from stanza.data.sequence import SequenceInfo, SequenceData, Step
+from stanza.data.sequence import SequenceData, Step
 from stanza.random import PRNGSequence
-from stanza.env import SequenceRender
+from stanza.env import ImageRender
 from stanza.util.ipython import STYLE
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ class DemonstrationCollector:
         s = self._reset_fn(jax.random.PRNGKey(42))
         self._sample_input = interactive_policy(self.interface.mouse_pos())
         self._step_fn(s, self._sample_input)
-        self._render_fn(SequenceRender(width, height), s)
+        self._render_fn(s, ImageRender(width, height))
 
         self.env = env
         self.fps = fps
@@ -122,7 +122,7 @@ class DemonstrationCollector:
                 state = self.curr_state
         else:
             return
-        image = self._render_fn(SequenceRender(self.width, self.height), state)
+        image = self._render_fn(state, ImageRender(self.width, self.height))
         self.interface.update(image)
     
     def _do_save(self, change):
