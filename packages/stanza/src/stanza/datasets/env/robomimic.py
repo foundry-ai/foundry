@@ -8,7 +8,7 @@ from stanza.dataclasses import dataclass
 from stanza.datasets import EnvDataset, DatasetRegistry
 import jax.numpy as jnp
 
-from .util import download, cache_path
+from ..util import download, cache_path
 
 
 # @dataclass
