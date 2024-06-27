@@ -95,9 +95,9 @@ def eval(env, policy, T, x0, rng_key):
     )
     rewards = jax.vmap(env.reward)(pre_states, r.actions, post_states)
     video = jax.vmap(
-        lambda x: (env.render(x, ImageRender(64, 64))*255).astype(jnp.uint8)
+        lambda x: env.render(x, ImageRender(64, 64))
     )(r.states)
-    return jnp.max(rewards, axis=-1), video
+    return jnp.max(rewards, axis=-1), (255*video).astype(jnp.uint8)
 
 def evaluate(env, x0s, T, policy, rng_key):
     N = stanza.util.axis_size(x0s, 0)

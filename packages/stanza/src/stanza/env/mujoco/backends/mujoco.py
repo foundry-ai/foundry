@@ -160,7 +160,7 @@ class MujocoSimulator(Simulator[SystemData]):
             data = self.pool.map(self._forward_job, steps)
             data = jax.tree.map(lambda *x: jnp.stack(x), *data)
             data = jax.tree.map(
-                lambda x: jnp.reshape(x, (*batch_shape, *x.shape[1:])),
+                lambda x: jnp.reshape(x, batch_shape +  x.shape[1:]),
                 data
             )
             return data

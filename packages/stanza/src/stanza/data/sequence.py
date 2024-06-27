@@ -41,6 +41,12 @@ class SequenceData(Generic[T,I]):
     def __getitem__(self, idx):
         seq = self.sequences[idx]
         return self.elements.slice(seq.start_idx, seq.length)
+    
+    def map_elements(self, fn):
+        return SequenceData(
+            elements=self.elements.map(fn),
+            sequences=self.sequences
+        )
 
     def slice(self, idx, len):
         start_off = self.sequences[idx].start_idx
@@ -109,7 +115,7 @@ class SequenceData(Generic[T,I]):
         t_off, i_off = jnp.array(t_off), jnp.array(i_off)
 
         return ChunkData(
-            elements=self.elements,
+            elements=self.elements.cache(),
             sequences=self.sequences,
             chunk_offsets=PyTreeData((t_off, i_off)),
             chunk_length=chunk_length

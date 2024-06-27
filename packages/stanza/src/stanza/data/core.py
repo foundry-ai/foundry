@@ -102,6 +102,11 @@ class Data(Generic[T]):
     def map(self, fn : Callable[[T], V]) -> "Mapped[V]":
         return Mapped(self, fn)
     
+    # "caching" data realizes any transformations,
+    # by default storing the realized data in memory.
+    def cache(self) -> Self:
+        return PyTreeData(self.as_pytree())
+    
 
 @dataclass
 class Mapped(Data[T]):
