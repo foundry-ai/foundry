@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DiffusionEstimatorConfig:
-    seed: int = 42
     estimator: str = "nw"
     kernel_bandwidth: float = 0.02
     diffusion_steps: int = 16

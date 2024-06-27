@@ -45,7 +45,7 @@ def load_robomimic_dataset(task, dataset_type, max_trajectories=None, quiet=Fals
                     :`'env_name'`: name of environment
                     :`'type'`: type of environment, should be a value in EB.EnvType
                     :`'env_kwargs'`: dictionary of keyword arguments to pass to environment constructor
-        SequenceData containing states and actions for all trajectories
+        SequenceData: contains states and actions for all trajectories
     """
     job_name = f"robomimic_{task}_{dataset_type}"
     hdf5_path = cache_path("robomimic", job_name)

@@ -2,6 +2,7 @@ from stanza import dataclasses
 from stanza.dataclasses import dataclass, replace
 from stanza.runtime import ConfigProvider, command
 from stanza.datasets.env import datasets
+from stanza.datasets.env import datasets
 from stanza.random import PRNGSequence
 from stanza.env import ImageRender
 from stanza.train.reporting import Video
@@ -128,6 +129,7 @@ def main(config : Config):
     rng = PRNGSequence(jax.random.key(config.seed))
 
     logger.info(f"Loading dataset [blue]{config.dataset}[/blue]")
+    dataset = datasets.create(config.dataset)
     dataset = datasets.create(config.dataset)
     env = dataset.create_env()
     train_data = process_data(config, env, dataset.splits["train"])

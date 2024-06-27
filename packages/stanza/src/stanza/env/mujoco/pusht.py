@@ -278,6 +278,7 @@ class KeypointObsTransform(Transform):
 @dataclass
 class KeypointObsEnv(EnvWrapper):
     def observe(self, state):
+        print(self.base)
         obs = self.base.observe(state)
         rotM = jnp.array([
             [jnp.cos(obs.block_rot), -jnp.sin(obs.block_rot)],
