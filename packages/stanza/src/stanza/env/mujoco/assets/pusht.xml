@@ -1,6 +1,5 @@
-
 <mujoco>
-<option timestep="0.05"/>
+<option timestep="0.01"/>
 <worldbody>
     <!-- The manipulator agent body -->
     <body pos="0 0 0" name="agent">

@@ -66,7 +66,7 @@ def setup_jax_cache():
     from jax.experimental.compilation_cache import compilation_cache as cc
     JAX_CACHE = Path(os.environ.get("JAX_CACHE", "/tmp/jax_cache"))
     JAX_CACHE.mkdir(parents=True, exist_ok=True)
-    cc.initialize_cache(JAX_CACHE)
+    cc.initialize_cache(str(JAX_CACHE))
 
 def setup_gc():
     import gc

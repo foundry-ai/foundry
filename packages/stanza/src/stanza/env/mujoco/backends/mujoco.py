@@ -85,21 +85,33 @@ class MujocoSimulator(Simulator[SystemData]):
     # data that needs to be passed to the simulator
     def _step(self, step: MujocoStep) -> SystemData:
         if step.qpos.ndim == 1:
-            step = jax.tree.map(lambda x: x[None], step)
-        # split the step batch into a list
-        steps = [jax.tree.map(lambda x: x[i], step) for i in range(step.qpos.shape[0])]
-        # submit to the thread pool
-        data = self.pool.map(self._step_job, steps)
-        # stack the results and return
-        data = jax.tree.map(lambda *x: jnp.stack(x), *data)
-        return data
+            data = self.pool.submit(self._step_job, step).result()
+            return data
+        else:
+            # split the step batch into a list
+            steps = [jax.tree.map(lambda x: x[i], step) for i in range(step.qpos.shape[0])]
+            # submit to the thread pool
+            data = self.pool.map(self._step_job, steps)
+            # stack the results and return
+            data = jax.tree.map(lambda *x: jnp.stack(x), *data)
+            return data
 
-    def step(self, state: SystemData,
-                   action : jax.Array) -> SystemData:
+    def step(self, state: MujocoState,
+                   action : jax.Array, rng_key: jax.Array) -> SystemData:
         return jax.pure_callback(
-            self._step, self.data_structure, vectorized=True
+            self._step, MujocoState(
+                self.data_structure,
+                jax.ShapeDtypeStruct(
+                    state.data.qpos.shape, state.data.qpos.dtype
+                )
+            ), 
+            MujocoStep(
+                state.data.time, state.data.qpos, state.data.qvel, 
+                state.data.act, action, state.qacc_warmstart
+            ),
+            vectorized=True
         )
-    
+
     def _forward_job(self, step: MujocoStep) -> MujocoState:
         data = self.local_data.data
         data.time = step.time.item()
@@ -133,12 +145,14 @@ class MujocoSimulator(Simulator[SystemData]):
 
     def full_state(self, state: SystemState) -> MujocoState:
         step = MujocoStep(
-            state.time, state.qpos, state.qvel, state.act, None, None
+            state.time, state.qpos, 
+            state.qvel, state.act, None, None
         )
         return jax.pure_callback(self._forward, 
             MujocoState(
                 self.data_structure,
-                jax.ShapeDtypeStruct(state.qpos.shape, state.qpos.dtype)
+                jax.ShapeDtypeStruct(state.qpos.shape, 
+                                     state.qpos.dtype)
             ), step, vectorized=True)
 
     def reduce_state(self, state: MujocoState) -> SystemState:

@@ -42,7 +42,11 @@ class DemonstrationCollector:
 
         self._step_fn = jax.jit(env.step)
         self._reset_fn = jax.jit(env.reset)
-        self._render_fn = jax.jit(env.render, out_shardings=sharding)
+        self._reduce_state = jax.jit(env.reduce_state)
+        self._render_fn = jax.jit(
+            lambda x: env.render(env.full_state(x), ImageRender(width, height)),
+            out_shardings=sharding
+        )
         self._policy = interactive_policy
         self.interface = StreamingInterface(width, height)
 
@@ -50,7 +54,7 @@ class DemonstrationCollector:
         s = self._reset_fn(jax.random.PRNGKey(42))
         self._sample_input = interactive_policy(self.interface.mouse_pos())
         self._step_fn(s, self._sample_input)
-        self._render_fn(s, ImageRender(width, height))
+        self._render_fn(self._reduce_state(s))
 
         self.env = env
         self.fps = fps
@@ -119,10 +123,10 @@ class DemonstrationCollector:
             if T < len(self.curr_demonstration):
                 state = self.curr_demonstration[self.step_slider.value].state
             else:
-                state = self.curr_state
+                state = self._reduce_state(self.curr_state)
         else:
             return
-        image = self._render_fn(state, ImageRender(self.width, self.height))
+        image = self._render_fn(state)
         self.interface.update(image)
     
     def _do_save(self, change):
@@ -166,7 +170,7 @@ class DemonstrationCollector:
         while True:
             elapsed = time.time() - t
             action = self._policy(self.interface.mouse_pos())
-            self.curr_demonstration.append(Step(state, None, action))
+            self.curr_demonstration.append(Step(self._reduce_state(state), None, action))
             state = self._step_fn(state, action)
             self.curr_state = state
             self.step_slider.max = len(self.curr_demonstration)

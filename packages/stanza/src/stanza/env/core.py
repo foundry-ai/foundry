@@ -64,7 +64,48 @@ class Environment(typing.Generic[State, ReducedState, Action]):
 class EnvWrapper(Environment[State, ReducedState, Action]):
     base: Environment[State, ReducedState, Action]
 
+    # We need to manually override these since
+    # they are already defined in Environment
+    # and therefore not subject to __getattr__
+
+    def full_state(self, reduced_state: ReducedState) -> State:
+        return self.base.full_state(reduced_state)
+    def reduce_state(self, full_state: State) -> ReducedState:
+        return self.base.reduce_state(full_state)
+
+    def sample_state(self, rng_key : jax.Array) -> State:
+        return self.base.sample_state(rng_key)
+
+    def sample_action(self, rng_key : jax.Array) -> Action:
+        return self.base.sample_action(rng_key)
+
+    def reset(self, rng_key : jax.Array) -> State:
+        return self.base.reset(rng_key)
+
+    def step(self, state : State, action : Action,
+             rng_key : Optional[jax.Array] = None) -> State:
+        return self.base.step(state, action, rng_key)
+
+    def observe(self, state: State,
+            config: ObserveConfig[Observation] | None = None) -> Observation:
+        return self.base.observe(state, config)
+
+    def reward(self, state: State,
+               action : Action, next_state : State) -> jax.Array:
+        return self.base.reward(state, action, next_state)
+
+    def cost(self, states: State, actions: Action) -> jax.Array:
+        return self.base.cost(states, actions)
+
+    def is_finished(self, state: State) -> jax.Array:
+        return self.base.is_finished(state)
+
+    def render(self, state : State,
+               config: RenderConfig[Render] | None = None) -> Render:
+        return self.base.render(state, config)
+
     def __getattr__(self, name):
+        print(name)
         return getattr(self.base, name)
 
 @dataclass
