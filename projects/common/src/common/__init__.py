@@ -170,7 +170,7 @@ class TrainConfig:
     
     def parse(self, config: ConfigProvider) -> "TrainConfig":
         res = config.get_dataclass(self, {"optimizer"})
-        optimizer = config.get_cases("optimizer", "The optimizer to use", {
+        optimizer = config.get("optimizer", "The optimizer to use", {
             "sgd": SGDConfig(),
             "adam": AdamConfig()
         }, "adam")

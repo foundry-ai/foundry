@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DiffusionPolicyConfig:
     seed: int = 42
-    model: str = "ResNet18"
+    model: str = "MLP"
     train: TrainConfig = TrainConfig()
     kernel_bandwidth: float = 0.01
     T: int = 100
