@@ -6,6 +6,8 @@ from stanza.random import PRNGSequence
 from stanza.env import ImageRender
 from stanza.train.reporting import Video
 
+from stanza.env.mujoco.pusht import PushTObs
+
 from common import net, TrainConfig, AdamConfig, SGDConfig
 
 from jax.experimental import mesh_utils
@@ -71,14 +73,13 @@ class Sample:
 
 def process_data(config, env, data):
     def process_element(element):
-        full_state = env.full_state(element.reduced_state)
-        action = element.action
-        return (full_state, action)
+        return env.full_state(element.reduced_state)
     data = data.map_elements(process_element).cache().chunk(
         config.action_length + config.obs_length
     )
     def process_chunk(chunk):
-        states, actions = chunk.elements
+        states = chunk.elements
+        actions = jax.vmap(lambda s: env.observe(s, PushTObs()).agent_pos)(states)
         actions = jax.tree.map(lambda x: x[-config.action_length:], actions)
         obs_states = jax.tree.map(lambda x: x[:config.obs_length], states)
         curr_state = jax.tree.map(lambda x: x[-1], obs_states)
