@@ -90,7 +90,6 @@ def setup():
 def command(fn: Callable):
     @functools.wraps(fn)
     def main():
-        setup()
         args = Arguments(sys.argv[1:])
         config = ArgumentsProvider(args)
         try:

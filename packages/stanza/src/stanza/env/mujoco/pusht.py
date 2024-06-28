@@ -39,6 +39,9 @@ class PushTObs:
 
 @dataclass
 class PushTEnv(MujocoEnvironment[SimulatorState]):
+    # use the mjx backend by default
+    physics_backend: str = field(default="mjx", pytree_node=False)
+
     success_threshold: float = field(default=0.9, pytree_node=False)
 
     goal_pos: jnp.array = field(default_factory=lambda: jnp.array([0, 0]), pytree_node=False)

@@ -1,3 +1,6 @@
+from stanza.runtime import setup
+setup()
+
 from stanza import dataclasses
 from stanza.dataclasses import dataclass, replace
 from stanza.runtime import ConfigProvider, command
@@ -110,10 +113,13 @@ def evaluate(env, x0s, T, policy, rng_key):
     N = stanza.util.axis_size(x0s, 0)
 
     # shard the x0s
-    # sharding = PositionalSharding(
-    #     mesh_utils.create_device_mesh((8,), jax.devices()[:8])
-    # ).reshape((8,1))
-    # x0s = jax.lax.with_sharding_constraint(x0s, sharding)
+    sharding = PositionalSharding(
+        mesh_utils.create_device_mesh((8,), jax.devices()[:8])
+    )
+    x0s = jax.tree.map(
+        lambda x: jax.lax.with_sharding_constraint(x, sharding.reshape((8,) + (1,)*(x.ndim-1))),
+        x0s
+    )
 
     rewards, videos = jax.vmap(partial(eval, env, policy, T))(
         x0s,
