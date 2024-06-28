@@ -28,14 +28,14 @@ import importlib.resources as resources
 
 @dataclass
 class PushTObs:
-    agent_pos: jnp.array
-    agent_vel: jnp.array
+    agent_pos: jnp.array = None
+    agent_vel: jnp.array = None
 
-    block_pos: jnp.array
-    block_vel: jnp.array
+    block_pos: jnp.array = None
+    block_vel: jnp.array = None
 
-    block_rot: jnp.array
-    block_rot_vel: jnp.array
+    block_rot: jnp.array = None
+    block_rot_vel: jnp.array = None
 
 @dataclass
 class PushTEnv(MujocoEnvironment[SimulatorState]):
@@ -95,17 +95,21 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
     
     @jax.jit
     def observe(self, state, config : ObserveConfig = None):
-        data = self.simulator.data(state)
-        return PushTObs(
-            # Extract agent pos, vel
-            agent_pos=data.xpos[1,:2],
-            agent_vel=data.cvel[1,3:5],
-            # Extract block pos, vel, angle, angular vel
-            block_pos=data.xpos[2,:2],
-            block_rot=quat_to_angle(data.xquat[2,:4]),
-            block_vel=data.cvel[2,3:5],
-            block_rot_vel=data.cvel[2,2],
-        )
+        if config is None: config = PushTObs()
+        if isinstance(config, PushTObs):
+            data = self.simulator.data(state)
+            return PushTObs(
+                # Extract agent pos, vel
+                agent_pos=data.xpos[1,:2],
+                agent_vel=data.cvel[1,3:5],
+                # Extract block pos, vel, angle, angular vel
+                block_pos=data.xpos[2,:2],
+                block_rot=quat_to_angle(data.xquat[2,:4]),
+                block_vel=data.cvel[2,3:5],
+                block_rot_vel=data.cvel[2,2],
+            )
+        else:
+            raise ValueError("Unsupported observation type")
 
     # For computing the reward
     def _block_points(self, pos, rot):
@@ -176,22 +180,22 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
 
 @dataclass
 class PushTPosObs:
-    agent_pos: jnp.array
-    block_pos: jnp.array
-    block_rot: jnp.array
+    agent_pos: jnp.array = None
+    block_pos: jnp.array = None
+    block_rot: jnp.array = None
 
 @dataclass
 class PushTKeypointObs:
-    agent_pos: jnp.array
-    block_pos: jnp.array
-    block_end: jnp.array
+    agent_pos: jnp.array = None
+    block_pos: jnp.array = None
+    block_end: jnp.array = None
 
 @dataclass
 class PushTKeypointRelObs:
-    agent_block_pos: jnp.array
-    agent_block_end: jnp.array
-    rel_block_pos: jnp.array
-    rel_block_end: jnp.array
+    agent_block_pos: jnp.array = None
+    agent_block_end: jnp.array = None
+    rel_block_pos: jnp.array = None
+    rel_block_end: jnp.array = None
         
 # A state-feedback adapter for the PushT environment
 # Will run a PID controller under the hood
@@ -224,7 +228,7 @@ class PositionalControlEnv(EnvWrapper):
     k_v : float = 2
 
     def step(self, state, action, rng_key=None):
-        obs = PushTEnv.observe(self.base, state)
+        obs = self.base.observe(state, PushTObs())
         if action is not None:
             a = self.k_p * (action - obs.agent_pos) + self.k_v * (-obs.agent_vel)
         else: 
@@ -235,7 +239,10 @@ class PositionalControlEnv(EnvWrapper):
 @dataclass
 class PositionalObsEnv(EnvWrapper):
     def observe(self, state, config=None):
-        obs = self.base.observe(state, config)
+        if config is None: config = PushTPosObs()
+        if not isinstance(config, PushTPosObs):
+            return self.base.observe(state, config)
+        obs = self.base.observe(state, PushTObs())
         return PushTPosObs(
             agent_pos=obs.agent_pos,
             block_pos=obs.block_pos,
@@ -244,8 +251,11 @@ class PositionalObsEnv(EnvWrapper):
 
 @dataclass
 class KeypointObsEnv(EnvWrapper):
-    def observe(self, state):
-        obs = self.base.observe(state)
+    def observe(self, state, config=None):
+        if config is None: config = PushTKeypointObs()
+        if not isinstance(config, PushTKeypointObs):
+            return self.base.observe(state, config)
+        obs = self.base.observe(state, PushTObs())
         rotM = jnp.array([
             [jnp.cos(obs.block_rot), -jnp.sin(obs.block_rot)],
             [jnp.sin(obs.block_rot), jnp.cos(obs.block_rot)]
@@ -260,13 +270,15 @@ class KeypointObsEnv(EnvWrapper):
 @dataclass
 class RelKeypointObsEnv(EnvWrapper):
     def observe(self, state, config=None):
-        obs = self.base.observe(state)
+        if config is None: config = PushTKeypointRelObs()
+        if not isinstance(config, PushTKeypointRelObs):
+            return self.base.observe(state, config)
+        obs = self.base.observe(state, PushTObs())
         rotM = jnp.array([
             [jnp.cos(obs.block_rot), -jnp.sin(obs.block_rot)],
             [jnp.sin(obs.block_rot), jnp.cos(obs.block_rot)]
         ])
         end = rotM @ jnp.array([0, -4*self.block_scale]) + obs.block_pos
-
         rotM = jnp.array([
             [jnp.cos(self.goal_rot), -jnp.sin(self.goal_rot)],
             [jnp.sin(self.goal_rot), jnp.cos(self.goal_rot)]

@@ -12,7 +12,7 @@ from jax.experimental import mesh_utils
 from jax.sharding import PositionalSharding
 
 from functools import partial
-
+from typing import Any
 
 import stanza.policy
 import stanza.util
@@ -65,20 +65,26 @@ class Config:
 
 @dataclasses.dataclass
 class Sample:
+    state: Any
     observations: jax.Array
     actions: jax.Array
 
 def process_data(config, env, data):
-    data = data.chunk(
+    def process_element(element):
+        full_state = env.full_state(element.reduced_state)
+        action = element.action
+        return (full_state, action)
+    data = data.map_elements(process_element).cache().chunk(
         config.action_length + config.obs_length
     )
-    def process_chunk(sample):
-        obs = jax.tree.map(lambda x: x[:config.obs_length], sample.elements.reduced_state)
-        obs = jax.vmap(env.full_state)(obs)
-        obs = jax.vmap(env.observe)(obs)
+    def process_chunk(chunk):
+        states, actions = chunk.elements
+        actions = jax.tree.map(lambda x: x[-config.action_length:], actions)
+        obs_states = jax.tree.map(lambda x: x[:config.obs_length], states)
+        curr_state = jax.tree.map(lambda x: x[-1], obs_states)
+        obs = jax.vmap(env.observe)(obs_states)
         return Sample(
-            obs,
-            sample.elements.action[-config.action_length:]
+            curr_state, obs, actions
         )
     return data.map(process_chunk)
 
@@ -130,7 +136,7 @@ def main(config : Config):
     logger.info(f"Loading dataset [blue]{config.dataset}[/blue]")
     dataset = datasets.create(config.dataset)
     env = dataset.create_env()
-    train_data = process_data(config, env, dataset.splits["train"])
+    train_data = process_data(config, env, dataset.splits["train"]).cache()
 
     test_data = dataset.splits["test"].truncate(1)
     x0s = test_data.map(
@@ -147,7 +153,7 @@ def main(config : Config):
     logger.info(f"Logging to [blue]{wandb_run.url}[/blue]")
 
     policy = config.policy.train_policy(
-        wandb_run, train_data, eval, rng
+        wandb_run, train_data, env, eval, rng
     )
     logger.info(f"Performing final evaluation...")
 
