@@ -20,15 +20,15 @@ class PushTDataset(EnvDataset[Step]):
             PushTEnv,
             PositionalControlTransform,
             PositionalObsTransform,
-            KeypointObsTransform
+            RelKeypointObsTransform
         )
-        from stanza.policy.transforms import chain_transforms
+        from stanza.env.transforms import ChainedTransform, MultiStepTransform
         env = PushTEnv()
-        env = chain_transforms(
+        env = ChainedTransform([
             PositionalControlTransform(),
-            KeypointObsTransform()
             # PositionalObsTransform()
-        ).transform_env(env)
+            RelKeypointObsTransform()
+        ]).apply(env)
         return env
 
 def load_pytorch_pusht_data(zarr_path, max_trajectories=None):

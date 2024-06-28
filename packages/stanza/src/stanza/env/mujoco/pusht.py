@@ -3,10 +3,13 @@ from stanza.env import (
     RenderConfig, ImageRender,
     ObserveConfig
 )
+from stanza.env.transforms import (
+    EnvTransform, ChainedTransform,
+    MultiStepTransform
+)
+
 from . import assets
 
-from stanza.policy.transforms import Transform, chain_transforms
-from stanza.policy import Policy
 from stanza.dataclasses import dataclass, field, replace
 from stanza.util import jax_static_property
 from stanza import canvas
@@ -67,7 +70,7 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
         )
 
     @jax.jit
-    def system_reset(self, rng_key) -> SystemState:
+    def reset(self, rng_key : jax.Array) -> SimulatorState:
         a_pos, b_pos, b_rot, c = jax.random.split(rng_key, 4)
         agent_pos = jax.random.uniform(a_pos, (2,), minval=-0.8, maxval=0.8)
         block_rot = jax.random.uniform(b_pos, (), minval=-jnp.pi, maxval=jnp.pi)
@@ -83,8 +86,12 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
             gen_pos, (c, block_pos)
         )
         qpos = jnp.concatenate([agent_pos, block_pos, block_rot[jnp.newaxis]])
-        return SystemState(
-            jnp.zeros(()), qpos, jnp.zeros_like(qpos), jnp.zeros((0,)))
+        return self.full_state(SystemState(
+            jnp.zeros(()), 
+            qpos, 
+            jnp.zeros_like(qpos), 
+            jnp.zeros((0,))
+        ))
     
     @jax.jit
     def observe(self, state, config : ObserveConfig = None):
@@ -189,34 +196,27 @@ class PushTKeypointRelObs:
 # A state-feedback adapter for the PushT environment
 # Will run a PID controller under the hood
 @dataclass
-class PositionalControlTransform(Transform):
+class PositionalControlTransform(EnvTransform):
     k_p : float = 15
     k_v : float = 2
-
-    def transform_policy(self, policy):
-        return PositionalControlPolicy(policy, self.k_p, self.k_v)
     
-    def transform_env(self, env):
+    def apply(self, env):
         return PositionalControlEnv(env, self.k_p, self.k_v)
 
 @dataclass
-class PositionalControlPolicy(Policy):
-    policy: Policy
-    k_p : float = 20
-    k_v : float = 2
+class PositionalObsTransform(EnvTransform):
+    def apply(self, env):
+        return PositionalObsEnv(env)
 
-    @property
-    def rollout_length(self):
-        return self.policy.rollout_length
+@dataclass
+class KeypointObsTransform(EnvTransform):
+    def apply(self, env):
+        return KeypointObsEnv(env)
 
-    def __call__(self, input):
-        output = self.policy(input)
-        if output.action is None:
-            return replace(output, action=jnp.zeros((2,)))
-        a = self.k_p * (output.action - output.agent.position) + self.k_v * (-output.agent.velocity)
-        return replace(
-            output, action=a
-        )
+@dataclass
+class RelKeypointObsTransform(EnvTransform):
+    def apply(self, env):
+        return RelKeypointObsEnv(env)
 
 @dataclass
 class PositionalControlEnv(EnvWrapper):
@@ -231,31 +231,6 @@ class PositionalControlEnv(EnvWrapper):
             a = jnp.zeros((2,))
         return self.base.step(state, a, None)
 
-@dataclass
-class PositionalObsTransform(Transform):
-    def transform_policy(self, policy):
-        return PositionalObsPolicy(policy)
-    
-    def transform_env(self, env):
-        return PositionalObsEnv(env)
-
-@dataclass
-class PositionalObsPolicy(Policy):
-    policy: Policy
-
-    @property
-    def rollout_length(self):
-        return self.policy.rollout_length
-
-    def __call__(self, input):
-        obs = input.observation
-        obs = PushTPosObs(
-            agent_pos=obs.agent.position,
-            block_pos=obs.block.position,
-            block_rot=obs.block.rotation
-        )
-        input = replace(input, observation=obs)
-        return self.policy(input)
 
 @dataclass
 class PositionalObsEnv(EnvWrapper):
@@ -266,14 +241,6 @@ class PositionalObsEnv(EnvWrapper):
             block_pos=obs.block_pos,
             block_rot=obs.block_rot
         )
-
-@dataclass
-class KeypointObsTransform(Transform):
-    def transform_policy(self, policy):
-        raise NotImplementedError()
-    
-    def transform_env(self, env):
-        return KeypointObsEnv(env)
 
 @dataclass
 class KeypointObsEnv(EnvWrapper):
@@ -289,14 +256,6 @@ class KeypointObsEnv(EnvWrapper):
             block_pos=obs.block_pos,
             block_end=end
         )
-
-@dataclass
-class RelKeypointObsTransform(Transform):
-    def transform_policy(self, policy):
-        raise NotImplementedError()
-    
-    def transform_env(self, env):
-        return RelKeypointObsEnv(env)
 
 @dataclass
 class RelKeypointObsEnv(EnvWrapper):
@@ -325,24 +284,27 @@ environments.register(PushTEnv)
 
 def _make_positional(**kwargs):
     env = PushTEnv(**kwargs)
-    return chain_transforms(
+    return ChainedTransform([
         PositionalControlTransform(),
-        PositionalObsTransform
-    ).transform_env(env)
+        MultiStepTransform(10),
+        PositionalObsTransform()
+    ]).apply(env)
 environments.register("positional", _make_positional)
 
 def _make_keypoint(**kwargs):
     env = PushTEnv(**kwargs)
-    return chain_transforms(
+    return ChainedTransform([
         PositionalControlTransform(),
+        MultiStepTransform(10),
         KeypointObsTransform()
-    ).transform_env(env)
+    ]).apply(env)
 environments.register("keypoint", _make_keypoint)
 
 def _make_rel_keypoint(**kwargs):
     env = PushTEnv(**kwargs)
-    return chain_transforms(
+    return ChainedTransform([
         PositionalControlTransform(),
+        MultiStepTransform(10),
         RelKeypointObsTransform()
-    ).transform_env(env)
+    ]).apply(env)
 environments.register("rel_keypoint", _make_rel_keypoint)
