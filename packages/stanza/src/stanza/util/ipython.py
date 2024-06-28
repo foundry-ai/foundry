@@ -30,7 +30,7 @@ pre {
     color: var(--vscode-editor-foreground);
     margin: 0;
 }
-video::-webkit-media-controls {
+.jupyter-widget > video::-webkit-media-controls {
   display: none;
 }
 </style>"""
