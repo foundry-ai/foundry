@@ -5,11 +5,13 @@ from stanza.diffusion import DDPMSchedule
 from stanza.runtime import ConfigProvider
 from stanza.random import PRNGSequence
 from stanza.policy import PolicyInput, PolicyOutput
+from stanza.policy.transforms import ChunkingTransform
 
 from stanza.dataclasses import dataclass
 from stanza.data.normalizer import Normalizer, LinearNormalizer
 from stanza.diffusion import nonparametric
 from stanza import train
+import stanza.train.ipython
 import wandb
 import optax
 import flax.linen as nn
@@ -27,6 +29,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DiffusionPolicyConfig:
     #model: str = "ResNet18"
+    seed: int = 42
     train: TrainConfig = TrainConfig()
     net_width: int = 4
     net_depth: int = 5
@@ -37,11 +40,18 @@ class DiffusionPolicyConfig:
     def parse(self, config: ConfigProvider) -> "DiffusionPolicyConfig":
         return config.get_dataclass(self, flatten={"train"})
 
-    def train_policy(self, wandb_run, train_data, eval, rng):
+    def train_policy(self, env, wandb_run, train_data, eval, rng):
         return train_net_diffusion_policy(self, wandb_run, train_data, eval)
 
 def train_net_diffusion_policy(
-        config : DiffusionPolicyConfig, wandb_run, train_data, eval):
+        config : DiffusionPolicyConfig,  env, wandb_run, train_data, eval):
+    
+    train_data_flat = train_data.as_pytree()
+    obs_length, action_length = (
+        stanza.util.axis_size(train_data_flat.observations, 1),
+        stanza.util.axis_size(train_data_flat.actions, 1)
+    )
+
     rng = PRNGSequence(config.seed)
     #Model = getattr(net, config.model.split("/")[1])
     model = DiffusionMLP(
@@ -50,7 +60,7 @@ def train_net_diffusion_policy(
         has_skip=config.has_skip
     )
     sample = train_data[0]
-    vars = jax.jit(model.init)(next(rng), sample.observations, sample.actions)
+    vars = jax.jit(model.init)(next(rng), sample.observations, sample.actions, 0)
     #normalizer = LinearNormalizer.from_data(train_data)
 
     total_params = jax.tree_util.tree_reduce(lambda x, y: x + y.size, vars, 0)
@@ -73,8 +83,10 @@ def train_net_diffusion_policy(
             loss=loss,
             metrics={"loss": loss}
         )
+    
+    batched_loss_fn = train.batch_loss(loss_fn)
 
-    vars = model.init(jax.random.key(42), jnp.zeros_like(train_data.structure[0]))
+    vars = model.init(jax.random.key(42), sample.observations, sample.actions, 0)
     optimizer = optax.adamw(1e-4)
     opt_state = optimizer.init(vars["params"])
 
@@ -88,7 +100,7 @@ def train_net_diffusion_policy(
             for step in epoch.steps():
                 # *note*: consumes opt_state, vars
                 opt_state, vars, metrics = train.step(
-                    loss_fn, optimizer, opt_state, vars, 
+                    batched_loss_fn, optimizer, opt_state, vars, 
                     step.rng_key, step.batch,
                     # extra arguments for the loss function
                     iteration=step.iteration
@@ -98,6 +110,19 @@ def train_net_diffusion_policy(
                     train.wandb.log(step.iteration, metrics, run=wandb_run)
         train.ipython.log(step.iteration, metrics)
         train.wandb.log(step.iteration, metrics, run=wandb_run)
+    
+    def policy(input: PolicyInput) -> PolicyOutput:
+        agent_pos = env.observe(input.state).agent_pos
+        obs = input.observation
+        model_fn = lambda rng_key, noised_actions, t: model.apply(
+            vars, obs, noised_actions, t - 1
+        )
+        action = schedule.sample(input.rng_key, model_fn, sample.actions) + agent_pos
+        return PolicyOutput(action=action)
+    policy = ChunkingTransform(
+        obs_length, action_length
+    ).apply(policy)
+    return policy
 
 class DiffusionMLP(nn.Module):
     features: Sequence[int]

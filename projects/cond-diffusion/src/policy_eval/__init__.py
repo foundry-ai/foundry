@@ -149,7 +149,7 @@ def main(config : Config):
     logger.info(f"Logging to [blue]{wandb_run.url}[/blue]")
 
     policy = config.policy.train_policy(
-        wandb_run, train_data, eval, rng
+        env, wandb_run, train_data, eval, rng
     )
     logger.info(f"Performing final evaluation...")
 

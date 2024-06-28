@@ -145,7 +145,7 @@ def loop(data : Data[Sample], *, batch_size, rng_key, epochs=None, iterations=No
     
     with data.stream(batch_size=batch_size) as stream:
         rng_key, shuffle_key = jax.random.split(rng_key)
-        stream = stream.shuffle(rng_key)
+        #stream = stream.shuffle(rng_key)
         if progress:
             progress = Progress(
                 TextColumn("[progress.description]{task.description}"),

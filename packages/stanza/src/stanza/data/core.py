@@ -120,8 +120,8 @@ class Mapped(Data[T]):
         return self.fn(self.data[idx])
     
     @contextmanager
-    def stream(self):
-        with self.data.stream() as s:
+    def stream(self, batch_size):
+        with self.data.stream(batch_size=batch_size) as s:
             yield MappedStream(s, self.fn)
 
     # A utility which uses tracing
@@ -129,8 +129,8 @@ class Mapped(Data[T]):
     @staticmethod
     @partial(jax.jit, static_argnums=(0,1))
     def _compute_structure(fn, data_structure):
-        sample = jax.tree_util.tree_map(lambda x: jnp.zeros(x.shape, x.type), data_structure)
-        mapped = self.fn(sample)
+        sample = jax.tree_util.tree_map(lambda x: jnp.zeros(x.shape, x.dtype), data_structure)
+        mapped = fn(sample)
         return jax.tree_util.tree_map(
             lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype), mapped
         )
@@ -232,7 +232,7 @@ class IndexedDataStream(DataStream[T]):
             offset=jnp.zeros((), dtype=jnp.uint32),
             indices=indices,
             shuffle_key=shuffle_key,
-            resaple=resample,
+            resample=resample,
             batch_size=batch_size,
             max_offset=max_offset
         )
@@ -249,9 +249,9 @@ class IndexedDataStream(DataStream[T]):
             data = jax.vmap(lambda x: self.data[x])(idxs)
         elif indices is not None:
             idxs = jax.lax.dynamic_slice(indices, offset[None], (self.batch_size,))
-            data = self.data.slice(offset, self.batch_size).as_pytree()
-        else:
             data = jax.vmap(lambda i: self.data[i])(idxs)
+        else:
+            data = self.data.slice(offset, self.batch_size).as_pytree()
         stream = replace(self,
             offset=offset + self.batch_size,
             indices=indices,
@@ -301,10 +301,10 @@ class MappedStream(DataStream[T]):
     @jax.jit
     def next(self):
         stream, batch = self.stream.next()
-        stream = MappedStream(stream, fn)
+        stream = MappedStream(stream, self.fn)
         batch = jax.vmap(self.fn)(batch)
-        return batch
+        return stream, batch
 
     @jax.jit
     def reset(self):
-        return MappedStream(self.stream.reset(), fn)
+        return MappedStream(self.stream.reset(), self.fn)
