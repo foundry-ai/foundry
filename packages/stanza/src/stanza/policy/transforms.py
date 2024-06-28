@@ -58,7 +58,7 @@ class NoisyPolicy(Policy):
 
 @dataclass
 class ChunkingPolicyState:
-    # The batched (observation, state) history
+    # The batched observation history
     input_chunk: Any = None
     # The last (batched) output
     # from the sub-policy
@@ -91,24 +91,24 @@ class ChunkingPolicy(Policy):
         policy_state = input.policy_state
         if policy_state is None:
             # replicate the current input batch
-            obs_batch, state_batch = (input.observation, input.state) \
+            obs_batch = input.observation \
                     if self.obs_chunk_size is None else \
                 jax.tree_util.tree_map(
                     lambda x: jnp.repeat(x[jnp.newaxis,...],
-                        self.obs_chunk_size, axis=0), (input.observation, input.state)
+                        self.obs_chunk_size, axis=0), input.observation
                 )
         else:
             # create the new input chunk
-            obs_batch, state_batch = (input.observation, input.state) \
+            obs_batch = input.observation \
                     if self.obs_chunk_size is None else \
                 jax.tree_util.tree_map(
                     lambda x, y: jnp.roll(x, -1, axis=0).at[-1,...].set(y), 
-                    policy_state.input_chunk, (input.observation, input.state)
+                    policy_state.input_chunk, input.observation
                 )
         def reevaluate():
             output = self.policy(PolicyInput(
                 obs_batch,
-                state_batch,
+                input.state,
                 policy_state.last_batched_output.policy_state \
                     if policy_state is not None else None,
                 input.rng_key
@@ -120,7 +120,7 @@ class ChunkingPolicy(Policy):
                 ) 
             return PolicyOutput(
                 action=action,
-                policy_state=ChunkingPolicyState((obs_batch, state_batch), output, 1),
+                policy_state=ChunkingPolicyState(obs_batch, output, 1),
                 info=output.info
             )
         def index():
@@ -133,7 +133,7 @@ class ChunkingPolicy(Policy):
             return PolicyOutput(
                 action,
                 ChunkingPolicyState(
-                    (obs_batch, state_batch),
+                    obs_batch,
                     policy_state.last_batched_output,
                     policy_state.t + 1
                 ),

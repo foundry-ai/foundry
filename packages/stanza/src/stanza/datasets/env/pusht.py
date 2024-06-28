@@ -15,7 +15,7 @@ import zarr
 
 @dataclass
 class PushTDataset(EnvDataset[Step]):
-    def create_env(self, obs="positional", **kwargs):
+    def create_env(self, **kwargs):
         from stanza.env.mujoco.pusht import (
             PushTEnv,
             PositionalControlTransform,
@@ -27,6 +27,7 @@ class PushTDataset(EnvDataset[Step]):
         env = ChainedTransform([
             PositionalControlTransform(),
             # PositionalObsTransform()
+            MultiStepTransform(10),
             RelKeypointObsTransform()
         ]).apply(env)
         return env
