@@ -26,7 +26,6 @@ class SequenceInfo(Generic[I]):
     end_idx: int
     length: int
 
-
 @dataclass
 class SequenceData(Generic[T,I]):
     elements: Data[T]
@@ -69,6 +68,12 @@ class SequenceData(Generic[T,I]):
         return SequenceData(
             elements=self.elements.append(data.elements),
             sequences=self.sequences.append(data.sequences.map(add_idx))
+        )
+    
+    def cache(self):
+        return SequenceData(
+            elements=self.elements.cache(),
+            sequences=self.sequences.cache()
         )
 
     # Conversions to Data[T] objects:
@@ -115,7 +120,7 @@ class SequenceData(Generic[T,I]):
         t_off, i_off = jnp.array(t_off), jnp.array(i_off)
 
         return ChunkData(
-            elements=self.elements.cache(),
+            elements=self.elements,
             sequences=self.sequences,
             chunk_offsets=PyTreeData((t_off, i_off)),
             chunk_length=chunk_length

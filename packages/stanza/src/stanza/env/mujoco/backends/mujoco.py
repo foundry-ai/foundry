@@ -73,12 +73,13 @@ class MujocoSimulator(Simulator[SystemData]):
         data.qacc_warmstart[:] = step.qacc_warmstart
         mujoco.mj_step(self.model, data)
         return MujocoState(
-            data=SystemData(np.array(data.time), data.qpos, data.qvel, 
-                data.act, data.qacc, data.act_dot,
-                data.xpos, data.xquat,
-                data.actuator_velocity, data.cvel
+            data=SystemData(jnp.array(data.time), 
+                jnp.copy(data.qpos), jnp.copy(data.qvel), 
+                jnp.copy(data.act), jnp.copy(data.qacc), jnp.copy(data.act_dot),
+                jnp.copy(data.xpos), jnp.copy(data.xquat),
+                jnp.copy(data.actuator_velocity), jnp.copy(data.cvel)
             ),
-            qacc_warmstart=data.qacc_warmstart
+            qacc_warmstart=jnp.copy(data.qacc_warmstart)
         )
 
     # (on host) step using the minimal amount of 
@@ -136,12 +137,12 @@ class MujocoSimulator(Simulator[SystemData]):
             data.qacc_warmstart[:] = step.qacc_warmstart
         mujoco.mj_forward(self.model, data)
         return MujocoState(
-            data=SystemData(np.array(data.time), data.qpos, data.qvel, 
-                data.act, data.qacc, data.act_dot,
-                data.xpos, data.xquat,
-                data.actuator_velocity, data.cvel
+            data=SystemData(jnp.array(data.time), jnp.copy(data.qpos), jnp.copy(data.qvel), 
+                jnp.copy(data.act), jnp.copy(data.qacc), jnp.copy(data.act_dot),
+                jnp.copy(data.xpos), jnp.copy(data.xquat),
+                jnp.copy(data.actuator_velocity), jnp.copy(data.cvel)
             ),
-            qacc_warmstart=data.qacc_warmstart
+            qacc_warmstart=jnp.copy(data.qacc_warmstart)
         )
 
     # (on host) calls forward
@@ -158,7 +159,7 @@ class MujocoSimulator(Simulator[SystemData]):
             )
             steps = [jax.tree.map(lambda x: x[i], step) for i in range(step.qpos.shape[0])]
             data = self.pool.map(self._forward_job, steps)
-            data = jax.tree.map(lambda *x: jnp.stack(x), *data)
+            data = jax.tree.map(lambda *x: jnp.stack(x, axis=0), *data)
             data = jax.tree.map(
                 lambda x: jnp.reshape(x, batch_shape +  x.shape[1:]),
                 data

@@ -6,7 +6,7 @@ from stanza.diffusion import DDPMSchedule
 from stanza.runtime import ConfigProvider
 from stanza.random import PRNGSequence
 from stanza.policy import PolicyInput, PolicyOutput
-from stanza.policy.transforms import ChunkTransform
+from stanza.policy.transforms import ChunkingTransform
 
 from stanza.dataclasses import dataclass
 from stanza.diffusion import nonparametric
@@ -61,7 +61,7 @@ def estimator_diffusion_policy(
         diffuser = nonparametric.nw_cond_diffuser(obs, data, schedule, kernel, config.kernel_bandwidth)
         action = schedule.sample(input.rng_key, diffuser, action_sample)
         return PolicyOutput(action=action)
-    policy = ChunkTransform(
+    policy = ChunkingTransform(
         obs_length, action_length
-    ).transform_policy(policy)
+    ).apply(policy)
     return policy

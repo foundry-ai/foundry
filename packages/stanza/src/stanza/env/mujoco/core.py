@@ -7,6 +7,7 @@ from stanza import canvas
 from typing import TypeVar, Generic
 
 import mujoco
+import numpy as np
 
 import jax
 import jax.numpy as jnp
@@ -56,14 +57,11 @@ class Simulator(abc.ABC, Generic[SimulatorState]):
 class MujocoEnvironment(Environment[SimulatorState, SystemState, Action], Generic[SimulatorState]):
     physics_backend : str = field(default="mujoco", pytree_node=False)
 
-    # Implement these two:
-    def system_reset(self, rng_key : jax.Array) -> SystemState:
-        raise NotImplementedError()
-
+    # Implement "xml"
     @jax_static_property
     def xml(self):
         raise NotImplementedError()
-    
+
     @jax_static_property
     def model(self):
         return mujoco.MjModel.from_xml_string(self.xml)
@@ -77,14 +75,14 @@ class MujocoEnvironment(Environment[SimulatorState, SystemState, Action], Generi
     
     def reduce_state(self, full_state: SimulatorState) -> SystemState:
         return self.simulator.reduce_state(full_state)
-    
+
     @jax.jit
     def reset(self, rng_key: jax.Array) -> SimulatorState:
-        return self.simulator.full_state(self.system_reset(rng_key))
+        raise NotImplementedError()
 
     @jax.jit
     def step(self, state: SimulatorState, action: Action, 
-             rng_key: jax.Array) -> SimulatorState:
+                    rng_key: jax.Array) -> SimulatorState:
         return self.simulator.step(state, action, rng_key)
 
     # Creates the backend for this environment
@@ -147,6 +145,19 @@ def render_2d(model: mujoco.MjModel, data: SystemData,
         scale=(width/world_width, height/world_height)
     )
     return world
+
+def get_custom_data(model : mujoco.MjModel):
+    custom = {}
+    for name_adr, data_adr, data_len in zip(
+                model.name_numericadr,
+                model.numeric_adr,
+                model.numeric_data):
+        data_adr, data_len = int(data_adr), int(data_len)
+        name_len = model.names[name_adr:].index(0)
+        name = model.names[name_adr:name_adr+name_len].decode("utf-8")
+        data = model.numeric_data[data_adr:data_adr + data_len]
+        custom[name] = data
+    return custom
 
 def quat_to_angle(quat):
     w0 = quat[0] # cos(theta/2)
