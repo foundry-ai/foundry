@@ -6,8 +6,10 @@ from stanza.runtime import ConfigProvider
 from stanza.random import PRNGSequence
 from stanza.policy import PolicyInput, PolicyOutput
 from stanza.policy.transforms import ChunkingTransform
+from stanza.env.mujoco.pusht import PushTObs
 
 from stanza.dataclasses import dataclass
+import dataclasses
 from stanza.data.normalizer import Normalizer, LinearNormalizer
 from stanza.diffusion import nonparametric
 from stanza import train
@@ -36,21 +38,32 @@ class DiffusionPolicyConfig:
     embed_type: str = "concat"
     has_skip: bool = False
     timesteps: int = 100
+    relative_actions: bool = True
 
     def parse(self, config: ConfigProvider) -> "DiffusionPolicyConfig":
         return config.get_dataclass(self, flatten={"train"})
 
-    def train_policy(self, env, wandb_run, train_data, eval, rng):
-        return train_net_diffusion_policy(self, wandb_run, train_data, eval)
+    def train_policy(self, wandb_run, train_data, env, eval, rng):
+        return train_net_diffusion_policy(self, wandb_run, train_data, env, eval)
 
 def train_net_diffusion_policy(
-        config : DiffusionPolicyConfig,  env, wandb_run, train_data, eval):
+        config : DiffusionPolicyConfig,  wandb_run, train_data, env, eval):
     
-    train_data_flat = train_data.as_pytree()
+    train_data = train_data.as_pytree()
+    sample = jax.tree_map(lambda x: x[0], train_data)
     obs_length, action_length = (
-        stanza.util.axis_size(train_data_flat.observations, 1),
-        stanza.util.axis_size(train_data_flat.actions, 1)
+        stanza.util.axis_size(train_data.observations, 1),
+        stanza.util.axis_size(train_data.actions, 1)
     )
+    if config.relative_actions:
+        data_agent_pos = jax.vmap(
+            #TODO: refactor pushtobs
+            lambda x: env.observe(x, PushTObs()).agent_pos
+        )(train_data.state)
+        actions = train_data.actions - data_agent_pos[:, None, :]
+    else:
+        actions = train_data.actions
+    train_data = dataclasses.replace(train_data, actions=actions)
 
     rng = PRNGSequence(config.seed)
     #Model = getattr(net, config.model.split("/")[1])
@@ -59,7 +72,6 @@ def train_net_diffusion_policy(
         embed_type=config.embed_type, 
         has_skip=config.has_skip
     )
-    sample = train_data[0]
     vars = jax.jit(model.init)(next(rng), sample.observations, sample.actions, 0)
     #normalizer = LinearNormalizer.from_data(train_data)
 
@@ -112,13 +124,18 @@ def train_net_diffusion_policy(
         train.wandb.log(step.iteration, metrics, run=wandb_run)
     
     def policy(input: PolicyInput) -> PolicyOutput:
-        agent_pos = env.observe(input.state).agent_pos
         obs = input.observation
         model_fn = lambda rng_key, noised_actions, t: model.apply(
             vars, obs, noised_actions, t - 1
         )
-        action = schedule.sample(input.rng_key, model_fn, sample.actions) + agent_pos
+        action = schedule.sample(input.rng_key, model_fn, sample.actions) 
+        if config.relative_actions:
+            #TODO: refactor pushtobs
+            agent_pos = env.observe(input.state, PushTObs()).agent_pos
+            action = action + agent_pos
         return PolicyOutput(action=action)
+    
+    
     policy = ChunkingTransform(
         obs_length, action_length
     ).apply(policy)
