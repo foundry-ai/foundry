@@ -210,7 +210,7 @@ class StdNormalizer:
 
     @staticmethod
     def from_data(data, component_wise=True):
-        data = PyTreeData.from_data(data).tree
+        data = data.as_pytree()
         data_flat = jax.vmap(lambda x: jax.flatten_util.ravel_pytree(x)[0])(data)
         unflatten = jax.flatten_util.ravel_pytree(jax.tree_map(lambda x: x[0], data))[1]
         if component_wise:

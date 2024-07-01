@@ -9,7 +9,8 @@ from typing import (
 )
 from jax.typing import ArrayLike
 from functools import partial
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
+from pathlib import Path
 
 from rich.text import Text as RichText
 from rich.progress import (
@@ -23,8 +24,9 @@ from rich.style import Style
 
 import stanza.util
 
-import functools
-import itertools
+import time
+import shutil
+import os
 
 import jax
 import jax.numpy as jnp
@@ -45,6 +47,7 @@ class Loop(Generic[Sample]):
             max_epochs: int,
             epoch_iterations: int,
             max_iterations: int,
+            trace_dir: str | None,
             progress: Progress):
         self.rng_key = rng_key
         self.data = data
@@ -52,6 +55,7 @@ class Loop(Generic[Sample]):
         self.epoch_iterations = epoch_iterations
         self.max_iterations = max_iterations
         self.progress = progress
+        self.trace_dir = trace_dir
 
         if self.progress is not None:
             self.iteration_task = progress.add_task("Iteration", total=max_iterations)
@@ -68,15 +72,27 @@ class Loop(Generic[Sample]):
             self.progress.reset(self.epoch_task, total=self.max_epochs)
             self.progress.reset(self.iteration_task, total=self.max_iterations)
         rng = PRNGSequence(self.rng_key)
-        for i in range(self.max_epochs):
-            self.data = self.data.reset()
-            epoch_iterations = min(self.epoch_iterations, self.max_iterations - iterations)
-            yield Epoch(self, next(rng), i, iterations, epoch_iterations)
-            iterations = iterations + epoch_iterations
+        try:
+            for i in range(self.max_epochs):
+                self.data = self.data.reset()
+                epoch_iterations = min(self.epoch_iterations, self.max_iterations - iterations)
+                yield Epoch(self, next(rng), i, iterations, epoch_iterations)
+                iterations = iterations + epoch_iterations
+                if self.progress:
+                    self.progress.advance(self.epoch_task)
+        finally:
             if self.progress:
-                self.progress.advance(self.epoch_task)
-        if self.progress:
-            self.progress.refresh()
+                self.progress.refresh()
+            if self.trace_dir is not None:
+                jax.profiler.stop_trace()
+                traces = list(self.trace_dir.glob("**/perfetto*"))
+                if not traces:
+                    logger.warning("No traces found!")
+                else:
+                    trace = traces[0]
+                    dest = Path(os.environ.get("HOME")) / "traces" / (self.trace_dir.name + "_trace.json.gz")
+                    dest.parent.mkdir(exist_ok=True, parents=True)
+                    shutil.copyfile(trace, dest)
 
 class Epoch(Generic[Sample]):
     def __init__(self, loop: Loop[Sample], rng_key: jax.Array,
@@ -99,13 +115,25 @@ class Epoch(Generic[Sample]):
             )
         rng = PRNGSequence(self.rng_key)
         for i in range(self.epoch_iterations):
-            data, batch = self.loop.data.next()
-            self.loop.data = data
-            yield Step(batch, next(rng), self.num, 
-                i, prev_iterations + i)
+            total_iter = prev_iterations + i
+            if self.loop.trace_dir is not None and total_iter > 0:
+                step_profile = jax.profiler.StepTraceAnnotation("step", step_num=total_iter)
+            else:
+                step_profile = nullcontext()
+
+            with step_profile:
+                with jax.profiler.TraceAnnotation("data_fetch"):
+                    data, batch = self.loop.data.next()
+                    self.loop.data = data
+                with jax.profiler.TraceAnnotation("run_step"):
+                    yield Step(batch, next(rng), self.num, 
+                        i, total_iter)
             if self.loop.progress:
                 self.loop.progress.advance(self.loop.epoch_iteration_task)
                 self.loop.progress.advance(self.loop.iteration_task)
+            if self.loop.trace_dir is not None and total_iter == 0:
+                jax.profiler.start_trace(str(self.loop.trace_dir),
+                                         create_perfetto_trace=True)
 
 class Step(Generic[Sample]):
     def __init__(self, batch : Sample, rng_key: jax.Array, epoch, epoch_iteration, iteration):
@@ -133,7 +161,9 @@ class MofNColumn(ProgressColumn):
         )
 
 @contextmanager
-def loop(data : Data[Sample], *, batch_size, rng_key, epochs=None, iterations=None, progress=True):
+def loop(data : Data[Sample], *, batch_size, rng_key,
+         epochs=None, iterations=None, progress=True,
+         log_compiles=False, trace=False) -> Generator[Loop[Sample], None, None]:
     if (epochs is None and iterations is None) or \
             (epochs is not None and iterations is not None):
         raise ValueError("Must specify either iterations or epochs!")
@@ -145,7 +175,7 @@ def loop(data : Data[Sample], *, batch_size, rng_key, epochs=None, iterations=No
     
     with data.stream(batch_size=batch_size) as stream:
         rng_key, shuffle_key = jax.random.split(rng_key)
-        #stream = stream.shuffle(rng_key)
+        stream = stream.shuffle(shuffle_key)
         if progress:
             progress = Progress(
                 TextColumn("[progress.description]{task.description}"),
@@ -155,19 +185,24 @@ def loop(data : Data[Sample], *, batch_size, rng_key, epochs=None, iterations=No
                 TimeRemainingColumn(),
                 TimeElapsedColumn()
             )
-        else: progress = None
+        else: progress = nullcontext()
+        if log_compiles: compile_logger = jax.log_compiles()
+        else: compile_logger = nullcontext()
+        if trace:
+            trace_dir = Path("/tmp/jax-traces") / time.strftime("%Y_%m_%d-%H_%M_%S")
+            trace_dir.mkdir(exist_ok=True, parents=True)
+        else:
+            trace_dir = None
         loop = Loop(
             rng_key,
             stream,
             epochs, epoch_iterations,
             iterations,
-            progress=progress
+            progress=progress,
+            trace_dir=trace_dir
         )
-        if progress is None:
+        with progress, compile_logger:
             yield loop
-        else:
-            with progress:
-                yield loop
 
 @dataclass
 class LossOutput:
@@ -203,6 +238,7 @@ def batched_loss(loss_fn, vars, rng_key, batch, **kwargs):
 def batch_loss(loss_fn):
     return partial(batched_loss, loss_fn)
 
+@partial(jax.profiler.annotate_function, name="update")
 @partial(jax.jit, static_argnums=(0,1), donate_argnums=(2,3))
 def step(batch_loss_fn : Callable[[Vars, jax.Array, Sample], LossOutput], 
         optimizer : optax.GradientTransformationExtraArgs, 
@@ -225,3 +261,9 @@ def step(batch_loss_fn : Callable[[Vars, jax.Array, Sample], LossOutput],
     var_updates = output.var_updates if output.var_updates is not None else {}
     vars = {"params": params, **var_updates}
     return opt_state, vars, output.metrics
+
+@partial(jax.profiler.annotate_function, name="eval")
+@partial(jax.jit, static_argnums=(0,))
+def eval(batch_loss_fn, vars: Vars, rng_key: jax.Array, batch: Sample):
+    output = batch_loss_fn(vars, rng_key, batch)
+    return output.metrics

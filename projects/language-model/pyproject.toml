@@ -1,16 +1,20 @@
 [project]
-name = "stanza-common"
+name = "language-model"
 version = "0.1.0"
-description = "Common utilities for projects"
+description = "Default template for PDM package"
 authors = [
     {name = "Daniel Pfrommer", email = "dan.pfrommer@gmail.com"},
 ]
 dependencies = [
     "stanza",
+    "stanza-models"
 ]
 requires-python = ">=3.12"
 readme = "README.md"
 license = {text = "MIT"}
+
+[project.scripts]
+image_classifier = "image_classifier:run"
 
 [tool.pdm]
 distribution = true

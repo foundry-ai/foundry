@@ -1,7 +1,10 @@
 import time
 import numpy as np
 import tempfile
-import ffmpegio
+import warnings
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    import ffmpegio
 import uuid
 import rich.jupyter
 import rich.live
@@ -68,7 +71,7 @@ def as_video(array, fps=28):
 def _rich_live_refresh(self):
     with self._lock:
         self._live_render.set_renderable(self.renderable)
-        from IPython.display import display, TextDisplayObject
+        from IPython.display import TextDisplayObject
         def _render_to_text():
             loopback = io.StringIO()
             self.loopback_console.file = loopback
@@ -80,6 +83,7 @@ def _rich_live_refresh(self):
 
 def _rich_live_start(self, refresh: bool = False):
     from rich.live import _RefreshThread
+    from IPython.display import display
     with self._lock:
         if self._started:
             return

@@ -1,5 +1,8 @@
 from stanza.datasets import DatasetRegistry, Dataset
+from stanza.dataclasses import dataclass
 from stanza.util.registry import from_module
+
+from typing import Tuple
 
 import jax
 

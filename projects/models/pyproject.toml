@@ -1,20 +1,16 @@
 [project]
-name = "image-classifier"
+name = "stanza-models"
 version = "0.1.0"
-description = "Default template for PDM package"
+description = "Common utilities for projects"
 authors = [
     {name = "Daniel Pfrommer", email = "dan.pfrommer@gmail.com"},
 ]
 dependencies = [
     "stanza",
-    "stanza-models"
 ]
 requires-python = ">=3.12"
 readme = "README.md"
 license = {text = "MIT"}
-
-[project.scripts]
-image_classifier = "image_classifier:run"
 
 [tool.pdm]
 distribution = true

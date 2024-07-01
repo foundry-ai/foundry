@@ -4,8 +4,9 @@ import jax.numpy as jnp
 import pickle
 from stanza.data import PyTreeData
 from stanza.data import normalizer as nu
-from stanza.datasets import DatasetRegistry, ImageClassDataset
-from .util import download, extract, cache_path
+from stanza.datasets import DatasetRegistry
+from . import ImageClassDataset
+from ..util import download, extract, cache_path
 from stanza.data.transform import (
     random_horizontal_flip, random_subcrop, random_cutout
 )
@@ -126,6 +127,6 @@ def _load_cifar100(quiet=False):
         classes=classes
     )
 
-registry = DatasetRegistry[ImageClassDataset]()
-registry.register("cifar10", _load_cifar10)
-registry.register("cifar100", _load_cifar100)
+datasets = DatasetRegistry[ImageClassDataset]()
+datasets.register("cifar10", _load_cifar10)
+datasets.register("cifar100", _load_cifar100)

@@ -2,6 +2,8 @@ import jax.numpy as jnp
 from flax import linen as nn
 import flax
 
+from stanza.util.registry import Registry
+
 from functools import partial
 from typing import (
     Callable, Optional, Sequence, Tuple,
@@ -448,3 +450,13 @@ ResNeSt200 = partial(ResNet, stage_sizes=STAGE_SIZES[200],
 ResNeSt269 = partial(ResNet, stage_sizes=STAGE_SIZES[269],
                      stem_cls=partial(ResNetDStem, stem_width=64),
                      block_cls=ResNeStBottleneckBlock)
+
+models = Registry()
+models.register("SmallResNet18", SmallResNet18)
+models.register("SmallResNet50", SmallResNet50)
+models.register("ResNet18", ResNet18)
+models.register("ResNet34", ResNet34)
+models.register("ResNet50", ResNet50)
+models.register("ResNet101", ResNet101)
+models.register("ResNet152", ResNet152)
+models.register("ResNet200", ResNet200)
