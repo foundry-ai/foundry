@@ -150,15 +150,16 @@ class Mapped(Data[T]):
 
 # A Data backed by a jax pytree
 class PyTreeData(Data[T]):
-    def __init__(self, tree: T | None = None):
+    def __init__(self, tree: T | None = None, n: int | None = None):
         if tree is None:
             self.n = 0
             self.tree = tree
         else:
-            with jax.ensure_compile_time_eval():
-                ns = jnp.array([x.shape[0] for x in jax.tree_leaves(tree)])
-                n = ns[0]
-                assert jnp.all(ns == n)
+            if n is None:
+                with jax.ensure_compile_time_eval():
+                    ns = jnp.array([x.shape[0] for x in jax.tree_leaves(tree)])
+                    n = ns[0]
+                    assert jnp.all(ns == n)
             self.n = n
             self.tree = tree
 
@@ -198,8 +199,8 @@ class PyTreeData(Data[T]):
 
 jax.tree_util.register_pytree_node(
     PyTreeData,
-    lambda n: ((n.tree,), None),
-    lambda _, c: PyTreeData(c[0])
+    lambda d: ((d.tree,), d.n),
+    lambda n, c: PyTreeData(c[0], n)
 )
 
 
@@ -241,44 +242,46 @@ class IndexedDataStream(DataStream[T]):
     def has_next(self):
         return self.offset < self.max_offset
     
-    @partial(jax.jit, donate_argnums=(1,2,3))
-    def _next(self, offset, indices, shuffle_key):
+    @partial(jax.profiler.annotate_function, name="stream_next")
+    @jax.jit
+    def _next(self):
+        shuffle_key = self.shuffle_key
         if self.resample:
             shuffle_key, r = jax.random.split(shuffle_key)
             idxs = jax.random.randint(r, (), minval=0, maxval=self.max_offset)
             data = jax.vmap(lambda x: self.data[x])(idxs)
-        elif indices is not None:
-            idxs = jax.lax.dynamic_slice(indices, offset[None], (self.batch_size,))
+        elif self.indices is not None:
+            idxs = jax.lax.dynamic_slice(self.indices, self.offset[None], (self.batch_size,))
             data = jax.vmap(lambda i: self.data[i])(idxs)
         else:
-            data = self.data.slice(offset, self.batch_size).as_pytree()
-        stream = replace(self,
-            offset=offset + self.batch_size,
-            indices=indices,
-            shuffle_key=shuffle_key,
-        )
-        return stream, data
+            data = self.data.slice(self.offset, self.batch_size).as_pytree()
+        return self.offset + self.batch_size, shuffle_key, data
 
-    # donte the correct arguments so that
     # we don't re-use a given stream. TODO: Use jax API
     def next(self):
-        return self._next(self.offset, self.indices, self.shuffle_key)
+        offset, shuffle_key, batch = self._next()
+        return replace(self, 
+            offset=offset, 
+            shuffle_key=shuffle_key
+        ), batch
     
-    @partial(jax.jit, donate_argnums=(1,2,3))
-    def _reset(self, offset, indices, shuffle_key):
+    @partial(jax.profiler.annotate_function, name="stream_reset")
+    @jax.jit
+    def _reset(self):
+        shuffle_key = self.shuffle_key
         if self.resample:
             shuffle_key, r = jax.random.split(shuffle_key)
-            indices = jax.random.permutation(shuffle_key, self.max_offset)
+            indices = jax.random.permutation(r, self.max_offset)
         else:
             shuffle_key, indices = None, None
-        return replace(self,
-            offset=jnp.zeros_like(offset),
-            indices=indices,
-            shuffle_key=shuffle_key,
-        )
+        return jnp.zeros_like(self.offset), indices, shuffle_key
 
     def reset(self):
-        return self._reset(self.offset, self.indices, self.shuffle_key)
+        offset, indices, shuffle_key = self._reset()
+        return replace(
+            self, offset=offset, indices=indices,
+            shuffle_key=shuffle_key
+        )
 
     def shuffle(self, rng_key: jax.Array, resample : bool = False) -> "IndexedDataStream[T]":
         return IndexedDataStream.create(
