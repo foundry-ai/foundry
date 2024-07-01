@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:b861be15dfba056ee7ad6d718d441f9832f78b9d728140ea4da810334fe0a995"
+content_hash = "sha256:4682c2dade85e9a4b94fe1708a9c84bfaf3432f10f4c9f10f08a611690802fc5"
 
 [[package]]
 name = "absl-py"
@@ -1113,6 +1113,19 @@ groups = ["dev"]
 files = [
     {file = "idna-3.7-py3-none-any.whl", hash = "sha256:82fee1fc78add43492d3a1898bfa6d8a904cc97d8427f683ed8e798d07761aa0"},
     {file = "idna-3.7.tar.gz", hash = "sha256:028ff3aadf0609c1fd278d8ea3089299412a7a8b9bd005dd08b9f8285bcb5cfc"},
+]
+
+[[package]]
+name = "image-classifier"
+version = "0.1.0"
+requires_python = ">=3.12"
+editable = true
+path = "./projects/image-classifier"
+summary = "Default template for PDM package"
+groups = ["dev"]
+dependencies = [
+    "stanza",
+    "stanza-models",
 ]
 
 [[package]]
@@ -3373,18 +3386,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "stanza-common"
-version = "0.1.0"
-requires_python = ">=3.12"
-editable = true
-path = "./projects/common"
-summary = "Common utilities for projects"
-groups = ["dev"]
-dependencies = [
-    "stanza",
-]
-
-[[package]]
 name = "stanza-examples"
 version = "0.1.0"
 requires_python = ">=3.12"
@@ -3394,6 +3395,18 @@ summary = "Default template for PDM package"
 groups = ["dev"]
 dependencies = [
     "seaborn>=0.13.2",
+    "stanza",
+]
+
+[[package]]
+name = "stanza-models"
+version = "0.1.0"
+requires_python = ">=3.12"
+editable = true
+path = "./projects/models"
+summary = "Common utilities for projects"
+groups = ["dev"]
+dependencies = [
     "stanza",
 ]
 

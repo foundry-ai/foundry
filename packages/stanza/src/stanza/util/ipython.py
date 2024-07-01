@@ -1,7 +1,10 @@
 import time
 import numpy as np
 import tempfile
-import ffmpegio
+import warnings
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    import ffmpegio
 import uuid
 import rich.jupyter
 import rich.live

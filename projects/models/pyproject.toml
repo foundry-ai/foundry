@@ -1,5 +1,5 @@
 [project]
-name = "stanza-common"
+name = "stanza-models"
 version = "0.1.0"
 description = "Common utilities for projects"
 authors = [

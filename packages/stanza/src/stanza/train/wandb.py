@@ -3,7 +3,10 @@ import functools
 import wandb
 import numpy as np
 import tempfile
-import ffmpegio
+import warnings
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    import ffmpegio
 
 from functools import partial
 from stanza.train.reporting import Video, Image, as_log_dict

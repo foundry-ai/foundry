@@ -225,3 +225,9 @@ def step(batch_loss_fn : Callable[[Vars, jax.Array, Sample], LossOutput],
     var_updates = output.var_updates if output.var_updates is not None else {}
     vars = {"params": params, **var_updates}
     return opt_state, vars, output.metrics
+
+
+@partial(jax.jit, static_argnums=(0,))
+def eval(batch_loss_fn, vars: Vars, rng_key: jax.Array, batch: Sample):
+    output = batch_loss_fn(vars, rng_key, batch)
+    return output.metrics

@@ -1,21 +1,19 @@
-from stanza.runtime import ConfigProvider, command
+from stanza.runtime import ConfigProvider, command, setup
+setup()
+
 from stanza.dataclasses import dataclass
 
-import stanza.train as st
-import stanza.train.wandb as stw
-
-import stanza.train.wandb
-import stanza.util.summary
-
-from stanza.util import lanczos
-
+from stanza.train import LossOutput
+from stanza.util import lanczos, summary
 from stanza.random import PRNGSequence
-from stanza.datasets import image_class_datasets
+from stanza.datasets.vision import image_class_datasets
+from stanza.model import models
 
 from functools import partial
-from common import TrainConfig, AdamConfig, SAMConfig, SGDConfig
 
-import net
+import stanza.train
+import stanza.train.wandb
+import stanza.train.console
 
 import flax
 import rich
@@ -30,21 +28,20 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@dataclasses.dataclass
+@dataclass
 class Config:
     seed: int = 42
     summary: bool = False
-    dataset: str = "cifar10"
+    dataset: str = "cifar/cifar10"
     normalizer: str = "standard_dev"
-    model: str = "SmallResNet18"
+    model: str = "resnet/SmallResNet18"
 
-    lr: float | None = None
-    lr_schedule: str = "cosine"
-    cycles: int = 1 # cycles of the lr schedule to play
-    cycle_mult : float = 2.
     epochs: int = 50
+    warmup_ratio: float = 0.01
     batch_size: int = 128
     optimizer: str = "adam"
+    lr: float | None = None
+    weight_decay: float = 1e-4
 
     # sam-related parameters
     sam_rho: float = 0. # None if SAM is disabled
@@ -57,62 +54,58 @@ class Config:
     @staticmethod
     def parse(config: ConfigProvider) -> "Config":
         defaults = Config()
-        res = config.get_struct(defaults)
+        res = config.get_dataclass(defaults)
         return res
 
     # if we should also quantize the model
+
+def make_optimizer(name, lr, iterations, warmup_percent, weight_decay):
+    lr = lr or (5e-3 if name == "adam" else 2e-1)
+    schedule = optax.cosine_onecycle_schedule(
+        iterations, lr, warmup_percent
+    )
+    if name == "adam":
+        return optax.adamw(
+            schedule, weight_decay=weight_decay
+        )
+    elif name == "sgd":
+        return optax.chain(
+            optax.add_decayed_weights(weight_decay),
+            optax.sgd(schedule)
+        )
 
 def train(config: Config):
     logger.info(f"Training {config}")
     rng = PRNGSequence(config.seed)
 
-    if config.optimizer == "adam":
-        optimizer = AdamConfig(config.lr or 5e-3,
-            config.lr_schedule,
-            cycles=config.cycles,
-            cycle_mult=config.cycle_mult,
-            weight_decay=1e-5
-        )
-    elif config.optimizer == "sgd":
-        optimizer = SGDConfig(config.lr or 2e-1,
-            config.lr_schedule, weight_decay=1e-4,
-            cycles=config.cycles,
-            cycle_mult=config.cycle_mult
-        )
-    wandb_run = wandb.init(
-        project="image_classifier",
-        config=stanza.util.flatten_to_dict(config)[0]
-    )
-
-    if config.sam_rho is not None and config.sam_rho > 0:
-        optimizer = SAMConfig(
-            forward=optimizer,
-            backward=SGDConfig(config.sam_rho),
-            start_percent=config.sam_start,
-            run_percent=config.sam_percent
-        )
-    elif config.sam_start > 0 or config.sam_percent < 1:
-        logger.error("SAM is disabled but SAM parameters are set")
-        wandb_run.finish()
-        return
-
-    train_config = TrainConfig(
-        batch_size=config.batch_size,
-        epochs=config.epochs,
-        optimizer=optimizer
-    )
     dataset = image_class_datasets.create(config.dataset)
-    num_classes = len(dataset.classes)
     normalizer = dataset.normalizers[config.normalizer]()
     augment = (
         dataset.transforms["standard_augmentations"]()
         if "standard_augmentations" in dataset.transforms else
         lambda _r, x: x
     )
+
+    iterations_per_epoch = len(dataset.splits["train"]) // config.batch_size
+    iterations = config.epochs * iterations_per_epoch
+
+    optimizer = make_optimizer(config.optimizer, config.lr, 
+                               iterations, config.warmup_ratio,
+                               config.weight_decay)
+    if config.sam_rho is not None and config.sam_rho > 0:
+        optimizer = optax.contrib.sam(
+            optimizer,
+            optax.sgd(config.sam_rho),
+            opaque_mode=True
+        )
+    wandb_run = wandb.init(
+        project="image_classifier",
+        config=stanza.util.flatten_to_dict(config)[0]
+    )
+    num_classes = len(dataset.classes)
     logger.info(f"Logging to [blue]{wandb_run.url}[/blue]")
 
-    Model = getattr(net, config.model)
-    model = Model(n_classes=num_classes)
+    model = models.create(config.model, n_classes=num_classes)
     vars = jax.jit(model.init)(next(rng), jnp.zeros_like(normalizer.structure[0]))
     total_params = jax.tree_util.tree_reduce(lambda x, y: x + y.size, vars, 0)
     logger.info(f"Total parameters: [blue]{total_params}[/blue]")
@@ -126,7 +119,7 @@ def train(config: Config):
             )(jnp.zeros_like(normalizer.structure[0]))
         )
 
-    def loss_fn(params, _iteration, rng_key, sample, train=True):
+    def loss_fn(params, rng_key, sample, train=True):
         x, label = normalizer.normalize(sample)
         if train:
             x = augment(rng_key, x)
@@ -139,16 +132,18 @@ def train(config: Config):
         ce_loss = optax.softmax_cross_entropy_with_integer_labels(logits_output, label)
         predicted_class = jnp.argmax(logits_output, axis=-1)
         accuracy = 1.*(predicted_class == label)
-        return st.LossOutput(
+        return LossOutput(
             loss=ce_loss,
             metrics=dict(cross_entropy=ce_loss, accuracy=accuracy),
             var_updates=mutated
         )
     
-    batch_loss = st.batch_loss(loss_fn)
-    val_batch_loss = st.batch_loss(partial(loss_fn, train=False))
+    batch_loss = stanza.train.batch_loss(loss_fn)
+    val_batch_loss = stanza.train.batch_loss(
+        partial(loss_fn, train=False)
+    )
 
-    def sharpness_stats(vars, _iteration, rng_key, batch):
+    def sharpness_stats(vars, rng_key, batch):
         batch = jax.vmap(normalizer.normalize)(batch)
         # only compute the sharpenss wrt trainable params
         other_vars, params = flax.core.pop(vars, "params")
@@ -164,53 +159,54 @@ def train(config: Config):
             sharpness_stats = lanczos.net_sharpness_statistics(rng_key, hvp_at, params)
         else:
             sharpness_stats = {}
-        return st.LossOutput(
+        return LossOutput(
             metrics=sharpness_stats
         )
+    
+    vars = model.init(next(rng), jnp.zeros_like(normalizer.structure[0]))
+    opt_state = optimizer.init(vars["params"])
 
-    stanza.loop.run(
-
-    )
-
-    vars = train_config.fit(
-        data=dataset.splits["train"],
-        batch_loss_fn=batch_loss,
-        rng_key=next(rng),
-        init_vars=vars,
-        donate_init_vars=True,
-        hooks=[
-            stw.wandb_logger(run=wandb_run, metrics=True, prefix="train/"),
-            st.every_n_iterations(500,
-                st.console_logger(metrics=True, prefix="train.")
-            ),
-            st.every_n_iterations(500,
-                st.validate(
-                    data=dataset.splits["train"],
-                    
-                    batch_loss_fn=sharpness_stats,
-                    batch_size=8*config.batch_size,
-                    batches=1, # run on a single batch, 8*the regular size
-                               # we will scan over the 8 batches to sum up the hvp
-                    rng_key=next(rng),
-                    log_hooks=[
-                        st.wandb.wandb_logger(run=wandb_run, prefix="sharpness/"),
-                        st.console_logger(prefix="sharpness.")
-                    ]
-                ),
-            ),
-            st.every_n_iterations(500,
-                st.validate(
-                    data=dataset.splits["test"],
-                    batch_loss_fn=val_batch_loss,
-                    batch_size=None,
-                    log_hooks=[
-                        st.wandb.wandb_logger(run=wandb_run, prefix="test/"),
-                        st.console_logger(prefix="test.")
-                    ]
-                ),
-            ),
-        ]
-    )
+    # load all the test data directly into memory
+    test_data = dataset.splits["test"].as_pytree()
+    with stanza.train.loop(dataset.splits["train"], 
+                rng_key=next(rng),
+                iterations=iterations,
+                batch_size=config.batch_size,
+                progress=True) as loop:
+        for epoch in loop.epochs():
+            for step in epoch.steps():
+                opt_state, vars, metrics = stanza.train.step(
+                    batch_loss, optimizer,
+                    opt_state, vars,
+                    step.rng_key, step.batch 
+                )
+                stanza.train.wandb.log(
+                    step.iteration, metrics,
+                    run=wandb_run
+                )
+                # print to the console every 100 iterations
+                if step.iteration % 100 == 0:
+                    stanza.train.console.log(
+                        step.iteration, metrics
+                    )
+                # validate + log every 500 steps
+                if step.iteration % 500 == 0:
+                    sharpness_metrics = stanza.train.eval(
+                        sharpness_stats, vars, next(rng), test_data
+                    )
+                    test_metrics = stanza.train.eval(
+                        val_batch_loss, vars, next(rng), test_data
+                    )
+                    stanza.train.console.log(
+                        step.iteration, 
+                        sharpness_metrics, test_metrics,
+                        prefix="test"
+                    )
+                    stanza.train.wandb.log(
+                        step.iteration,
+                        sharpness_metrics, test_metrics,
+                        prefix="test", run=wandb_run
+                    )
 
 @command
 def run(config: ConfigProvider):

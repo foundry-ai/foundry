@@ -17,8 +17,9 @@ build-backend = "pdm.backend"
 [tool.pdm.dev-dependencies]
 dev = [
     "-e stanza[ipython,docs] @ file:///${PROJECT_ROOT}/packages/stanza",
-    "-e stanza-common @ file:///${PROJECT_ROOT}/projects/common",
+    "-e stanza-model @ file:///${PROJECT_ROOT}/projects/models",
     "-e stanza-examples @ file:///${PROJECT_ROOT}/projects/examples",
     "-e cond_diffusion @ file:///${PROJECT_ROOT}/projects/cond-diffusion",
+    "-e image-classifier @ file:///${PROJECT_ROOT}/projects/image-classifier",
     "pytest>=8.2.2",
 ]
