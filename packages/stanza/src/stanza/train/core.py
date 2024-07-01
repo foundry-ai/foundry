@@ -24,8 +24,9 @@ from rich.style import Style
 
 import stanza.util
 
-import functools
-import itertools
+import time
+import shutil
+import os
 
 import jax
 import jax.numpy as jnp
@@ -84,6 +85,14 @@ class Loop(Generic[Sample]):
                 self.progress.refresh()
             if self.trace_dir is not None:
                 jax.profiler.stop_trace()
+                traces = list(self.trace_dir.glob("**/perfetto*"))
+                if not traces:
+                    logger.warning("No traces found!")
+                else:
+                    trace = traces[0]
+                    dest = Path(os.environ.get("HOME")) / "traces" / (self.trace_dir.name + "_trace.json.gz")
+                    dest.parent.mkdir(exist_ok=True, parents=True)
+                    shutil.copyfile(trace, dest)
 
 class Epoch(Generic[Sample]):
     def __init__(self, loop: Loop[Sample], rng_key: jax.Array,
@@ -123,7 +132,8 @@ class Epoch(Generic[Sample]):
                 self.loop.progress.advance(self.loop.epoch_iteration_task)
                 self.loop.progress.advance(self.loop.iteration_task)
             if self.loop.trace_dir is not None and total_iter == 0:
-                jax.profiler.start_trace(str(self.loop.trace_dir))
+                jax.profiler.start_trace(str(self.loop.trace_dir),
+                                         create_perfetto_trace=True)
 
 class Step(Generic[Sample]):
     def __init__(self, batch : Sample, rng_key: jax.Array, epoch, epoch_iteration, iteration):
@@ -179,7 +189,7 @@ def loop(data : Data[Sample], *, batch_size, rng_key,
         if log_compiles: compile_logger = jax.log_compiles()
         else: compile_logger = nullcontext()
         if trace:
-            trace_dir = Path("/tmp/jax-traces")
+            trace_dir = Path("/tmp/jax-traces") / time.strftime("%Y_%m_%d-%H_%M_%S")
             trace_dir.mkdir(exist_ok=True, parents=True)
         else:
             trace_dir = None
