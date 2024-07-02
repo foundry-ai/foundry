@@ -230,7 +230,7 @@ class IndexedDataStream(DataStream[T]):
 
         return IndexedDataStream(
             data=data,
-            offset=jnp.zeros((), dtype=jnp.uint32),
+            offset=jnp.zeros((), dtype=jnp.uint64),
             indices=indices,
             shuffle_key=shuffle_key,
             resample=resample,
@@ -248,7 +248,7 @@ class IndexedDataStream(DataStream[T]):
         shuffle_key = self.shuffle_key
         if self.resample:
             shuffle_key, r = jax.random.split(shuffle_key)
-            idxs = jax.random.randint(r, (), minval=0, maxval=self.max_offset)
+            idxs = jax.random.randint(r, (self.batch_size,), minval=0, maxval=self.max_offset)
             data = jax.vmap(lambda x: self.data[x])(idxs)
         elif self.indices is not None:
             idxs = jax.lax.dynamic_slice(self.indices, self.offset[None], (self.batch_size,))
@@ -269,11 +269,11 @@ class IndexedDataStream(DataStream[T]):
     @jax.jit
     def _reset(self):
         shuffle_key = self.shuffle_key
-        if self.resample:
+        if not self.resample:
             shuffle_key, r = jax.random.split(shuffle_key)
             indices = jax.random.permutation(r, self.max_offset)
         else:
-            shuffle_key, indices = None, None
+            indices = None
         return jnp.zeros_like(self.offset), indices, shuffle_key
 
     def reset(self):

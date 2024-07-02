@@ -4,9 +4,8 @@ setup()
 from stanza.dataclasses import dataclass
 
 from stanza.train import LossOutput
-from stanza.util import lanczos, summary
 from stanza.random import PRNGSequence
-from stanza.datasets.vision import image_class_datasets
+from stanza.datasets.nlp import datasets
 from stanza.model import models
 
 from functools import partial
@@ -31,9 +30,8 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Config:
     seed: int = 42
-    summary: bool = False
-    dataset: str = "cifar/cifar10"
-    model: str = "resnet/SmallResNet18"
+    dataset: str = "tinystories"
+    model: str = "gpt2/nano"
 
     epochs: int = 50
     warmup_ratio: float = 0.01
@@ -75,17 +73,10 @@ def make_optimizer(name, lr, iterations, warmup_percent, weight_decay):
 def train(config: Config):
     logger.info(f"Training {config}")
     rng = PRNGSequence(config.seed)
-
-    dataset = image_class_datasets.create(config.dataset)
-    augment = (
-        dataset.transforms["standard_augmentations"]()
-        if "standard_augmentations" in dataset.transforms else
-        lambda _r, x: x
-    )
+    dataset = datasets.create(config.dataset)
 
     iterations_per_epoch = len(dataset.splits["train"]) // config.batch_size
     iterations = config.epochs * iterations_per_epoch
-
     optimizer = make_optimizer(config.optimizer, config.lr, 
                                iterations, config.warmup_ratio,
                                config.weight_decay)
@@ -101,7 +92,11 @@ def train(config: Config):
         config=stanza.util.flatten_to_dict(config)[0]
     )
     logger.info(f"Logging to [blue]{wandb_run.url}[/blue]")
-    model = models.create(config.model)
+    model = models.create(config.model, vocab_size=dataset.tokenizer.vocab_size)
+    vars = jax.jit(partial(model.init, deterministic=True))(
+        next(rng),
+        jnp.zeros_like(dataset.splits["train"].structure), 
+    )
     total_params = jax.tree_util.tree_reduce(lambda x, y: x + y.size, vars, 0)
     logger.info(f"Total parameters: [blue]{total_params}[/blue]")
 
@@ -112,7 +107,6 @@ def train(config: Config):
     val_batch_loss = stanza.train.batch_loss(
         partial(loss_fn, train=False)
     )
-    vars = model.init(next(rng), jnp.zeros_like(dataset.splits["train"].structure[0]))
     opt_state = optimizer.init(vars["params"])
 
     # load all the test data directly into memory
@@ -121,14 +115,17 @@ def train(config: Config):
                 rng_key=next(rng),
                 iterations=iterations,
                 batch_size=config.batch_size,
+                resample=True,
                 progress=True) as loop:
         for epoch in loop.epochs():
             for step in epoch.steps():
+                print(step.batch)
                 opt_state, vars, metrics = stanza.train.step(
                     batch_loss, optimizer,
                     opt_state, vars,
                     step.rng_key, step.batch 
                 )
+                print("stepped")
                 stanza.train.wandb.log(
                     step.iteration, metrics,
                     run=wandb_run

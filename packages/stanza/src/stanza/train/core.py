@@ -123,7 +123,9 @@ class Epoch(Generic[Sample]):
 
             with step_profile:
                 with jax.profiler.TraceAnnotation("data_fetch"):
+                    print("getting data")
                     data, batch = self.loop.data.next()
+                    print("got data")
                     self.loop.data = data
                 with jax.profiler.TraceAnnotation("run_step"):
                     yield Step(batch, next(rng), self.num, 
@@ -163,7 +165,7 @@ class MofNColumn(ProgressColumn):
 @contextmanager
 def loop(data : Data[Sample], *, batch_size, rng_key,
          epochs=None, iterations=None, progress=True,
-         log_compiles=False, trace=False) -> Generator[Loop[Sample], None, None]:
+         resample=False, log_compiles=False, trace=False) -> Generator[Loop[Sample], None, None]:
     if (epochs is None and iterations is None) or \
             (epochs is not None and iterations is not None):
         raise ValueError("Must specify either iterations or epochs!")
@@ -175,7 +177,7 @@ def loop(data : Data[Sample], *, batch_size, rng_key,
     
     with data.stream(batch_size=batch_size) as stream:
         rng_key, shuffle_key = jax.random.split(rng_key)
-        stream = stream.shuffle(shuffle_key)
+        stream = stream.shuffle(shuffle_key, resample=resample)
         if progress:
             progress = Progress(
                 TextColumn("[progress.description]{task.description}"),

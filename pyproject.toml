@@ -21,5 +21,6 @@ dev = [
     "-e stanza-examples @ file:///${PROJECT_ROOT}/projects/examples",
     "-e cond_diffusion @ file:///${PROJECT_ROOT}/projects/cond-diffusion",
     "-e image-classifier @ file:///${PROJECT_ROOT}/projects/image-classifier",
+    "-e language-model @ file:///${PROJECT_ROOT}/projects/language-model",
     "pytest>=8.2.2",
 ]
