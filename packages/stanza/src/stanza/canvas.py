@@ -57,8 +57,8 @@ class Box(Geometry):
 
 def box(top_left, bottom_right):
     return Box(
-        top_left=jnp.array(top_left),
-        bottom_right=jnp.array(bottom_right)
+        top_left=jnp.array(top_left, dtype=jnp.float32),
+        bottom_right=jnp.array(bottom_right, dtype=jnp.float32)
     )
 rectangle = box
 
@@ -85,7 +85,7 @@ class Polygon(Geometry):
         return jnp.max(dists)
 
 def polygon(vertices):
-    return Polygon(jnp.array(vertices))
+    return Polygon(jnp.array(vertices, dtype=jnp.float32))
 
 import optax
 
@@ -106,7 +106,7 @@ class Circle(Geometry):
         return d - self.radius
 
 def circle(center, radius):
-    return Circle(jnp.array(center), radius)
+    return Circle(jnp.array(center, dtype=jnp.float32), radius)
 
 @dataclass
 class Segment(Geometry):
@@ -129,7 +129,7 @@ class Segment(Geometry):
         return dist - self.thickness
 
 def segment(a, b, thickness=1.):
-    return Segment(jnp.array(a), jnp.array(b), thickness)
+    return Segment(jnp.array(a, dtype=jnp.float32), jnp.array(b, dtype=jnp.float32), thickness)
 
 # Composed geometries
 
@@ -147,7 +147,7 @@ class Union(Geometry):
         )
 
     def signed_distance(self, x):
-        distances = jnp.array([g.signed_distance(x) for g in self.geometries])
+        distances = jnp.array([g.signed_distance(x) for g in self.geometries], dtype=jnp.float32)
         return jnp.min(distances, axis=0)
 
 def union(*geoemtries):
@@ -245,9 +245,9 @@ class Renderable:
     def transform(self, translation=None, rotation=None, scale=None):
         return TransformedRenderable(
             renderable=self,
-            translation=jnp.array(translation) if translation is not None else None,
-            rotation=jnp.array(rotation) if rotation is not None else None,
-            scale=jnp.array(scale) if scale is not None else None
+            translation=jnp.array(translation, dtype=jnp.float32) if translation is not None else None,
+            rotation=jnp.array(rotation, dtype=jnp.float32) if rotation is not None else None,
+            scale=jnp.array(scale, dtype=jnp.float32) if scale is not None else None
         )
 
 @jax.jit
@@ -270,7 +270,7 @@ class Fill(Renderable):
         dist = self.geometry.signed_distance(x)
         return dist, self.color
 
-def fill(geometry, color=jnp.array([0.,0.,0.,1.])):
+def fill(geometry, color=jnp.array([0.,0.,0.,1.], dtype=jnp.float32)):
     color = sanitize_color(color)
     return Fill(geometry, color)
 
@@ -294,7 +294,11 @@ class Stack(Renderable):
             dists.append(s_dist)
             s_colors.append(s_color)
             grads.append(grad)
-        dists, s_colors, grads = jnp.array(dists), jnp.array(s_colors), jnp.array(grads)
+        dists, s_colors, grads = (
+            jnp.array(dists, dtype=jnp.float32),
+            jnp.array(s_colors, dtype=jnp.float32),
+            jnp.array(grads, dtype=jnp.float32)
+        )
         scalings = jax.vmap(lambda grad: jnp.sqrt(jnp.dot(grad, pixel_metric_hessian @ grad)))(grads)
         aa_dist = dists * scalings
         colors = jax.vmap(_aa_color)(aa_dist, s_colors)
@@ -354,8 +358,8 @@ class TransformedRenderable(Renderable):
                 x = x - self.translation
             if self.rotation is not None:
                 c, s = jnp.cos(self.rotation), jnp.sin(self.rotation)
-                M = jnp.array(((c,-s),(s,c))) if self.rotation is not None else jnp.eye(2)
-                M_inv = jnp.array(((c,s),(-s,c))) if self.rotation is not None else jnp.eye(2)
+                M = jnp.array(((c,-s),(s,c)), dtype=jnp.float32) if self.rotation is not None else jnp.eye(2)
+                M_inv = jnp.array(((c,s),(-s,c)), dtype=jnp.float32) if self.rotation is not None else jnp.eye(2)
                 pixel_metric_hessian = M @ pixel_metric_hessian @ M.T
                 x = M_inv @ x
             return self.renderable.color_distance(x, pixel_metric_hessian)
@@ -368,9 +372,9 @@ class TransformedRenderable(Renderable):
 
 def transform(r, translation=None, rotation=None, scale=None):
     return r.transform(
-        translation=jnp.array(translation) if translation is not None else None,
-        rotation=jnp.array(rotation) if rotation is not None else None,
-        scale=jnp.array(scale) if scale is not None else None
+        translation=jnp.array(translation, dtype=jnp.float32) if translation is not None else None,
+        rotation=jnp.array(rotation, dtype=jnp.float32) if rotation is not None else None,
+        scale=jnp.array(scale, dtype=jnp.float32) if scale is not None else None
     )
 
 
@@ -380,7 +384,7 @@ def batch(*objs):
     return jax.tree_map(lambda *x: jnp.stack(x, axis=0), *objs)
 
 def sanitize_color(color, channels=4):
-    color = jnp.atleast_1d(jnp.array(color))
+    color = jnp.atleast_1d(jnp.array(color, dtype=jnp.float32))
     if color.shape[-1] == 1 and channels >= 3:
         color = color.repeat(3, axis=-1)
     if color.shape[-1] == channels:

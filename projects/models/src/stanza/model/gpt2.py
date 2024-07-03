@@ -91,11 +91,15 @@ class GPT(nn.Module):
     # If specified overrides the GPTConfig vocab_size
     vocab_size: int | None = None
 
+    flash_attention: bool = True
+
     @nn.compact
     def __call__(self, idx, deterministic=None):
         vocab_size = self.vocab_size or self.config.vocab_size
         T, = idx.shape
         assert T <= self.config.block_size, f"Cannot forward sequence of length {T}, block size is only {self.block_size}"
+        # Add a fake batch dimension
+        idx = idx[None, :]
 
         pos = jnp.arange(0, T)[None]
         attn_mask = nn.make_causal_mask(idx, dtype=bool)
@@ -112,6 +116,7 @@ class GPT(nn.Module):
 
         x = nn.LayerNorm(1e-5, dtype=self.config.dtype, use_bias=self.config.use_bias, name='ln_f')(x)
         logits = wte.attend(x)
+        logits = logits.squeeze(0)
         return logits
 
 
@@ -159,7 +164,7 @@ def get_pretrained_params(model_type: str) -> Tuple[GPT, FrozenDict]:
     params = convert_hf_params(hf_params, config.num_heads, config.num_embeds)
     return GPT(config), params
 
-GPT2Nano = partial(GPT, GPTConfig(num_layers=4, num_heads=4, num_embeds=128))  # tiny # params
+GPT2Nano = partial(GPT, GPTConfig(num_layers=8, num_heads=4, num_embeds=64))  # tiny # params
 GPT2Small = partial(GPT, GPTConfig(num_layers=12, num_heads=12, num_embeds=768))  # 124M params
 GPT2Medium = partial(GPT, GPTConfig(num_layers=24, num_heads=16, num_embeds=1024)) # 350M params
 GPT2Large = partial(GPT, GPTConfig(num_layers=36, num_heads=20, num_embeds=1280)) # 774M params

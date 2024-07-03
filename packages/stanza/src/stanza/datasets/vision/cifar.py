@@ -13,8 +13,8 @@ from stanza.data.transform import (
 
 def _read_batch(file):
     dict = pickle.load(file, encoding="bytes")
-    data = jnp.array(dict[b"data"])
-    labels = jnp.array(dict[b"labels"] if b"labels" in dict else dict[b"fine_labels"])
+    data = jnp.array(dict[b"data"], dtype=jnp.uint8)
+    labels = jnp.array(dict[b"labels"] if b"labels" in dict else dict[b"fine_labels"], dtype=jnp.uint8)
     data = data.reshape((-1, 3, 32, 32))
     data = data.transpose((0, 2, 3, 1))
     return data, labels

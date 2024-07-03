@@ -28,14 +28,14 @@ import importlib.resources as resources
 
 @dataclass
 class PushTObs:
-    agent_pos: jnp.array = None
-    agent_vel: jnp.array = None
+    agent_pos: jax.Array = None
+    agent_vel: jax.Array = None
 
-    block_pos: jnp.array = None
-    block_vel: jnp.array = None
+    block_pos: jax.Array = None
+    block_vel: jax.Array = None
 
-    block_rot: jnp.array = None
-    block_rot_vel: jnp.array = None
+    block_rot: jax.Array = None
+    block_rot_vel: jax.Array = None
 
 @dataclass
 class PushTEnv(MujocoEnvironment[SimulatorState]):
@@ -44,8 +44,8 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
 
     success_threshold: float = field(default=0.9, pytree_node=False)
 
-    goal_pos: jnp.array = field(default_factory=lambda: jnp.array([0, 0]), pytree_node=False)
-    goal_rot: jnp.array = field(default_factory=lambda: jnp.array(-jnp.pi/4), pytree_node=False)
+    goal_pos: jax.Array = field(default_factory=lambda: jnp.zeros((2,), jnp.float32), pytree_node=False)
+    goal_rot: jax.Array = field(default_factory=lambda: jnp.array(-jnp.pi/4, jnp.float32), pytree_node=False)
 
     agent_radius : float = field(default=15/252, pytree_node=False)
     block_scale : float = field(default=30/252, pytree_node=False)
@@ -90,10 +90,10 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
         )
         qpos = jnp.concatenate([agent_pos, block_pos, block_rot[jnp.newaxis]])
         return self.full_state(SystemState(
-            jnp.zeros(()), 
+            jnp.zeros((), dtype=jnp.float32), 
             qpos, 
             jnp.zeros_like(qpos), 
-            jnp.zeros((0,))
+            jnp.zeros((0,), dtype=jnp.float32)
         ))
     
     @jax.jit
@@ -235,7 +235,7 @@ class PositionalControlEnv(EnvWrapper):
         if action is not None:
             a = self.k_p * (action - obs.agent_pos) + self.k_v * (-obs.agent_vel)
         else: 
-            a = jnp.zeros((2,))
+            a = jnp.zeros((2,), dtype=jnp.float32)
         return self.base.step(state, a, None)
 
 

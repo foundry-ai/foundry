@@ -7,7 +7,7 @@ import flax
 import jax
 
 @partial(jax.jit, static_argnums=(0,4))
-def sharpness_stats(loss_fn, vars, rng_key, data, batch_size=8):
+def sharpness_stats(loss_fn, vars, rng_key, data, batch_size):
     # only compute the sharpenss wrt trainable params
     other_vars, params = flax.core.pop(vars, "params")
     N = axis_size(data, 0)

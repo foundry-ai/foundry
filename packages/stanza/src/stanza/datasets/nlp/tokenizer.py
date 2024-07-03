@@ -100,6 +100,11 @@ def chunk_text(lines, line_separator, char_limit):
         yield story
         first = False
 
+def filter_ascii(sentences):
+    for s in sentences:
+        if s.isascii():
+            yield s
+
 def iterate_raw(data_path, entry_separator, line_symbol, char_limit):
     with open(data_path, "r") as f:
         lines = []

@@ -13,6 +13,7 @@ from functools import partial
 import stanza.train
 import stanza.train.wandb
 import stanza.train.console
+import stanza.train.sharpness
 
 import flax
 import rich
@@ -33,9 +34,9 @@ class Config:
     dataset: str = "tinystories"
     model: str = "gpt2/nano"
 
-    epochs: int = 50
+    iterations: int = 100
     warmup_ratio: float = 0.01
-    batch_size: int = 128
+    batch_size: int = 4
     optimizer: str = "adam"
     lr: float | None = None
     weight_decay: float = 1e-4
@@ -43,10 +44,9 @@ class Config:
     # sam-related parameters
     sam_rho: float = 0. # None if SAM is disabled
     sam_start: float = 0. # percentage of training through which to start sam
-    sam_percent: float = 1. # percentage of training to use sam, if enabled
 
-    # sharpness measure
-    sharpness: bool = False
+    log_compiles: bool = False
+    trace: bool = False
 
     @staticmethod
     def parse(config: ConfigProvider) -> "Config":
@@ -54,41 +54,71 @@ class Config:
         res = config.get_dataclass(defaults)
         return res
 
+def switch_optim(
+    opt_a: optax.GradientTransformation,
+    opt_b: optax.GradientTransformation,
+    switch_iteration: int
+) -> optax.GradientTransformation:
+    def init_fn(params):
+        del params
+        return {"opt_a": opt_a.init(params), "opt_b": opt_b.init(params),
+                "iteration": jnp.zeros((), dtype=jnp.int32)}
+    def update_fn(updates, state, params=None):
+        del params
+        iteration = state["iteration"]
+        a_updates, a_state = opt_a.update(updates, state["opt_a"])
+        b_updates, b_state = opt_b.update(updates, state["opt_a"])
+        updates = jax.lax.cond(switch_iteration < iteration, lambda: a_updates, lambda: b_updates)
+        state = {"opt_a": a_state, "opt_b": b_state, "iteration": iteration + 1}
+        return updates, state
+    return optax.GradientTransformation(init_fn, update_fn)
+
     # if we should also quantize the model
-def make_optimizer(name, lr, iterations, warmup_percent, weight_decay):
-    lr = lr or (5e-3 if name == "adam" else 2e-1)
+def make_optimizer(name, lr, iterations, warmup_percent, weight_decay, sam_rho):
     schedule = optax.cosine_onecycle_schedule(
-        iterations, lr, warmup_percent
+        iterations, lr or 8e-3, warmup_percent
     )
-    if name == "adam":
-        return optax.adamw(
-            schedule, weight_decay=weight_decay
+    adam_optimizer = optax.adamw(
+        schedule, weight_decay=weight_decay
+    )
+    schedule = optax.cosine_onecycle_schedule(
+        iterations, lr or 1e-2, warmup_percent
+    )
+    sgd_optimizer = optax.chain(
+        optax.add_decayed_weights(weight_decay),
+        optax.sgd(schedule)
+    )
+    if name == "adam": optimizer = adam_optimizer
+    if name == "sgd": optimizer = sgd_optimizer
+    elif name == "adam_sgd_0.2":
+        optimizer = switch_optim(adam_optimizer, 
+            sgd_optimizer, int(0.2*iterations))
+    elif name == "adam_sgd_0.5":
+        optimizer = switch_optim(adam_optimizer, 
+            sgd_optimizer, int(0.5*iterations))
+    elif name == "adam_sgd_0.9":
+        optimizer = switch_optim(adam_optimizer, 
+            sgd_optimizer, int(0.9*iterations))
+    if sam_rho is not None and sam_rho > 0:
+        optimizer = optax.contrib.sam(
+            optimizer,
+            optax.sgd(sam_rho),
+            opaque_mode=True,
+            reset_state=False
         )
-    elif name == "sgd":
-        return optax.chain(
-            optax.add_decayed_weights(weight_decay),
-            optax.sgd(schedule)
-        )
+    return optimizer
 
 def train(config: Config):
     logger.info(f"Training {config}")
     rng = PRNGSequence(config.seed)
     dataset = datasets.create(config.dataset)
 
-    iterations_per_epoch = len(dataset.splits["train"]) // config.batch_size
-    iterations = config.epochs * iterations_per_epoch
+    iterations = config.iterations
     optimizer = make_optimizer(config.optimizer, config.lr, 
                                iterations, config.warmup_ratio,
-                               config.weight_decay)
-    if config.sam_rho is not None and config.sam_rho > 0:
-        optimizer = optax.contrib.sam(
-            optimizer,
-            optax.sgd(config.sam_rho),
-            opaque_mode=True,
-            reset_state=False
-        )
+                               config.weight_decay, config.sam_rho)
     wandb_run = wandb.init(
-        project="image_classifier",
+        project="language_model",
         config=stanza.util.flatten_to_dict(config)[0]
     )
     logger.info(f"Logging to [blue]{wandb_run.url}[/blue]")
@@ -99,57 +129,72 @@ def train(config: Config):
     )
     total_params = jax.tree_util.tree_reduce(lambda x, y: x + y.size, vars, 0)
     logger.info(f"Total parameters: [blue]{total_params}[/blue]")
+    logger.info(f"Vocabulary size: [blue]{dataset.tokenizer.vocab_size}[/blue]")
 
-    def loss_fn(params, rng_key, sample, train=True):
-        pass
-    
+    def loss_fn(params, rng_key, tokens, train=True):
+        X, Y = tokens[:-1], tokens[1:]
+        logits = model.apply(
+            params, X,
+            not train, 
+            rngs={'dropout': rng_key}
+        )
+        loss = optax.softmax_cross_entropy_with_integer_labels(logits, Y).mean()
+        stats = {"loss": loss}
+        return LossOutput(loss=loss, metrics=stats)
+
+    val_loss_fn = partial(loss_fn, train=False)
     batch_loss = stanza.train.batch_loss(loss_fn)
-    val_batch_loss = stanza.train.batch_loss(
-        partial(loss_fn, train=False)
-    )
-    opt_state = optimizer.init(vars["params"])
+    val_batch_loss = stanza.train.batch_loss(val_loss_fn)
+    opt_state = jax.jit(optimizer.init)(vars["params"])
+    logger.info("Initialized optimizer.")
 
-    # load all the test data directly into memory
-    test_data = dataset.splits["test"].as_pytree()
-    with stanza.train.loop(dataset.splits["train"], 
-                rng_key=next(rng),
-                iterations=iterations,
-                batch_size=config.batch_size,
-                resample=True,
-                progress=True) as loop:
+    train_data = (
+        dataset.splits["train"].stream()
+            .shuffle(next(rng)).batch(config.batch_size)
+    )
+    sharpness_data = (
+        dataset.splits["test"].stream()
+            .shuffle(next(rng), resample=True).batch(config.batch_size)
+    )
+    test_data = dataset.splits["test"].stream().batch(config.batch_size)
+
+    with stanza.train.loop(train_data, rng_key=next(rng), iterations=iterations, 
+                log_compiles=config.log_compiles, trace=config.trace) as loop, \
+            test_data.build() as test_stream, \
+            sharpness_data.build() as sharpness_stream:
         for epoch in loop.epochs():
             for step in epoch.steps():
-                print(step.batch)
                 opt_state, vars, metrics = stanza.train.step(
                     batch_loss, optimizer,
                     opt_state, vars,
                     step.rng_key, step.batch 
                 )
-                print("stepped")
                 stanza.train.wandb.log(
                     step.iteration, metrics,
-                    run=wandb_run
+                    run=wandb_run, prefix="train/"
                 )
                 # print to the console every 100 iterations
                 if step.iteration % 100 == 0:
                     stanza.train.console.log(
                         step.iteration, metrics
                     )
-                # validate + log every 500 steps
-                if step.iteration % 500 == 0:
-                    sharpness_metrics = None
-                    test_metrics = stanza.train.eval(
-                        val_batch_loss, vars, next(rng), test_data
+                    test_stream, test_metrics = stanza.train.eval_stream(
+                        val_batch_loss, vars, next(rng),
+                        test_stream, batches=16
+                    )
+                    sharpness_stream, sharpness_batch = sharpness_stream.next()
+                    sharpness_metrics = stanza.train.sharpness.sharpness_stats(
+                        val_loss_fn, vars, next(rng), sharpness_batch,
+                        batch_size=max(64, config.batch_size)
                     )
                     stanza.train.console.log(
                         step.iteration, 
-                        sharpness_metrics, test_metrics,
-                        prefix="test"
+                        sharpness_metrics, test_metrics, prefix="test."
                     )
                     stanza.train.wandb.log(
                         step.iteration,
                         sharpness_metrics, test_metrics,
-                        prefix="test", run=wandb_run
+                        prefix="test/", run=wandb_run
                     )
 
 @command

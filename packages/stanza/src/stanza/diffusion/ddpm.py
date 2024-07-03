@@ -14,7 +14,7 @@ Sample = TypeVar("Sample")
 @dataclass
 class DDPMSchedule:
     """A schedule for a DDPM model. Implements https://arxiv.org/abs/2006.11239. """
-    betas: jnp.array
+    betas: jax.Array
     """ The betas for the DDPM. This corresponds to the forward process:
 
             q(x_t | x_{t-1}) = N(x_t | sqrt(1 - beta_t)x_{t-1}, beta_t I)
@@ -22,9 +22,9 @@ class DDPMSchedule:
        Note that betas[1] corresponds to beta_1 and betas[T] corresponds to beta_T.
        betas[0] should always be 0.
     """
-    alphas: jnp.array
+    alphas: jax.Array
     """ 1 - betas """
-    alphas_cumprod: jnp.array
+    alphas_cumprod: jax.Array
     """ The alphabar_t for the DDPM. alphabar_t = prod_(i=1)^t (1 - beta_i)
     Note that:
 
@@ -70,8 +70,8 @@ class DDPMSchedule:
                     **kwargs) -> "DDPMSchedule":
         beta_end = jnp.clip(beta_end, 0, 1)
         beta_start = jnp.clip(beta_start, 0, 1)
-        betas = jnp.linspace(beta_start, beta_end, num_timesteps)
-        betas = jnp.concatenate((jnp.zeros((1,)), betas))
+        betas = jnp.linspace(beta_start, beta_end, num_timesteps, dtype=jnp.float32)
+        betas = jnp.concatenate((jnp.zeros((1,), jnp.float32), betas))
         """ Makes a linear schedule for the DDPM. """
         return DDPMSchedule.make_from_betas(
             betas=betas,
@@ -81,8 +81,8 @@ class DDPMSchedule:
     @staticmethod
     def make_rescaled(num_timesteps, schedule, **kwargs):
         """ Rescales a schedule to have a different number of timesteps. """
-        xs = jnp.linspace(0, 1, num_timesteps + 1)
-        old_xs = jnp.linspace(0, 1, schedule.num_steps + 1)
+        xs = jnp.linspace(0, 1, num_timesteps + 1, dtype=jnp.float32)
+        old_xs = jnp.linspace(0, 1, schedule.num_steps + 1, dtype=jnp.float32)
         new_alphas_cumprod = jnp.interp(xs, old_xs, schedule.alphas_cumprod)
         return DDPMSchedule.make_from_alpha_bars(new_alphas_cumprod, **kwargs)
     

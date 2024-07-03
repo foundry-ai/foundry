@@ -83,9 +83,22 @@ def setup():
     if jupyter:
         from stanza.util.ipython import setup_rich_notebook_hook
         setup_rich_notebook_hook()
-    setup_logger(not jupyter)
+    setup_logger(False)
     setup_jax_cache()
     setup_gc()
+    import jax
+    jax.config.update("jax_enable_x64", True)
+
+    # Initialize tensorflow with jax
+    tf_ll = os.environ.get("TF_CPP_MIN_LOG_LEVEL", None)
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '4' 
+    import tensorflow as tf
+    tf.config.set_visible_devices([], "GPU")
+    if not tf_ll:
+        del os.environ['TF_CPP_MIN_LOG_LEVEL']
+    else:
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = tf_ll
+
 
 def command(fn: Callable):
     @functools.wraps(fn)

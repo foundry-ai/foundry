@@ -2,10 +2,10 @@
 # It is not intended for manual editing.
 
 [metadata]
-groups = ["default", "dev"]
+groups = ["default", "dev", "cuda12"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:aef961ab1ba4065c0e8e97cb0fd80190679ac94d336f93d0523325ac56c8a393"
+content_hash = "sha256:bcf3043f1be703ca8b603b7ed274d095e03d34b13ba7c6dd0965f8a0edfd94d4"
 
 [[package]]
 name = "absl-py"
@@ -1378,7 +1378,7 @@ name = "jax"
 version = "0.4.30"
 requires_python = ">=3.9"
 summary = "Differentiate, compile, and transform Numpy code."
-groups = ["dev"]
+groups = ["cuda12", "dev"]
 dependencies = [
     "jaxlib<=0.4.30,>=0.4.27",
     "ml-dtypes>=0.2.0",
@@ -1395,11 +1395,77 @@ files = [
 ]
 
 [[package]]
+name = "jax-cuda12-pjrt"
+version = "0.4.30"
+summary = "JAX XLA PJRT Plugin for NVIDIA GPUs"
+groups = ["cuda12"]
+files = [
+    {file = "jax_cuda12_pjrt-0.4.30-py3-none-manylinux2014_aarch64.whl", hash = "sha256:c36fb1e0c236563bf3a87e70f4d1ab28a31d7cf5d722c9ede30c4172116e8bcb"},
+    {file = "jax_cuda12_pjrt-0.4.30-py3-none-manylinux2014_x86_64.whl", hash = "sha256:895d0198ad99638fcaf976c47592e2a543eef79ea15fabd24a402d055390c328"},
+]
+
+[[package]]
+name = "jax-cuda12-plugin"
+version = "0.4.30"
+requires_python = ">=3.9"
+summary = "JAX Plugin for NVIDIA GPUs"
+groups = ["cuda12"]
+dependencies = [
+    "jax-cuda12-pjrt==0.4.30",
+]
+files = [
+    {file = "jax_cuda12_plugin-0.4.30-cp312-cp312-manylinux2014_aarch64.whl", hash = "sha256:85f85e4fd70e8f0af6e97707b370ff5928ede08c5a1e22bca7abc05957d5812f"},
+    {file = "jax_cuda12_plugin-0.4.30-cp312-cp312-manylinux2014_x86_64.whl", hash = "sha256:04546765f0d21afa8a67bee3a032443ee5ac79f2d53b4137674f160c66ec99e4"},
+]
+
+[[package]]
+name = "jax-cuda12-plugin"
+version = "0.4.30"
+extras = ["with_cuda"]
+requires_python = ">=3.9"
+summary = "JAX Plugin for NVIDIA GPUs"
+groups = ["cuda12"]
+dependencies = [
+    "jax-cuda12-plugin==0.4.30",
+    "nvidia-cublas-cu12>=12.1.3.1",
+    "nvidia-cuda-cupti-cu12>=12.1.105",
+    "nvidia-cuda-nvcc-cu12>=12.1.105",
+    "nvidia-cuda-runtime-cu12>=12.1.105",
+    "nvidia-cudnn-cu12<10.0,>=9.0",
+    "nvidia-cufft-cu12>=11.0.2.54",
+    "nvidia-cusolver-cu12>=11.4.5.107",
+    "nvidia-cusparse-cu12>=12.1.0.106",
+    "nvidia-nccl-cu12>=2.18.1",
+    "nvidia-nvjitlink-cu12>=12.1.105",
+]
+files = [
+    {file = "jax_cuda12_plugin-0.4.30-cp312-cp312-manylinux2014_aarch64.whl", hash = "sha256:85f85e4fd70e8f0af6e97707b370ff5928ede08c5a1e22bca7abc05957d5812f"},
+    {file = "jax_cuda12_plugin-0.4.30-cp312-cp312-manylinux2014_x86_64.whl", hash = "sha256:04546765f0d21afa8a67bee3a032443ee5ac79f2d53b4137674f160c66ec99e4"},
+]
+
+[[package]]
+name = "jax"
+version = "0.4.30"
+extras = ["cuda12"]
+requires_python = ">=3.9"
+summary = "Differentiate, compile, and transform Numpy code."
+groups = ["cuda12"]
+dependencies = [
+    "jax-cuda12-plugin[with_cuda]<=0.4.30,>=0.4.30",
+    "jax==0.4.30",
+    "jaxlib==0.4.30",
+]
+files = [
+    {file = "jax-0.4.30-py3-none-any.whl", hash = "sha256:289b30ae03b52f7f4baf6ef082a9f4e3e29c1080e22d13512c5ecf02d5f1a55b"},
+    {file = "jax-0.4.30.tar.gz", hash = "sha256:94d74b5b2db0d80672b61d83f1f63ebf99d2ab7398ec12b2ca0c9d1e97afe577"},
+]
+
+[[package]]
 name = "jaxlib"
 version = "0.4.30"
 requires_python = ">=3.9"
 summary = "XLA library for JAX"
-groups = ["dev"]
+groups = ["cuda12", "dev"]
 dependencies = [
     "ml-dtypes>=0.2.0",
     "numpy>=1.22",
@@ -1957,7 +2023,7 @@ name = "ml-dtypes"
 version = "0.3.2"
 requires_python = ">=3.9"
 summary = ""
-groups = ["dev"]
+groups = ["cuda12", "dev"]
 dependencies = [
     "numpy>1.20",
     "numpy>=1.21.2; python_version >= \"3.10\"",
@@ -2195,7 +2261,7 @@ name = "numpy"
 version = "1.26.4"
 requires_python = ">=3.9"
 summary = "Fundamental package for array computing in Python"
-groups = ["dev"]
+groups = ["cuda12", "dev"]
 files = [
     {file = "numpy-1.26.4-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:b3ce300f3644fb06443ee2222c2201dd3a89ea6040541412b8fa189341847218"},
     {file = "numpy-1.26.4-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:03a8c78d01d9781b28a6989f6fa1bb2c4f2d51201cf99d3dd875df6fbd96b23b"},
@@ -2209,6 +2275,130 @@ files = [
     {file = "numpy-1.26.4-pp39-pypy39_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:95a7476c59002f2f6c590b9b7b998306fba6a5aa646b1e22ddfeaf8f78c3a29c"},
     {file = "numpy-1.26.4-pp39-pypy39_pp73-win_amd64.whl", hash = "sha256:7e50d0a0cc3189f9cb0aeb3a6a6af18c16f59f004b866cd2be1c14b36134a4a0"},
     {file = "numpy-1.26.4.tar.gz", hash = "sha256:2a02aba9ed12e4ac4eb3ea9421c420301a0c6460d9830d74a9df87efa4912010"},
+]
+
+[[package]]
+name = "nvidia-cublas-cu12"
+version = "12.5.3.2"
+requires_python = ">=3"
+summary = "CUBLAS native runtime libraries"
+groups = ["cuda12"]
+files = [
+    {file = "nvidia_cublas_cu12-12.5.3.2-py3-none-manylinux2014_x86_64.whl", hash = "sha256:ca070ad70e9fa6654084575d01bd001f30cc4665e33d4bb9fc8e0f321caa034b"},
+    {file = "nvidia_cublas_cu12-12.5.3.2-py3-none-win_amd64.whl", hash = "sha256:4960f3dc5f39699acadf76fa6d94b10a2a00f2956c2c442efa299fb22b0748f3"},
+]
+
+[[package]]
+name = "nvidia-cuda-cupti-cu12"
+version = "12.5.82"
+requires_python = ">=3"
+summary = "CUDA profiling tools runtime libs."
+groups = ["cuda12"]
+files = [
+    {file = "nvidia_cuda_cupti_cu12-12.5.82-py3-none-manylinux2014_x86_64.whl", hash = "sha256:bde77a5feb66752ec61db2adfe47f56b941842825b4c7e2068aff27c9d107953"},
+    {file = "nvidia_cuda_cupti_cu12-12.5.82-py3-none-win_amd64.whl", hash = "sha256:4f835281cf492e2bedd153f5c3de9da8f1d775a419468305e64ce73b3b0c6dc3"},
+]
+
+[[package]]
+name = "nvidia-cuda-nvcc-cu12"
+version = "12.5.82"
+requires_python = ">=3"
+summary = "CUDA nvcc"
+groups = ["cuda12"]
+files = [
+    {file = "nvidia_cuda_nvcc_cu12-12.5.82-py3-none-manylinux2014_x86_64.whl", hash = "sha256:b03e545b8e8c3ce7ebcd7fc44063180ff52ff01d064ece2127ed90a04ef12cd0"},
+    {file = "nvidia_cuda_nvcc_cu12-12.5.82-py3-none-win_amd64.whl", hash = "sha256:6eaa264da57a893ae7606dd80b169d9783444af941697822cb82c8379ffc4957"},
+]
+
+[[package]]
+name = "nvidia-cuda-runtime-cu12"
+version = "12.5.82"
+requires_python = ">=3"
+summary = "CUDA Runtime native Libraries"
+groups = ["cuda12"]
+files = [
+    {file = "nvidia_cuda_runtime_cu12-12.5.82-py3-none-manylinux2014_x86_64.whl", hash = "sha256:3e79a060e126df40fd3a068f3f787eb000fa51b251ec6cd97d09579632687115"},
+    {file = "nvidia_cuda_runtime_cu12-12.5.82-py3-none-win_amd64.whl", hash = "sha256:0fd5fbca289bceb9f0690aa9858f06187b554fdeb7e2711dfd5bb3ce58900b46"},
+]
+
+[[package]]
+name = "nvidia-cudnn-cu12"
+version = "9.1.1.17"
+requires_python = ">=3"
+summary = "cuDNN runtime libraries"
+groups = ["cuda12"]
+dependencies = [
+    "nvidia-cublas-cu12",
+]
+files = [
+    {file = "nvidia_cudnn_cu12-9.1.1.17-py3-none-manylinux2014_aarch64.whl", hash = "sha256:4d0793256ddff1101a07b249b6604345d2f298d97f2a9c61672f3b8dcc834509"},
+    {file = "nvidia_cudnn_cu12-9.1.1.17-py3-none-manylinux2014_x86_64.whl", hash = "sha256:a6d280dd0aa2ecf9467eaf06092910f353fa6f129d206380109641da59236007"},
+    {file = "nvidia_cudnn_cu12-9.1.1.17-py3-none-win_amd64.whl", hash = "sha256:d7c4b96b1c5ca8e4dc0bdbf2ce386903ba03faa94d2997b72769fa5048cb5f1f"},
+]
+
+[[package]]
+name = "nvidia-cufft-cu12"
+version = "11.2.3.61"
+requires_python = ">=3"
+summary = "CUFFT native runtime libraries"
+groups = ["cuda12"]
+dependencies = [
+    "nvidia-nvjitlink-cu12",
+]
+files = [
+    {file = "nvidia_cufft_cu12-11.2.3.61-py3-none-manylinux2014_x86_64.whl", hash = "sha256:9a6e8df162585750f61983a638104a48c756aa13f9f48e19ab079b38e3c828b8"},
+    {file = "nvidia_cufft_cu12-11.2.3.61-py3-none-win_amd64.whl", hash = "sha256:4a8f6f0ce93c52a50ee83422a80472b5f376054a63f38532d0eab4007e7ef28b"},
+]
+
+[[package]]
+name = "nvidia-cusolver-cu12"
+version = "11.6.3.83"
+requires_python = ">=3"
+summary = "CUDA solver native runtime libraries"
+groups = ["cuda12"]
+dependencies = [
+    "nvidia-cublas-cu12",
+    "nvidia-cusparse-cu12",
+    "nvidia-nvjitlink-cu12",
+]
+files = [
+    {file = "nvidia_cusolver_cu12-11.6.3.83-py3-none-manylinux2014_x86_64.whl", hash = "sha256:93cfafacde4428b71778eeb092ec615a02a3d05404da1bcf91c53e3fa1bce42b"},
+    {file = "nvidia_cusolver_cu12-11.6.3.83-py3-none-win_amd64.whl", hash = "sha256:6224732963cba312a84c78114b9a38c4ffabb2e2a6a120923ac99ba6f895c8cf"},
+]
+
+[[package]]
+name = "nvidia-cusparse-cu12"
+version = "12.5.1.3"
+requires_python = ">=3"
+summary = "CUSPARSE native runtime libraries"
+groups = ["cuda12"]
+dependencies = [
+    "nvidia-nvjitlink-cu12",
+]
+files = [
+    {file = "nvidia_cusparse_cu12-12.5.1.3-py3-none-manylinux2014_x86_64.whl", hash = "sha256:016df8e993c437e8301e62739f01775cba988fd5253cd4c64173f8e8d2f8e752"},
+    {file = "nvidia_cusparse_cu12-12.5.1.3-py3-none-win_amd64.whl", hash = "sha256:33520db374e2f5ebc976d6faa1852b98c398a57e6f71150fe59705928596ffd1"},
+]
+
+[[package]]
+name = "nvidia-nccl-cu12"
+version = "2.22.3"
+requires_python = ">=3"
+summary = "NVIDIA Collective Communication Library (NCCL) Runtime"
+groups = ["cuda12"]
+files = [
+    {file = "nvidia_nccl_cu12-2.22.3-py3-none-manylinux2014_x86_64.whl", hash = "sha256:f9f5e03c00269dee2cd1aa57019f9a024478a74ae6e9b32d5341c849fe6f6302"},
+]
+
+[[package]]
+name = "nvidia-nvjitlink-cu12"
+version = "12.5.82"
+requires_python = ">=3"
+summary = "Nvidia JIT LTO Library"
+groups = ["cuda12"]
+files = [
+    {file = "nvidia_nvjitlink_cu12-12.5.82-py3-none-manylinux2014_x86_64.whl", hash = "sha256:f9b37bc5c8cf7509665cb6ada5aaa0ce65618f2332b7d3e78e9790511f111212"},
+    {file = "nvidia_nvjitlink_cu12-12.5.82-py3-none-win_amd64.whl", hash = "sha256:e782564d705ff0bf61ac3e1bf730166da66dd2fe9012f111ede5fc49b64ae697"},
 ]
 
 [[package]]
@@ -2242,7 +2432,7 @@ name = "opt-einsum"
 version = "3.3.0"
 requires_python = ">=3.5"
 summary = "Optimizing numpys einsum function"
-groups = ["dev"]
+groups = ["cuda12", "dev"]
 dependencies = [
     "numpy>=1.7",
 ]
@@ -3145,7 +3335,7 @@ name = "scipy"
 version = "1.14.0"
 requires_python = ">=3.10"
 summary = "Fundamental algorithms for scientific computing in Python"
-groups = ["dev"]
+groups = ["cuda12", "dev"]
 dependencies = [
     "numpy<2.3,>=1.23.5",
 ]
@@ -3827,6 +4017,7 @@ dependencies = [
     "setuptools",
     "six>=1.12.0",
     "tensorboard<2.17,>=2.16",
+    "tensorflow-intel==2.16.2; platform_system == \"Windows\"",
     "termcolor>=1.1.0",
     "typing-extensions>=3.6.6",
     "wrapt>=1.11.0",
@@ -3837,6 +4028,40 @@ files = [
     {file = "tensorflow-2.16.2-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:e7df529f8db271d3def80538aa7fcd6f5abe306f7b01cb5b580138df68afb499"},
     {file = "tensorflow-2.16.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:5badc6744672a3181c012b6ab2815975be34d0573db3b561383634acc0d46a55"},
     {file = "tensorflow-2.16.2-cp312-cp312-win_amd64.whl", hash = "sha256:505df82fde3b9c6a2a78bf679efb4d0a2e84f4f925202130477ca519ae1514e4"},
+]
+
+[[package]]
+name = "tensorflow-intel"
+version = "2.16.2"
+requires_python = ">=3.9"
+summary = "TensorFlow is an open source machine learning framework for everyone."
+groups = ["dev"]
+marker = "platform_system == \"Windows\""
+dependencies = [
+    "absl-py>=1.0.0",
+    "astunparse>=1.6.0",
+    "flatbuffers>=23.5.26",
+    "gast!=0.5.0,!=0.5.1,!=0.5.2,>=0.2.1",
+    "google-pasta>=0.1.1",
+    "grpcio<2.0,>=1.24.3",
+    "h5py>=3.10.0",
+    "keras>=3.0.0",
+    "libclang>=13.0.0",
+    "ml-dtypes~=0.3.1",
+    "numpy<2.0.0,>=1.26.0; python_version >= \"3.12\"",
+    "opt-einsum>=2.3.2",
+    "packaging",
+    "protobuf!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5,<5.0.0dev,>=3.20.3",
+    "requests<3,>=2.21.0",
+    "setuptools",
+    "six>=1.12.0",
+    "tensorboard<2.17,>=2.16",
+    "termcolor>=1.1.0",
+    "typing-extensions>=3.6.6",
+    "wrapt>=1.11.0",
+]
+files = [
+    {file = "tensorflow_intel-2.16.2-cp312-cp312-win_amd64.whl", hash = "sha256:239af202645145c1c39e7dfe714687e1b1a57a73e5022aacae0313d917f09608"},
 ]
 
 [[package]]

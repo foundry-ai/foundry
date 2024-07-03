@@ -7,7 +7,7 @@ from stanza.data import Data
 from rich.progress import track
 
 from . import NLPDataset
-from .tokenizer import Tokenizer, iterate_raw
+from .tokenizer import Tokenizer, iterate_raw, filter_ascii
 
 import stanza.datasets.util as du
 import numpy as np
@@ -31,11 +31,13 @@ class TinyStoriesData(Data):
         else:
             arrays = []
             for i in i:
-                arrays.append(jnp.array(self.mmap[i:i+self.sample_size]))
+                arrays.append(jnp.array(self.mmap[i:i+self.sample_size], dtype=jnp.uint16))
             return jnp.stack(arrays)
 
 
     def __getitem__(self, i):
+        i = jnp.array(i, dtype=jnp.uint64)
+        assert i.shape == (), i.dtype == jnp.uint64
         return jax.pure_callback(self._get,
                 jax.ShapeDtypeStruct((self.sample_size,), np.uint16),
                 i,
@@ -69,7 +71,10 @@ def load_tiny_stories_data(*, quiet=False, sample_size=1024,
                 quiet=quiet
             )
         tokenizer = Tokenizer.train(
-            iterate_raw(data_path, "<|endoftext|>", "<|n|>", 2048),
+            filter_ascii(iterate_raw(
+                data_path, "<|endoftext|>", 
+                "<|n|>", 2048
+            )),
             user_defined_symbols=["<|n|>"],
             vocab_size=1024
         )
@@ -90,9 +95,9 @@ def load_tiny_stories_data(*, quiet=False, sample_size=1024,
         if not bin_path.exists():
 
             with open(bin_path, "wb") as f:
-                iterator = iterate_raw(data_path,
+                iterator = filter_ascii(iterate_raw(data_path,
                     "<|endoftext|>", "<|n|>", 2048
-                )
+                ))
                 if not quiet:
                     iterator = track(iterator, description=f"Encoding...", total=None)
                 tokenizer.encode_to_file(

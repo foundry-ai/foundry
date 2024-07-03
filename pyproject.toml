@@ -10,6 +10,10 @@ requires-python = ">=3.12"
 readme = "README.md"
 license = {text = "MIT"}
 
+[project.optional-dependencies]
+cuda12 = [
+    "jax[cuda12]>=0.4.30",
+]
 [build-system]
 requires = ["pdm-backend"]
 build-backend = "pdm.backend"
