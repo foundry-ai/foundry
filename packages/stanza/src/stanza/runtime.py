@@ -109,8 +109,9 @@ def command(fn: Callable):
             return fn(config)
         except (KeyboardInterrupt, BdbQuit):
             # Hard-kill wandb process on manual exit
-            cmd = "ps aux|grep wandb|grep -v grep | awk '\''{print $2}'\''|xargs kill -9"
-            os.system(cmd)
+            # pass
+            # cmd = "ps aux|grep wandb|grep -v grep | awk '\''{print $2}'\''|xargs kill -9"
+            # os.system(cmd)
             logger.error("Exited due to Ctrl-C")
     return main
 
@@ -132,7 +133,7 @@ class ConfigProvider(abc.ABC):
                 scope = self.scope(field.name, "") if field.name not in flatten else self
                 vals[field.name] = default_val.parse(scope)
             elif (type is bool or type is int or type is float or type is str):
-                vals[field.name] = self.get(field.name, field.type, "", default_val)
+                vals[field.name] = self.get(field.name, type, "", default_val)
             elif default_val is MISSING: raise RuntimeError(f"Unable to parse {field.name}")
         return replace(default, **vals)
 

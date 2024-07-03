@@ -1,17 +1,20 @@
 program: language_model
-name: sam_start_points_sweep
+name: adam_autotune
 project: language-model
-method: grid
+method: bayes
 metric:
   goal: minimize
   name: test/loss
 parameters:
   optimizer:
-    values: ["sgd", "adam"]
+    value: "adam"
   iterations:
-    values: [10_000]
+    value: 20_000
+  lr:
+    min: 0.0001
+    max: 0.01
   sam_rho:
-    values: [0.1, 0.05, 0.]
+    values: [0., 0.1, 0.2, 0.3, 0.4, 0.6, 0.8, 1.]
 
 command:
   - pdm
