@@ -27,13 +27,13 @@ jobs:
         run: make html
       - name: Fix permissions
         run: |
-            chmod -c -R +rX "docs/_build/html" | while read line; do
+            chmod -c -R +rX "packages/stanza/docs/_build/html" | while read line; do
               echo "::warning title=Invalid file permissions automatically fixed::$line"
             done
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/_build/html
+          path: packages/stanza/docs/_build/html
   deploy:
     name: Publish Documentation
     # Add a dependency to the build job
