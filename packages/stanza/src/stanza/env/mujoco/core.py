@@ -1,4 +1,4 @@
-from stanza.env import Environment
+from stanza.env import Environment, RenderConfig, HtmlRender
 from stanza.dataclasses import dataclass, field
 from stanza.util import jax_static_property
 
@@ -40,6 +40,9 @@ class SystemData(SystemState):
 
 # Must be a jax pytree type!
 class Simulator(abc.ABC, Generic[SimulatorState]):
+    @property
+    def qpos0(self) -> jax.Array: ...
+
     @abc.abstractmethod
     def step(self, state: SimulatorState, 
             action : Action, rng_key : jax.Array) -> SimulatorState: ...
@@ -63,11 +66,11 @@ class MujocoEnvironment(Environment[SimulatorState, SystemState, Action], Generi
         raise NotImplementedError()
 
     @jax_static_property
-    def model(self):
+    def model(self) -> mujoco.MjModel:
         return mujoco.MjModel.from_xml_string(self.xml)
     
     @jax_static_property
-    def simulator(self):
+    def simulator(self) -> Simulator:
         return self.make_simulator(self.physics_backend, self.model)
     
     def full_state(self, reduced_state: SystemState) -> SimulatorState:
@@ -77,6 +80,19 @@ class MujocoEnvironment(Environment[SimulatorState, SystemState, Action], Generi
         return self.simulator.reduce_state(full_state)
 
     @jax.jit
+    def sample_action(self, rng_key):
+        return jnp.zeros((self.simulator.model.nu,), jnp.float32)
+
+    @jax.jit
+    def sample_state(self, rng_key):
+        return self.full_state(SystemState(
+            time=jnp.zeros((), jnp.float32),
+            qpos=self.simulator.qpos0,
+            qvel=self.simulator.model.qvel0,
+            act=self.simulator.model.act0
+        ))
+
+    @jax.jit
     def reset(self, rng_key: jax.Array) -> SimulatorState:
         raise NotImplementedError()
 
@@ -84,6 +100,16 @@ class MujocoEnvironment(Environment[SimulatorState, SystemState, Action], Generi
     def step(self, state: SimulatorState, action: Action, 
                     rng_key: jax.Array) -> SimulatorState:
         return self.simulator.step(state, action, rng_key)
+
+    @jax.jit
+    def render(self, config: RenderConfig, state: SimulatorState) -> jax.Array:
+        if isinstance(config, HtmlRender):
+            data = self.simulator.data(state) # type: SystemData
+            if data.qpos.ndim == 1:
+                data = jax.tree_map(lambda x: jnp.expand_dims(x, 0), data)
+        else:
+            raise ValueError("Unsupported render config")
+        pass
 
     # Creates the backend for this environment
 
@@ -100,6 +126,7 @@ class MujocoEnvironment(Environment[SimulatorState, SystemState, Action], Generi
             return BraxSimulator(model)
 
 # Utilities
+
 def render_2d(model: mujoco.MjModel, data: SystemData, 
                 width, height, 
                 world_width, world_height,

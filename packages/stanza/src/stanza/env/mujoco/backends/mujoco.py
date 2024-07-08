@@ -60,8 +60,20 @@ class MujocoSimulator(Simulator[SystemData]):
             max_workers=threads, 
             initializer=initializer
         )
+    
+    @property
+    def qpos0(self) -> jax.Array:
+        return jnp.copy(self.model.qpos0)
 
-    def _step_job(self, step: MujocoStep) -> SystemData:
+    @property
+    def qvel0(self) -> jax.Array:
+        return jnp.zeros_like(self.data_structure.qvel)
+
+    @property
+    def act0(self) -> jax.Array:
+        return jnp.zeros_like(self.data_structure.act)
+
+    def _step_job(self, step: MujocoStep) -> MujocoState:
         # get the thread-local MjData object
         # copy over the jax arrays
         data = self.local_data.data
@@ -72,15 +84,21 @@ class MujocoSimulator(Simulator[SystemData]):
         data.ctrl[:] = step.ctrl
         data.qacc_warmstart[:] = step.qacc_warmstart
         mujoco.mj_step(self.model, data)
-        return MujocoState(
-            data=SystemData(jnp.array(data.time), 
-                jnp.copy(data.qpos), jnp.copy(data.qvel), 
-                jnp.copy(data.act), jnp.copy(data.qacc), jnp.copy(data.act_dot),
-                jnp.copy(data.xpos), jnp.copy(data.xquat),
-                jnp.copy(data.actuator_velocity), jnp.copy(data.cvel)
+        state = MujocoState(
+            data=SystemData(jnp.array(data.time, dtype=jnp.float32), 
+                jnp.copy(data.qpos.astype(jnp.float32)), 
+                jnp.copy(data.qvel.astype(jnp.float32)), 
+                jnp.copy(data.act.astype(jnp.float32)),
+                jnp.copy(data.qacc.astype(jnp.float32)),
+                jnp.copy(data.act_dot.astype(jnp.float32)),
+                jnp.copy(data.xpos.astype(jnp.float32)),
+                jnp.copy(data.xquat.astype(jnp.float32)),
+                jnp.copy(data.actuator_velocity.astype(jnp.float32)),
+                jnp.copy(data.cvel.astype(jnp.float32))
             ),
-            qacc_warmstart=jnp.copy(data.qacc_warmstart)
+            qacc_warmstart=jnp.copy(data.qacc_warmstart.astype(jnp.float32))
         )
+        return state
 
     # (on host) step using the minimal amount of 
     # data that needs to be passed to the simulator
@@ -111,11 +129,12 @@ class MujocoSimulator(Simulator[SystemData]):
     def step(self, state: MujocoState,
                    action : jax.Array, rng_key: jax.Array) -> SystemData:
         assert state.data.time.ndim == 0
+        assert action.shape == (self.model.nu,)
         return jax.pure_callback(
             self._step, MujocoState(
                 self.data_structure,
                 jax.ShapeDtypeStruct(
-                    state.data.qpos.shape, state.data.qpos.dtype
+                    state.data.qvel.shape, state.data.qvel.dtype
                 )
             ), 
             MujocoStep(
@@ -136,14 +155,21 @@ class MujocoSimulator(Simulator[SystemData]):
         if step.qacc_warmstart is not None:
             data.qacc_warmstart[:] = step.qacc_warmstart
         mujoco.mj_forward(self.model, data)
-        return MujocoState(
-            data=SystemData(jnp.array(data.time), jnp.copy(data.qpos), jnp.copy(data.qvel), 
-                jnp.copy(data.act), jnp.copy(data.qacc), jnp.copy(data.act_dot),
-                jnp.copy(data.xpos), jnp.copy(data.xquat),
-                jnp.copy(data.actuator_velocity), jnp.copy(data.cvel)
+        state = MujocoState(
+            data=SystemData(jnp.array(data.time, dtype=jnp.float32), 
+                jnp.copy(data.qpos.astype(jnp.float32)), 
+                jnp.copy(data.qvel.astype(jnp.float32)), 
+                jnp.copy(data.act.astype(jnp.float32)),
+                jnp.copy(data.qacc.astype(jnp.float32)),
+                jnp.copy(data.act_dot.astype(jnp.float32)),
+                jnp.copy(data.xpos.astype(jnp.float32)),
+                jnp.copy(data.xquat.astype(jnp.float32)),
+                jnp.copy(data.actuator_velocity.astype(jnp.float32)),
+                jnp.copy(data.cvel.astype(jnp.float32))
             ),
-            qacc_warmstart=jnp.copy(data.qacc_warmstart)
+            qacc_warmstart=jnp.copy(data.qacc_warmstart.astype(jnp.float32))
         )
+        return state
 
     # (on host) calls forward
     def _forward(self, step: MujocoStep) -> MujocoState:
@@ -174,8 +200,8 @@ class MujocoSimulator(Simulator[SystemData]):
         )
         structure = MujocoState(
             self.data_structure,
-            jax.ShapeDtypeStruct(self.data_structure.qpos.shape, 
-                                    self.data_structure.qpos.dtype)
+            jax.ShapeDtypeStruct(self.data_structure.qvel.shape, 
+                                    self.data_structure.qvel.dtype)
         )
         return jax.pure_callback(self._forward, 
             structure, step, vectorized=True)

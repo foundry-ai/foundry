@@ -1,3 +1,6 @@
+import jax
+import jax.numpy as jnp
+
 from mujoco import mjx
 from stanza.env.mujoco.core import SystemState
 
@@ -6,7 +9,19 @@ from ..core import Simulator, SystemState, SystemData
 class MjxSimulator(Simulator[mjx.Data]):
     def __init__(self, model):
         self.model = mjx.put_model(model)
-    
+
+    @property
+    def qpos0(self) -> jax.Array:
+        return jnp.copy(self.model.qpos0)
+
+    @property
+    def qvel0(self) -> jax.Array:
+        return jnp.zeros_like(self.data_structure.qvel)
+
+    @property
+    def act0(self) -> jax.Array:
+        return jnp.zeros_like(self.data_structure.act)
+
     def step(self, state, action, rng_key):
         if action is not None:
             state = state.replace(ctrl=action)
