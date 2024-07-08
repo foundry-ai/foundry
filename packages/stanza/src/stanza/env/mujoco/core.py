@@ -109,7 +109,6 @@ class MujocoEnvironment(Environment[SimulatorState, SystemState, Action], Generi
                 data = jax.tree_map(lambda x: jnp.expand_dims(x, 0), data)
         else:
             raise ValueError("Unsupported render config")
-        pass
 
     # Creates the backend for this environment
 
