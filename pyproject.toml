@@ -7,7 +7,7 @@ authors = [
 ]
 dependencies = [
     "stanza[ipython,docs] @ file:///${PROJECT_ROOT}/packages/stanza",
-    "stanza-model @ file:///${PROJECT_ROOT}/projects/models",
+    "stanza-models @ file:///${PROJECT_ROOT}/projects/models",
     "stanza-examples @ file:///${PROJECT_ROOT}/projects/examples",
     "cond_diffusion @ file:///${PROJECT_ROOT}/projects/cond-diffusion",
     "image-classifier @ file:///${PROJECT_ROOT}/projects/image-classifier",
