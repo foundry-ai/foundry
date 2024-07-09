@@ -1,4 +1,4 @@
-from common import net, TrainConfig
+
 from policy_eval import Sample
 
 from stanza.diffusion import DDPMSchedule
@@ -10,7 +10,8 @@ from stanza.env.mujoco.pusht import PushTObs
 
 from stanza.dataclasses import dataclass
 import dataclasses
-from stanza.data.normalizer import Normalizer, LinearNormalizer
+from stanza.data import Data, PyTreeData
+from stanza.data.normalizer import LinearNormalizer, StdNormalizer
 from stanza.diffusion import nonparametric
 from stanza import train
 import stanza.train.ipython
@@ -19,11 +20,13 @@ import optax
 import flax.linen as nn
 import flax.linen.activation as activations
 from typing import Sequence
-from common.net.embed import SinusoidalPosEmbed
+from projects.models.src.stanza.model.embed import SinusoidalPosEmbed
+from . import diffusion_estimator
 
 import jax
 import jax.numpy as jnp
 import logging
+import pickle
 
 logger = logging.getLogger(__name__)
 
@@ -32,13 +35,11 @@ logger = logging.getLogger(__name__)
 class DiffusionPolicyConfig:
     #model: str = "ResNet18"
     seed: int = 42
-    train: TrainConfig = TrainConfig()
-    net_width: int = 4
-    net_depth: int = 5
-    embed_type: str = "concat"
-    has_skip: bool = False
-    timesteps: int = 100
-    relative_actions: bool = True
+    net_width: int = 512
+    net_depth: int = 3
+    embed_type: str = "film"
+    has_skip: bool = True
+    T: int = 50
 
     def parse(self, config: ConfigProvider) -> "DiffusionPolicyConfig":
         return config.get_dataclass(self, flatten={"train"})
@@ -49,21 +50,23 @@ class DiffusionPolicyConfig:
 def train_net_diffusion_policy(
         config : DiffusionPolicyConfig,  wandb_run, train_data, env, eval):
     
-    train_data = train_data.as_pytree()
-    sample = jax.tree_map(lambda x: x[0], train_data)
+    
+    # data_agent_pos = jax.vmap(
+    #     #TODO: refactor pushtobs
+    #     lambda x: env.observe(x, PushTObs()).agent_pos
+    # )(train_data_tree.state)
+    # actions = train_data_tree.actions - data_agent_pos[:, None, :]
+    # train_data = PyTreeData(Sample(train_data_tree.state, train_data_tree.observations, actions))
+    
+    sample = train_data[0]
+    normalizer = StdNormalizer.from_data(train_data)
+    train_data_tree = train_data.as_pytree()
+    # sample = jax.tree_map(lambda x: x[0], train_data_tree)
+    # Get chunk lengths
     obs_length, action_length = (
-        stanza.util.axis_size(train_data.observations, 1),
-        stanza.util.axis_size(train_data.actions, 1)
+        stanza.util.axis_size(train_data_tree.observations, 1),
+        stanza.util.axis_size(train_data_tree.actions, 1)
     )
-    if config.relative_actions:
-        data_agent_pos = jax.vmap(
-            #TODO: refactor pushtobs
-            lambda x: env.observe(x, PushTObs()).agent_pos
-        )(train_data.state)
-        actions = train_data.actions - data_agent_pos[:, None, :]
-    else:
-        actions = train_data.actions
-    train_data = dataclasses.replace(train_data, actions=actions)
 
     rng = PRNGSequence(config.seed)
     #Model = getattr(net, config.model.split("/")[1])
@@ -73,43 +76,63 @@ def train_net_diffusion_policy(
         has_skip=config.has_skip
     )
     vars = jax.jit(model.init)(next(rng), sample.observations, sample.actions, 0)
-    #normalizer = LinearNormalizer.from_data(train_data)
+    
 
     total_params = jax.tree_util.tree_reduce(lambda x, y: x + y.size, vars, 0)
     logger.info(f"Total parameters: [blue]{total_params}[/blue]")
 
     schedule = DDPMSchedule.make_squaredcos_cap_v2(
-        config.timesteps,
+        config.T,
         clip_sample_range=1.5,
         prediction_type="sample"
     )
 
     def loss_fn(vars, rng_key, sample: Sample, iteration):
-        obs = sample.observations
-        actions = sample.actions
+        noise_rng, t_rng = jax.random.split(rng_key)
+        sample_norm = normalizer.normalize(sample)
+        obs = sample_norm.observations
+        actions = sample_norm.actions
+        # obs = sample.observations
+        # actions = sample.actions
+
+
         model_fn = lambda rng_key, noised_actions, t: model.apply(
             vars, obs, noised_actions, t - 1
         )
-        loss = schedule.loss(rng_key, model_fn, actions)
+
+        # fit to estimator
+        estimator = nonparametric.nw_cond_diffuser(
+            obs, (train_data_tree.observations, train_data_tree.actions), schedule, nonparametric.log_gaussian_kernel, 0.01
+        )
+        t = jax.random.randint(t_rng, (), 0, schedule.num_steps) + 1
+        noised_actions, _, _ = schedule.add_noise(noise_rng, actions, t)
+        estimator_pred = estimator(None, noised_actions, t)
+        model_pred_norm = model_fn(None, noised_actions, t)
+        model_pred = normalizer.map(lambda x: x.actions).unnormalize(model_pred_norm)
+        loss = jnp.mean((estimator_pred - model_pred)**2)
+
+        # loss = schedule.loss(rng_key, model_fn, actions)
+        
         return train.LossOutput(
             loss=loss,
             metrics={"loss": loss}
         )
-    
     batched_loss_fn = train.batch_loss(loss_fn)
 
-    vars = model.init(jax.random.key(42), sample.observations, sample.actions, 0)
-    optimizer = optax.adamw(1e-4)
+    opt_sched = optax.cosine_onecycle_schedule(5000, 1e-4)
+    optimizer = optax.adamw(opt_sched)
     opt_state = optimizer.init(vars["params"])
 
     with train.loop(train_data, 
-                batch_size=16, 
+                batch_size=128, 
                 rng_key=jax.random.key(42),
-                iterations=1000,
+                iterations=10000,
                 progress=True
             ) as loop:
         for epoch in loop.epochs():
             for step in epoch.steps():
+                # print(step.batch.observations)
+                # print(step.batch.actions)
                 # *note*: consumes opt_state, vars
                 opt_state, vars, metrics = train.step(
                     batched_loss_fn, optimizer, opt_state, vars, 
@@ -123,23 +146,27 @@ def train_net_diffusion_policy(
         train.ipython.log(step.iteration, metrics)
         train.wandb.log(step.iteration, metrics, run=wandb_run)
     
-    def policy(input: PolicyInput) -> PolicyOutput:
+    def chunk_policy(input: PolicyInput) -> PolicyOutput:
         obs = input.observation
+        obs = normalizer.map(lambda x: x.observations).normalize(obs)
         model_fn = lambda rng_key, noised_actions, t: model.apply(
             vars, obs, noised_actions, t - 1
         )
         action = schedule.sample(input.rng_key, model_fn, sample.actions) 
-        if config.relative_actions:
-            #TODO: refactor pushtobs
-            agent_pos = env.observe(input.state, PushTObs()).agent_pos
-            action = action + agent_pos
+        action = normalizer.map(lambda x: x.actions).unnormalize(action)
         return PolicyOutput(action=action)
-    
     
     policy = ChunkingTransform(
         obs_length, action_length
-    ).apply(policy)
-    return policy
+    ).apply(chunk_policy)
+
+    # with open("model.pkl", 'wb') as file:
+    #     pickle.dump(model, file)
+
+    # with open("model_wts.pkl", 'wb') as file:
+    #     pickle.dump(vars, file)
+
+    return policy, chunk_policy
 
 class DiffusionMLP(nn.Module):
     features: Sequence[int]

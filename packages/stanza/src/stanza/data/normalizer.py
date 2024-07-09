@@ -164,24 +164,24 @@ class StdNormalizer:
         if self.mean is not None:
             return jax.tree_map(
                 lambda d, m, s: (d - m) / s,
-                data, self.mean, self.std
+                data, self.mean, self.std + 1e-6
             )
         else:
             return jax.tree_map(
                 lambda d, s: d / s,
-                data, self.std
+                data, self.std + 1e-6
             )
 
     def unnormalize(self, data):
         if self.mean is not None:
             return jax.tree_map(
                 lambda d, m, s: d*s + m,
-                data, self.mean, self.std
+                data, self.mean, self.std + 1e-6
             )
         else:
             return jax.tree_map(
                 lambda d, s: d * s,
-                data, self.std
+                data, self.std + 1e-6
             )
     
     def update(self, batch):
