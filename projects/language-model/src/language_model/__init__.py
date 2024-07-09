@@ -34,6 +34,8 @@ class Config:
     dataset: str = "tinystories"
     model: str = "gpt2/nano"
 
+    download_only: bool = False
+
     iterations: int = 100
     warmup_ratio: float = 0.01
     batch_size: int = 4
@@ -112,6 +114,8 @@ def train(config: Config):
     logger.info(f"Training {config}")
     rng = PRNGSequence(config.seed)
     dataset = datasets.create(config.dataset)
+    if config.download_only:
+        return
 
     iterations = config.iterations
     optimizer = make_optimizer(config.optimizer, config.lr, 

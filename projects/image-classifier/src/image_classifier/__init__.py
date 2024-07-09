@@ -31,7 +31,8 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Config:
     seed: int = 42
-    summary: bool = False
+    download_only: bool = False
+
     dataset: str = "cifar/cifar10"
     normalizer: str = "standard_dev"
     model: str = "resnet/SmallResNet18"
@@ -118,6 +119,8 @@ def train(config: Config):
     rng = PRNGSequence(config.seed)
 
     dataset = image_class_datasets.create(config.dataset)
+    if config.download_only:
+        return
     normalizer = dataset.normalizers[config.normalizer]()
     augment = (
         dataset.transforms["standard_augmentations"]()
