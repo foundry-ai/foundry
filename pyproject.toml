@@ -5,7 +5,9 @@ description = "Default template for PDM package"
 authors = [
     {name = "Daniel Pfrommer", email = "dan.pfrommer@gmail.com"},
 ]
-dependencies = []
+dependencies = [
+    "ray[tune]>=2.31.0",
+]
 requires-python = ">=3.12"
 readme = "README.md"
 license = {text = "MIT"}
@@ -28,3 +30,8 @@ dev = [
     "-e language-model @ file:///${PROJECT_ROOT}/projects/language-model",
     "pytest>=8.2.2",
 ]
+
+# These are annoying and not used...
+[tool.pdm.resolution]
+excludes = ["pytinyrenderer", "evdev"]
+

@@ -61,19 +61,35 @@ def setup_logger(show_path=True):
     logger.setLevel(logging.WARNING)
     logger = logging.getLogger("stanza")
     logger.setLevel(logging.DEBUG)
+    # Prevent "retrying" warnings from connectionpool
+    # if running wandb offline
+    logger = logging.getLogger("urllib3.connectionpool")
+    logger.setLevel(logging.ERROR)
+
+SETUP_JAX_CACHE = False
 
 def setup_jax_cache():
+    global SETUP_JAX_CACHE
+    if SETUP_JAX_CACHE:
+        return
     from jax.experimental.compilation_cache import compilation_cache as cc
     JAX_CACHE = Path(os.environ.get("JAX_CACHE", "/tmp/jax_cache"))
     JAX_CACHE.mkdir(parents=True, exist_ok=True)
     cc.initialize_cache(str(JAX_CACHE))
+    SETUP_JAX_CACHE = True
+
+SETUP_GC = False
 
 def setup_gc():
+    global SETUP_GC
+    if SETUP_GC:
+        return
     import gc
     from jax._src.lib import _xla_gc_callback
     # pop the xla gc callback
     if gc.callbacks[-1] is _xla_gc_callback:
         gc.callbacks.pop()
+    SETUP_GC = True
 
 def setup():
     jupyter = rich.get_console().is_jupyter
@@ -90,14 +106,14 @@ def setup():
     jax.config.update("jax_enable_x64", True)
 
     # Initialize tensorflow with jax
-    tf_ll = os.environ.get("TF_CPP_MIN_LOG_LEVEL", None)
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '4' 
-    import tensorflow as tf
-    tf.config.set_visible_devices([], "GPU")
-    if not tf_ll:
-        del os.environ['TF_CPP_MIN_LOG_LEVEL']
-    else:
-        os.environ['TF_CPP_MIN_LOG_LEVEL'] = tf_ll
+    # tf_ll = os.environ.get("TF_CPP_MIN_LOG_LEVEL", None)
+    # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '4' 
+    # import tensorflow as tf
+    # tf.config.set_visible_devices([], "GPU")
+    # if not tf_ll:
+    #     del os.environ['TF_CPP_MIN_LOG_LEVEL']
+    # else:
+    #     os.environ['TF_CPP_MIN_LOG_LEVEL'] = tf_ll
 
 
 def command(fn: Callable):
@@ -161,7 +177,7 @@ class ArgumentsProvider(ConfigProvider):
         self._cases = cases or []
         self._active = active
 
-    def get(self, name: str, type: str, desc: str = "", default=MISSING):
+    def get(self, name: str, type, desc: str = "", default=MISSING):
         if self._prefix:
             name = f"{self._prefix}_{name}"
 

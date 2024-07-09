@@ -15,7 +15,7 @@ def _log_cb(logger_inst, iteration, data_dict):
         static_argnames=("logger", "join", "prefix", "suffix")
     )
 def log(iteration, *data, logger=None, join=".", prefix=None, suffix=None):
-    data, reportables = as_log_dict(*data, join=join, prefix=prefix, suffix=suffix)
+    data, _ = as_log_dict(*data, join=join, prefix=prefix, suffix=suffix)
     jax.experimental.io_callback(
         partial(_log_cb, logger), None, 
         iteration, data, ordered=True

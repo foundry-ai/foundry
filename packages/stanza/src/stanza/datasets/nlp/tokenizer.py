@@ -1,9 +1,8 @@
 import sentencepiece
 import os
 import numpy as np
-import tempfile
 import itertools
-import shutil
+import io
 
 from stanza.dataclasses import dataclass, field
 
@@ -12,19 +11,24 @@ class TokenizationConfig:
     vocab_size: int = field(pytree_node=False)
 
 class Tokenizer:
-    def __init__(self, model_file=None, vocab_file=None):
-        self.model_file = model_file
-        self.vocab_file = vocab_file
-        self.processor = sentencepiece.SentencePieceProcessor(model_file=str(model_file))
+    def __init__(self, model=None):
+        self.model = model
+        self.processor = sentencepiece.SentencePieceProcessor(model_proto=model)
+        self.vocab = list([self.processor.id_to_piece(id) for id in range(self.processor.get_piece_size())])
         self.vocab_size = self.processor.get_piece_size()
 
-    def save_model(self, model_file, vocab_file):
-        shutil.copyfile(self.model_file, model_file)
-        shutil.copyfile(self.vocab_file, vocab_file)
+    def save_model(self, model_file, vocab_file=None):
+        with open(model_file, "wb") as f:
+            f.write(self.model)
+        if vocab_file is not None:
+            with open(vocab_file, "w") as f:
+                f.write("\n".join([f"{v} - {i}" for i,v in enumerate(self.vocab)]))
 
     @staticmethod
-    def load_model(model_file, vocab_file):
-        return Tokenizer(model_file, vocab_file)
+    def load_model(model_file):
+        with open(model_file, "rb") as f:
+            model = f.read()
+        return Tokenizer(model)
     
     def encode(self, text):
         return self.processor.encode(text)
@@ -64,12 +68,11 @@ class Tokenizer:
                 unk_surface=r" \342\201\207 ",
                 model_type="bpe",
                 normalization_rule_name="identity"):
-        tmp = tempfile.NamedTemporaryFile(delete=False)
-        tmp.close()
+        model = io.BytesIO()
         sentencepiece.SentencePieceTrainer.train(
             sentence_iterator=input_iterator,
             user_defined_symbols=user_defined_symbols,
-            model_prefix=tmp.name,
+            model_writer=model,
             vocab_size=vocab_size,
             input_format=input_format,
             character_coverage=character_coverage,
@@ -79,9 +82,7 @@ class Tokenizer:
             model_type=model_type,
             normalization_rule_name=normalization_rule_name
         )
-        model_file = tmp.name + ".model"
-        vocab_file = tmp.name + ".vocab"
-        return Tokenizer(model_file, vocab_file)
+        return Tokenizer(model.getvalue())
 
 # Try and chunk the text
 # to keep the text within a certain character limit

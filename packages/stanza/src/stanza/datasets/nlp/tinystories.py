@@ -55,21 +55,30 @@ class TinyStoriesData(Data):
 URL = "https://huggingface.co/datasets/roneneldan/TinyStories/resolve/main/TinyStoriesV2-GPT4-{split}.txt"
 
 def load_tiny_stories_data(*, quiet=False, sample_size=1024,
+                            download_only=False,
                            splits={"train", "test"}):
-    data = {}
-    def make_tokenizer(split="train"):
-        tokenizer_path = du.cache_path("tiny_stories") / f"tokenizer.model"
-        vocab_path = du.cache_path("tiny_stories") / f"tokenizer.vocab"
-        if tokenizer_path.exists() and vocab_path.exists():
-            return Tokenizer.load_model(tokenizer_path, vocab_path)
-        if not quiet:
-            logger.info("Training tokenizer...")
+    def download_split(split="train"):
+        if split == "test": split = "valid"
         data_path = du.cache_path("tiny_stories") / f"{split}.txt"
         if not data_path.exists():
             du.download(data_path,
                 url=URL.format(split=split),
                 quiet=quiet
             )
+        return data_path
+    for split in splits:
+        download_split(split)
+    if download_only:
+        return
+
+    def make_tokenizer(split="train"):
+        data_path = download_split(split)
+        tokenizer_path = du.cache_path("tiny_stories") / f"tokenizer.model"
+        vocab_path = du.cache_path("tiny_stories") / f"tokenizer.vocab"
+        if tokenizer_path.exists() and vocab_path.exists():
+            return Tokenizer.load_model(tokenizer_path)
+        if not quiet:
+            logger.info("Training tokenizer...")
         tokenizer = Tokenizer.train(
             filter_ascii(iterate_raw(
                 data_path, "<|endoftext|>", 
@@ -85,7 +94,7 @@ def load_tiny_stories_data(*, quiet=False, sample_size=1024,
     tokenizer = make_tokenizer()
 
     def load_split(name):
-        data_path = du.cache_path("tiny_stories") / f"{name}.txt"
+        data_path = download_split(name)
         bin_path = du.cache_path("tiny_stories") / f"{name}.bin"
         if not data_path.exists():
             du.download(data_path,
@@ -93,7 +102,6 @@ def load_tiny_stories_data(*, quiet=False, sample_size=1024,
                 quiet=quiet
             )
         if not bin_path.exists():
-
             with open(bin_path, "wb") as f:
                 iterator = filter_ascii(iterate_raw(data_path,
                     "<|endoftext|>", "<|n|>", 2048
@@ -110,14 +118,12 @@ def load_tiny_stories_data(*, quiet=False, sample_size=1024,
             bin_path, dtype=np.uint16, 
             mode="r", offset=0, shape=(length,))
         return TinyStoriesData(mm, 0, length, sample_size)
-    if "train" in splits:
-        data["train"] = load_split("train")
-    if "test" in splits:
-        data["test"] = load_split("valid")
+
+    data = dict({k: load_split(k) for k in splits})
     return tokenizer, data
 
-def load_tiny_stories(*,quiet=False):
-    tokenizer, splits = load_tiny_stories_data(quiet=quiet)
+def load_tiny_stories(*,quiet=False, download_only=False, **kwargs):
+    tokenizer, splits = load_tiny_stories_data(quiet=quiet, download_only=download_only)
 
     return NLPDataset(
         splits=splits,
