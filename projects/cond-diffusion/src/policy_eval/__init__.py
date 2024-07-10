@@ -65,7 +65,9 @@ class Config:
         # Check for a default policy override
         policy = config.get("policy", str, default=None)
         if policy == "diffusion_policy":
-            defaults = replace(defaults, policy=diffusion_policy.DiffusionPolicyConfig())
+            defaults = replace(defaults, policy=diffusion_policy.DiffusionPolicyConfig(
+                batch_size=config.get("batch_size", int), net_width=config.get("net_width", int), net_depth=config.get("net_depth",int)
+            ))
         elif policy == "diffusion_estimator":
             defaults = replace(defaults, policy=diffusion_estimator.DiffusionEstimatorConfig())
         else:
@@ -155,11 +157,12 @@ def evaluate(env, x0s, T, policy, chunk_policy, rng_key):
     N = stanza.util.axis_size(x0s, 0)
 
     # shard the x0s
+    num_devices = len(jax.devices())
     sharding = PositionalSharding(
-        mesh_utils.create_device_mesh((8,), jax.devices()[:8])
+        mesh_utils.create_device_mesh((num_devices,), jax.devices()[:num_devices])
     )
     x0s = jax.tree.map(
-        lambda x: jax.lax.with_sharding_constraint(x, sharding.reshape((8,) + (1,)*(x.ndim-1))),
+        lambda x: jax.lax.with_sharding_constraint(x, sharding.reshape((num_devices,) + (1,)*(x.ndim-1))),
         x0s
     )
 
@@ -185,7 +188,7 @@ def main(config : Config):
     logger.info(f"Loading dataset [blue]{config.dataset}[/blue]")
     dataset = datasets.create(config.dataset)
     env = dataset.create_env()
-    train_data = dataset.splits["train"].slice(0,1).cache()
+    train_data = dataset.splits["train"].slice(0,95).cache()
     logger.info(f"Processing dataset.")
     train_data = process_data(config, env, train_data).cache()
     # jax.debug.print("{s}", s=train_data)

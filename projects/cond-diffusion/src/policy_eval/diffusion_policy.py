@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 class DiffusionPolicyConfig:
     #model: str = "ResNet18"
     seed: int = 42
-    iterations: int = 10000
+    iterations: int = 100
     batch_size: int = 128
     net_width: int = 4096
     net_depth: int = 2
@@ -62,6 +62,7 @@ def train_net_diffusion_policy(
     
     train_sample = train_data[0]
     normalizer = StdNormalizer.from_data(train_data)
+    train_data_batched = train_data.stream().batch(config.batch_size)
     train_data_tree = train_data.as_pytree()
     # sample = jax.tree_map(lambda x: x[0], train_data_tree)
     # Get chunk lengths
@@ -125,8 +126,7 @@ def train_net_diffusion_policy(
     optimizer = optax.adamw(opt_sched)
     opt_state = optimizer.init(vars["params"])
 
-    with train.loop(train_data, 
-                batch_size=config.batch_size, 
+    with stanza.train.loop(train_data_batched, 
                 rng_key=next(rng),
                 iterations=config.iterations,
                 progress=True
