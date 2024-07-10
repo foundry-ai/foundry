@@ -35,11 +35,13 @@ logger = logging.getLogger(__name__)
 class DiffusionPolicyConfig:
     #model: str = "ResNet18"
     seed: int = 42
-    net_width: int = 512
-    net_depth: int = 3
+    iterations: int = 10000
+    batch_size: int = 128
+    net_width: int = 4096
+    net_depth: int = 2
     embed_type: str = "film"
     has_skip: bool = True
-    T: int = 50
+    diffusion_steps: int = 50
 
     def parse(self, config: ConfigProvider) -> "DiffusionPolicyConfig":
         return config.get_dataclass(self, flatten={"train"})
@@ -58,7 +60,7 @@ def train_net_diffusion_policy(
     # actions = train_data_tree.actions - data_agent_pos[:, None, :]
     # train_data = PyTreeData(Sample(train_data_tree.state, train_data_tree.observations, actions))
     
-    sample = train_data[0]
+    train_sample = train_data[0]
     normalizer = StdNormalizer.from_data(train_data)
     train_data_tree = train_data.as_pytree()
     # sample = jax.tree_map(lambda x: x[0], train_data_tree)
@@ -75,14 +77,14 @@ def train_net_diffusion_policy(
         embed_type=config.embed_type, 
         has_skip=config.has_skip
     )
-    vars = jax.jit(model.init)(next(rng), sample.observations, sample.actions, 0)
+    vars = jax.jit(model.init)(next(rng), train_sample.observations, train_sample.actions, 0)
     
 
     total_params = jax.tree_util.tree_reduce(lambda x, y: x + y.size, vars, 0)
     logger.info(f"Total parameters: [blue]{total_params}[/blue]")
 
     schedule = DDPMSchedule.make_squaredcos_cap_v2(
-        config.T,
+        config.diffusion_steps,
         clip_sample_range=1.5,
         prediction_type="sample"
     )
@@ -119,14 +121,14 @@ def train_net_diffusion_policy(
         )
     batched_loss_fn = train.batch_loss(loss_fn)
 
-    opt_sched = optax.cosine_onecycle_schedule(5000, 1e-4)
+    opt_sched = optax.cosine_onecycle_schedule(config.iterations, 1e-4)
     optimizer = optax.adamw(opt_sched)
     opt_state = optimizer.init(vars["params"])
 
     with train.loop(train_data, 
-                batch_size=128, 
-                rng_key=jax.random.key(42),
-                iterations=10000,
+                batch_size=config.batch_size, 
+                rng_key=next(rng),
+                iterations=config.iterations,
                 progress=True
             ) as loop:
         for epoch in loop.epochs():
@@ -152,7 +154,7 @@ def train_net_diffusion_policy(
         model_fn = lambda rng_key, noised_actions, t: model.apply(
             vars, obs, noised_actions, t - 1
         )
-        action = schedule.sample(input.rng_key, model_fn, sample.actions) 
+        action = schedule.sample(input.rng_key, model_fn, train_sample.actions) 
         action = normalizer.map(lambda x: x.actions).unnormalize(action)
         return PolicyOutput(action=action)
     

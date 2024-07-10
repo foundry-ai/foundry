@@ -185,14 +185,14 @@ def main(config : Config):
     logger.info(f"Loading dataset [blue]{config.dataset}[/blue]")
     dataset = datasets.create(config.dataset)
     env = dataset.create_env()
-    train_data = dataset.splits["train"].cache()
+    train_data = dataset.splits["train"].slice(0,1).cache()
     logger.info(f"Processing dataset.")
     train_data = process_data(config, env, train_data).cache()
     # jax.debug.print("{s}", s=train_data)
     # train_data = train_data.slice(0,5)
     # jax.debug.print("{s}", s=train_data.as_pytree())
 
-    test_data = dataset.splits["train"].truncate(1).slice(0,1)
+    test_data = dataset.splits["test"].truncate(1).slice(0,3)
     test_x0s = test_data.map(
         lambda x: env.full_state(
             jax.tree.map(lambda x: x[0], x.reduced_state)
