@@ -23,6 +23,7 @@ from stanza.env.mujoco.core import (
 import shapely.geometry as sg
 import jax.numpy as jnp
 import jax.random
+import mujoco
 
 import importlib.resources as resources
 
@@ -71,6 +72,10 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
             two_and_half_block_scale=2.5*self.block_scale,
             com_offset=com
         )
+    
+    @jax_static_property
+    def model(self):
+        return mujoco.MjModel.from_xml_string(self.xml)
 
     @jax.jit
     def reset(self, rng_key : jax.Array) -> SimulatorState:

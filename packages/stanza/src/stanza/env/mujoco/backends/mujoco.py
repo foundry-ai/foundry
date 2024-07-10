@@ -1,12 +1,10 @@
-# A simulator which uses pure_callback
-# and a cache of SytemState -> MjData
-
 from ..core import Simulator, SystemState, SystemData
 
-from stanza.dataclasses import dataclass, replace
-from concurrent.futures.thread import ThreadPoolExecutor
+from stanza.dataclasses import dataclass
 
-from collections import OrderedDict
+from concurrent.futures.thread import ThreadPoolExecutor
+from functools import partial
+from typing import Sequence
 
 import mujoco
 import jax
@@ -51,10 +49,13 @@ class MujocoSimulator(Simulator[SystemData]):
             ),
             example_data
         )
+        self.buffer_width = self.model.vis.global_.offwidth
+        self.buffer_height = self.model.vis.global_.offheight
 
         self.local_data = threading.local()
         # create an initial MjData object for each thread
         def initializer():
+            self.local_data.renderer = None
             self.local_data.data = mujoco.MjData(self.model)
         self.pool = ThreadPoolExecutor(
             max_workers=threads, 
@@ -213,5 +214,73 @@ class MujocoSimulator(Simulator[SystemData]):
 
     def data(self, state: MujocoState) -> SystemData:
         return state.data
+    
+
+    # render a given SystemData using
+    # the opengl-based mujoco rendering engine
+
+    def _render_job(self, width : int, height: int,
+                    geom_groups : Sequence[bool],
+                    camera : int | str,
+                    data: SystemData) -> jax.Array:
+        # get the thread-local MjData object
+        # copy over the jax arrays
+        renderer = self.local_data.renderer
+        if renderer is None:
+            renderer = mujoco.Renderer(
+                self.model, self.buffer_height, self.buffer_width
+            )
+            self.local_data.renderer = renderer
+        data = self.local_data.data
+        data.time = 0
+        data.qpos[:] = data.qpos
+        data.qvel[:] = data.qvel
+        data.act[:] = data.act
+        data.qacc[:] = data.qacc
+        data.act_dot[:] = data.act_dot
+        data.xpos[:] = data.xpos
+        data.xquat[:] = data.xquat
+        data.actuator_velocity[:] = data.actuator_velocity
+        data.cvel[:] = data.cvel
+
+        vopt = mujoco.MjvOption()
+        # disable rendering of collision geoms
+        for i, g in enumerate(geom_groups):
+            vopt.geomgroup[i] = 1 if g else 0
+        arr = np.empty((self.buffer_height, self.buffer_width, 3), dtype=np.uint8)
+        renderer.update_scene(data, camera, vopt)
+        renderer.render(out=arr)
+        return jnp.array(arr)
+
+    def _render(self, width, height, geom_groups, camera, data: SystemData) -> jax.Array:
+        job = partial(self._render_job, width, height, geom_groups, camera)
+        if data.qpos.ndim == 1:
+            data = self.pool.submit(job, data).result()
+            return data
+        else:
+            batch_shape = data.qpos.shape[:-1]
+            batch_size = np.prod(batch_shape)
+            data = jax.tree.map(
+                lambda x: jnp.reshape(x, (batch_size,) + x.shape[len(batch_shape):]),
+                data
+            )
+            datas = [jax.tree.map(lambda x: x[i], data) for i in range(data.qpos.shape[0])]
+            res = self.pool.map(job, datas)
+            res = jax.tree.map(lambda *x: jnp.stack(x, axis=0), *res)
+            res = jax.tree.map(lambda x: jnp.reshape(x, batch_shape +  x.shape[1:]), res)
+            return data
+
+    def render(self, data: SystemData, width: int, height: int, geom_groups: Sequence[bool], camera: int | str = -1) -> jax.Array:
+        assert data.time.ndim == 0
+        buffer = jax.pure_callback(
+            partial(self._render, width, height, geom_groups, camera),
+            jax.ShapeDtypeStruct((self.buffer_height, self.buffer_width, 3), jnp.uint8),
+            data, vectorized=True
+        )
+        buffer = buffer.astype(jnp.float32) / 255.0
+        buffer = jax.image.resize(buffer, (height, width,3), method="linear")
+        return buffer
+
+
 
 jax.tree_util.register_static(MujocoSimulator)

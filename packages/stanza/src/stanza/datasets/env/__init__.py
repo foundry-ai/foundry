@@ -15,3 +15,4 @@ class EnvDataset(Dataset[T], Generic[T]):
 
 datasets : DatasetRegistry[EnvDataset] = DatasetRegistry()
 datasets.extend("pusht", from_module(".pusht", "datasets"))
+datasets.extend("robomimic", from_module(".robomimic", "datasets"))
