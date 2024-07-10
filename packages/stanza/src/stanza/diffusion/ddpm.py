@@ -95,14 +95,14 @@ class DDPMSchedule:
             This means a large amount of noise is added at the start, with
             decreasing noise added as time goes on.
         """
-        t = jnp.arange(num_timesteps, dtype=float)/num_timesteps
+        t = jnp.arange(num_timesteps, dtype=jnp.float32)/num_timesteps
         offset = offset if offset is not None else 0.008
         def alpha_bar(t):
             t = (t + offset) / (1 + offset)
             return jnp.pow(jnp.cos(t * jnp.pi / 2), order)
         # make the first timestep start at index 1
         alpha_bars = jnp.concatenate(
-            (jnp.ones((1,)), jax.vmap(alpha_bar)(t)),
+            (jnp.ones((1,), dtype=t.dtype), jax.vmap(alpha_bar)(t)),
         axis=0)
         # alpha_bars = alpha_bars.at[-1].set(0)
         return DDPMSchedule.make_from_alpha_bars(alpha_bars, max_beta=max_beta, **kwargs)
@@ -111,8 +111,8 @@ class DDPMSchedule:
     def make_scaled_linear_schedule(num_timesteps : int,
                 beta_start : float = 0.0001, beta_end : float = 0.02, **kwargs):
         """ Makes a scaled linear (i.e quadratic) schedule for the DDPM. """
-        betas = jnp.concatenate((jnp.zeros((1,)),
-            jnp.linspace(beta_start**0.5, beta_end**0.5, num_timesteps)**2),
+        betas = jnp.concatenate((jnp.zeros((1,), dtype=jnp.float32),
+            jnp.linspace(beta_start**0.5, beta_end**0.5, num_timesteps, dtype=jnp.float32)**2),
         axis=-1)
         return DDPMSchedule.make_from_betas(
             betas=betas,
@@ -193,7 +193,7 @@ class DDPMSchedule:
         sqrt_alphas_prod = jnp.sqrt(self.alphas_cumprod[timestep])
         sqrt_one_minus_alphas_prod = jnp.sqrt(1 - self.alphas_cumprod[timestep])
         sample_flat, unflatten = jax.flatten_util.ravel_pytree(sample)
-        noise_flat = jax.random.normal(rng_key, sample_flat.shape)
+        noise_flat = jax.random.normal(rng_key, sample_flat.shape, dtype=sample_flat.dtype)
         noisy_flat = sqrt_alphas_prod * sample_flat + \
             sqrt_one_minus_alphas_prod*noise_flat
         noisy = unflatten(noisy_flat)
@@ -217,7 +217,7 @@ class DDPMSchedule:
         sqrt_alphas_prod = jnp.sqrt(alphas_prod)
         sqrt_one_minus_alphas_prod = jnp.sqrt(1 - alphas_prod)
         sample_flat, unflatten = jax.flatten_util.ravel_pytree(sub_sample)
-        noise_flat = jax.random.normal(rng_key, sample_flat.shape)
+        noise_flat = jax.random.normal(rng_key, sample_flat.shape, dtype=sample_flat.dtype)
         noisy_flat = sqrt_alphas_prod * sample_flat + \
             sqrt_one_minus_alphas_prod*noise_flat
 
@@ -328,7 +328,7 @@ class DDPMSchedule:
         # we always take the log of variance, so clamp it to ensure it's not 0
         # variance = jnp.clip(variance, a_min=1e-20)
         sigma = jnp.sqrt(variance)
-        noise = sigma*jax.random.normal(rng_key, pred_prev_sample.shape)
+        noise = sigma*jax.random.normal(rng_key, pred_prev_sample.shape, pred_prev_sample.dtype)
         return unflatten(pred_prev_sample + noise)
 
     @partial(jax.jit, static_argnums=(2,))
@@ -345,7 +345,7 @@ class DDPMSchedule:
         step_ratio = (self.num_steps - final_time) / num_steps
         # sample initial noise
         flat_structure, unflatten = stanza.util.ravel_pytree_structure(sample_structure)
-        random_sample = unflatten(jax.random.normal(rng_key, flat_structure.shape))
+        random_sample = unflatten(jax.random.normal(rng_key, flat_structure.shape, flat_structure.dtype))
 
         if trajectory:
             # if we want to return the trajectory, do a scan.

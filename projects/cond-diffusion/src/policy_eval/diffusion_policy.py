@@ -97,8 +97,6 @@ def train_net_diffusion_policy(
         actions = sample_norm.actions
         # obs = sample.observations
         # actions = sample.actions
-
-
         model_fn = lambda rng_key, noised_actions, t: model.apply(
             vars, obs, noised_actions, t - 1
         )

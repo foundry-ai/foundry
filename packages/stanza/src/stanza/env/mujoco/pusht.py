@@ -267,8 +267,8 @@ class KeypointObsEnv(EnvWrapper):
         rotM = jnp.array([
             [jnp.cos(obs.block_rot), -jnp.sin(obs.block_rot)],
             [jnp.sin(obs.block_rot), jnp.cos(obs.block_rot)]
-        ])
-        end = rotM @ jnp.array([0, -4*self.block_scale]) + obs.block_pos
+        ], dtype=obs.block_pos.dtype)
+        end = rotM @ jnp.array([0, -4*self.block_scale], dtype=rotM.dtype) + obs.block_pos
         return PushTKeypointObs(
             agent_pos=obs.agent_pos,
             block_pos=obs.block_pos,
@@ -286,12 +286,12 @@ class RelKeypointObsEnv(EnvWrapper):
             [jnp.cos(obs.block_rot), -jnp.sin(obs.block_rot)],
             [jnp.sin(obs.block_rot), jnp.cos(obs.block_rot)]
         ])
-        end = rotM @ jnp.array([0, -4*self.block_scale]) + obs.block_pos
+        end = rotM @ jnp.array([0, -4*self.block_scale], dtype=rotM.dtype) + obs.block_pos
         rotM = jnp.array([
             [jnp.cos(self.goal_rot), -jnp.sin(self.goal_rot)],
             [jnp.sin(self.goal_rot), jnp.cos(self.goal_rot)]
         ])
-        goal_end = rotM @ jnp.array([0, -4*self.block_scale]) + self.goal_pos
+        goal_end = rotM @ jnp.array([0, -4*self.block_scale], dtype=rotM.dtype) + self.goal_pos
         return PushTKeypointRelObs(
             agent_block_pos=obs.agent_pos - obs.block_pos,
             agent_block_end=obs.agent_pos - end,
