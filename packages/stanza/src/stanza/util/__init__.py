@@ -84,7 +84,7 @@ class jax_static_property:
         val = self.cache.get(treedef, _NOT_FOUND)
         if val is _NOT_FOUND:
             # map node values to none so they can't be used
-            nodes = [None for _ in range(len(nodes))]
+            nodes = [None if isinstance(n, jax.Array) else n for n in nodes]
             instance = jax.tree.unflatten(treedef, nodes)
 
             with jax.ensure_compile_time_eval():
@@ -102,19 +102,18 @@ STATIC_CACHE_MAP = WeakKeyDictionary
 class jax_static_cache:
     def __init__(self, func):
         self.func = func
-        if func not in STATIC_CACHE_MAP:
+        if not hasattr(func, "__static_cache"):
             self.cache = {}
-            STATIC_CACHE_MAP[func] = self.cache
+            setattr(func, "__static_cache", self.cache)
         else:
-            self.cache = STATIC_CACHE_MAP[func]
+            self.cache = func.__static_cache
 
     def __call__(self, *args, **kwargs):
         nodes, treedef = jax.tree.flatten((args, kwargs))
-
         val = self.cache.get(treedef, _NOT_FOUND)
         if val is _NOT_FOUND:
             # map node values to none so they can't be used
-            nodes = [None for _ in range(len(nodes))]
+            nodes = [(None if isinstance(n, jax.Array) else n) for n in nodes]
             args, kwargs = jax.tree.unflatten(treedef, nodes)
-            val = self.func(args, kwargs)
+            val = self.func(*args, **kwargs)
         return val

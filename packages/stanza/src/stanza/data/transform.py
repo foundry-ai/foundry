@@ -19,9 +19,11 @@ def random_subcrop(rng_key, x, size, padding, padding_mode="constant", padding_c
     x = jnp.pad(x, padding, mode=padding_mode, constant_values=padding_constant)
     max_y = x.shape[-3] - size[0]
     max_x = x.shape[-2] - size[1]
-    rand_offset = jax.random.randint(rng_key, (2,), 0, jnp.array((max_x, max_y)), dtype=jnp.int32)
+    rand_offset = jax.random.randint(rng_key, (2,), 0,
+        jnp.array((max_x, max_y), dtype=jnp.uint32),
+        dtype=jnp.int32)
     x = jax.lax.dynamic_slice(x,
-        [rand_offset[0], rand_offset[0], 0],
+        [rand_offset[0], rand_offset[1], jnp.zeros((), rand_offset.dtype)],
         [size[0], size[1], x.shape[-1]]
     )
     return x
@@ -32,7 +34,9 @@ def random_cutout(rng_key, x, size, p=0.5):
     cutout = jax.random.bernoulli(a, p, ()) == 1.
     def do_cutout():
         left, top = jax.random.randint(b, (2,),
-            -size//2, jnp.array([x.shape[1] - size//2, x.shape[0] - size//2])
+            -size//2,
+            jnp.array([x.shape[1] - size//2, x.shape[0] - size//2], dtype=jnp.uint32),
+            dtype=jnp.uint32
         )
         val = jax.random.uniform(c, ())
         right, bottom = left + size, top + size

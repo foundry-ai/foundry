@@ -1,8 +1,8 @@
 from stanza.datasets import DatasetRegistry, Dataset
-from stanza.dataclasses import dataclass
+from stanza.dataclasses import dataclass, field
 from stanza.util.registry import from_module
 
-from typing import Tuple
+from typing import Tuple, Sequence
 
 import jax
 
@@ -12,7 +12,7 @@ class ImageDataset(Dataset[jax.Array]):
 
 @dataclass
 class ImageClassDataset(Dataset[Tuple[jax.Array, jax.Array]]):
-    classes: list[str]
+    classes: Sequence[str] = field(default_factory=tuple)
 
     def as_image_dataset(self) -> ImageDataset:
         def map_normalizer(normalizer_builder):

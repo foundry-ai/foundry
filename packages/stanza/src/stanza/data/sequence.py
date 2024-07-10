@@ -117,7 +117,7 @@ class SequenceData(Generic[T,I]):
             t_off[idx:idx+n_chunks] = infos.start_idx[i] + np.arange(n_chunks) * chunk_stride
             i_off[idx:idx+n_chunks] = i
             idx += n_chunks
-        t_off, i_off = jnp.array(t_off), jnp.array(i_off)
+        t_off, i_off = jnp.array(t_off, dtype=jnp.uint64), jnp.array(i_off, dtype=jnp.uint64)
 
         return ChunkData(
             elements=self.elements,
@@ -130,9 +130,9 @@ class SequenceData(Generic[T,I]):
     def from_trajectory(elements: Data[T], info: I = None) -> "SequenceData[T,I]":
         info = SequenceInfo(
             info=info,
-            start_idx=jnp.array(0),
-            end_idx=jnp.array(len(elements)),
-            length=jnp.array(len(elements))
+            start_idx=jnp.array(0, dtype=jnp.uint64),
+            end_idx=jnp.array(len(elements), dtype=jnp.uint64),
+            length=jnp.array(len(elements), dtype=jnp.uint64)
         )
         sequences = PyTreeData(jax.tree_util.tree_map(lambda x: x[None,...], info))
         return SequenceData(

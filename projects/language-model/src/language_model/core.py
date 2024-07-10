@@ -1,23 +1,20 @@
-from stanza.runtime import ConfigProvider, command, setup
-setup()
-
+from stanza.runtime import ConfigProvider
 from stanza.dataclasses import dataclass
-
 from stanza.train import LossOutput
 from stanza.random import PRNGSequence
-from stanza.datasets.vision import image_class_datasets
+from stanza.datasets.nlp import datasets
 from stanza.model import models
 
 from functools import partial
 
 import stanza.train
+import stanza.train.ray
 import stanza.train.wandb
 import stanza.train.console
 import stanza.train.sharpness
 
 import flax
 import rich
-import wandb
 
 import optax
 import jax
@@ -31,15 +28,14 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Config:
     seed: int = 42
+    dataset: str = "tinystories"
+    model: str = "gpt2/nano"
+
     download_only: bool = False
 
-    dataset: str = "cifar/cifar10"
-    normalizer: str = "standard_dev"
-    model: str = "resnet/SmallResNet18"
-
-    epochs: int = 50
+    iterations: int = 100
     warmup_ratio: float = 0.01
-    batch_size: int = 128
+    batch_size: int = 4
     optimizer: str = "adam"
     lr: float | None = None
     weight_decay: float = 1e-4
@@ -47,7 +43,6 @@ class Config:
     # sam-related parameters
     sam_rho: float = 0. # None if SAM is disabled
     sam_start: float = 0. # percentage of training through which to start sam
-    sam_percent: float = 1. # percentage of training to use sam, if enabled
 
     log_compiles: bool = False
     trace: bool = False
@@ -57,8 +52,6 @@ class Config:
         defaults = Config()
         res = config.get_dataclass(defaults)
         return res
-
-    # if we should also quantize the model
 
 def switch_optim(
     opt_a: optax.GradientTransformation,
@@ -114,61 +107,43 @@ def make_optimizer(name, lr, iterations, warmup_percent, weight_decay, sam_rho):
         )
     return optimizer
 
-def train(config: Config):
+def train(wandb_run, config: Config):
     logger.info(f"Training {config}")
     rng = PRNGSequence(config.seed)
-
-    dataset = image_class_datasets.create(config.dataset)
+    dataset = datasets.create(config.dataset, download_only=config.download_only)
     if config.download_only:
         return
-    normalizer = dataset.normalizers[config.normalizer]()
-    augment = (
-        dataset.transforms["standard_augmentations"]()
-        if "standard_augmentations" in dataset.transforms else
-        lambda _r, x: x
-    )
 
-    epoch_iterations = len(dataset.splits["train"]) // config.batch_size
-    iterations = config.epochs * epoch_iterations
+    iterations = config.iterations
     optimizer = make_optimizer(config.optimizer, config.lr, 
                                iterations, config.warmup_ratio,
                                config.weight_decay, config.sam_rho)
-    wandb_run = wandb.init(
-        project="image_classifier",
-        config=stanza.util.flatten_to_dict(config)[0]
-    )
-    num_classes = len(dataset.classes)
     logger.info(f"Logging to [blue]{wandb_run.url}[/blue]")
-
-    model = models.create(config.model, n_classes=num_classes)
-    vars = model.init(next(rng), jnp.zeros_like(dataset.splits["train"].structure[0]))
+    model = models.create(config.model, vocab_size=dataset.tokenizer.vocab_size)
+    vars = jax.jit(partial(model.init, deterministic=True))(
+        next(rng),
+        jnp.zeros_like(dataset.splits["train"].structure), 
+    )
     total_params = jax.tree_util.tree_reduce(lambda x, y: x + y.size, vars, 0)
     logger.info(f"Total parameters: [blue]{total_params}[/blue]")
+    logger.info(f"Vocabulary size: [blue]{dataset.tokenizer.vocab_size}[/blue]")
 
-    def loss_fn(params, rng_key, sample, train=True):
-        x, label = normalizer.normalize(sample)
-        if train:
-            x = augment(rng_key, x)
-            logits_output, mutated = model.apply(params, x, 
-                                                 mutable=("batch_stats",))
-        else:
-            logits_output = model.apply(params, x)
-            mutated = {}
-
-        ce_loss = optax.softmax_cross_entropy_with_integer_labels(logits_output, label)
-        predicted_class = jnp.argmax(logits_output, axis=-1)
-        accuracy = 1.*(predicted_class == label)
-        return LossOutput(
-            loss=ce_loss,
-            metrics=dict(cross_entropy=ce_loss, accuracy=accuracy),
-            var_updates=mutated
+    def loss_fn(params, rng_key, tokens, train=True):
+        X, Y = tokens[:-1], tokens[1:]
+        logits = model.apply(
+            params, X,
+            not train, 
+            rngs={'dropout': rng_key}
         )
-    val_loss = partial(loss_fn, train=False)
+        loss = optax.softmax_cross_entropy_with_integer_labels(logits, Y).mean()
+        stats = {"loss": loss}
+        return LossOutput(loss=loss, metrics=stats)
+
+    val_loss_fn = partial(loss_fn, train=False)
     batch_loss = stanza.train.batch_loss(loss_fn)
-    val_batch_loss = stanza.train.batch_loss(val_loss)
-    
-    vars = model.init(next(rng), jnp.zeros_like(normalizer.structure[0]))
-    opt_state = optimizer.init(vars["params"])
+    val_batch_loss = stanza.train.batch_loss(val_loss_fn)
+    opt_state = jax.jit(optimizer.init)(vars["params"])
+    logger.info("Initialized optimizer.")
 
     train_data = (
         dataset.splits["train"].stream()
@@ -178,13 +153,12 @@ def train(config: Config):
         dataset.splits["test"].stream()
             .shuffle(next(rng), resample=True).batch(config.batch_size)
     )
-    test_data = dataset.splits["test"].stream().batch(2*config.batch_size)
+    test_data = dataset.splits["test"].stream().batch(config.batch_size)
 
-    with stanza.train.loop(train_data, rng_key=next(rng), iterations=iterations,
+    with stanza.train.loop(train_data, rng_key=next(rng), iterations=iterations, 
                 log_compiles=config.log_compiles, trace=config.trace) as loop, \
             test_data.build() as test_stream, \
             sharpness_data.build() as sharpness_stream:
-
         for epoch in loop.epochs():
             for step in epoch.steps():
                 opt_state, vars, metrics = stanza.train.step(
@@ -199,37 +173,24 @@ def train(config: Config):
                 # print to the console every 100 iterations
                 if step.iteration % 100 == 0:
                     stanza.train.console.log(
-                        step.iteration, metrics, prefix="train."
+                        step.iteration, metrics
                     )
-                # validate + log every 500 steps
-                if step.iteration % 100 == 0:
                     test_stream, test_metrics = stanza.train.eval_stream(
-                        val_batch_loss, vars, next(rng), test_stream
+                        val_batch_loss, vars, next(rng),
+                        test_stream, batches=16
                     )
-                    stanza.train.console.log(
-                        step.iteration, test_metrics,
-                        prefix="test."
-                    )
-                    stanza.train.wandb.log(
-                        step.iteration, test_metrics,
-                        prefix="test/", run=wandb_run
-                    )
-                if step.iteration % 200 == 0:
                     sharpness_stream, sharpness_batch = sharpness_stream.next()
                     sharpness_metrics = stanza.train.sharpness.sharpness_stats(
-                        val_loss, vars, next(rng), sharpness_batch,
+                        val_loss_fn, vars, next(rng), sharpness_batch,
                         batch_size=max(64, config.batch_size)
                     )
                     stanza.train.console.log(
-                        step.iteration, sharpness_metrics,
-                        prefix="test."
+                        step.iteration, 
+                        sharpness_metrics, test_metrics, prefix="test."
                     )
+                    stanza.train.ray.report(step.iteration, test_metrics)
                     stanza.train.wandb.log(
-                        step.iteration, sharpness_metrics,
+                        step.iteration,
+                        sharpness_metrics, test_metrics,
                         prefix="test/", run=wandb_run
                     )
-
-@command
-def run(config: ConfigProvider):
-    logger.setLevel(logging.DEBUG)
-    train(Config.parse(config))

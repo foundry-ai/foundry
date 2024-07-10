@@ -14,7 +14,8 @@ readme = "README.md"
 license = {text = "MIT"}
 
 [project.scripts]
-image_classifier = "image_classifier:run"
+language_model = "language_model:run"
+language_model_sweep = "language_model.sweeps:run"
 
 [tool.pdm]
 distribution = true

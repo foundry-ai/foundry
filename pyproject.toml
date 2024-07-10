@@ -5,11 +5,23 @@ description = "Default template for PDM package"
 authors = [
     {name = "Daniel Pfrommer", email = "dan.pfrommer@gmail.com"},
 ]
-dependencies = []
+dependencies = [
+    "stanza[ipython,docs] @ file:///${PROJECT_ROOT}/packages/stanza",
+    "stanza-models @ file:///${PROJECT_ROOT}/projects/models",
+    "stanza-examples @ file:///${PROJECT_ROOT}/projects/examples",
+    "cond_diffusion @ file:///${PROJECT_ROOT}/projects/cond-diffusion",
+    "image-classifier @ file:///${PROJECT_ROOT}/projects/image-classifier",
+    "language-model @ file:///${PROJECT_ROOT}/projects/language-model",
+    "ray[tune]>=2.31.0",
+]
 requires-python = ">=3.12"
 readme = "README.md"
 license = {text = "MIT"}
 
+[project.optional-dependencies]
+cuda12 = [
+    "jax[cuda12]>=0.4.30",
+]
 [build-system]
 requires = ["pdm-backend"]
 build-backend = "pdm.backend"
@@ -21,5 +33,11 @@ dev = [
     "-e stanza-examples @ file:///${PROJECT_ROOT}/projects/examples",
     "-e cond_diffusion @ file:///${PROJECT_ROOT}/projects/cond-diffusion",
     "-e image-classifier @ file:///${PROJECT_ROOT}/projects/image-classifier",
+    "-e language-model @ file:///${PROJECT_ROOT}/projects/language-model",
     "pytest>=8.2.2",
 ]
+
+# These are annoying and not used...
+[tool.pdm.resolution]
+excludes = ["pytinyrenderer", "evdev"]
+

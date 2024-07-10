@@ -61,19 +61,35 @@ def setup_logger(show_path=True):
     logger.setLevel(logging.WARNING)
     logger = logging.getLogger("stanza")
     logger.setLevel(logging.DEBUG)
+    # Prevent "retrying" warnings from connectionpool
+    # if running wandb offline
+    logger = logging.getLogger("urllib3.connectionpool")
+    logger.setLevel(logging.ERROR)
+
+SETUP_JAX_CACHE = False
 
 def setup_jax_cache():
+    global SETUP_JAX_CACHE
+    if SETUP_JAX_CACHE:
+        return
     from jax.experimental.compilation_cache import compilation_cache as cc
     JAX_CACHE = Path(os.environ.get("JAX_CACHE", "/tmp/jax_cache"))
     JAX_CACHE.mkdir(parents=True, exist_ok=True)
     cc.initialize_cache(str(JAX_CACHE))
+    SETUP_JAX_CACHE = True
+
+SETUP_GC = False
 
 def setup_gc():
+    global SETUP_GC
+    if SETUP_GC:
+        return
     import gc
     from jax._src.lib import _xla_gc_callback
     # pop the xla gc callback
     if gc.callbacks[-1] is _xla_gc_callback:
         gc.callbacks.pop()
+    SETUP_GC = True
 
 def setup():
     jupyter = rich.get_console().is_jupyter
@@ -83,9 +99,22 @@ def setup():
     if jupyter:
         from stanza.util.ipython import setup_rich_notebook_hook
         setup_rich_notebook_hook()
-    setup_logger(not jupyter)
+    setup_logger(False)
     setup_jax_cache()
     setup_gc()
+    import jax
+    jax.config.update("jax_enable_x64", True)
+
+    # Initialize tensorflow with jax
+    # tf_ll = os.environ.get("TF_CPP_MIN_LOG_LEVEL", None)
+    # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '4' 
+    # import tensorflow as tf
+    # tf.config.set_visible_devices([], "GPU")
+    # if not tf_ll:
+    #     del os.environ['TF_CPP_MIN_LOG_LEVEL']
+    # else:
+    #     os.environ['TF_CPP_MIN_LOG_LEVEL'] = tf_ll
+
 
 def command(fn: Callable):
     @functools.wraps(fn)
@@ -96,8 +125,9 @@ def command(fn: Callable):
             return fn(config)
         except (KeyboardInterrupt, BdbQuit):
             # Hard-kill wandb process on manual exit
-            cmd = "ps aux|grep wandb|grep -v grep | awk '\''{print $2}'\''|xargs kill -9"
-            os.system(cmd)
+            # pass
+            # cmd = "ps aux|grep wandb|grep -v grep | awk '\''{print $2}'\''|xargs kill -9"
+            # os.system(cmd)
             logger.error("Exited due to Ctrl-C")
     return main
 
@@ -119,7 +149,7 @@ class ConfigProvider(abc.ABC):
                 scope = self.scope(field.name, "") if field.name not in flatten else self
                 vals[field.name] = default_val.parse(scope)
             elif (type is bool or type is int or type is float or type is str):
-                vals[field.name] = self.get(field.name, field.type, "", default_val)
+                vals[field.name] = self.get(field.name, type, "", default_val)
             elif default_val is MISSING: raise RuntimeError(f"Unable to parse {field.name}")
         return replace(default, **vals)
 
@@ -147,7 +177,7 @@ class ArgumentsProvider(ConfigProvider):
         self._cases = cases or []
         self._active = active
 
-    def get(self, name: str, type: str, desc: str = "", default=MISSING):
+    def get(self, name: str, type, desc: str = "", default=MISSING):
         if self._prefix:
             name = f"{self._prefix}_{name}"
 

@@ -288,7 +288,7 @@ def nw_local_poly_closed(data, schedule, degree, h2):
         Sigma = jnp.zeros((xs.shape[-1],))
         Sigma = jnp.append(
             Sigma,
-            jnp.repeat(jnp.array([1-alphas_prod]), ys.shape[-1])
+            jnp.repeat(jnp.expand_dims(1-alphas_prod, 0), ys.shape[-1])
         )
         #jax.debug.print('{s}', s=Sigma)
 

@@ -37,7 +37,7 @@ def load_pytorch_pusht_data(zarr_path, max_trajectories=None):
     with zarr.open(zarr_path) as zf:
         if max_trajectories is None:
             max_trajectories = len(zf["meta/episode_ends"])
-        ends = jnp.array(zf["meta/episode_ends"][:max_trajectories])
+        ends = jnp.array(zf["meta/episode_ends"][:max_trajectories], dtype=jnp.uint64)
         starts = jnp.roll(ends, 1).at[0].set(0)
         last_end = ends[-1]
         infos = SequenceInfo(
@@ -49,8 +49,8 @@ def load_pytorch_pusht_data(zarr_path, max_trajectories=None):
 
         @jax.vmap
         def convert_states(state):
-            agent_pos = jnp.array([1, -1])*((state[:2] - 256) / 252)
-            block_pos = jnp.array([1, -1])*((state[2:4] - 256) / 252)
+            agent_pos = jnp.array([1, -1], dtype=jnp.float32)*((state[:2] - 256) / 252)
+            block_pos = jnp.array([1, -1], dtype=jnp.float32)*((state[2:4] - 256) / 252)
             block_rot = -state[4]
             # our rotation q is around the block center of mass
             # while theirs is around block_pos
@@ -60,17 +60,17 @@ def load_pytorch_pusht_data(zarr_path, max_trajectories=None):
             rotM = jnp.array([
                 [jnp.cos(block_rot), -jnp.sin(block_rot)],
                 [jnp.sin(block_rot), jnp.cos(block_rot)]
-            ])
+            ], dtype=jnp.float32)
             block_scale = 30/252
             com = 0.5*(block_scale/2) + 0.5*(2.5*block_scale)
-            com = jnp.array([0, -com])
+            com = jnp.array([0, -com], dtype=jnp.float32)
             block_pos = block_pos + rotM @ com - com
 
             q = jnp.concatenate([agent_pos, block_pos, block_rot[None]])
             return SystemState(
-                time=jnp.ones(()), 
+                time=jnp.ones((), dtype=jnp.float32), 
                 qpos=q, qvel=jnp.zeros_like(q),
-                act=jnp.zeros((0,))
+                act=jnp.zeros((0,), dtype=jnp.float32)
             )
 
         @jax.vmap
@@ -78,9 +78,9 @@ def load_pytorch_pusht_data(zarr_path, max_trajectories=None):
             return action / 256 - 1
 
         steps = Step(
-            reduced_state=convert_states(jnp.array(zf["data/state"][:last_end])),
+            reduced_state=convert_states(jnp.array(zf["data/state"][:last_end], dtype=jnp.float32)),
             observation=None,
-            action=convert_actions(jnp.array(zf["data/action"][:last_end]))
+            action=convert_actions(jnp.array(zf["data/action"][:last_end], dtype=jnp.float32))
         )
     return SequenceData(PyTreeData(steps), PyTreeData(infos))
 

@@ -1,12 +1,10 @@
-# A simulator which uses pure_callback
-# and a cache of SytemState -> MjData
-
 from ..core import Simulator, SystemState, SystemData
 
-from stanza.dataclasses import dataclass, replace
-from concurrent.futures.thread import ThreadPoolExecutor
+from stanza.dataclasses import dataclass
 
-from collections import OrderedDict
+from concurrent.futures.thread import ThreadPoolExecutor
+from functools import partial
+from typing import Sequence
 
 import mujoco
 import jax
@@ -51,17 +49,32 @@ class MujocoSimulator(Simulator[SystemData]):
             ),
             example_data
         )
+        self.buffer_width = self.model.vis.global_.offwidth
+        self.buffer_height = self.model.vis.global_.offheight
 
         self.local_data = threading.local()
         # create an initial MjData object for each thread
         def initializer():
+            self.local_data.renderer = None
             self.local_data.data = mujoco.MjData(self.model)
         self.pool = ThreadPoolExecutor(
             max_workers=threads, 
             initializer=initializer
         )
+    
+    @property
+    def qpos0(self) -> jax.Array:
+        return jnp.copy(self.model.qpos0)
 
-    def _step_job(self, step: MujocoStep) -> SystemData:
+    @property
+    def qvel0(self) -> jax.Array:
+        return jnp.zeros_like(self.data_structure.qvel)
+
+    @property
+    def act0(self) -> jax.Array:
+        return jnp.zeros_like(self.data_structure.act)
+
+    def _step_job(self, step: MujocoStep) -> MujocoState:
         # get the thread-local MjData object
         # copy over the jax arrays
         data = self.local_data.data
@@ -72,15 +85,21 @@ class MujocoSimulator(Simulator[SystemData]):
         data.ctrl[:] = step.ctrl
         data.qacc_warmstart[:] = step.qacc_warmstart
         mujoco.mj_step(self.model, data)
-        return MujocoState(
-            data=SystemData(jnp.array(data.time), 
-                jnp.copy(data.qpos), jnp.copy(data.qvel), 
-                jnp.copy(data.act), jnp.copy(data.qacc), jnp.copy(data.act_dot),
-                jnp.copy(data.xpos), jnp.copy(data.xquat),
-                jnp.copy(data.actuator_velocity), jnp.copy(data.cvel)
+        state = MujocoState(
+            data=SystemData(jnp.array(data.time, dtype=jnp.float32), 
+                jnp.copy(data.qpos.astype(jnp.float32)), 
+                jnp.copy(data.qvel.astype(jnp.float32)), 
+                jnp.copy(data.act.astype(jnp.float32)),
+                jnp.copy(data.qacc.astype(jnp.float32)),
+                jnp.copy(data.act_dot.astype(jnp.float32)),
+                jnp.copy(data.xpos.astype(jnp.float32)),
+                jnp.copy(data.xquat.astype(jnp.float32)),
+                jnp.copy(data.actuator_velocity.astype(jnp.float32)),
+                jnp.copy(data.cvel.astype(jnp.float32))
             ),
-            qacc_warmstart=jnp.copy(data.qacc_warmstart)
+            qacc_warmstart=jnp.copy(data.qacc_warmstart.astype(jnp.float32))
         )
+        return state
 
     # (on host) step using the minimal amount of 
     # data that needs to be passed to the simulator
@@ -111,11 +130,12 @@ class MujocoSimulator(Simulator[SystemData]):
     def step(self, state: MujocoState,
                    action : jax.Array, rng_key: jax.Array) -> SystemData:
         assert state.data.time.ndim == 0
+        assert action.shape == (self.model.nu,)
         return jax.pure_callback(
             self._step, MujocoState(
                 self.data_structure,
                 jax.ShapeDtypeStruct(
-                    state.data.qpos.shape, state.data.qpos.dtype
+                    state.data.qvel.shape, state.data.qvel.dtype
                 )
             ), 
             MujocoStep(
@@ -136,14 +156,21 @@ class MujocoSimulator(Simulator[SystemData]):
         if step.qacc_warmstart is not None:
             data.qacc_warmstart[:] = step.qacc_warmstart
         mujoco.mj_forward(self.model, data)
-        return MujocoState(
-            data=SystemData(jnp.array(data.time), jnp.copy(data.qpos), jnp.copy(data.qvel), 
-                jnp.copy(data.act), jnp.copy(data.qacc), jnp.copy(data.act_dot),
-                jnp.copy(data.xpos), jnp.copy(data.xquat),
-                jnp.copy(data.actuator_velocity), jnp.copy(data.cvel)
+        state = MujocoState(
+            data=SystemData(jnp.array(data.time, dtype=jnp.float32), 
+                jnp.copy(data.qpos.astype(jnp.float32)), 
+                jnp.copy(data.qvel.astype(jnp.float32)), 
+                jnp.copy(data.act.astype(jnp.float32)),
+                jnp.copy(data.qacc.astype(jnp.float32)),
+                jnp.copy(data.act_dot.astype(jnp.float32)),
+                jnp.copy(data.xpos.astype(jnp.float32)),
+                jnp.copy(data.xquat.astype(jnp.float32)),
+                jnp.copy(data.actuator_velocity.astype(jnp.float32)),
+                jnp.copy(data.cvel.astype(jnp.float32))
             ),
-            qacc_warmstart=jnp.copy(data.qacc_warmstart)
+            qacc_warmstart=jnp.copy(data.qacc_warmstart.astype(jnp.float32))
         )
+        return state
 
     # (on host) calls forward
     def _forward(self, step: MujocoStep) -> MujocoState:
@@ -174,8 +201,8 @@ class MujocoSimulator(Simulator[SystemData]):
         )
         structure = MujocoState(
             self.data_structure,
-            jax.ShapeDtypeStruct(self.data_structure.qpos.shape, 
-                                    self.data_structure.qpos.dtype)
+            jax.ShapeDtypeStruct(self.data_structure.qvel.shape, 
+                                    self.data_structure.qvel.dtype)
         )
         return jax.pure_callback(self._forward, 
             structure, step, vectorized=True)
@@ -187,5 +214,73 @@ class MujocoSimulator(Simulator[SystemData]):
 
     def data(self, state: MujocoState) -> SystemData:
         return state.data
+    
+
+    # render a given SystemData using
+    # the opengl-based mujoco rendering engine
+
+    def _render_job(self, width : int, height: int,
+                    geom_groups : Sequence[bool],
+                    camera : int | str,
+                    data: SystemData) -> jax.Array:
+        # get the thread-local MjData object
+        # copy over the jax arrays
+        renderer = self.local_data.renderer
+        if renderer is None:
+            renderer = mujoco.Renderer(
+                self.model, self.buffer_height, self.buffer_width
+            )
+            self.local_data.renderer = renderer
+        data = self.local_data.data
+        data.time = 0
+        data.qpos[:] = data.qpos
+        data.qvel[:] = data.qvel
+        data.act[:] = data.act
+        data.qacc[:] = data.qacc
+        data.act_dot[:] = data.act_dot
+        data.xpos[:] = data.xpos
+        data.xquat[:] = data.xquat
+        data.actuator_velocity[:] = data.actuator_velocity
+        data.cvel[:] = data.cvel
+
+        vopt = mujoco.MjvOption()
+        # disable rendering of collision geoms
+        for i, g in enumerate(geom_groups):
+            vopt.geomgroup[i] = 1 if g else 0
+        arr = np.empty((self.buffer_height, self.buffer_width, 3), dtype=np.uint8)
+        renderer.update_scene(data, camera, vopt)
+        renderer.render(out=arr)
+        return jnp.array(arr)
+
+    def _render(self, width, height, geom_groups, camera, data: SystemData) -> jax.Array:
+        job = partial(self._render_job, width, height, geom_groups, camera)
+        if data.qpos.ndim == 1:
+            data = self.pool.submit(job, data).result()
+            return data
+        else:
+            batch_shape = data.qpos.shape[:-1]
+            batch_size = np.prod(batch_shape)
+            data = jax.tree.map(
+                lambda x: jnp.reshape(x, (batch_size,) + x.shape[len(batch_shape):]),
+                data
+            )
+            datas = [jax.tree.map(lambda x: x[i], data) for i in range(data.qpos.shape[0])]
+            res = self.pool.map(job, datas)
+            res = jax.tree.map(lambda *x: jnp.stack(x, axis=0), *res)
+            res = jax.tree.map(lambda x: jnp.reshape(x, batch_shape +  x.shape[1:]), res)
+            return data
+
+    def render(self, data: SystemData, width: int, height: int, geom_groups: Sequence[bool], camera: int | str = -1) -> jax.Array:
+        assert data.time.ndim == 0
+        buffer = jax.pure_callback(
+            partial(self._render, width, height, geom_groups, camera),
+            jax.ShapeDtypeStruct((self.buffer_height, self.buffer_width, 3), jnp.uint8),
+            data, vectorized=True
+        )
+        buffer = buffer.astype(jnp.float32) / 255.0
+        buffer = jax.image.resize(buffer, (height, width,3), method="linear")
+        return buffer
+
+
 
 jax.tree_util.register_static(MujocoSimulator)

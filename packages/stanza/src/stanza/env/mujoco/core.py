@@ -1,4 +1,7 @@
-from stanza.env import Environment
+from stanza.env import (
+    Environment, RenderConfig,
+    HtmlRender, ImageRender
+)
 from stanza.dataclasses import dataclass, field
 from stanza.util import jax_static_property
 
@@ -40,6 +43,9 @@ class SystemData(SystemState):
 
 # Must be a jax pytree type!
 class Simulator(abc.ABC, Generic[SimulatorState]):
+    @property
+    def qpos0(self) -> jax.Array: ...
+
     @abc.abstractmethod
     def step(self, state: SimulatorState, 
             action : Action, rng_key : jax.Array) -> SimulatorState: ...
@@ -57,24 +63,46 @@ class Simulator(abc.ABC, Generic[SimulatorState]):
 class MujocoEnvironment(Environment[SimulatorState, SystemState, Action], Generic[SimulatorState]):
     physics_backend : str = field(default="mujoco", pytree_node=False)
 
-    # Implement "xml"
     @jax_static_property
     def xml(self):
         raise NotImplementedError()
 
     @jax_static_property
-    def model(self):
-        return mujoco.MjModel.from_xml_string(self.xml)
+    def model(self) -> mujoco.MjModel:
+        raise NotImplementedError()
     
     @jax_static_property
-    def simulator(self):
+    def simulator(self) -> Simulator:
         return self.make_simulator(self.physics_backend, self.model)
-    
+
+    # Always guaranteed to be a MujocoSimulator,
+    # even if the physics backend is not "mujoco."
+    # This is used as a fallback for rendering.
+    @jax_static_property
+    def native_simulator(self) -> Simulator:
+        if self.physics_backend == "mujoco":
+            return self.simulator
+        from .backends.mujoco import MujocoSimulator
+        return MujocoSimulator(self.model)
+
     def full_state(self, reduced_state: SystemState) -> SimulatorState:
         return self.simulator.full_state(reduced_state)
     
     def reduce_state(self, full_state: SimulatorState) -> SystemState:
         return self.simulator.reduce_state(full_state)
+
+    @jax.jit
+    def sample_action(self, rng_key):
+        return jnp.zeros((self.simulator.model.nu,), jnp.float32)
+
+    @jax.jit
+    def sample_state(self, rng_key):
+        return self.full_state(SystemState(
+            time=jnp.zeros((), jnp.float32),
+            qpos=self.simulator.qpos0,
+            qvel=self.simulator.qvel0,
+            act=self.simulator.act0
+        ))
 
     @jax.jit
     def reset(self, rng_key: jax.Array) -> SimulatorState:
@@ -84,6 +112,22 @@ class MujocoEnvironment(Environment[SimulatorState, SystemState, Action], Generi
     def step(self, state: SimulatorState, action: Action, 
                     rng_key: jax.Array) -> SimulatorState:
         return self.simulator.step(state, action, rng_key)
+
+    @jax.jit
+    def render(self, state: SimulatorState, config: RenderConfig | None = None) -> jax.Array:
+        config = config or ImageRender(width=256, height=256)
+        if isinstance(config, ImageRender):
+            data = self.simulator.data(state)
+            camera = config.camera if config.camera is not None else -1
+            return self.native_simulator.render(
+                data, config.width, config.height, (), camera
+            )
+        elif isinstance(config, HtmlRender):
+            data = self.simulator.data(state) # type: SystemData
+            if data.qpos.ndim == 1:
+                data = jax.tree_map(lambda x: jnp.expand_dims(x, 0), data)
+        else:
+            raise ValueError("Unsupported render config")
 
     # Creates the backend for this environment
 
@@ -100,6 +144,7 @@ class MujocoEnvironment(Environment[SimulatorState, SystemState, Action], Generi
             return BraxSimulator(model)
 
 # Utilities
+
 def render_2d(model: mujoco.MjModel, data: SystemData, 
                 width, height, 
                 world_width, world_height,

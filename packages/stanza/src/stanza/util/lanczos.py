@@ -19,8 +19,9 @@ def net_batch_hvp(loss, data, batch_size, params):
     # remove the remainder to make the data batch_size
     remainder = N  - batches * batch_size
     if remainder > 0:
-        data = jax.tree_util.tree_map(
-            lambda x: x[:-remainder]
+        data = jax.tree.map(
+            lambda x: x[:-remainder],
+            data
         )
     data = jax.tree_util.tree_map(
         lambda x: x.reshape((-1, batch_size) + x.shape[1:]), 
@@ -53,18 +54,18 @@ def net_hvp(loss, params):
         )[1]
     return hvp
 
-@partial(jax.jit, static_argnums=(1,))
-def net_sharpness_statistics(rng_key, hvp_at, params, order=8, samples=1):
+@partial(jax.jit, static_argnums=(1,3,4))
+def net_sharpness_statistics(rng_key, hvp_at, params, order=8, samples=2):
     params_flat, _ = jax.flatten_util.ravel_pytree(params)
     order = min(params_flat.shape[0], order)
     hvp = hvp_at(params)
-    tridiags, _ = lanczos_alg(rng_key, hvp, params_flat.shape[0], order)
+    tridiags, _ = lanczos_alg(rng_key, hvp, params_flat.shape[0], order, params_flat.dtype)
     tridiags = jnp.expand_dims(tridiags, axis=0)
     # alg = lambda rng_key: lanczos_alg(rng_key, net_hvp, params_flat.shape[0], order)
     # tridiags, _ = jax.lax.map(alg, jax.random.split(rng_key, samples))
     # tridiags, _ = jax.vmap(alg)(jax.random.split(rng_key, samples))
 
-    eig_vals, all_weights = tridiag_to_eigv(tridiags)
+    eig_vals, _ = tridiag_to_eigv(tridiags)
     eig_vals = eig_vals.reshape((-1,))
     sigmas = jnp.abs(eig_vals)
     q = [5, 25, 50, 75, 95]
@@ -80,19 +81,19 @@ def net_sharpness_statistics(rng_key, hvp_at, params, order=8, samples=1):
     d["sigma_trace"] = jnp.mean(sigmas) * params_flat.shape[0]
     return d
 
-@partial(jax.jit, static_argnums=(1,2,3))
-def lanczos_density(rng_key, hvp, dim, order, samples=5, grid_len=10000):
-    tridiags, _ = jax.vmap(lanczos_alg, in_axes=(0, None, None, None))(
-        jax.random.split(rng_key, samples), hvp, dim, order
+@partial(jax.jit, static_argnums=(1,2,3,4,5,6))
+def lanczos_density(rng_key, hvp, dim, order, dtype=jnp.float32, samples=5, grid_len=10000):
+    tridiags, _ = jax.vmap(lanczos_alg, in_axes=(0, None, None, None, None))(
+        jax.random.split(rng_key, samples), hvp, dim, order, dtype
     )
     return tridiag_to_density(tridiags, grid_len=grid_len)
 
-@partial(jax.jit, static_argnums=(1,2,3))
-def lanczos_alg(rng_key, matrix_vector_product, dim, order):
-    tridiag = jnp.zeros((order, order))
-    w_prev = jnp.zeros((dim,))
-    vecs = jnp.zeros((order, dim))
-    init_vec = jax.random.normal(rng_key, shape=(dim,))
+@partial(jax.jit, static_argnums=(1,2,3,4))
+def lanczos_alg(rng_key, matrix_vector_product, dim, order, dtype):
+    tridiag = jnp.zeros((order, order), dtype)
+    w_prev = jnp.zeros((dim,), dtype=dtype)
+    vecs = jnp.zeros((order, dim), dtype=dtype)
+    init_vec = jax.random.normal(rng_key, shape=(dim,), dtype=dtype)
     init_vec = init_vec / jnp.linalg.norm(init_vec)
     vecs = vecs.at[0].set(init_vec)
 
@@ -176,21 +177,6 @@ def eigv_to_density(eig_vals, log_weights=None, grids=None,
 
 @jax.jit
 def tridiag_to_eigv(tridiag_list):
-    """Preprocess the tridiagonal matrices for density estimation.
-
-    Args:
-        tridiag_list: Array of shape [num_draws, order, order] List of the
-        tridiagonal matrices computed from running num_draws independent runs
-        of lanczos. The output of this function can be fed directly into
-        eigv_to_density.
-
-    Returns:
-        eig_vals: Array of shape [num_draws, order]. The eigenvalues of the
-        tridiagonal matricies.
-        all_weights: Array of shape [num_draws, order]. The weights associated with
-        each eigenvalue. These weights are to be used in the kernel density
-        estimate.
-    """
     # Calculating the node / weights from Jacobi matrices.
     def process(tridiag):
         nodes, evecs = jnp.linalg.eigh(tridiag)

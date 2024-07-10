@@ -1,0 +1,23 @@
+program: language_model
+name: adam_autotune
+project: language-model
+method: bayes
+metric:
+  goal: minimize
+  name: test/loss
+parameters:
+  optimizer:
+    value: "sgd"
+  iterations:
+    value: 20_000
+  lr:
+    min: 0.001
+    max: 0.5
+  sam_rho:
+    values: [0., 0.1, 0.2, 0.3, 0.4, 0.6, 0.8, 1.]
+
+command:
+  - pdm
+  - run
+  - ${program}
+  - ${args}
