@@ -85,7 +85,7 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
         else:
             return {"single_object_mode": 0}
 
-    def reset(self, rng_key) -> SimulatorState:
+    def reset(self, rng_key : jax.Array) -> SimulatorState:
         return self.full_state(SystemState(
             time=jnp.zeros((), jnp.float32),
             qpos=self.simulator.qpos0,
