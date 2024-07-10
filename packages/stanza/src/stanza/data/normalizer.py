@@ -157,31 +157,31 @@ class StdNormalizer:
     def map(self, fun):
         return StdNormalizer(
             fun(self.mean), fun(self.var),
-            self.count, fun(self.std)
+            fun(self.std), self.count,
         )
 
     def normalize(self, data):
         if self.mean is not None:
             return jax.tree_map(
-                lambda d, m, s: (d - m) / s,
-                data, self.mean, self.std + 1e-6
+                lambda d, m, s: (d - m) / (s + 1e-6),
+                data, self.mean, self.std 
             )
         else:
             return jax.tree_map(
-                lambda d, s: d / s,
-                data, self.std + 1e-6
+                lambda d, s: d / (s + 1e-6),
+                data, self.std 
             )
 
     def unnormalize(self, data):
         if self.mean is not None:
             return jax.tree_map(
-                lambda d, m, s: d*s + m,
-                data, self.mean, self.std + 1e-6
+                lambda d, m, s: d * (s + 1e-6) + m,
+                data, self.mean, self.std 
             )
         else:
             return jax.tree_map(
-                lambda d, s: d * s,
-                data, self.std + 1e-6
+                lambda d, s: d * (s + 1e-6),
+                data, self.std 
             )
     
     def update(self, batch):
@@ -219,7 +219,7 @@ class StdNormalizer:
             std = jnp.sqrt(var)
             return StdNormalizer(
                 unflatten(mean), unflatten(var),
-                unflatten(std), data.shape[0]
+                unflatten(std), data_flat.shape[0]
             )
         else:
             mean = jnp.mean(data_flat, axis=0)
@@ -228,7 +228,7 @@ class StdNormalizer:
             std = jnp.sqrt(var)
             return StdNormalizer(
                 unflatten(mean), unflatten(var), 
-                unflatten(std), data.shape[0]
+                unflatten(std), data_flat.shape[0]
             )
 
     @staticmethod
