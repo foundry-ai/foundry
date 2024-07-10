@@ -1,4 +1,4 @@
-from common import net, TrainConfig
+
 from policy_eval import Sample
 
 from stanza.data import Data
@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DiffusionEstimatorConfig:
-    seed: int = 42
     estimator: str = "nw"
     kernel_bandwidth: float = 0.01
     diffusion_steps: int = 16
@@ -55,7 +54,7 @@ def estimator_diffusion_policy(
         config.diffusion_steps,
         prediction_type="sample"
     )
-    def policy(input: PolicyInput) -> PolicyOutput:
+    def chunk_policy(input: PolicyInput) -> PolicyOutput:
         obs = input.observation
         if config.relative_actions:
             data_agent_pos = jax.vmap(
@@ -78,5 +77,5 @@ def estimator_diffusion_policy(
         return PolicyOutput(action=action)
     policy = ChunkingTransform(
         obs_length, action_length
-    ).apply(policy)
-    return policy
+    ).apply(chunk_policy)
+    return policy, chunk_policy
