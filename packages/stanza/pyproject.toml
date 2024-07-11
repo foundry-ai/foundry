@@ -53,3 +53,7 @@ ipython = [
 
 [tool.pdm]
 distribution = true
+includes = ["src/stanza/"]
+
+[tool.setuptools.package-data]
+"src/stanza/env/mujoco/assets" = ["*.xml"]
