@@ -26,6 +26,10 @@ class MjxSimulator(Simulator[mjx.Data]):
         if action is not None:
             state = state.replace(ctrl=action)
         state = mjx.step(self.model, state)
+        state = jax.tree.map(
+            lambda x: x.astype(jnp.float32) if x.dtype == jnp.float64 else x,
+            state
+        )
         return state
     
     def full_state(self, state: SystemState) -> mjx.Data:
@@ -35,6 +39,10 @@ class MjxSimulator(Simulator[mjx.Data]):
                      qvel=state.qvel,
                      act=state.act)
         data = mjx.forward(self.model, data)
+        data = jax.tree.map(
+            lambda x: x.astype(jnp.float32) if x.dtype == jnp.float64 else x,
+            data
+        )
         return data
     
     def reduce_state(self, state: mjx.Data) -> SystemState:

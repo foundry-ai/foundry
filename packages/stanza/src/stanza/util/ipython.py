@@ -33,10 +33,10 @@ pre {
     color: var(--vscode-editor-foreground);
     margin: 0;
 }
-.jupyter-widget > video::-webkit-media-controls {
-  display: none;
-}
 </style>"""
+# .jupyter-widget > video::-webkit-media-controls {
+#   display: none;
+# }
 
 def as_image(array):
     array = np.array(array)

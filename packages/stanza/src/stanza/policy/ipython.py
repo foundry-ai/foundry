@@ -31,14 +31,14 @@ class DemonstrationCollector:
         self.demonstrations = demonstrations
         self._save_fn = save
 
-        if len(jax.devices()) > 1:
-            for p in range(len(jax.devices()), 0, -1):
-                if 256 % p == 0:
-                    break
-            mesh = jax.sharding.Mesh(jax.devices()[:p], ('x',))
-            sharding = jax.sharding.NamedSharding(mesh, jax.sharding.PartitionSpec('x',))
-        else:
-            sharding = None
+        # if len(jax.devices()) > 1:
+        #     for p in range(len(jax.devices()), 0, -1):
+        #         if 256 % p == 0:
+        #             break
+        #     mesh = jax.sharding.Mesh(jax.devices()[:p], ('x',))
+        #     sharding = jax.sharding.NamedSharding(mesh, jax.sharding.PartitionSpec('x',))
+        # else:
+        sharding = None
 
         self._step_fn = jax.jit(env.step)
         self._reset_fn = jax.jit(env.reset)
@@ -51,9 +51,9 @@ class DemonstrationCollector:
         self.interface = StreamingInterface(width, height)
 
         # precompile the reset and step functions
-        s = self._reset_fn(jax.random.PRNGKey(42))
-        self._sample_input = interactive_policy(self.interface.mouse_pos())
-        self._step_fn(s, self._sample_input)
+        s = self._reset_fn(jax.random.key(42))
+        self._sample_input = env.sample_action(jax.random.key(42))
+        self._step_fn(s, self._sample_input, jax.random.key(42))
         self._render_fn(self._reduce_state(s))
 
         self.env = env
@@ -171,7 +171,7 @@ class DemonstrationCollector:
             elapsed = time.time() - t
             action = self._policy(self.interface.mouse_pos())
             self.curr_demonstration.append(Step(self._reduce_state(state), None, action))
-            state = self._step_fn(state, action)
+            state = self._step_fn(state, action, next(self.rng))
             self.curr_state = state
             self.step_slider.max = len(self.curr_demonstration)
             self.step_slider.value = len(self.curr_demonstration)

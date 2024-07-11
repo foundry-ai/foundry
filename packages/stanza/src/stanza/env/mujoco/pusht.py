@@ -23,6 +23,7 @@ from stanza.env.mujoco.core import (
 import shapely.geometry as sg
 import jax.numpy as jnp
 import jax.random
+import mujoco
 
 import importlib.resources as resources
 
@@ -71,6 +72,10 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
             two_and_half_block_scale=2.5*self.block_scale,
             com_offset=com
         )
+    
+    @jax_static_property
+    def model(self):
+        return mujoco.MjModel.from_xml_string(self.xml)
 
     @jax.jit
     def reset(self, rng_key : jax.Array) -> SimulatorState:
@@ -116,25 +121,25 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
 
     # For computing the reward
     def _block_points(self, pos, rot):
-        center_a, hs_a = jnp.array([0, -self.block_scale/2]), \
-                jnp.array([2*self.block_scale, self.block_scale/2])
-        center_b, hs_b = jnp.array([0, -2.5*self.block_scale]), \
-                        jnp.array([self.block_scale/2, 1.5*self.block_scale])
+        center_a, hs_a = jnp.array([0, -self.block_scale/2], dtype=jnp.float32), \
+                jnp.array([2*self.block_scale, self.block_scale/2], dtype=jnp.float32)
+        center_b, hs_b = jnp.array([0, -2.5*self.block_scale], dtype=jnp.float32), \
+                        jnp.array([self.block_scale/2, 1.5*self.block_scale], dtype=jnp.float32)
 
         points = jnp.array([
-            center_a + jnp.array([hs_a[0], -hs_a[1]]),
+            center_a + jnp.array([hs_a[0], -hs_a[1]], dtype=jnp.float32),
             center_a + hs_a,
-            center_a + jnp.array([-hs_a[0], hs_a[1]]),
+            center_a + jnp.array([-hs_a[0], hs_a[1]], dtype=jnp.float32),
             center_a - hs_a,
-            center_b + jnp.array([-hs_b[0], hs_b[1]]),
+            center_b + jnp.array([-hs_b[0], hs_b[1]], dtype=jnp.float32),
             center_b - hs_b,
-            center_b + jnp.array([hs_b[0], -hs_b[1]]),
+            center_b + jnp.array([hs_b[0], -hs_b[1]], dtype=jnp.float32),
             center_b + hs_b
         ])
         rotM = jnp.array([
             [jnp.cos(rot), -jnp.sin(rot)],
             [jnp.sin(rot), jnp.cos(rot)]
-        ])
+        ], dtype=jnp.float32)
         points = jax.vmap(lambda v: rotM @ v)(points)
         return points + pos
 
@@ -142,7 +147,7 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
     def _overlap(pointsA, pointsB):
         polyA = sg.Polygon(pointsA)
         polyB = sg.Polygon(pointsB)
-        return polyA.intersection(polyB).area / polyA.area
+        return jnp.array(polyA.intersection(polyB).area / polyA.area, dtype=jnp.float32)
 
     @jax.jit
     def reward(self, state : SimulatorState, 
@@ -262,8 +267,8 @@ class KeypointObsEnv(EnvWrapper):
         rotM = jnp.array([
             [jnp.cos(obs.block_rot), -jnp.sin(obs.block_rot)],
             [jnp.sin(obs.block_rot), jnp.cos(obs.block_rot)]
-        ])
-        end = rotM @ jnp.array([0, -4*self.block_scale]) + obs.block_pos
+        ], dtype=obs.block_pos.dtype)
+        end = rotM @ jnp.array([0, -4*self.block_scale], dtype=rotM.dtype) + obs.block_pos
         return PushTKeypointObs(
             agent_pos=obs.agent_pos,
             block_pos=obs.block_pos,
@@ -281,12 +286,12 @@ class RelKeypointObsEnv(EnvWrapper):
             [jnp.cos(obs.block_rot), -jnp.sin(obs.block_rot)],
             [jnp.sin(obs.block_rot), jnp.cos(obs.block_rot)]
         ])
-        end = rotM @ jnp.array([0, -4*self.block_scale]) + obs.block_pos
+        end = rotM @ jnp.array([0, -4*self.block_scale], dtype=rotM.dtype) + obs.block_pos
         rotM = jnp.array([
             [jnp.cos(self.goal_rot), -jnp.sin(self.goal_rot)],
             [jnp.sin(self.goal_rot), jnp.cos(self.goal_rot)]
         ])
-        goal_end = rotM @ jnp.array([0, -4*self.block_scale]) + self.goal_pos
+        goal_end = rotM @ jnp.array([0, -4*self.block_scale], dtype=rotM.dtype) + self.goal_pos
         return PushTKeypointRelObs(
             agent_block_pos=obs.agent_pos - obs.block_pos,
             agent_block_end=obs.agent_pos - end,

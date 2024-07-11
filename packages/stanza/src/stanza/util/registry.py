@@ -18,9 +18,6 @@ class SingleBuilder(BuilderSet[T], Generic[T]):
         assert path == ""
         return self.builder(**kwargs)
 
-    def keys() -> Iterator[str]:
-        return iter([""])
-
 class Registry(Generic[T], BuilderSet[T]):
     def __init__(self):
         self._registry : dict[str, Builder[T]] = {}
@@ -67,20 +64,6 @@ class Registry(Generic[T], BuilderSet[T]):
     def __call__(self, path: str, /, **kwargs) -> T:
         return self.create(path, **kwargs)
     
-    @staticmethod
-    def _keys(map) -> Iterator[str]:
-        for k, v in map.items():
-            if isinstance(v, dict): keys = Registry._keys(v)
-            else: keys = v.keys()
-            for key in keys:
-                if key:
-                    yield f"{k}/{key}"
-                else:
-                    yield k
-
-    def keys(self) -> Iterator[str]:
-        return Registry._keys(self._registry)
-
 def from_module(module_name, variable_name):
     import inspect
     import importlib

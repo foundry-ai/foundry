@@ -181,7 +181,7 @@ class ReacherEnv(MujocoEnvironment):
         return image
     
     @jax.jit
-    def render(self, config: RenderConfig, state: MujocoState) -> jax.Array:
+    def render(self, state: MujocoState, config: RenderConfig) -> jax.Array:
         if type(config) == ImageRender or type(config) == SequenceRender:
             obs = ReacherEnv.observe(self, state)
             return self._render_image(obs, config.width, config.height)
