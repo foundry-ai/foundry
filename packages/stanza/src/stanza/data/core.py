@@ -2,7 +2,7 @@ from stanza.dataclasses import dataclass, field, replace
 from functools import partial
 from contextlib import contextmanager
 from typing import (
-    TypeVar, Generic, Self, Callable, Sequence,
+    TypeVar, Generic, Callable, Sequence,
     Generator
 )
 from .stream import StreamBuilder, DataStream
@@ -70,7 +70,7 @@ class Data(Generic[T]):
     
     # "caching" data realizes any transformations,
     # by default storing the realized data in memory.
-    def cache(self) -> Self:
+    def cache(self) -> "PyTreeData[T]":
         return PyTreeData(self.as_pytree())
     
 
