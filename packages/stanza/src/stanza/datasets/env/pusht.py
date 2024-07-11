@@ -2,7 +2,7 @@ from stanza.dataclasses import dataclass, replace
 from stanza.datasets import DatasetRegistry
 from stanza.datasets.env import EnvDataset
 
-from stanza.data import PyTreeData
+from stanza.data import PyTreeData, idx_dtype
 from stanza.data.sequence import (
     SequenceInfo, SequenceData, Step
 )
@@ -37,7 +37,7 @@ def load_pytorch_pusht_data(zarr_path, max_trajectories=None):
     with zarr.open(zarr_path) as zf:
         if max_trajectories is None:
             max_trajectories = len(zf["meta/episode_ends"])
-        ends = jnp.array(zf["meta/episode_ends"][:max_trajectories], dtype=jnp.uint64)
+        ends = jnp.array(zf["meta/episode_ends"][:max_trajectories], dtype=idx_dtype)
         starts = jnp.roll(ends, 1).at[0].set(0)
         last_end = ends[-1]
         infos = SequenceInfo(

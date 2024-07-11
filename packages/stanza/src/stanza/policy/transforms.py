@@ -124,11 +124,12 @@ class ChunkingPolicy(Policy):
                 info=output.info
             )
         def index():
-            action = policy_state.last_batched_output.action \
+            output = policy_state.last_batched_output
+            action = output.action \
                 if self.action_chunk_size is None else \
                 jax.tree_util.tree_map(
                     lambda x: x[policy_state.t, ...], 
-                    policy_state.last_batched_output.action,
+                    output.action,
                 )
             return PolicyOutput(
                 action,
@@ -137,7 +138,7 @@ class ChunkingPolicy(Policy):
                     policy_state.last_batched_output,
                     policy_state.t + 1
                 ),
-                policy_state.last_batched_output.info
+                output.info
             )
         if self.action_chunk_size is None \
                 or input.policy_state is None:

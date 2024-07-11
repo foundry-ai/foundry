@@ -15,6 +15,9 @@ import jax.numpy as jnp
 T = TypeVar('T')
 V = TypeVar('V')
 
+# Make indices 64-bit if x64 is enabled
+idx_dtype = int
+
 class Data(Generic[T]):
     """ A dataset of elements of type T. Not necessarily a jax pytree."""
 
@@ -57,12 +60,12 @@ class Data(Generic[T]):
     # depending on the backing Data storage.
 
     def as_pytree(self) -> T:
-        idxs = jnp.arange(len(self), dtype=jnp.uint64)
+        idxs = jnp.arange(len(self), dtype=idx_dtype)
         return jax.vmap(lambda i: self[i])(idxs)
 
     def slice(self, off : int, length : int) -> "Data[T]":
         length = length or len(self) - off
-        idxs = jnp.arange(length, dtype=jnp.uint64) + off
+        idxs = jnp.arange(length, dtype=idx_dtype) + off
         return PyTreeData(jax.vmap(lambda i: self[i])(idxs))
 
     def map(self, fn : Callable[[T], V]) -> "MappedData[V]":
@@ -121,7 +124,7 @@ class PyTreeData(Data[T]):
         else:
             if n is None:
                 with jax.ensure_compile_time_eval():
-                    ns = jnp.array([x.shape[0] for x in jax.tree_leaves(tree)], dtype=jnp.uint64)
+                    ns = jnp.array([x.shape[0] for x in jax.tree_leaves(tree)], dtype=idx_dtype)
                     n = ns[0]
                     assert jnp.all(ns == n)
             self.n = n
@@ -131,7 +134,7 @@ class PyTreeData(Data[T]):
         return self.n
 
     def __getitem__(self, idx : jax.typing.ArrayLike) -> T:
-        idx = jnp.array(idx, dtype=jnp.uint64)
+        idx = jnp.array(idx, dtype=idx_dtype)
         assert idx.ndim == 0
         return jax.tree_util.tree_map(
             lambda x: x[idx],
@@ -148,7 +151,7 @@ class PyTreeData(Data[T]):
     def slice(self, off : int, length : int) -> T:
         return PyTreeData(jax.tree_util.tree_map(
             lambda x: jax.lax.dynamic_slice(x,
-                    jnp.broadcast_to(jnp.array(off, dtype=jnp.uint64), (x.ndim,)),
+                    jnp.broadcast_to(jnp.array(off, dtype=idx_dtype), (x.ndim,)),
                     (length,) + x.shape[1:]),
             self.tree
         ))
@@ -192,7 +195,7 @@ class IndexedDataStream(DataStream[T]):
         else: indices = None
         return IndexedDataStream(
             data=data,
-            offset=jnp.zeros((), dtype=jnp.uint64),
+            offset=jnp.zeros((), dtype=idx_dtype),
             max_offset=max_offset,
             batch_shape=batch_shape,
             shuffle_key=shuffle_key,

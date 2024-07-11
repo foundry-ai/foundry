@@ -73,7 +73,9 @@ def setup_jax_cache():
     if SETUP_JAX_CACHE:
         return
     from jax.experimental.compilation_cache import compilation_cache as cc
-    JAX_CACHE = Path(os.environ.get("JAX_CACHE", "/tmp/jax_cache"))
+    import tempfile
+    JAX_CACHE = Path(tempfile.gettempdir()) / "jax_cache" / os.environ.get("USER", "stanza")
+    JAX_CACHE = Path(os.environ.get("JAX_CACHE", JAX_CACHE))
     JAX_CACHE.mkdir(parents=True, exist_ok=True)
     cc.initialize_cache(str(JAX_CACHE))
     SETUP_JAX_CACHE = True
@@ -103,7 +105,7 @@ def setup():
     setup_jax_cache()
     setup_gc()
     import jax
-    jax.config.update("jax_enable_x64", True)
+    # jax.config.update("jax_enable_x64", True)
 
     # Initialize tensorflow with jax
     # tf_ll = os.environ.get("TF_CPP_MIN_LOG_LEVEL", None)

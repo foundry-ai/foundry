@@ -1,1 +1,1 @@
-from .core import Data, DataStream, PyTreeData, StreamBuilder
+from .core import Data, DataStream, PyTreeData, StreamBuilder, idx_dtype

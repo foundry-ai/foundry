@@ -54,7 +54,7 @@ class Policy(Protocol[Observation, Action, State, PolicyState, Info]):
 # stanza.jit can handle function arguments
 # and intelligently makes them static and allows
 # for vectorizing over functins.
-@partial(jax.jit, static_argnames=("model", "policy", "observe", "length", "last_input"))
+@partial(jax.jit, static_argnames=("model", "policy", "observe", "length", "last_action"))
 def rollout(model : Model, state0 : State,
             # policy is optional. If policy is not supplied
             # it is assumed that model is for an autonomous system
@@ -70,7 +70,7 @@ def rollout(model : Model, state0 : State,
             policy_rng_key : Optional[jax.Array] = None,
             # Apply a transform to the
             # policy before rolling out.
-            length : Optional[int] = None, last_input : bool = False) -> Rollout[State, Action, Observation, Info]:
+            length : Optional[int] = None, last_action : bool = False) -> Rollout[State, Action, Observation, Info]:
     """ Rollout a model in-loop with policy for a fixed length.
     The length must either be provided via ``policy.rollout_length``
     or by the ``length`` parameter.
@@ -86,7 +86,7 @@ def rollout(model : Model, state0 : State,
         raise ValueError("Rollout length must be specified")
     if length == 0:
         raise ValueError("Rollout length must be > 0")
-    if last_input:
+    if last_action:
         length = length + 1
     if observe is None:
         observe = lambda x: x
@@ -125,7 +125,7 @@ def rollout(model : Model, state0 : State,
         first_output, outputs)
 
     states, observations, us, info = outputs
-    if not last_input:
+    if not last_action:
         states = jax.tree_util.tree_map(
             lambda a, b: jnp.concatenate((a, jnp.expand_dims(b, 0))),
             states, state_f)

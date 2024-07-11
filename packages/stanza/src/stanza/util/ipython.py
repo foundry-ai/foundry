@@ -9,7 +9,7 @@ import uuid
 import rich.jupyter
 import rich.live
 import io
-import os
+import tempfile
 
 from PIL import Image as PILImage
 
@@ -33,10 +33,10 @@ pre {
     color: var(--vscode-editor-foreground);
     margin: 0;
 }
+.jupyter-widget.widget-image > video::-webkit-media-controls {
+  display: none;
+}
 </style>"""
-# .jupyter-widget > video::-webkit-media-controls {
-#   display: none;
-# }
 
 def as_image(array):
     array = np.array(array)
@@ -50,7 +50,7 @@ def as_image(array):
         array = np.repeat(array, 3, axis=-1)
     img = PILImage.fromarray(array)
     id = uuid.uuid4()
-    path = Path("/tmp") / "notebook" / (str(id) + ".png")
+    path = Path(tempfile.gettempdir()) / "notebook" / (str(id) + ".png")
     path.parent.mkdir(parents=True, exist_ok=True)
     img.save(path)
     return HBox([Image.from_file(path), HTML(STYLE)])
@@ -63,10 +63,10 @@ def as_video(array, fps=28):
         array = (array*255).clip(0, 255).astype(np.uint8)
     f = tempfile.mktemp() + ".mp4"
     id = uuid.uuid4()
-    path = Path("/tmp") / "notebook" / (str(id) + ".mp4")
+    path = Path(tempfile.gettempdir()) / "notebook" / (str(id) + ".mp4")
     path.parent.mkdir(parents=True, exist_ok=True)
     ffmpegio.video.write(path, fps, array)
-    return HBox([Video.from_file(path), HTML(STYLE)])
+    return Video.from_file(path)
 
 def _rich_live_refresh(self):
     with self._lock:
