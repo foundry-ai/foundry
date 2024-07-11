@@ -121,25 +121,25 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
 
     # For computing the reward
     def _block_points(self, pos, rot):
-        center_a, hs_a = jnp.array([0, -self.block_scale/2]), \
-                jnp.array([2*self.block_scale, self.block_scale/2])
-        center_b, hs_b = jnp.array([0, -2.5*self.block_scale]), \
-                        jnp.array([self.block_scale/2, 1.5*self.block_scale])
+        center_a, hs_a = jnp.array([0, -self.block_scale/2], dtype=jnp.float32), \
+                jnp.array([2*self.block_scale, self.block_scale/2], dtype=jnp.float32)
+        center_b, hs_b = jnp.array([0, -2.5*self.block_scale], dtype=jnp.float32), \
+                        jnp.array([self.block_scale/2, 1.5*self.block_scale], dtype=jnp.float32)
 
         points = jnp.array([
-            center_a + jnp.array([hs_a[0], -hs_a[1]]),
+            center_a + jnp.array([hs_a[0], -hs_a[1]], dtype=jnp.float32),
             center_a + hs_a,
-            center_a + jnp.array([-hs_a[0], hs_a[1]]),
+            center_a + jnp.array([-hs_a[0], hs_a[1]], dtype=jnp.float32),
             center_a - hs_a,
-            center_b + jnp.array([-hs_b[0], hs_b[1]]),
+            center_b + jnp.array([-hs_b[0], hs_b[1]], dtype=jnp.float32),
             center_b - hs_b,
-            center_b + jnp.array([hs_b[0], -hs_b[1]]),
+            center_b + jnp.array([hs_b[0], -hs_b[1]], dtype=jnp.float32),
             center_b + hs_b
         ])
         rotM = jnp.array([
             [jnp.cos(rot), -jnp.sin(rot)],
             [jnp.sin(rot), jnp.cos(rot)]
-        ])
+        ], dtype=jnp.float32)
         points = jax.vmap(lambda v: rotM @ v)(points)
         return points + pos
 
@@ -147,7 +147,7 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
     def _overlap(pointsA, pointsB):
         polyA = sg.Polygon(pointsA)
         polyB = sg.Polygon(pointsB)
-        return polyA.intersection(polyB).area / polyA.area
+        return jnp.array(polyA.intersection(polyB).area / polyA.area, dtype=jnp.float32)
 
     @jax.jit
     def reward(self, state : SimulatorState, 
