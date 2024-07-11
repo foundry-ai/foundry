@@ -55,5 +55,6 @@ ipython = [
 distribution = true
 includes = ["src/stanza/"]
 
-[tool.setuptools.package-data]
-"src/stanza/env/mujoco/assets" = ["*.xml"]
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
