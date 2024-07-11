@@ -13,7 +13,7 @@
     ```bash
     pdm install -d
     ```
- 4. Then try some example scripts:
+ 4. Then try some notebooks:
     ```bash
-    pdm run python examples/train.py
+    pdm run jupyter lab
     ```
