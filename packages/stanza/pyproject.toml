@@ -15,24 +15,20 @@ dependencies = [
     "numpy>=1.26.4,<2",
     "ffmpegio>=0.9.0",
     "einops>=0.7.0",
-    "wandb>=0.16.3",
     "matplotlib>=3.8.2",
     "plotly>=5.18.0",
     "nbformat>=5.9.2",
-    # For google drive and docstring parsing
+    # For google drive parsing
     "beautifulsoup4>=4.12.3",
-    "ast-comments>=1.2.1",
     "trajax @ git+https://github.com/google/trajax",
     "zarr>=2.18.1",
     "mujoco-mjx>=3.1.6",
     "shapely>=2.0.4",
     "robosuite>=1.4",
-    "brax>=0.10.5",
     "sentencepiece>=0.2.0",
-    "tensorflow>=2.16.2",
-    "tensorboard-plugin-profile>=2.15.1",
+    "aim>=3.22.0"
 ]
-requires-python = ">=3.12"
+requires-python = "<3.11,>=3.10"
 readme = "README.md"
 license = {text = "MIT"}
 

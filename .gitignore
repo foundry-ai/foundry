@@ -1,6 +1,9 @@
 # wandb files
 wandb
 
+# aim files
+.aim
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

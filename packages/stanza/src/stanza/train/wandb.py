@@ -1,18 +1,17 @@
 import jax
-import functools
-import wandb
 import numpy as np
 import tempfile
 import warnings
+
+from stanza.train.reporting import Video, Image, as_log_dict
+from functools import partial
+
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
     import ffmpegio
 
-from functools import partial
-from stanza.train.reporting import Video, Image, as_log_dict
-from pathlib import Path
-
 def map_reportable(x):
+    import wandb
     if isinstance(x, Image):
         return wandb.Image(np.array(x.data))
     elif isinstance(x, Video):
@@ -27,6 +26,7 @@ def map_reportable(x):
     return None
 
 def _log_cb(run, iteration, data_dict, reportable_dict):
+    import wandb
     iteration = int(iteration)
     run = run if run is not None else wandb.run
     items = dict({k: v.item() for (k, v) in data_dict.items()})
