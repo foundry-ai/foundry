@@ -23,7 +23,7 @@ def net_batch_hvp(loss, data, batch_size, params):
             lambda x: x[:-remainder],
             data
         )
-    data = jax.tree_util.tree_map(
+    data = jax.tree.map(
         lambda x: x.reshape((-1, batch_size) + x.shape[1:]), 
         data
     )

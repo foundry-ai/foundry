@@ -93,7 +93,7 @@ class ChunkingPolicy(Policy):
             # replicate the current input batch
             obs_batch = input.observation \
                     if self.obs_chunk_size is None else \
-                jax.tree_util.tree_map(
+                jax.tree.map(
                     lambda x: jnp.repeat(x[jnp.newaxis,...],
                         self.obs_chunk_size, axis=0), input.observation
                 )
@@ -101,7 +101,7 @@ class ChunkingPolicy(Policy):
             # create the new input chunk
             obs_batch = input.observation \
                     if self.obs_chunk_size is None else \
-                jax.tree_util.tree_map(
+                jax.tree.map(
                     lambda x, y: jnp.roll(x, -1, axis=0).at[-1,...].set(y), 
                     policy_state.input_chunk, input.observation
                 )
@@ -115,7 +115,7 @@ class ChunkingPolicy(Policy):
             ))
             action = output.action \
                 if self.action_chunk_size is None else \
-                jax.tree_util.tree_map(
+                jax.tree.map(
                     lambda x: x[0, ...], output.action,
                 ) 
             return PolicyOutput(
@@ -127,7 +127,7 @@ class ChunkingPolicy(Policy):
             output = policy_state.last_batched_output
             action = output.action \
                 if self.action_chunk_size is None else \
-                jax.tree_util.tree_map(
+                jax.tree.map(
                     lambda x: x[policy_state.t, ...], 
                     output.action,
                 )

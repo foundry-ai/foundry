@@ -101,7 +101,7 @@ class LinearNormalizer(Generic[T], Normalizer[T]):
             scaled = (x - nmin)/(nmax - nmin + 1e-6)
             # shift to [-1, 1]
             return 2*scaled - 1
-        return jax.tree_util.tree_map(
+        return jax.tree.map(
             norm,
             data, self.min, self.max)
 
@@ -110,7 +110,7 @@ class LinearNormalizer(Generic[T], Normalizer[T]):
             scaled = (x + 1)/2
             # shift to [nmin, nmax]
             return scaled*(nmax - nmin) + nmin
-        return jax.tree_util.tree_map(
+        return jax.tree.map(
             unnorm,
             data, self.min, self.max)
 
@@ -118,10 +118,10 @@ class LinearNormalizer(Generic[T], Normalizer[T]):
     def from_data(data : T) -> "LinearNormalizer[T]":
         # For simplicity must be a PyTreeData
         # Convert to PyTreeFormat
-        min = jax.tree_util.tree_map(
+        min = jax.tree.map(
             lambda x: jnp.min(x, axis=0), data.tree
         )
-        max = jax.tree_util.tree_map(
+        max = jax.tree.map(
             lambda x: jnp.max(x, axis=0), data.tree
         )
         return LinearNormalizer(min, max)

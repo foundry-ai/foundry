@@ -37,7 +37,7 @@ class Data(Generic[T]):
     # Get the structure of one instance of the data.
     @property
     def structure(self):
-        return jax.tree_util.tree_map(
+        return jax.tree.map(
             lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype), self[0]
         )
 
@@ -96,9 +96,9 @@ class MappedData(Data[T]):
     @staticmethod
     @partial(jax.jit, static_argnums=(0,1))
     def _compute_structure(fn, data_structure):
-        sample = jax.tree_util.tree_map(lambda x: jnp.zeros(x.shape, x.type), data_structure)
+        sample = jax.tree.map(lambda x: jnp.zeros(x.shape, x.type), data_structure)
         mapped = fn(sample)
-        return jax.tree_util.tree_map(
+        return jax.tree.map(
             lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype), mapped
         )
     
@@ -136,20 +136,20 @@ class PyTreeData(Data[T]):
     def __getitem__(self, idx : jax.typing.ArrayLike) -> T:
         idx = jnp.array(idx, dtype=idx_dtype)
         assert idx.ndim == 0
-        return jax.tree_util.tree_map(
+        return jax.tree.map(
             lambda x: x[idx],
             self.tree
         )
 
     @property
     def structure(self):
-        return jax.tree_util.tree_map(
+        return jax.tree.map(
             lambda x: jax.ShapeDtypeStruct(x.shape[1:], x.dtype),
             self.tree
         )
 
     def slice(self, off : int, length : int) -> T:
-        return PyTreeData(jax.tree_util.tree_map(
+        return PyTreeData(jax.tree.map(
             lambda x: jax.lax.dynamic_slice(x,
                     jnp.broadcast_to(jnp.array(off, dtype=idx_dtype), (x.ndim,)),
                     (length,) + x.shape[1:]),
@@ -163,7 +163,7 @@ class PyTreeData(Data[T]):
         tree = data.as_pytree()
         if tree is None: return self
         if self.tree is None: return PyTreeData(tree)
-        tree = jax.tree_util.tree_map(lambda x, y: jnp.concatenate((x,y), axis=0), self.tree, tree)
+        tree = jax.tree.map(lambda x, y: jnp.concatenate((x,y), axis=0), self.tree, tree)
         return PyTreeData(tree)
 
 jax.tree_util.register_pytree_node(

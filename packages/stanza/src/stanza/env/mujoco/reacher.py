@@ -228,7 +228,7 @@ class MPCEnv(EnvWrapper):
         cost_fn = lambda state: jnp.sum(jnp.square(ReacherEnv.observe(self.base, state).fingertip_pos - action))
         mpc = MPC(
             action_sample=(jnp.array([0]), jnp.array([0])),
-            cost_fn = lambda states, actions: cost_fn(jax.tree_util.tree_map(lambda x: x[-1], states)),
+            cost_fn = lambda states, actions: cost_fn(jax.tree.map(lambda x: x[-1], states)),
             model_fn = lambda env_state, action, _: self.base.step(env_state, action),
             horizon_length=5
         )

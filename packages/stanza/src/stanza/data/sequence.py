@@ -82,7 +82,7 @@ class SequenceData(Generic[T,I]):
     def truncate(self, length: int) -> Data[T]:
         infos = self.sequences.as_pytree()
         mask = length <= infos.length
-        infos = jax.tree_util.tree_map(lambda x: x[mask], infos)
+        infos = jax.tree.map(lambda x: x[mask], infos)
         start_idx = infos.start_idx
         elements = jax.vmap(
             lambda x: self.elements.slice(x, length).as_pytree()
@@ -134,7 +134,7 @@ class SequenceData(Generic[T,I]):
             end_idx=jnp.array(len(elements), dtype=idx_dtype),
             length=jnp.array(len(elements), dtype=idx_dtype)
         )
-        sequences = PyTreeData(jax.tree_util.tree_map(lambda x: x[None,...], info))
+        sequences = PyTreeData(jax.tree.map(lambda x: x[None,...], info))
         return SequenceData(
             elements=elements,
             sequences=sequences

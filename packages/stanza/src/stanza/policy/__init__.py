@@ -120,16 +120,16 @@ def rollout(model : Model, state0 : State,
     (state_f, policy_state_f, 
      policy_rng_f, model_rng_f), outputs = jax.lax.scan(scan_fn, new_state,
                                     None, length=length-2)
-    outputs = jax.tree_util.tree_map(
+    outputs = jax.tree.map(
         lambda a, b: jnp.concatenate((jnp.expand_dims(a,0), b)),
         first_output, outputs)
 
     states, observations, us, info = outputs
     if not last_action:
-        states = jax.tree_util.tree_map(
+        states = jax.tree.map(
             lambda a, b: jnp.concatenate((a, jnp.expand_dims(b, 0))),
             states, state_f)
-        observations = jax.tree_util.tree_map(
+        observations = jax.tree.map(
             lambda a, b: jnp.concatenate((a, jnp.expand_dims(b, 0))),
             observations, observe(state_f))
     return Rollout(states=states, actions=us, observations=observations,
@@ -150,12 +150,12 @@ class Actions(Generic[Action]):
     @property
     def rollout_length(self):
         lengths, _ = jax.tree_util.tree_flatten(
-            jax.tree_util.tree_map(lambda x: x.shape[0], self.actions)
+            jax.tree.map(lambda x: x.shape[0], self.actions)
         )
         return lengths[0] + 1
 
     @jax.jit
     def __call__(self, input : PolicyInput) -> PolicyOutput[Action, jax.Array, None]:
         T = input.policy_state if input.policy_state is not None else 0
-        action = jax.tree_util.tree_map(lambda x: x[T], self.actions)
+        action = jax.tree.map(lambda x: x[T], self.actions)
         return PolicyOutput(action=action, policy_state=T + 1)

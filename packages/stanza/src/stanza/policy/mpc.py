@@ -123,7 +123,7 @@ class MPC:
 
     def __call__(self, input):
         if input.policy_state is None:
-            actions = jax.tree_util.tree_map(lambda x: jnp.zeros((self.horizon_length - 1,) + x.shape), self.action_sample)
+            actions = jax.tree.map(lambda x: jnp.zeros((self.horizon_length - 1,) + x.shape), self.action_sample)
             actions, _, _ = self._solve(input.observation, actions)
             policy_state = MPCState(
                 actions=actions, actions_t=0
@@ -132,14 +132,14 @@ class MPC:
             policy_state = input.policy_state
             if self.receed:
                 # shift actions and re-solve
-                actions = jax.tree_util.tree_map(lambda x: x.at[:-1].set(x[1:]), policy_state.actions)
+                actions = jax.tree.map(lambda x: x.at[:-1].set(x[1:]), policy_state.actions)
                 actions, _, _ = self._solve(input.observation, actions)
                 policy_state = replace(
                     policy_state,
                     actions=actions,
                     actions_t=0
                 )
-        action = jax.tree_util.tree_map(
+        action = jax.tree.map(
             lambda x: x[policy_state.actions_t],
             policy_state.actions
         )

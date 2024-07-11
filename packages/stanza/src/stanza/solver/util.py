@@ -55,7 +55,7 @@ def implicit_diff_solve(solve, assume_psd=False):
             A = dfdx.T @ dfdx
             b = -(dfdx.T @ dfdtheta) @ dtheta
             dx = jnp.linalg.solve(A, b)
-            dres = jax.tree_util.tree_map(jnp.zeros_like, res)
+            dres = jax.tree.map(jnp.zeros_like, res)
             out_tangents = dres, dx
             return out_primals, out_tangents
 
