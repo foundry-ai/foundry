@@ -8,11 +8,10 @@ authors = [
 dependencies = [
     "stanza[ipython,docs] @ file:///${PROJECT_ROOT}/packages/stanza",
     "stanza-models @ file:///${PROJECT_ROOT}/projects/models",
-    "stanza-examples @ file:///${PROJECT_ROOT}/projects/examples",
     "cond_diffusion @ file:///${PROJECT_ROOT}/projects/cond-diffusion",
     "image-classifier @ file:///${PROJECT_ROOT}/projects/image-classifier",
     "language-model @ file:///${PROJECT_ROOT}/projects/language-model",
-    "ray[tune]>=2.31.0",
+    "wandb>=0.17.4",
 ]
 requires-python = "<3.11,>=3.10"
 readme = "README.md"
@@ -31,7 +30,6 @@ build-backend = "pdm.backend"
 dev = [
     "-e stanza[ipython,docs] @ file:///${PROJECT_ROOT}/packages/stanza",
     "-e stanza-model @ file:///${PROJECT_ROOT}/projects/models",
-    "-e stanza-examples @ file:///${PROJECT_ROOT}/projects/examples",
     "-e cond_diffusion @ file:///${PROJECT_ROOT}/projects/cond-diffusion",
     "-e image-classifier @ file:///${PROJECT_ROOT}/projects/image-classifier",
     "-e language-model @ file:///${PROJECT_ROOT}/projects/language-model",
