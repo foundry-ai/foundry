@@ -19,3 +19,7 @@ language_model_sweep = "language_model.sweeps:run"
 
 [tool.pdm]
 distribution = true
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"

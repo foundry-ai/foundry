@@ -18,3 +18,7 @@ image_classifier = "image_classifier:run"
 
 [tool.pdm]
 distribution = true
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
