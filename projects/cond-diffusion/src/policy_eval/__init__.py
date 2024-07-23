@@ -50,10 +50,11 @@ class PolicyConfig:
 class Config:
     seed: int = 42
     dataset: str = "pusht/chi"
-    obs_length: int = 1
+    obs_length: int = 2
     action_length: int = 16
     policy: PolicyConfig = None
-    timesteps: int = 200
+    timesteps: int = 400
+    train_data_size: int = 140
 
     @staticmethod
     def parse(config: ConfigProvider) -> "Config":
@@ -112,6 +113,8 @@ def eval(env, policy, chunk_policy, T, x0, rng_key):
     )
     rewards = jax.vmap(env.reward)(pre_states, r.actions, post_states)
 
+    # render predicted action trajectories
+
     # def batch_policy(obs, state, rng_key):
     #     keys = jax.random.split(rng_key, 2)
     #     return jax.vmap(chunk_policy, in_axes=(PolicyInput(None, None, rng_key=0),))(
@@ -146,6 +149,7 @@ def eval(env, policy, chunk_policy, T, x0, rng_key):
     # video = jax.vmap(
     #     lambda x, rng_key: render_frame(x, rng_key, ImageRender(256, 256))        
     # )(r.states, jax.random.split(action_key, T))
+
     video = jax.vmap(
         lambda x: env.render(x, ImageRender(64, 64))
     )(r.states)
@@ -185,14 +189,14 @@ def main(config : Config):
     logger.info(f"Loading dataset [blue]{config.dataset}[/blue]")
     dataset = datasets.create(config.dataset)
     env = dataset.create_env()
-    train_data = dataset.splits["train"].slice(0,140)
+    train_data = dataset.splits["train"].slice(0,config.train_data_size)
     logger.info(f"Processing dataset.")
     train_data = process_data(config, env, train_data).cache()
     # jax.debug.print("{s}", s=train_data)
     # train_data = train_data.slice(0,5)
     # jax.debug.print("{s}", s=train_data.as_pytree())
 
-    test_data = dataset.splits["test"].truncate(1).slice(0,3)
+    test_data = dataset.splits["test"].truncate(1).slice(0,8)
     test_x0s = test_data.map(
         lambda x: env.full_state(
             jax.tree.map(lambda x: x[0], x.reduced_state)

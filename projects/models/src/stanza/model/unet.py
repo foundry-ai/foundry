@@ -39,6 +39,7 @@ class SharedSequential(nn.Module):
         return x
 
 class IgnoreExtra(nn.Module):
+    """Ignores kwargs that are not used by the layer."""
     layer: Callable[..., Any]
 
     @nn.compact
@@ -54,6 +55,7 @@ class ResBlock(nn.Module):
     down: bool = False
     use_scale_shift_norm: bool = False
     dims: int = 2 # signal dimension
+    kernel_size: Sequence[int] = (5,)
 
     @nn.compact
     def __call__(self, x, *, cond_embed=None, train=False,
@@ -65,7 +67,7 @@ class ResBlock(nn.Module):
         out_channels = self.out_channels or x.shape[-1]
         in_conv = nn.Conv(
             out_channels,
-            self.dims*(3,))
+            self.dims*self.kernel_size)
         out_norm = Normalization(self.dims)
         out_layers = nn.Sequential([
                 activations.silu,
@@ -105,6 +107,7 @@ class Upsample(nn.Module):
     out_channels: int = None
     scale_factors: int | Sequence[int] = 2
     conv: bool = False
+    kernel_size: Sequence[int] = (4,)
 
     @nn.compact
     def __call__(self, x, spatial_shape=None, **kwargs):
@@ -127,7 +130,7 @@ class Upsample(nn.Module):
             )
         x = jax.image.resize(x, dest_shape, "nearest")
         if self.conv:
-            x = nn.Conv(out_ch, self.dims*(3,))(x)
+            x = nn.Conv(out_ch, self.dims*self.kernel_size)(x)
         return x
 
 class Downsample(nn.Module):
@@ -135,12 +138,13 @@ class Downsample(nn.Module):
     out_channels: int = None
     scale_factors: int | Sequence[int] = 2
     conv: bool = False
+    kernel_size: Sequence[int] = (3,)
 
     @nn.compact
     def __call__(self, x, **kwargs):
         out_ch = self.out_channels or x.shape[-1]
         if self.conv:
-            x = nn.Conv(out_ch, self.dims*(3,), self.scale_factors)(x)
+            x = nn.Conv(out_ch, self.dims*self.kernel_size, self.scale_factors)(x)
         else:
             assert self.out_channels is None or self.out_channels == x.shape[-1]
             x = nn.avg_pool(x, self.scale_factors, self.scale_factors, "VALID")
@@ -161,13 +165,14 @@ class UNet(nn.Module):
     use_scale_shift_norm: bool = False
     resblock_updown: bool = False
     dims: int = 2 # signal dimension
+    kernel_size: Sequence[int] = (5,)
 
     dtype: Any = jnp.float32
     num_classes: int = None # if cond is not one-hot encoded,
                             # can be used to specify the number of classes
     def _setup(self, x):
         ch = self.base_channels
-        input_blocks = [IgnoreExtra(nn.Conv(ch, self.dims*(3,)))]
+        input_blocks = [IgnoreExtra(nn.Conv(ch, self.dims*self.kernel_size))]
         for level, mult in enumerate(self.channel_mult):
             for _ in range(self.num_res_blocks):
                 layers = [
@@ -177,6 +182,7 @@ class UNet(nn.Module):
                         use_conv=self.conv_resample,
                         use_scale_shift_norm=self.use_scale_shift_norm,
                         dims=self.dims,
+                        kernel_size=self.kernel_size
                     )
                 ]
             if level in self.attention_levels:
@@ -197,6 +203,7 @@ class UNet(nn.Module):
                             use_scale_shift_norm=self.use_scale_shift_norm,
                             down=True,
                             dims=self.dims,
+                            kernel_size=self.kernel_size
                         )
                     )
                 else:
@@ -214,6 +221,7 @@ class UNet(nn.Module):
                 out_channels=ch*self.channel_mult[-1],
                 dropout=self.dropout,
                 use_scale_shift_norm=self.use_scale_shift_norm,
+                kernel_size=self.kernel_size
             ),
             IgnoreExtra(AttentionBlock(
                 dims=self.dims,
@@ -224,6 +232,7 @@ class UNet(nn.Module):
                 dims=self.dims,
                 dropout=self.dropout,
                 use_scale_shift_norm=self.use_scale_shift_norm,
+                kernel_size=self.kernel_size
             )
         ])
         output_blocks = []
@@ -234,6 +243,7 @@ class UNet(nn.Module):
                         dims=self.dims,
                         out_channels=self.base_channels*mult,
                         use_scale_shift_norm=self.use_scale_shift_norm,
+                        kernel_size=self.kernel_size,
                     )
                 ]
             if level in self.attention_levels:
@@ -252,6 +262,7 @@ class UNet(nn.Module):
                         dims=self.dims,
                         use_scale_shift_norm=self.use_scale_shift_norm,
                         up=True,
+                        kernel_size=self.kernel_size
                     )
                     if self.resblock_updown
                     else Upsample(
@@ -266,7 +277,7 @@ class UNet(nn.Module):
         out = nn.Sequential([
             Normalization(self.dims),
             activations.silu,
-            nn.Conv(out_channels, self.dims*(3,), 
+            nn.Conv(out_channels, self.dims*self.kernel_size, 
                     kernel_init=initializers.zeros_init())
         ])
         return input_blocks, middle_block, output_blocks, out

@@ -26,8 +26,9 @@ logger = logging.getLogger(__name__)
 class DiffusionEstimatorConfig:
     estimator: str = "nw"
     kernel_bandwidth: float = 0.01
-    diffusion_steps: int = 16
+    diffusion_steps: int = 100
     relative_actions: bool = True
+    action_horizon: int = 8
 
     def parse(self, config: ConfigProvider) -> "DiffusionEstimatorConfig":
         default = DiffusionEstimatorConfig()
@@ -74,8 +75,9 @@ def estimator_diffusion_policy(
         if config.relative_actions:
             agent_pos = env.observe(input.state, PushTObs()).agent_pos
             action = action + agent_pos
+        action = action[:config.action_horizon]
         return PolicyOutput(action=action)
     policy = ChunkingTransform(
-        obs_length, action_length
+        obs_length, config.action_horizon
     ).apply(chunk_policy)
     return policy, chunk_policy

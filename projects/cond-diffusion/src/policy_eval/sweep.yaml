@@ -1,22 +1,13 @@
 program: policy_eval
-method: bayes
+method: grid
 metric:
   goal: minimize
   name: loss
 parameters:
   policy:
-    values: ["diffusion_policy"]
-  batch_size:
-    values: [64, 128, 256, 512]
-  net_width:
-    values: [1024, 2048, 4096, 8192]
-  net_depth:
-    values: [2, 3, 4, 5]
-early_terminate:
-  type: hyperband
-  s: 2
-  eta: 3
-  max_iter: 50
+    values: ["diffusion_policy", "diffusion_estimator"]
+  train_data_size:
+    values: [30, 60, 90, 120, 150]
 command:
   - ${program}
   - ${args}
