@@ -19,6 +19,7 @@
                     env = (import ./requirements.nix) {
                         buildPythonPackage = py.pkgs.buildPythonPackage;
                         fetchurl = pkgs.fetchurl;
+			nixpkgs = pkgs;
                     };
                     pythonEnv = py.withPackages(
                         ps: 
