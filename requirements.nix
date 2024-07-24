@@ -1,11 +1,11 @@
-{buildPythonPackage, fetchurl, nixpkgs}: rec {
+{buildPythonPackage, fetchurl, nixpkgs, python}: rec {
   packages = rec {
     regex = buildPythonPackage {
       pname = "regex";
-      version = "2024.5.15";
+      version = "2024.7.24";
       src = fetchurl {
-        url="https://files.pythonhosted.org/packages/7a/db/5ddc89851e9cc003929c3b08b9b88b429459bf9acbf307b4556d51d9e49b/regex-2024.5.15.tar.gz";
-        hash="sha256-0+4C2eX0gsyDCRNKke6qy90iYboRGw/vN0jutJE+aiw=";
+        url="https://files.pythonhosted.org/packages/3f/51/64256d0dc72816a4fe3779449627c69ec8fee5a5625fd60ba048f53b3478/regex-2024.7.24.tar.gz";
+        hash="sha256-nP0Anu0aRrJ8FAOa1bvF5xtjZ8Wy5tX12g6pFgCBdQY=";
       };
       build-system = with packages;
       with buildPackages;
@@ -14,15 +14,15 @@
     };
     sentry-sdk = buildPythonPackage {
       pname = "sentry-sdk";
-      version = "2.10.0";
+      version = "2.11.0";
       format="wheel";
       src = fetchurl {
-        url="https://files.pythonhosted.org/packages/4f/9e/9298785949269c8930e1fd3707b960da6e1a95a2442b747b8f8cca4578cb/sentry_sdk-2.10.0-py2.py3-none-any.whl";
-        hash="sha256-h7PUE8h9jn+BbMkzS/8lWoPYtXfbKyIEJlHDDBnAkZA=";
+        url="https://files.pythonhosted.org/packages/bc/3c/a8ab3309d22c1d7142f811882e7d45449696f87c6e4e723b1433b6069b84/sentry_sdk-2.11.0-py2.py3-none-any.whl";
+        hash="sha256-2WRxDi2+AV2dxP8K0WIl1ow7NpNrdCpv4FBFZbdgo7c=";
       };
       dependencies = with packages;
       with buildPackages;
-      [urllib3 certifi];
+      [certifi urllib3];
       doCheck = false;
     };
     fonttools = buildPythonPackage {
@@ -85,7 +85,7 @@
       };
       dependencies = with packages;
       with buildPackages;
-      [idna charset-normalizer certifi urllib3];
+      [certifi charset-normalizer idna urllib3];
       doCheck = false;
     };
     smmap = buildPythonPackage {
@@ -126,15 +126,15 @@
     };
     rpds-py = buildPythonPackage {
       pname = "rpds-py";
-      version = "0.19.0";
+      version = "0.19.1";
       format="pyproject";
       src = fetchurl {
-        url="https://files.pythonhosted.org/packages/36/a2/83c3e2024cefb9a83d832e8835f9db0737a7a2b04ddfdd241c650b703db0/rpds_py-0.19.0.tar.gz";
-        hash="sha256-T9ya+tvrOTtLu611SB4Op45EafLh1xOpCBFwCDC1U6k=";
+        url="https://files.pythonhosted.org/packages/2f/fe/5217efe981c2ae8647b503ba3b8f55efc837df62f63667572b4bb75b30bc/rpds_py-0.19.1.tar.gz";
+        hash="sha256-Md1XlIN/ALRvQJaqjMqlly9zqTiYLjLtgXu1IMRl5SA=";
       };
       build-system = with packages;
       with buildPackages;
-      [maturin_1_7_0];
+      [maturin-1_7_0-824706860354622439a169eb472a146420fe82faf0e53565cd55e420a643ff24];
       doCheck = false;
     };
     referencing = buildPythonPackage {
@@ -215,7 +215,7 @@
       };
       build-system = with packages;
       with buildPackages;
-      [setuptools wheel_0_43_0];
+      [setuptools wheel-0_43_0-67b69bf1c83179b425d8114821a3d09288d9e983a13eaa8bbb043fabee9c1158];
       doCheck = false;
     };
     soupsieve = buildPythonPackage {
@@ -280,7 +280,7 @@
       };
       build-system = with packages;
       with buildPackages;
-      [setuptools wheel_0_43_0];
+      [setuptools wheel-0_43_0-67b69bf1c83179b425d8114821a3d09288d9e983a13eaa8bbb043fabee9c1158];
       dependencies = with packages;
       with buildPackages;
       [pyobjc-core pyobjc-framework-cocoa pyobjc-framework-quartz];
@@ -295,7 +295,7 @@
       };
       build-system = with packages;
       with buildPackages;
-      [setuptools wheel_0_43_0];
+      [setuptools wheel-0_43_0-67b69bf1c83179b425d8114821a3d09288d9e983a13eaa8bbb043fabee9c1158];
       dependencies = with packages;
       with buildPackages;
       [pyobjc-core];
@@ -310,7 +310,7 @@
       };
       build-system = with packages;
       with buildPackages;
-      [setuptools wheel_0_43_0];
+      [setuptools wheel-0_43_0-67b69bf1c83179b425d8114821a3d09288d9e983a13eaa8bbb043fabee9c1158];
       doCheck = false;
     };
     pyobjc-framework-quartz = buildPythonPackage {
@@ -322,7 +322,7 @@
       };
       build-system = with packages;
       with buildPackages;
-      [setuptools wheel_0_43_0];
+      [setuptools wheel-0_43_0-67b69bf1c83179b425d8114821a3d09288d9e983a13eaa8bbb043fabee9c1158];
       dependencies = with packages;
       with buildPackages;
       [pyobjc-core pyobjc-framework-cocoa];
@@ -337,7 +337,7 @@
       };
       build-system = with packages;
       with buildPackages;
-      [setuptools wheel_0_43_0];
+      [setuptools wheel-0_43_0-67b69bf1c83179b425d8114821a3d09288d9e983a13eaa8bbb043fabee9c1158];
       dependencies = with packages;
       with buildPackages;
       [pyobjc-core pyobjc-framework-cocoa pyobjc-framework-coretext pyobjc-framework-quartz];
@@ -360,16 +360,6 @@
       src = fetchurl {
         url="https://files.pythonhosted.org/packages/d2/3f/8ba87d9e287b9d385a02a7114ddcef61b26f86411e121c9003eb509a1773/tenacity-8.5.0-py3-none-any.whl";
         hash="sha256-tZTCpZRYMMJnzmt5oWYigyPtUnGPMDAsE1mDYRI0Zoc=";
-      };
-      doCheck = false;
-    };
-    fsspec = buildPythonPackage {
-      pname = "fsspec";
-      version = "2024.6.1";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/5e/44/73bea497ac69bafde2ee4269292fa3b41f1198f4bb7bbaaabde30ad29d4a/fsspec-2024.6.1-py3-none-any.whl";
-        hash="sha256-PLRD+LzS77MSlaW5/bAq7oHYRSyA0o+XptCVnmzuEB4=";
       };
       doCheck = false;
     };
@@ -403,17 +393,17 @@
       };
       doCheck = false;
     };
-    llvmlite = buildPythonPackage {
-      pname = "llvmlite";
-      version = "0.43.0";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/9f/3d/f513755f285db51ab363a53e898b85562e950f79a2e6767a364530c2f645/llvmlite-0.43.0.tar.gz";
-        hash="sha256-ritbXD72c1SCT7dVF8jbX76TvALNlnHzxiJxYmvAQdU=";
-      };
-      build-system = with packages;
-      with buildPackages;
-      [setuptools];
-      doCheck = false;
+    llvmlite = let env = with packages;
+    with buildPackages;
+    {
+      setuptools = setuptools;
+    };
+    in (import ./nix-custom/llvmlite-0.43.0) {
+      buildPythonPackage=buildPythonPackage;
+      env=env;
+      fetchurl=fetchurl;
+      nixpkgs=nixpkgs;
+      python=python;
     };
     numba = buildPythonPackage {
       pname = "numba";
@@ -440,7 +430,7 @@
       };
       build-system = with packages;
       with buildPackages;
-      [pybind11_2_13_1 meson-python_0_16_0 meson_1_5_0];
+      [pybind11-2_13_1-9263e47d155470de3088643965a87b03f19d995ec7b0c3185075cd59fe53d3b2 meson-python-0_16_0-44c3cdc264c259b3cda4852922014a7735d870b9f9331342e2889168bf5e0347 meson-1_5_0-18dba963e11b1db517c2e82626c7fc094984cf6810fc4399da35b316570f8bbe];
       dependencies = with packages;
       with buildPackages;
       [numpy];
@@ -456,19 +446,6 @@
       };
       doCheck = false;
     };
-    kiwisolver = buildPythonPackage {
-      pname = "kiwisolver";
-      version = "1.4.5";
-      format="pyproject";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/b9/2d/226779e405724344fc678fcc025b812587617ea1a48b9442628b688e85ea/kiwisolver-1.4.5.tar.gz";
-        hash="sha256-5X5WOlf7IqFC2jTziswvwaXIZLwpyhUXqIq8lj5g1uw=";
-      };
-      build-system = with packages;
-      with buildPackages;
-      [setuptools cppy_1_2_1 wheel_0_43_0 setuptools-scm_8_1_0];
-      doCheck = false;
-    };
     scipy = buildPythonPackage {
       pname = "scipy";
       version = "1.14.0";
@@ -479,23 +456,47 @@
       };
       build-system = with packages;
       with buildPackages;
-      [pybind11_2_12_0 meson-python_0_16_0 numpy_2_0_1 cython_3_0_10 pythran_0_16_1];
+      [numpy-2_0_0-d074598ef26d77d12a624d89bf99e6e29040189a02a62f359c06324ed9f8911a pybind11-2_12_0-10d5d8ed8114384ccd7aa22d16089f812fd323285b17146b3d78f10d8bee9700 meson-python-0_16_0-44c3cdc264c259b3cda4852922014a7735d870b9f9331342e2889168bf5e0347 cython-3_0_10-491d7b7995daceea9c248a53c500454f45b4c43da7ec8b48fb8d08dfcc88b340 pythran-0_16_1-a6251c3be4b4b3db5101960ad7bd1ba47182ea3588d71b7f0546c628ed6f2af8];
       dependencies = with packages;
       with buildPackages;
-      [numpy_2_0_1];
+      [numpy];
+      doCheck = false;
+    };
+    kiwisolver = buildPythonPackage {
+      pname = "kiwisolver";
+      version = "1.4.5";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/b9/2d/226779e405724344fc678fcc025b812587617ea1a48b9442628b688e85ea/kiwisolver-1.4.5.tar.gz";
+        hash="sha256-5X5WOlf7IqFC2jTziswvwaXIZLwpyhUXqIq8lj5g1uw=";
+      };
+      build-system = with packages;
+      with buildPackages;
+      [setuptools cppy-1_2_1-3830e296859438472c12241d2dda4894cbc93a523576760582e534682058e1af wheel-0_43_0-67b69bf1c83179b425d8114821a3d09288d9e983a13eaa8bbb043fabee9c1158 setuptools-scm-8_1_0-2d127c77fef402dac40e1ffe1178b28d44a0b4b4c559dba25247a0a18025387c];
+      doCheck = false;
+    };
+    huggingface-hub = buildPythonPackage {
+      pname = "huggingface-hub";
+      version = "0.24.2";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/93/14/6a82b1c2eab5a828f7d3d675811660eb68424e8b039191f418a94e8d9726/huggingface_hub-0.24.2-py3-none-any.whl";
+        hash="sha256-q98yRNOidMSx+8XEoe9wADKz9gupPMY+TwNv0IKqKAU=";
+      };
+      dependencies = with packages;
+      with buildPackages;
+      [filelock fsspec packaging pyyaml requests tqdm typing-extensions];
       doCheck = false;
     };
     numcodecs = buildPythonPackage {
       pname = "numcodecs";
       version = "0.13.0";
-      format="pyproject";
       src = fetchurl {
         url="https://files.pythonhosted.org/packages/f8/22/e5cba9013403186906390c0efb0ab0db60d4e580a8966650b2372ab967e1/numcodecs-0.13.0.tar.gz";
         hash="sha256-uk+scDbqWgeMev4dTf/rloUIDULxnJwWsS2thmcDqi4=";
       };
       build-system = with packages;
       with buildPackages;
-      [py-cpuinfo_9_0_0 setuptools cython_3_0_10 numpy setuptools-scm_8_1_0];
+      [py-cpuinfo-9_0_0-e1845c42d339b04877edca808af7a25bf1d94f98a662f25c5acd6a5c34078fbd setuptools numpy cython-3_0_10-491d7b7995daceea9c248a53c500454f45b4c43da7ec8b48fb8d08dfcc88b340 setuptools-scm-8_1_0-2d127c77fef402dac40e1ffe1178b28d44a0b4b4c559dba25247a0a18025387c];
       dependencies = with packages;
       with buildPackages;
       [numpy];
@@ -509,19 +510,6 @@
         url="https://files.pythonhosted.org/packages/b7/8a/d82202c9f89eab30f9fc05380daae87d617e2ad11571ab23d7c13a29bb54/toolz-0.12.1-py3-none-any.whl";
         hash="sha256-0icxNkwH1y7qCgrUW6+ywpN6tv04o1B79V6uh0SqfYU=";
       };
-      doCheck = false;
-    };
-    huggingface-hub = buildPythonPackage {
-      pname = "huggingface-hub";
-      version = "0.24.1";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/96/e6/a1fd9cccd2c08244243aeef71b61cb9b2ba26575d8fd6f7c41edc95e9de0/huggingface_hub-0.24.1-py3-none-any.whl";
-        hash="sha256-06Yj0PLLuTmSma78heNCP6Jonxirm24aoPldF5OInzA=";
-      };
-      dependencies = with packages;
-      with buildPackages;
-      [filelock packaging pyyaml fsspec typing-extensions tqdm requests];
       doCheck = false;
     };
     tzdata = buildPythonPackage {
@@ -544,7 +532,7 @@
       };
       dependencies = with packages;
       with buildPackages;
-      [fastjsonschema jupyter-core traitlets jsonschema];
+      [fastjsonschema jsonschema jupyter-core traitlets];
       doCheck = false;
     };
     plotly = buildPythonPackage {
@@ -558,6 +546,58 @@
       dependencies = with packages;
       with buildPackages;
       [packaging tenacity];
+      doCheck = false;
+    };
+    safetensors = buildPythonPackage {
+      pname = "safetensors";
+      version = "0.4.3";
+      format="pyproject";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/9c/21/acd1b6dd9dad9708fd388fdbe6618e461108cdbd56ff4eab6094c6e61035/safetensors-0.4.3.tar.gz";
+        hash="sha256-L4X8UMTgeiHpXCTgdGD+b34oWdDOiAkoODUreYznEcI=";
+      };
+      build-system = with packages;
+      with buildPackages;
+      [maturin-1_7_0-824706860354622439a169eb472a146420fe82faf0e53565cd55e420a643ff24];
+      doCheck = false;
+    };
+    tokenizers = buildPythonPackage {
+      pname = "tokenizers";
+      version = "0.19.1";
+      format="pyproject";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/48/04/2071c150f374aab6d5e92aaec38d0f3c368d227dd9e0469a1f0966ac68d1/tokenizers-0.19.1.tar.gz";
+        hash="sha256-7lnmaA7Q/b5rckzzi9cEAKDB3WI7B6xykIcnDK6siOM=";
+      };
+      build-system = with packages;
+      with buildPackages;
+      [maturin-1_7_0-824706860354622439a169eb472a146420fe82faf0e53565cd55e420a643ff24];
+      dependencies = with packages;
+      with buildPackages;
+      [huggingface-hub];
+      doCheck = false;
+    };
+    filelock = buildPythonPackage {
+      pname = "filelock";
+      version = "3.15.4";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/ae/f0/48285f0262fe47103a4a45972ed2f9b93e4c80b8fd609fa98da78b2a5706/filelock-3.15.4-py3-none-any.whl";
+        hash="sha256-bKH/+uliJdq0xurxxPTyjNJWjT7CpE4VoIUgUE3kaOc=";
+      };
+      doCheck = false;
+    };
+    transformers = buildPythonPackage {
+      pname = "transformers";
+      version = "4.43.2";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/13/63/cccd0297770d7096c19c99d4c542f3068a30e73cdfd971a920bfa686cb3a/transformers-4.43.2-py3-none-any.whl";
+        hash="sha256-KDyLR884ZAxcDK6mC+DfqUhmn6SOlzmwNxfL9eiyDxE=";
+      };
+      dependencies = with packages;
+      with buildPackages;
+      [filelock huggingface-hub numpy packaging pyyaml regex requests safetensors tokenizers tqdm];
       doCheck = false;
     };
     cycler = buildPythonPackage {
@@ -580,10 +620,10 @@
       };
       build-system = with packages;
       with buildPackages;
-      [numpy_2_0_1 pybind11_2_13_1 meson-python_0_16_0 setuptools-scm_8_1_0];
+      [numpy-2_0_0-d074598ef26d77d12a624d89bf99e6e29040189a02a62f359c06324ed9f8911a pybind11-2_13_1-9263e47d155470de3088643965a87b03f19d995ec7b0c3185075cd59fe53d3b2 meson-python-0_16_0-44c3cdc264c259b3cda4852922014a7735d870b9f9331342e2889168bf5e0347 setuptools-scm-8_1_0-0d702ec1b648b58b185f9cbd34c50e0a44ebfbea10cfb89eb5322a980c098fab];
       dependencies = with packages;
       with buildPackages;
-      [packaging pillow numpy_2_0_1 python-dateutil cycler kiwisolver contourpy pyparsing fonttools];
+      [contourpy cycler fonttools kiwisolver numpy packaging pillow pyparsing python-dateutil];
       doCheck = false;
     };
     optax = buildPythonPackage {
@@ -596,7 +636,7 @@
       };
       dependencies = with packages;
       with buildPackages;
-      [chex etils jax jaxlib numpy absl-py];
+      [absl-py chex etils jax jaxlib numpy];
       doCheck = false;
     };
     nest-asyncio = buildPythonPackage {
@@ -618,10 +658,10 @@
       };
       build-system = with packages;
       with buildPackages;
-      [setuptools-scm_8_1_0 setuptools numpy_2_0_1 wheel_0_43_0];
+      [numpy-2_0_0-d074598ef26d77d12a624d89bf99e6e29040189a02a62f359c06324ed9f8911a setuptools-scm-8_1_0-0d702ec1b648b58b185f9cbd34c50e0a44ebfbea10cfb89eb5322a980c098fab setuptools wheel-0_43_0-67b69bf1c83179b425d8114821a3d09288d9e983a13eaa8bbb043fabee9c1158];
       dependencies = with packages;
       with buildPackages;
-      [ml-dtypes numpy_2_0_1];
+      [ml-dtypes numpy];
       doCheck = false;
     };
     orbax-checkpoint = buildPythonPackage {
@@ -634,20 +674,19 @@
       };
       dependencies = with packages;
       with buildPackages;
-      [etils jax jaxlib msgpack nest-asyncio pyyaml tensorstore numpy typing-extensions absl-py protobuf];
+      [absl-py etils jax jaxlib msgpack nest-asyncio numpy protobuf pyyaml tensorstore typing-extensions];
       doCheck = false;
     };
     msgpack = buildPythonPackage {
       pname = "msgpack";
       version = "1.0.8";
-      format="pyproject";
       src = fetchurl {
         url="https://files.pythonhosted.org/packages/08/4c/17adf86a8fbb02c144c7569dc4919483c01a2ac270307e2d59e1ce394087/msgpack-1.0.8.tar.gz";
         hash="sha256-lcArDifnBuSNDlQm0XEMp44PBijW6J1bWluRpfEidPM=";
       };
       build-system = with packages;
       with buildPackages;
-      [setuptools cython_3_0_10];
+      [setuptools cython-3_0_10-491d7b7995daceea9c248a53c500454f45b4c43da7ec8b48fb8d08dfcc88b340];
       doCheck = false;
     };
     flax = buildPythonPackage {
@@ -660,59 +699,7 @@
       };
       dependencies = with packages;
       with buildPackages;
-      [jax msgpack orbax-checkpoint pyyaml tensorstore rich numpy optax typing-extensions];
-      doCheck = false;
-    };
-    safetensors = buildPythonPackage {
-      pname = "safetensors";
-      version = "0.4.3";
-      format="pyproject";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/9c/21/acd1b6dd9dad9708fd388fdbe6618e461108cdbd56ff4eab6094c6e61035/safetensors-0.4.3.tar.gz";
-        hash="sha256-L4X8UMTgeiHpXCTgdGD+b34oWdDOiAkoODUreYznEcI=";
-      };
-      build-system = with packages;
-      with buildPackages;
-      [maturin_1_7_0];
-      doCheck = false;
-    };
-    tokenizers = buildPythonPackage {
-      pname = "tokenizers";
-      version = "0.19.1";
-      format="pyproject";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/48/04/2071c150f374aab6d5e92aaec38d0f3c368d227dd9e0469a1f0966ac68d1/tokenizers-0.19.1.tar.gz";
-        hash="sha256-7lnmaA7Q/b5rckzzi9cEAKDB3WI7B6xykIcnDK6siOM=";
-      };
-      build-system = with packages;
-      with buildPackages;
-      [maturin_1_7_0];
-      dependencies = with packages;
-      with buildPackages;
-      [huggingface-hub];
-      doCheck = false;
-    };
-    filelock = buildPythonPackage {
-      pname = "filelock";
-      version = "3.15.4";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/ae/f0/48285f0262fe47103a4a45972ed2f9b93e4c80b8fd609fa98da78b2a5706/filelock-3.15.4-py3-none-any.whl";
-        hash="sha256-bKH/+uliJdq0xurxxPTyjNJWjT7CpE4VoIUgUE3kaOc=";
-      };
-      doCheck = false;
-    };
-    transformers = buildPythonPackage {
-      pname = "transformers";
-      version = "4.43.1";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/e3/89/66b0d61558c971dd2c8cbe125a471603fce0a1b8850c2f4d99a07584fca2/transformers-4.43.1-py3-none-any.whl";
-        hash="sha256-60S3MZAuBirLr/GWrkiW18s0lN3zgnWqAKX8+1s08X0=";
-      };
-      dependencies = with packages;
-      with buildPackages;
-      [filelock packaging pyyaml tokenizers numpy safetensors huggingface-hub tqdm requests regex];
+      [jax msgpack numpy optax orbax-checkpoint pyyaml rich tensorstore typing-extensions];
       doCheck = false;
     };
     pluggy = buildPythonPackage {
@@ -794,10 +781,10 @@
       };
       build-system = with packages;
       with buildPackages;
-      [cython_3_0_5 meson-python_0_13_1 meson_1_2_1 versioneer_0_29 numpy_2_0_1 wheel_0_43_0];
+      [cython-3_0_5-eecf9b399ab12ed1f0673b9f8f31d7c4a637972cd6c1a680d83bd9169e8118dd meson-python-0_13_1-80c1db885775e48a127ecfcbead2035ed6a1831e80e81ae959ec48d2afd835a5 meson-1_2_1-6ea0d3abd41fff844f366136a50b8f68f75aaf36b46b38d13f0a9dc5f25e44c6 numpy-2_0_0-d074598ef26d77d12a624d89bf99e6e29040189a02a62f359c06324ed9f8911a versioneer-0_29-4a2512b3cdcd7699f877273c71b8d21a04a497b3b5d9ff259b82f25cf1990daf wheel-0_43_0-67b69bf1c83179b425d8114821a3d09288d9e983a13eaa8bbb043fabee9c1158];
       dependencies = with packages;
       with buildPackages;
-      [numpy_2_0_1 python-dateutil tzdata pytz];
+      [numpy python-dateutil pytz tzdata];
       doCheck = false;
     };
     markdown-it-py = buildPythonPackage {
@@ -833,13 +820,12 @@
       };
       dependencies = with packages;
       with buildPackages;
-      [six pyobjc-framework-applicationservices pyobjc-framework-quartz];
+      [pyobjc-framework-applicationservices pyobjc-framework-quartz six];
       doCheck = false;
     };
     pillow = buildPythonPackage {
       pname = "pillow";
       version = "10.4.0";
-      format="pyproject";
       src = fetchurl {
         url="https://files.pythonhosted.org/packages/cd/74/ad3d526f3bf7b6d3f408b73fde271ec69dfac8b81341a318ce825f2b3812/pillow-10.4.0.tar.gz";
         hash="sha256-Fmwc1NJDCbMNYfefSpEUt7IxPXRQkSJ3hV/139fNSgY=";
@@ -858,7 +844,10 @@
       };
       build-system = with packages;
       with buildPackages;
-      [pip_24_1_2 setuptools_59_2_0 numpy_2_0_1 scikit-build_0_18_0 cmake_3_30_1];
+      [numpy-2_0_0-d074598ef26d77d12a624d89bf99e6e29040189a02a62f359c06324ed9f8911a pip-24_1_2-c506f4afc1c13f35b33177ef3b20d80b704ad9bf8866df2a2ef4fc7f25686747 setuptools-59_2_0-6d505cd5fc2a97a44b4703fdc7fcb90b83cbb1f9bf979ca01a6ebad8d95064c0 scikit-build-0_18_0-bbae32db54641d39652ea79c4cd525d1e885508fa018473f97b9a0720b1a6530 cmake-3_30_1-b57abfab4d4a448ae6ef989de008c7423c88791f6b8101f1927fc6819585a4fc];
+      dependencies = with packages;
+      with buildPackages;
+      [numpy numpy numpy numpy numpy];
       doCheck = false;
     };
     robosuite = buildPythonPackage {
@@ -871,20 +860,19 @@
       };
       dependencies = with packages;
       with buildPackages;
-      [mujoco opencv-python pillow pynput termcolor numpy scipy numba];
+      [mujoco numba numpy opencv-python pillow pynput scipy termcolor];
       doCheck = false;
     };
     shapely = buildPythonPackage {
       pname = "shapely";
       version = "2.0.5";
-      format="pyproject";
       src = fetchurl {
         url="https://files.pythonhosted.org/packages/ad/99/c47247f4d688bbb5346df5ff1de5d9792b6d95cbbb2fd7b71f45901c1878/shapely-2.0.5.tar.gz";
         hash="sha256-v/I2a8eGv6bLNT1rR9BEPFcMMndmEuUn7ke232P8/jI=";
       };
       build-system = with packages;
       with buildPackages;
-      [setuptools numpy cython_3_0_10];
+      [setuptools numpy cython-3_0_10-491d7b7995daceea9c248a53c500454f45b4c43da7ec8b48fb8d08dfcc88b340];
       dependencies = with packages;
       with buildPackages;
       [numpy];
@@ -912,6 +900,36 @@
       [setuptools];
       doCheck = false;
     };
+    zipp = buildPythonPackage {
+      pname = "zipp";
+      version = "3.19.2";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/20/38/f5c473fe9b90c8debdd29ea68d5add0289f1936d6f923b6b9cc0b931194c/zipp-3.19.2-py3-none-any.whl";
+        hash="sha256-8JF1X2ZwVfLQKzLFN3Gnpsi0fh/bxLcqi5Bys+74AVw=";
+      };
+      doCheck = false;
+    };
+    importlib-resources = buildPythonPackage {
+      pname = "importlib-resources";
+      version = "6.4.0";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/75/06/4df55e1b7b112d183f65db9503bff189e97179b256e1ea450a3c365241e0/importlib_resources-6.4.0-py3-none-any.whl";
+        hash="sha256-UNEPBD35MZAtQZTqB+xXlg9mqARJ/4Z7/ngrTEhrp4w=";
+      };
+      doCheck = false;
+    };
+    fsspec = buildPythonPackage {
+      pname = "fsspec";
+      version = "2024.6.1";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/5e/44/73bea497ac69bafde2ee4269292fa3b41f1198f4bb7bbaaabde30ad29d4a/fsspec-2024.6.1-py3-none-any.whl";
+        hash="sha256-PLRD+LzS77MSlaW5/bAq7oHYRSyA0o+XptCVnmzuEB4=";
+      };
+      doCheck = false;
+    };
     trimesh = buildPythonPackage {
       pname = "trimesh";
       version = "4.4.3";
@@ -928,7 +946,6 @@
     mujoco = buildPythonPackage {
       pname = "mujoco";
       version = "3.2.0";
-      format="pyproject";
       src = fetchurl {
         url="https://files.pythonhosted.org/packages/fc/70/e94bb93c0dad847b7fe13c11ff510253583c610dbc04ec4bf191267292dc/mujoco-3.2.0.tar.gz";
         hash="sha256-R388jEIbzd60en1SRC8mKSSlvdW/xWl1xDnUET7QvKc=";
@@ -938,7 +955,7 @@
       [setuptools];
       dependencies = with packages;
       with buildPackages;
-      [etils glfw pyopengl numpy absl-py];
+      [absl-py etils glfw numpy pyopengl];
       doCheck = false;
     };
     etils = buildPythonPackage {
@@ -949,6 +966,9 @@
         url="https://files.pythonhosted.org/packages/a0/f4/305f3ea85aecd23422c606c179fb6d00bd7d255b10d55b4c797a3a680144/etils-1.9.2-py3-none-any.whl";
         hash="sha256-7Ned4fv+qbDWkkdWz6kisF7TNgxFzyFwdn2kvuAAHSA=";
       };
+      dependencies = with packages;
+      with buildPackages;
+      [fsspec importlib-resources typing-extensions zipp];
       doCheck = false;
     };
     mujoco-mjx = buildPythonPackage {
@@ -961,7 +981,7 @@
       };
       dependencies = with packages;
       with buildPackages;
-      [etils jax jaxlib mujoco trimesh scipy absl-py];
+      [absl-py etils jax jaxlib mujoco scipy trimesh];
       doCheck = false;
     };
     fasteners = buildPythonPackage {
@@ -996,7 +1016,7 @@
       };
       dependencies = with packages;
       with buildPackages;
-      [asciitree fasteners numpy numcodecs];
+      [asciitree fasteners numcodecs numpy];
       doCheck = false;
     };
     einops = buildPythonPackage {
@@ -1019,7 +1039,7 @@
       };
       dependencies = with packages;
       with buildPackages;
-      [jax jaxlib setuptools numpy toolz absl-py typing-extensions];
+      [absl-py jax jaxlib numpy toolz typing-extensions];
       doCheck = false;
     };
     rich = buildPythonPackage {
@@ -1090,7 +1110,7 @@
       };
       dependencies = with packages;
       with buildPackages;
-      [docker-pycreds platformdirs pyyaml setproctitle setuptools click psutil protobuf gitpython requests sentry-sdk];
+      [click docker-pycreds gitpython platformdirs protobuf psutil pyyaml requests sentry-sdk setproctitle setuptools];
       doCheck = false;
     };
     six = buildPythonPackage {
@@ -1112,7 +1132,7 @@
       };
       build-system = with packages;
       with buildPackages;
-      [setuptools wheel_0_43_0 cython_0_29_37];
+      [setuptools wheel-0_43_0-67b69bf1c83179b425d8114821a3d09288d9e983a13eaa8bbb043fabee9c1158 cython-0_29_37-70ce88e0e16e90456eca2cdd68685260e331aa8da341ec4c95df613a40c8d4a7];
       doCheck = false;
     };
     contextlib2 = buildPythonPackage {
@@ -1137,7 +1157,7 @@
       [setuptools];
       dependencies = with packages;
       with buildPackages;
-      [contextlib2 pyyaml six absl-py];
+      [absl-py contextlib2 pyyaml six];
       doCheck = false;
     };
     opt-einsum = buildPythonPackage {
@@ -1153,43 +1173,45 @@
       [numpy];
       doCheck = false;
     };
-    ml-dtypes = buildPythonPackage {
-      pname = "ml-dtypes";
-      version = "0.4.0";
-      format="pyproject";
-      src = ./.nix/ml_dtypes-0.4.1;
-      build-system = with packages;
-      with buildPackages;
-      [setuptools_70_1_1 numpy_2_0_1];
-      dependencies = with packages;
-      with buildPackages;
-      [numpy_2_0_1];
-      doCheck = false;
+    ml-dtypes = let env = with packages;
+    with buildPackages;
+    {
+      numpy = numpy-2_0_0-d074598ef26d77d12a624d89bf99e6e29040189a02a62f359c06324ed9f8911a;
+      setuptools = setuptools-70_1_1-6ef60e6ca78ad9a7bf8979a2fef9ee5079bc76156c8bd044bed129d5743a312a;
     };
-    jaxlib = buildPythonPackage {
-      pname = "jaxlib";
-      version = "0.4.30";
-      format="pyproject";
-      src = ./.nix/jaxlib-0.4.30;
-      build-system = with packages;
-      with buildPackages;
-      [setuptools wheel_0_43_0];
-      dependencies = with packages;
-      with buildPackages;
-      [ml-dtypes numpy scipy];
-      doCheck = false;
+    in (import ./nix-custom/ml_dtypes-0.4.0) {
+      buildPythonPackage=buildPythonPackage;
+      env=env;
+      fetchurl=fetchurl;
+      nixpkgs=nixpkgs;
+      python=python;
+    };
+    jaxlib = let env = with packages;
+    with buildPackages;
+    {
+      ml-dtypes = ml-dtypes;
+      numpy = numpy;
+      setuptools = setuptools;
+      scipy = scipy;
+      wheel = wheel-0_43_0-67b69bf1c83179b425d8114821a3d09288d9e983a13eaa8bbb043fabee9c1158;
+    };
+    in (import ./nix-custom/jaxlib-0.4.30) {
+      buildPythonPackage=buildPythonPackage;
+      env=env;
+      fetchurl=fetchurl;
+      nixpkgs=nixpkgs;
+      python=python;
     };
     h5py = buildPythonPackage {
       pname = "h5py";
       version = "3.11.0";
-      format="pyproject";
       src = fetchurl {
         url="https://files.pythonhosted.org/packages/52/8f/e557819155a282da36fb21f8de4730cfd10a964b52b3ae8d20157ac1c668/h5py-3.11.0.tar.gz";
         hash="sha256-e36PeAcqLt7IfJg28l80ID/UkqRHVwmhi0F6M8+yH6k=";
       };
       build-system = with packages;
       with buildPackages;
-      [pkgconfig_1_5_5 numpy_2_0_1 setuptools cython_3_0_10];
+      [numpy-2_0_0-d074598ef26d77d12a624d89bf99e6e29040189a02a62f359c06324ed9f8911a pkgconfig-1_5_5-0d2df3706e3013a39c01acb40571b9367fe03a4915085e8374ce14040b323035 setuptools cython-3_0_10-491d7b7995daceea9c248a53c500454f45b4c43da7ec8b48fb8d08dfcc88b340];
       doCheck = false;
     };
     sentencepiece = buildPythonPackage {
@@ -1216,7 +1238,7 @@
       [setuptools];
       dependencies = with packages;
       with buildPackages;
-      [jax jaxlib ml-collections scipy absl-py];
+      [absl-py jax jaxlib ml-collections scipy];
       doCheck = false;
     };
     beautifulsoup4 = buildPythonPackage {
@@ -1232,18 +1254,23 @@
       [soupsieve];
       doCheck = false;
     };
-    numpy = buildPythonPackage {
-      pname = "numpy";
-      version = "1.26.4";
-      format="pyproject";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/65/6e/09db70a523a96d25e115e71cc56a6f9031e7b8cd166c1ac8438307c14058/numpy-1.26.4.tar.gz";
-        hash="sha256-KgKrqe0S5KxOs+qUIcQgMBoMZGDZgw10qd+H76SRIBA=";
-      };
-      build-system = with packages;
-      with buildPackages;
-      [meson-python_0_15_0 cython_3_0_10];
-      doCheck = false;
+    numpy = let env = with packages;
+    with buildPackages;
+    {
+      meson-python = meson-python-0_15_0-29ccb277ce25aa5d3be8b684d44e64e4596529292435ff9d4f2df1081c724147;
+      ninja = ninja-1_11_1_1-0c6eb68995cfb827551216b6414b072b470e77b21cf76a3af3f0dd49428b3304;
+      pyproject-metadata = pyproject-metadata-0_8_0-1ffbfb773b6e13d61ffaba777a56c22b450209f77f53cd2889e74a6b519702d0;
+      packaging = packaging;
+      tomli = tomli-2_0_1-cace7ca51ca218837e00fa1bf284b047cb49d76d19d52a222ba762c7d0050734;
+      cython = cython-3_0_10-491d7b7995daceea9c248a53c500454f45b4c43da7ec8b48fb8d08dfcc88b340;
+      meson = meson-1_5_0-18dba963e11b1db517c2e82626c7fc094984cf6810fc4399da35b316570f8bbe;
+    };
+    in (import ./nix-custom/numpy-1.26.4) {
+      buildPythonPackage=buildPythonPackage;
+      env=env;
+      fetchurl=fetchurl;
+      nixpkgs=nixpkgs;
+      python=python;
     };
     jax = buildPythonPackage {
       pname = "jax";
@@ -1255,7 +1282,7 @@
       };
       dependencies = with packages;
       with buildPackages;
-      [jaxlib ml-dtypes opt-einsum numpy scipy];
+      [jaxlib ml-dtypes numpy opt-einsum scipy];
       doCheck = false;
     };
     language-model = buildPythonPackage {
@@ -1265,7 +1292,7 @@
       src = ./projects/language-model;
       build-system = with packages;
       with buildPackages;
-      [pdm-backend_2_3_3];
+      [pdm-backend-2_3_3-7cf7f54826f821fbd236f48cf41ebd94382356ec01b3171694c91e418724c722];
       dependencies = with packages;
       with buildPackages;
       [stanza stanza-models];
@@ -1278,7 +1305,7 @@
       src = ./projects/image-classifier;
       build-system = with packages;
       with buildPackages;
-      [pdm-backend_2_3_3];
+      [pdm-backend-2_3_3-7cf7f54826f821fbd236f48cf41ebd94382356ec01b3171694c91e418724c722];
       dependencies = with packages;
       with buildPackages;
       [stanza stanza-models];
@@ -1291,7 +1318,7 @@
       src = ./projects/cond-diffusion;
       build-system = with packages;
       with buildPackages;
-      [pdm-backend_2_3_3];
+      [pdm-backend-2_3_3-7cf7f54826f821fbd236f48cf41ebd94382356ec01b3171694c91e418724c722];
       dependencies = with packages;
       with buildPackages;
       [stanza];
@@ -1304,7 +1331,7 @@
       src = ./projects/models;
       build-system = with packages;
       with buildPackages;
-      [pdm-backend_2_3_3];
+      [pdm-backend-2_3_3-7cf7f54826f821fbd236f48cf41ebd94382356ec01b3171694c91e418724c722];
       dependencies = with packages;
       with buildPackages;
       [stanza transformers];
@@ -1317,10 +1344,10 @@
       src = ./packages/stanza;
       build-system = with packages;
       with buildPackages;
-      [pdm-backend_2_3_3];
+      [pdm-backend-2_3_3-7cf7f54826f821fbd236f48cf41ebd94382356ec01b3171694c91e418724c722];
       dependencies = with packages;
       with buildPackages;
-      [jax numpy beautifulsoup4 trajax sentencepiece h5py rich chex einops zarr mujoco-mjx shapely robosuite pandas ffmpegio flax optax matplotlib plotly nbformat];
+      [jax rich flax optax pandas chex numpy ffmpegio einops matplotlib plotly nbformat beautifulsoup4 trajax zarr mujoco-mjx shapely robosuite sentencepiece h5py];
       doCheck = false;
     };
     stanza-meta = buildPythonPackage {
@@ -1330,7 +1357,7 @@
       src = ./.;
       build-system = with packages;
       with buildPackages;
-      [pdm-backend_2_3_3];
+      [pdm-backend-2_3_3-7cf7f54826f821fbd236f48cf41ebd94382356ec01b3171694c91e418724c722];
       dependencies = with packages;
       with buildPackages;
       [stanza stanza-models cond-diffusion image-classifier language-model wandb];
@@ -1338,20 +1365,32 @@
     };
   };
   buildPackages = rec {
-    maturin_1_7_0 = buildPythonPackage {
+    tomli-2_0_1-cace7ca51ca218837e00fa1bf284b047cb49d76d19d52a222ba762c7d0050734 = buildPythonPackage {
+      pname = "tomli";
+      version = "2.0.1";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/97/75/10a9ebee3fd790d20926a90a2547f0bf78f371b2f13aa822c759680ca7b9/tomli-2.0.1-py3-none-any.whl";
+        hash="sha256-k53j56YWGvDIh++Rt9QaU+fFocqXYyX0KctG6pvDDsw=";
+      };
+      doCheck = false;
+    };
+    maturin-1_7_0-824706860354622439a169eb472a146420fe82faf0e53565cd55e420a643ff24 = buildPythonPackage {
       pname = "maturin";
       version = "1.7.0";
-      format="pyproject";
       src = fetchurl {
         url="https://files.pythonhosted.org/packages/80/da/a4bbd6e97f3645f4ebd725321aa235e22e31037dfd92caf4539f721c0a5a/maturin-1.7.0.tar.gz";
         hash="sha256-G6UnfdeDLcYYHWmgBRgrl7NSCUWCUFhIT/2SlvLvtZw=";
       };
       build-system = with packages;
       with buildPackages;
-      [setuptools setuptools-rust_1_9_0 wheel_0_43_0];
+      [setuptools tomli-2_0_1-cace7ca51ca218837e00fa1bf284b047cb49d76d19d52a222ba762c7d0050734 setuptools-rust-1_9_0-9e7c0be00f52872ac7efbcc9b84f8e5e595bb6d0a11b448c10bbd76537de22ef wheel-0_43_0-67b69bf1c83179b425d8114821a3d09288d9e983a13eaa8bbb043fabee9c1158];
+      dependencies = with packages;
+      with buildPackages;
+      [tomli-2_0_1-cace7ca51ca218837e00fa1bf284b047cb49d76d19d52a222ba762c7d0050734];
       doCheck = false;
     };
-    wheel_0_43_0 = buildPythonPackage {
+    wheel-0_43_0-67b69bf1c83179b425d8114821a3d09288d9e983a13eaa8bbb043fabee9c1158 = buildPythonPackage {
       pname = "wheel";
       version = "0.43.0";
       format="wheel";
@@ -1361,7 +1400,7 @@
       };
       doCheck = false;
     };
-    semantic-version_2_10_0 = buildPythonPackage {
+    semantic-version-2_10_0-3cdc10bed1cae71103698fb7ffe5f5094350e5b6554d57c190fdc16f361a0a1a = buildPythonPackage {
       pname = "semantic-version";
       version = "2.10.0";
       format="wheel";
@@ -1371,7 +1410,7 @@
       };
       doCheck = false;
     };
-    setuptools-rust_1_9_0 = buildPythonPackage {
+    setuptools-rust-1_9_0-9e7c0be00f52872ac7efbcc9b84f8e5e595bb6d0a11b448c10bbd76537de22ef = buildPythonPackage {
       pname = "setuptools-rust";
       version = "1.9.0";
       format="wheel";
@@ -1381,10 +1420,10 @@
       };
       dependencies = with packages;
       with buildPackages;
-      [setuptools semantic-version_2_10_0];
+      [setuptools tomli-2_0_1-cace7ca51ca218837e00fa1bf284b047cb49d76d19d52a222ba762c7d0050734 semantic-version-2_10_0-3cdc10bed1cae71103698fb7ffe5f5094350e5b6554d57c190fdc16f361a0a1a];
       doCheck = false;
     };
-    meson_1_5_0 = buildPythonPackage {
+    meson-1_5_0-18dba963e11b1db517c2e82626c7fc094984cf6810fc4399da35b316570f8bbe = buildPythonPackage {
       pname = "meson";
       version = "1.5.0";
       format="wheel";
@@ -1394,7 +1433,7 @@
       };
       doCheck = false;
     };
-    pyproject-metadata_0_8_0 = buildPythonPackage {
+    pyproject-metadata-0_8_0-1ffbfb773b6e13d61ffaba777a56c22b450209f77f53cd2889e74a6b519702d0 = buildPythonPackage {
       pname = "pyproject-metadata";
       version = "0.8.0";
       format="wheel";
@@ -1407,7 +1446,7 @@
       [packaging];
       doCheck = false;
     };
-    meson-python_0_16_0 = buildPythonPackage {
+    meson-python-0_16_0-44c3cdc264c259b3cda4852922014a7735d870b9f9331342e2889168bf5e0347 = buildPythonPackage {
       pname = "meson-python";
       version = "0.16.0";
       format="wheel";
@@ -1417,10 +1456,10 @@
       };
       dependencies = with packages;
       with buildPackages;
-      [packaging pyproject-metadata_0_8_0 meson_1_5_0];
+      [packaging pyproject-metadata-0_8_0-1ffbfb773b6e13d61ffaba777a56c22b450209f77f53cd2889e74a6b519702d0 tomli-2_0_1-cace7ca51ca218837e00fa1bf284b047cb49d76d19d52a222ba762c7d0050734 meson-1_5_0-18dba963e11b1db517c2e82626c7fc094984cf6810fc4399da35b316570f8bbe];
       doCheck = false;
     };
-    pybind11_2_13_1 = buildPythonPackage {
+    pybind11-2_13_1-9263e47d155470de3088643965a87b03f19d995ec7b0c3185075cd59fe53d3b2 = buildPythonPackage {
       pname = "pybind11";
       version = "2.13.1";
       format="wheel";
@@ -1430,33 +1469,9 @@
       };
       doCheck = false;
     };
-    setuptools-scm_8_1_0 = buildPythonPackage {
-      pname = "setuptools-scm";
-      version = "8.1.0";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/a0/b9/1906bfeb30f2fc13bb39bf7ddb8749784c05faadbd18a21cf141ba37bff2/setuptools_scm-8.1.0-py3-none-any.whl";
-        hash="sha256-iXoyJqb9Sm6y8Gh0XklzMmGiH3Cxuyj84DOf65eNmvM=";
-      };
-      dependencies = with packages;
-      with buildPackages;
-      [packaging setuptools];
-      doCheck = false;
-    };
-    cppy_1_2_1 = buildPythonPackage {
-      pname = "cppy";
-      version = "1.2.1";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/31/5e/b8faf2b2aeb679c0f4359fd1a4716fe90d65f72f72639413ffb95f3c3b46/cppy-1.2.1-py3-none-any.whl";
-        hash="sha256-xbXqw9P0JZOgfTUnWwvCf0R7drmtjyfGLjz6KG3BmIo=";
-      };
-      doCheck = false;
-    };
-    pythran_0_16_1 = buildPythonPackage {
+    pythran-0_16_1-a6251c3be4b4b3db5101960ad7bd1ba47182ea3588d71b7f0546c628ed6f2af8 = buildPythonPackage {
       pname = "pythran";
       version = "0.16.1";
-      format="pyproject";
       src = fetchurl {
         url="https://files.pythonhosted.org/packages/73/32/f892675c5009cd4c1895ded3d6153476bf00adb5ad1634d03635620881f5/pythran-0.16.1.tar.gz";
         hash="sha256-hhdIwPnH1CKzJySxFLOBfYGO1Oq4bAl4GqCj986rt/k=";
@@ -1466,7 +1481,7 @@
       [setuptools];
       doCheck = false;
     };
-    cython_3_0_10 = buildPythonPackage {
+    cython-3_0_10-491d7b7995daceea9c248a53c500454f45b4c43da7ec8b48fb8d08dfcc88b340 = buildPythonPackage {
       pname = "cython";
       version = "3.0.10";
       format="wheel";
@@ -1476,20 +1491,7 @@
       };
       doCheck = false;
     };
-    numpy_2_0_1 = buildPythonPackage {
-      pname = "numpy";
-      version = "2.0.1";
-      format="pyproject";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/1c/8a/0db635b225d2aa2984e405dc14bd2b0c324a0c312ea1bc9d283f2b83b038/numpy-2.0.1.tar.gz";
-        hash="sha256-SFuHI1eWQQw1GaaZz+H6qwl+UJ6Q67BdzQmNsq6H57M=";
-      };
-      build-system = with packages;
-      with buildPackages;
-      [meson-python_0_16_0 cython_3_0_10];
-      doCheck = false;
-    };
-    pybind11_2_12_0 = buildPythonPackage {
+    pybind11-2_12_0-10d5d8ed8114384ccd7aa22d16089f812fd323285b17146b3d78f10d8bee9700 = buildPythonPackage {
       pname = "pybind11";
       version = "2.12.0";
       format="wheel";
@@ -1499,169 +1501,24 @@
       };
       doCheck = false;
     };
-    py-cpuinfo_9_0_0 = buildPythonPackage {
-      pname = "py-cpuinfo";
-      version = "9.0.0";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/e0/a9/023730ba63db1e494a271cb018dcd361bd2c917ba7004c3e49d5daf795a2/py_cpuinfo-9.0.0-py3-none-any.whl";
-        hash="sha256-hZYlvCUfZOIfB30JnUFiaJx2K11qTDyXVT1WJByWdNU=";
-      };
-      doCheck = false;
+    numpy-2_0_0-d074598ef26d77d12a624d89bf99e6e29040189a02a62f359c06324ed9f8911a = let env = with packages;
+    with buildPackages;
+    {
+      meson-python = meson-python-0_15_0-29ccb277ce25aa5d3be8b684d44e64e4596529292435ff9d4f2df1081c724147;
+      pyproject-metadata = pyproject-metadata-0_8_0-1ffbfb773b6e13d61ffaba777a56c22b450209f77f53cd2889e74a6b519702d0;
+      packaging = packaging;
+      cython = cython-3_0_10-491d7b7995daceea9c248a53c500454f45b4c43da7ec8b48fb8d08dfcc88b340;
+      tomli = tomli-2_0_1-cace7ca51ca218837e00fa1bf284b047cb49d76d19d52a222ba762c7d0050734;
+      meson = meson-1_5_0-18dba963e11b1db517c2e82626c7fc094984cf6810fc4399da35b316570f8bbe;
     };
-    versioneer_0_29 = buildPythonPackage {
-      pname = "versioneer";
-      version = "0.29";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/b0/79/f0f1ca286b78f6f33c521a36b5cbd5bd697c0d66217d8856f443aeb9dd77/versioneer-0.29-py3-none-any.whl";
-        hash="sha256-DxoTe7XWgR6Wp5uwSGeYrq6bnG78JLOJZZzrsO45bLk=";
-      };
-      doCheck = false;
+    in (import ./nix-custom/numpy-2.0.1) {
+      buildPythonPackage=buildPythonPackage;
+      env=env;
+      fetchurl=fetchurl;
+      nixpkgs=nixpkgs;
+      python=python;
     };
-    meson_1_2_1 = buildPythonPackage {
-      pname = "meson";
-      version = "1.2.1";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/e5/74/a1f1c6ba14e11e0fb050d2c61a78b6db108dd38383b6c0ab51c1becbbeff/meson-1.2.1-py3-none-any.whl";
-        hash="sha256-CPg/wXUT6ZzW6Cx1VMH1ivcEJSEYh/j5xzY7KpAglGI=";
-      };
-      doCheck = false;
-    };
-    meson-python_0_13_1 = buildPythonPackage {
-      pname = "meson-python";
-      version = "0.13.1";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/9f/af/5f941f57dc516e72b018183a38fbcfb018a7e83afd3c756ecfba82f21c65/meson_python-0.13.1-py3-none-any.whl";
-        hash="sha256-4z6j77rezBV2jCBdA7kFx7O/cq+uHh69hLQ4xKPtM5M=";
-      };
-      dependencies = with packages;
-      with buildPackages;
-      [setuptools pyproject-metadata_0_8_0 meson_1_5_0];
-      doCheck = false;
-    };
-    cython_3_0_5 = buildPythonPackage {
-      pname = "cython";
-      version = "3.0.5";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/fb/fe/e213d8e9cb21775bb8f9c92ff97861504129e23e33d118be1a90ca26a13e/Cython-3.0.5-py2.py3-none-any.whl";
-        hash="sha256-dSBjaVBPxELBCobs9XuRWS3KdE5Fkq8ipH6ad01T3RA=";
-      };
-      doCheck = false;
-    };
-    cmake_3_30_1 = buildPythonPackage {
-      pname = "cmake";
-      version = "3.30.1";
-      format="pyproject";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/cd/00/94a5cba1229e1406c032ea6445f387c3cfb9aaa020b87d9160b75ac09ea2/cmake-3.30.1.tar.gz";
-        hash="sha256-UfAc5CmlWsv+HxuvUH8P5pFiQ6nz5YaKko0HOuSxjvk=";
-      };
-      build-system = with packages;
-      with buildPackages;
-      [scikit-build-core_0_9_8];
-      doCheck = false;
-    };
-    pathspec_0_12_1 = buildPythonPackage {
-      pname = "pathspec";
-      version = "0.12.1";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/cc/20/ff623b09d963f88bfde16306a54e12ee5ea43e9b597108672ff3a408aad6/pathspec-0.12.1-py3-none-any.whl";
-        hash="sha256-oNUD4TikwSOydJCk977aagHG8ojfDkqLecfrDce0zAg=";
-      };
-      doCheck = false;
-    };
-    scikit-build-core_0_9_8 = buildPythonPackage {
-      pname = "scikit-build-core";
-      version = "0.9.8";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/0e/b7/62ede14d44d448bbb7424d5992e394d6980824312de05c9b4816a41602f0/scikit_build_core-0.9.8-py3-none-any.whl";
-        hash="sha256-5uzF/Vi2qOv+oOns6qoqaAsVq/WS78k1ITrBXkOah8Y=";
-      };
-      dependencies = with packages;
-      with buildPackages;
-      [packaging pathspec_0_12_1];
-      doCheck = false;
-    };
-    distro_1_9_0 = buildPythonPackage {
-      pname = "distro";
-      version = "1.9.0";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/12/b3/231ffd4ab1fc9d679809f356cebee130ac7daa00d6d6f3206dd4fd137e9e/distro-1.9.0-py3-none-any.whl";
-        hash="sha256-e//ZJdZRaPhQJ9jamva92rZYE1uEBnCiI1ibwMjvArI=";
-      };
-      doCheck = false;
-    };
-    scikit-build_0_18_0 = buildPythonPackage {
-      pname = "scikit-build";
-      version = "0.18.0";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/24/43/a0b5837cf30db1561a04187edd262bdefaffcb61222cb441eadef35f9103/scikit_build-0.18.0-py3-none-any.whl";
-        hash="sha256-6hcfVSnm4LW2Zhk0M4Ma9hoo1+35c7M4hOyMeCoV7jg=";
-      };
-      dependencies = with packages;
-      with buildPackages;
-      [distro_1_9_0 packaging setuptools wheel_0_43_0];
-      doCheck = false;
-    };
-    setuptools_59_2_0 = buildPythonPackage {
-      pname = "setuptools";
-      version = "59.2.0";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/18/ad/ec41343a49a0371ea40daf37b1ba2c11333cdd121cb378161635d14b9750/setuptools-59.2.0-py3-none-any.whl";
-        hash="sha256-St3j0eHIm94cZDxk2JzdlMv9jHUlLuRZ1FALzLnH0F0=";
-      };
-      doCheck = false;
-    };
-    pip_24_1_2 = buildPythonPackage {
-      pname = "pip";
-      version = "24.1.2";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/e7/54/0c1c068542cee73d8863336e974fc881e608d0170f3af15d0c0f28644531/pip-24.1.2-py3-none-any.whl";
-        hash="sha256-fNIH7tTGCw9BG0RM0UZBmP4YZnHDI7bNbUM+2A/J0kc=";
-      };
-      doCheck = false;
-    };
-    cython_0_29_37 = buildPythonPackage {
-      pname = "cython";
-      version = "0.29.37";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/7e/26/9d8de10005fedb1eceabe713348d43bae1dbab1786042ca0751a2e2b0f8c/Cython-0.29.37-py2.py3-none-any.whl";
-        hash="sha256-lfHWqD7ycp5ns/pzGMgpzlsHrGTAhM1q8RwijgNkZiw=";
-      };
-      doCheck = false;
-    };
-    setuptools_70_1_1 = buildPythonPackage {
-      pname = "setuptools";
-      version = "70.1.1";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/b3/7a/629889a5d76200287aa5483d753811bd247bbd1b03175186f759e0c7d3a7/setuptools-70.1.1-py3-none-any.whl";
-        hash="sha256-pYqP3gVB2rBBl1C8xSH734WF9uXLQZCd86Ry73uBypU=";
-      };
-      doCheck = false;
-    };
-    pkgconfig_1_5_5 = buildPythonPackage {
-      pname = "pkgconfig";
-      version = "1.5.5";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/32/af/89487c7bbf433f4079044f3dc32f9a9f887597fe04614a37a292e373e16b/pkgconfig-1.5.5-py3-none-any.whl";
-        hash="sha256-0gAju+tC7m1Cig+sbgkEYx9UWYWhDN1xogqli8R6Qgk=";
-      };
-      doCheck = false;
-    };
-    meson-python_0_15_0 = buildPythonPackage {
+    meson-python-0_15_0-29ccb277ce25aa5d3be8b684d44e64e4596529292435ff9d4f2df1081c724147 = buildPythonPackage {
       pname = "meson-python";
       version = "0.15.0";
       format="wheel";
@@ -1671,10 +1528,260 @@
       };
       dependencies = with packages;
       with buildPackages;
-      [pyproject-metadata_0_8_0 meson_1_5_0];
+      [pyproject-metadata-0_8_0-1ffbfb773b6e13d61ffaba777a56c22b450209f77f53cd2889e74a6b519702d0 tomli-2_0_1-cace7ca51ca218837e00fa1bf284b047cb49d76d19d52a222ba762c7d0050734 meson-1_5_0-18dba963e11b1db517c2e82626c7fc094984cf6810fc4399da35b316570f8bbe];
       doCheck = false;
     };
-    pdm-backend_2_3_3 = buildPythonPackage {
+    setuptools-scm-8_1_0-2d127c77fef402dac40e1ffe1178b28d44a0b4b4c559dba25247a0a18025387c = buildPythonPackage {
+      pname = "setuptools-scm";
+      version = "8.1.0";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/a0/b9/1906bfeb30f2fc13bb39bf7ddb8749784c05faadbd18a21cf141ba37bff2/setuptools_scm-8.1.0-py3-none-any.whl";
+        hash="sha256-iXoyJqb9Sm6y8Gh0XklzMmGiH3Cxuyj84DOf65eNmvM=";
+      };
+      dependencies = with packages;
+      with buildPackages;
+      [packaging setuptools tomli-2_0_1-cace7ca51ca218837e00fa1bf284b047cb49d76d19d52a222ba762c7d0050734];
+      doCheck = false;
+    };
+    cppy-1_2_1-3830e296859438472c12241d2dda4894cbc93a523576760582e534682058e1af = buildPythonPackage {
+      pname = "cppy";
+      version = "1.2.1";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/31/5e/b8faf2b2aeb679c0f4359fd1a4716fe90d65f72f72639413ffb95f3c3b46/cppy-1.2.1-py3-none-any.whl";
+        hash="sha256-xbXqw9P0JZOgfTUnWwvCf0R7drmtjyfGLjz6KG3BmIo=";
+      };
+      doCheck = false;
+    };
+    py-cpuinfo-9_0_0-e1845c42d339b04877edca808af7a25bf1d94f98a662f25c5acd6a5c34078fbd = buildPythonPackage {
+      pname = "py-cpuinfo";
+      version = "9.0.0";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/e0/a9/023730ba63db1e494a271cb018dcd361bd2c917ba7004c3e49d5daf795a2/py_cpuinfo-9.0.0-py3-none-any.whl";
+        hash="sha256-hZYlvCUfZOIfB30JnUFiaJx2K11qTDyXVT1WJByWdNU=";
+      };
+      doCheck = false;
+    };
+    setuptools-scm-8_1_0-0d702ec1b648b58b185f9cbd34c50e0a44ebfbea10cfb89eb5322a980c098fab = buildPythonPackage {
+      pname = "setuptools-scm";
+      version = "8.1.0";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/a0/b9/1906bfeb30f2fc13bb39bf7ddb8749784c05faadbd18a21cf141ba37bff2/setuptools_scm-8.1.0-py3-none-any.whl";
+        hash="sha256-iXoyJqb9Sm6y8Gh0XklzMmGiH3Cxuyj84DOf65eNmvM=";
+      };
+      dependencies = with packages;
+      with buildPackages;
+      [packaging setuptools tomli-2_0_1-cace7ca51ca218837e00fa1bf284b047cb49d76d19d52a222ba762c7d0050734];
+      doCheck = false;
+    };
+    etils-1_9_2-b2a70415c9e50ce4f485bc33651027182c5352dc8ba8837bb7cf253a3d555ed2 = buildPythonPackage {
+      pname = "etils";
+      version = "1.9.2";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/a0/f4/305f3ea85aecd23422c606c179fb6d00bd7d255b10d55b4c797a3a680144/etils-1.9.2-py3-none-any.whl";
+        hash="sha256-7Ned4fv+qbDWkkdWz6kisF7TNgxFzyFwdn2kvuAAHSA=";
+      };
+      dependencies = with packages;
+      with buildPackages;
+      [typing-extensions];
+      doCheck = false;
+    };
+    etils-1_9_2-e690b505d64269059a9daf26a1453a5e37a66878ac076ee68c07b35f25c1f91e = buildPythonPackage {
+      pname = "etils";
+      version = "1.9.2";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/a0/f4/305f3ea85aecd23422c606c179fb6d00bd7d255b10d55b4c797a3a680144/etils-1.9.2-py3-none-any.whl";
+        hash="sha256-7Ned4fv+qbDWkkdWz6kisF7TNgxFzyFwdn2kvuAAHSA=";
+      };
+      dependencies = with packages;
+      with buildPackages;
+      [fsspec importlib-resources zipp typing-extensions];
+      doCheck = false;
+    };
+    versioneer-0_29-4a2512b3cdcd7699f877273c71b8d21a04a497b3b5d9ff259b82f25cf1990daf = buildPythonPackage {
+      pname = "versioneer";
+      version = "0.29";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/b0/79/f0f1ca286b78f6f33c521a36b5cbd5bd697c0d66217d8856f443aeb9dd77/versioneer-0.29-py3-none-any.whl";
+        hash="sha256-DxoTe7XWgR6Wp5uwSGeYrq6bnG78JLOJZZzrsO45bLk=";
+      };
+      dependencies = with packages;
+      with buildPackages;
+      [tomli-2_0_1-cace7ca51ca218837e00fa1bf284b047cb49d76d19d52a222ba762c7d0050734];
+      doCheck = false;
+    };
+    meson-1_2_1-6ea0d3abd41fff844f366136a50b8f68f75aaf36b46b38d13f0a9dc5f25e44c6 = buildPythonPackage {
+      pname = "meson";
+      version = "1.2.1";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/e5/74/a1f1c6ba14e11e0fb050d2c61a78b6db108dd38383b6c0ab51c1becbbeff/meson-1.2.1-py3-none-any.whl";
+        hash="sha256-CPg/wXUT6ZzW6Cx1VMH1ivcEJSEYh/j5xzY7KpAglGI=";
+      };
+      doCheck = false;
+    };
+    meson-python-0_13_1-80c1db885775e48a127ecfcbead2035ed6a1831e80e81ae959ec48d2afd835a5 = buildPythonPackage {
+      pname = "meson-python";
+      version = "0.13.1";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/9f/af/5f941f57dc516e72b018183a38fbcfb018a7e83afd3c756ecfba82f21c65/meson_python-0.13.1-py3-none-any.whl";
+        hash="sha256-4z6j77rezBV2jCBdA7kFx7O/cq+uHh69hLQ4xKPtM5M=";
+      };
+      dependencies = with packages;
+      with buildPackages;
+      [pyproject-metadata-0_8_0-1ffbfb773b6e13d61ffaba777a56c22b450209f77f53cd2889e74a6b519702d0 tomli-2_0_1-cace7ca51ca218837e00fa1bf284b047cb49d76d19d52a222ba762c7d0050734 meson-1_5_0-18dba963e11b1db517c2e82626c7fc094984cf6810fc4399da35b316570f8bbe];
+      doCheck = false;
+    };
+    cython-3_0_5-eecf9b399ab12ed1f0673b9f8f31d7c4a637972cd6c1a680d83bd9169e8118dd = buildPythonPackage {
+      pname = "cython";
+      version = "3.0.5";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/fb/fe/e213d8e9cb21775bb8f9c92ff97861504129e23e33d118be1a90ca26a13e/Cython-3.0.5-py2.py3-none-any.whl";
+        hash="sha256-dSBjaVBPxELBCobs9XuRWS3KdE5Fkq8ipH6ad01T3RA=";
+      };
+      doCheck = false;
+    };
+    cmake-3_30_1-b57abfab4d4a448ae6ef989de008c7423c88791f6b8101f1927fc6819585a4fc = buildPythonPackage {
+      pname = "cmake";
+      version = "3.30.1";
+      format="pyproject";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/cd/00/94a5cba1229e1406c032ea6445f387c3cfb9aaa020b87d9160b75ac09ea2/cmake-3.30.1.tar.gz";
+        hash="sha256-UfAc5CmlWsv+HxuvUH8P5pFiQ6nz5YaKko0HOuSxjvk=";
+      };
+      build-system = with packages;
+      with buildPackages;
+      [scikit-build-core-0_9_8-a954e4ebb2581ba729aed89c26876c0d7beba36b3331e0899e05d2715ba6956a];
+      doCheck = false;
+    };
+    exceptiongroup-1_2_2-58fb8386e8e0e1a53e5968798568874eec31281b14f23555bbb9b2fa9a21f4af = buildPythonPackage {
+      pname = "exceptiongroup";
+      version = "1.2.2";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/02/cc/b7e31358aac6ed1ef2bb790a9746ac2c69bcb3c8588b41616914eb106eaf/exceptiongroup-1.2.2-py3-none-any.whl";
+        hash="sha256-MRG50THCOL7C+PUW4SPhS6JDVj+xNdP+iFmQWFqneVs=";
+      };
+      doCheck = false;
+    };
+    pathspec-0_12_1-c817e70ea9d1ea0449a0f56bb07885995031db2a10fc8744145c9762b4531f72 = buildPythonPackage {
+      pname = "pathspec";
+      version = "0.12.1";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/cc/20/ff623b09d963f88bfde16306a54e12ee5ea43e9b597108672ff3a408aad6/pathspec-0.12.1-py3-none-any.whl";
+        hash="sha256-oNUD4TikwSOydJCk977aagHG8ojfDkqLecfrDce0zAg=";
+      };
+      doCheck = false;
+    };
+    scikit-build-core-0_9_8-a954e4ebb2581ba729aed89c26876c0d7beba36b3331e0899e05d2715ba6956a = buildPythonPackage {
+      pname = "scikit-build-core";
+      version = "0.9.8";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/0e/b7/62ede14d44d448bbb7424d5992e394d6980824312de05c9b4816a41602f0/scikit_build_core-0.9.8-py3-none-any.whl";
+        hash="sha256-5uzF/Vi2qOv+oOns6qoqaAsVq/WS78k1ITrBXkOah8Y=";
+      };
+      dependencies = with packages;
+      with buildPackages;
+      [packaging tomli-2_0_1-cace7ca51ca218837e00fa1bf284b047cb49d76d19d52a222ba762c7d0050734 pathspec-0_12_1-c817e70ea9d1ea0449a0f56bb07885995031db2a10fc8744145c9762b4531f72 exceptiongroup-1_2_2-58fb8386e8e0e1a53e5968798568874eec31281b14f23555bbb9b2fa9a21f4af];
+      doCheck = false;
+    };
+    distro-1_9_0-f026cb8b499a97121ebac8b9d718f8043f2d7e0a7cb8f51465817593a9dc942a = buildPythonPackage {
+      pname = "distro";
+      version = "1.9.0";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/12/b3/231ffd4ab1fc9d679809f356cebee130ac7daa00d6d6f3206dd4fd137e9e/distro-1.9.0-py3-none-any.whl";
+        hash="sha256-e//ZJdZRaPhQJ9jamva92rZYE1uEBnCiI1ibwMjvArI=";
+      };
+      doCheck = false;
+    };
+    scikit-build-0_18_0-bbae32db54641d39652ea79c4cd525d1e885508fa018473f97b9a0720b1a6530 = buildPythonPackage {
+      pname = "scikit-build";
+      version = "0.18.0";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/24/43/a0b5837cf30db1561a04187edd262bdefaffcb61222cb441eadef35f9103/scikit_build-0.18.0-py3-none-any.whl";
+        hash="sha256-6hcfVSnm4LW2Zhk0M4Ma9hoo1+35c7M4hOyMeCoV7jg=";
+      };
+      dependencies = with packages;
+      with buildPackages;
+      [distro-1_9_0-f026cb8b499a97121ebac8b9d718f8043f2d7e0a7cb8f51465817593a9dc942a packaging setuptools tomli-2_0_1-cace7ca51ca218837e00fa1bf284b047cb49d76d19d52a222ba762c7d0050734 wheel-0_43_0-67b69bf1c83179b425d8114821a3d09288d9e983a13eaa8bbb043fabee9c1158];
+      doCheck = false;
+    };
+    setuptools-59_2_0-6d505cd5fc2a97a44b4703fdc7fcb90b83cbb1f9bf979ca01a6ebad8d95064c0 = buildPythonPackage {
+      pname = "setuptools";
+      version = "59.2.0";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/18/ad/ec41343a49a0371ea40daf37b1ba2c11333cdd121cb378161635d14b9750/setuptools-59.2.0-py3-none-any.whl";
+        hash="sha256-St3j0eHIm94cZDxk2JzdlMv9jHUlLuRZ1FALzLnH0F0=";
+      };
+      doCheck = false;
+    };
+    pip-24_1_2-c506f4afc1c13f35b33177ef3b20d80b704ad9bf8866df2a2ef4fc7f25686747 = buildPythonPackage {
+      pname = "pip";
+      version = "24.1.2";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/e7/54/0c1c068542cee73d8863336e974fc881e608d0170f3af15d0c0f28644531/pip-24.1.2-py3-none-any.whl";
+        hash="sha256-fNIH7tTGCw9BG0RM0UZBmP4YZnHDI7bNbUM+2A/J0kc=";
+      };
+      doCheck = false;
+    };
+    cython-0_29_37-70ce88e0e16e90456eca2cdd68685260e331aa8da341ec4c95df613a40c8d4a7 = buildPythonPackage {
+      pname = "cython";
+      version = "0.29.37";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/7e/26/9d8de10005fedb1eceabe713348d43bae1dbab1786042ca0751a2e2b0f8c/Cython-0.29.37-py2.py3-none-any.whl";
+        hash="sha256-lfHWqD7ycp5ns/pzGMgpzlsHrGTAhM1q8RwijgNkZiw=";
+      };
+      doCheck = false;
+    };
+    setuptools-70_1_1-6ef60e6ca78ad9a7bf8979a2fef9ee5079bc76156c8bd044bed129d5743a312a = buildPythonPackage {
+      pname = "setuptools";
+      version = "70.1.1";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/b3/7a/629889a5d76200287aa5483d753811bd247bbd1b03175186f759e0c7d3a7/setuptools-70.1.1-py3-none-any.whl";
+        hash="sha256-pYqP3gVB2rBBl1C8xSH734WF9uXLQZCd86Ry73uBypU=";
+      };
+      doCheck = false;
+    };
+    pkgconfig-1_5_5-0d2df3706e3013a39c01acb40571b9367fe03a4915085e8374ce14040b323035 = buildPythonPackage {
+      pname = "pkgconfig";
+      version = "1.5.5";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/32/af/89487c7bbf433f4079044f3dc32f9a9f887597fe04614a37a292e373e16b/pkgconfig-1.5.5-py3-none-any.whl";
+        hash="sha256-0gAju+tC7m1Cig+sbgkEYx9UWYWhDN1xogqli8R6Qgk=";
+      };
+      doCheck = false;
+    };
+    stanza-0_1_0-c1cde0e216b34de262edead9b59fb5ac0d7734e7e5792a89cd74cab070cfc17e = buildPythonPackage {
+      pname = "stanza";
+      version = "0.1.0";
+      format="pyproject";
+      src = ./packages/stanza;
+      build-system = with packages;
+      with buildPackages;
+      [pdm-backend-2_3_3-7cf7f54826f821fbd236f48cf41ebd94382356ec01b3171694c91e418724c722];
+      dependencies = with packages;
+      with buildPackages;
+      [jax numpy beautifulsoup4 trajax sentencepiece h5py rich chex einops zarr mujoco-mjx shapely robosuite pandas ffmpegio flax optax matplotlib plotly nbformat];
+      doCheck = false;
+    };
+    pdm-backend-2_3_3-7cf7f54826f821fbd236f48cf41ebd94382356ec01b3171694c91e418724c722 = buildPythonPackage {
       pname = "pdm-backend";
       version = "2.3.3";
       format="wheel";
@@ -1685,6 +1792,4 @@
       doCheck = false;
     };
   };
-  env = with packages;
-  [regex sentry-sdk fonttools urllib3 certifi charset-normalizer idna requests smmap gitdb gitpython rpds-py referencing jsonschema-specifications attrs jsonschema tqdm protobuf psutil soupsieve pyparsing traitlets jupyter-core pytz pyobjc-framework-coretext pyobjc-framework-cocoa pyobjc-core pyobjc-framework-quartz pyobjc-framework-applicationservices typing-extensions tenacity fsspec fastjsonschema click absl-py llvmlite numba contourpy pygments kiwisolver scipy numcodecs toolz huggingface-hub tzdata nbformat plotly cycler matplotlib optax nest-asyncio tensorstore orbax-checkpoint msgpack flax safetensors tokenizers filelock transformers pluggy packaging ffmpegio-core ffmpegio python-dateutil mdurl pandas markdown-it-py termcolor pynput pillow opencv-python robosuite shapely pyopengl glfw trimesh mujoco etils mujoco-mjx fasteners asciitree zarr einops chex rich setuptools setproctitle platformdirs docker-pycreds wandb six pyyaml contextlib2 ml-collections opt-einsum ml-dtypes jaxlib h5py sentencepiece trajax beautifulsoup4 numpy jax language-model image-classifier cond-diffusion stanza-models stanza stanza-meta];
 }

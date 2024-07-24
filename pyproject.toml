@@ -42,7 +42,5 @@ excludes = ["pytinyrenderer", "evdev"]
 
 [tool.nixpy]
 extra-links = [
-	"file://${PROJECT_ROOT}/.nixmodules/jax-0.4.30",
-	"file://${PROJECT_ROOT}/.nixmodules/jaxlib-0.4.30",
-	"file://${PROJECT_ROOT}/.nixmodules/ml_dtypes-0.4.1"
+	"file://${PROJECT_ROOT}/nix-custom/"
 ]

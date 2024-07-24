@@ -19,17 +19,20 @@
                     env = (import ./requirements.nix) {
                         buildPythonPackage = py.pkgs.buildPythonPackage;
                         fetchurl = pkgs.fetchurl;
-			nixpkgs = pkgs;
+                        nixpkgs = pkgs;
+                        python = py;
                     };
                     pythonEnv = py.withPackages(
                         ps: 
-                        with py.pkgs; env.env # [pip virtualenv] #env.env
+                        with py.pkgs; [env.packages.numpy]
                     );
                 in {
                 default = pkgs.mkShell {
                     packages = with pkgs; [ pythonEnv fish ];
                     # add a PYTHON_PATH to the current directory
                     shellHook = ''
+                    export TMPDIR=/tmp/$USER-stanza-tmp
+                    mkdir -p $TMPDIR
                     exec fish
                     '';
                 };
