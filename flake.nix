@@ -24,7 +24,7 @@
                     };
                     pythonEnv = py.withPackages(
                         ps: 
-                        with py.pkgs; [env.packages.numpy]
+                        with env.packages; [numpy scipy]
                     );
                 in {
                 default = pkgs.mkShell {
