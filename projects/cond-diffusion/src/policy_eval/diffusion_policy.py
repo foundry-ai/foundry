@@ -36,22 +36,67 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DiffusionPolicyConfig:
-    #model: str = "ResNet18"
+    model: str = "unet"
+
     seed: int = 42
     iterations: int = 50000
     batch_size: int = 64
-    # net_width: int = 4096
-    # net_depth: int = 2
-    # embed_type: str = "film"
-    # has_skip: bool = True
+
+
+    net_width: int = 4096
+    net_depth: int = 3
+    embed_type: str = "film"
+    has_skip: bool = True
+
     diffusion_steps: int = 100
     action_horizon: int = 8
+    
+    from_checkpoint: bool = False
+    checkpoint_filename: str = "5nupde5h_final.pkl"
 
     def parse(self, config: ConfigProvider) -> "DiffusionPolicyConfig":
         return config.get_dataclass(self, flatten={"train"})
 
     def train_policy(self, wandb_run, train_data, env, eval, rng):
-        return train_net_diffusion_policy(self, wandb_run, train_data, env, eval)
+        if self.from_checkpoint:
+            return diffusion_policy_from_checkpoint(self, wandb_run, train_data, env, eval)
+        else:
+            return train_net_diffusion_policy(self, wandb_run, train_data, env, eval)
+
+def diffusion_policy_from_checkpoint( 
+        config : DiffusionPolicyConfig, wandb_run, train_data, env, eval):
+    current_dir = os.path.dirname(os.path.realpath(__file__))
+    ckpts_dir = os.path.join(current_dir, "checkpoints")
+    file_path = os.path.join(ckpts_dir, config.checkpoint_filename)
+    with open(file_path, "rb") as file:
+        ckpt = pickle.load(file)
+
+    model = ckpt["model"]
+    ema_vars = ckpt["ema_state"].ema
+    normalizer = ckpt["normalizer"]
+
+    schedule = DDPMSchedule.make_squaredcos_cap_v2(
+        config.diffusion_steps,
+        prediction_type="sample"
+    )
+    train_sample = train_data[0]
+
+    def chunk_policy(input: PolicyInput) -> PolicyOutput:
+        obs = input.observation
+        obs = normalizer.map(lambda x: x.observations).normalize(obs)
+        model_fn = lambda rng_key, noised_actions, t: model.apply(
+            ema_vars, obs, noised_actions, t - 1
+        )
+        action = schedule.sample(input.rng_key, model_fn, train_sample.actions) 
+        action = normalizer.map(lambda x: x.actions).unnormalize(action)
+        action = action[:config.action_horizon]
+        return PolicyOutput(action=action, info=action)
+    
+    obs_length = stanza.util.axis_size(train_data.as_pytree().observations, 1)
+    policy = ChunkingTransform(
+        obs_length, config.action_horizon
+    ).apply(chunk_policy)
+    return policy
 
 def train_net_diffusion_policy(
         config : DiffusionPolicyConfig,  wandb_run, train_data, env, eval):
@@ -80,7 +125,18 @@ def train_net_diffusion_policy(
     #     embed_type=config.embed_type, 
     #     has_skip=config.has_skip
     # )
-    model = DiffusionUNet(dims=1, base_channels=128) # 1D temporal UNet
+    
+    if config.model == "unet":
+        model = DiffusionUNet(dims=1, base_channels=128) # 1D temporal UNet
+    elif config.model == "mlp":
+        model = DiffusionMLP(
+            features=[config.net_width]*config.net_depth, 
+            embed_type=config.embed_type, 
+            has_skip=config.has_skip
+        )
+    else:
+        raise ValueError(f"Unknown model type: {config.model}")
+    
     vars = jax.jit(model.init)(next(rng), train_sample.observations, train_sample.actions, 0)
     
 
@@ -89,7 +145,6 @@ def train_net_diffusion_policy(
 
     schedule = DDPMSchedule.make_squaredcos_cap_v2(
         config.diffusion_steps,
-        clip_sample_range=1.0,
         prediction_type="sample"
     )
 
@@ -162,8 +217,9 @@ def train_net_diffusion_policy(
                 if step.iteration % 100 == 0:
                     train.ipython.log(step.iteration, metrics)
                     train.wandb.log(step.iteration, metrics, run=wandb_run)
-                if step.iteration % 1000 == 0:
+                if step.iteration > 0 and step.iteration % 20000 == 0:
                     ckpt = {
+                        "config": config,
                         "model": model,
                         "vars": vars,
                         "opt_state": opt_state,
@@ -181,6 +237,7 @@ def train_net_diffusion_policy(
 
     # save model
     ckpt = {
+        "config": config,
         "model": model,
         "vars": vars,
         "opt_state": opt_state,
@@ -202,13 +259,14 @@ def train_net_diffusion_policy(
         action = schedule.sample(input.rng_key, model_fn, train_sample.actions) 
         action = normalizer.map(lambda x: x.actions).unnormalize(action)
         action = action[:config.action_horizon]
-        return PolicyOutput(action=action)
+        return PolicyOutput(action=action, info=action)
     
     policy = ChunkingTransform(
         obs_length, config.action_horizon
     ).apply(chunk_policy)
 
-    return policy, chunk_policy
+    return policy
+    
 
 class DiffusionUNet(UNet):
     activation: str = "relu"
@@ -244,9 +302,9 @@ class DiffusionMLP(nn.Module):
     features: Sequence[int]
     embed_type: str 
     has_skip: bool
-    activation: str = "silu"
-    time_embed_dim: int = 32
-    obs_embed_dim: int = 32
+    activation: str = "relu"
+    time_embed_dim: int = 256
+    obs_embed_dim: int = 256
 
     @nn.compact
     def __call__(self, obs, actions,

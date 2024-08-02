@@ -54,7 +54,7 @@ class Config:
     action_length: int = 16
     policy: PolicyConfig = None
     timesteps: int = 400
-    train_data_size: int = 140
+    train_data_size: int = 150
 
     @staticmethod
     def parse(config: ConfigProvider) -> "Config":
@@ -99,31 +99,26 @@ def process_data(config, env, data):
         )
     return data.map(process_chunk)
 
-def eval(env, policy, chunk_policy, T, x0, rng_key):
-    rng_key, action_key = jax.random.split(rng_key)
+def eval(env, policy, T, x0, rng_key):
     r = stanza.policy.rollout(
         env.step, x0, 
         policy, observe=env.observe,
         policy_rng_key=rng_key,
-        length=T
+        length=T,
+        last_action=True
     )
-    pre_states, post_states = (
+    pre_states, actions, post_states = (
         jax.tree.map(lambda x: x[:-1], r.states),
+        jax.tree.map(lambda x: x[:-1], r.actions),
         jax.tree.map(lambda x: x[1:], r.states)
     )
-    rewards = jax.vmap(env.reward)(pre_states, r.actions, post_states)
+    rewards = jax.vmap(env.reward)(pre_states, actions, post_states)
 
     # render predicted action trajectories
 
-    # def batch_policy(obs, state, rng_key):
-    #     keys = jax.random.split(rng_key, 2)
-    #     return jax.vmap(chunk_policy, in_axes=(PolicyInput(None, None, rng_key=0),))(
-    #         PolicyInput(obs, state, rng_key=keys)
-    #     ).action
-
-    # def draw_action_chunk(action_chunk, weight, img_config):
+    # def draw_action_chunk(action_chunk, img_config):
     #     T = action_chunk.shape[0]
-    #     colors = jnp.array((jnp.arange(T)/T, jnp.zeros(T), jnp.zeros(T), weight*jnp.ones(T))).T
+    #     colors = jnp.array((jnp.arange(T)/T, jnp.zeros(T), jnp.zeros(T))).T
     #     circles = canvas.fill(
     #         canvas.circle(action_chunk, 0.02*jnp.ones(T)),
     #         color=colors
@@ -135,27 +130,23 @@ def eval(env, policy, chunk_policy, T, x0, rng_key):
     #     )
     #     return circles
 
-    # def render_frame(state, rng_key, img_config):
+    # def render_frame(state, action_chunk, img_config):
     #     image = env.render(state, img_config)
-
-    #     obs = env.observe(state)
-    #     action_chunks = batch_policy(obs, state, rng_key)
-    #     weights = (0.2*jnp.ones(action_chunks.shape[0])).at[0].set(1)
-    #     circles = canvas.stack_batch(jax.vmap(draw_action_chunk, in_axes=(0,0,None))(action_chunks, weights, img_config))
+    #     circles = canvas.stack_batch(jax.vmap(draw_action_chunk, in_axes=(0,None))(action_chunk, img_config))
     #     image = canvas.paint(image, circles)
-        
     #     return image
     
     # video = jax.vmap(
-    #     lambda x, rng_key: render_frame(x, rng_key, ImageRender(256, 256))        
-    # )(r.states, jax.random.split(action_key, T))
+    #     lambda state, action_chunk: render_frame(state, action_chunk[None], ImageRender(256, 256))        
+    # )(r.states, r.info)
 
     video = jax.vmap(
         lambda x: env.render(x, ImageRender(64, 64))
     )(r.states)
     return jnp.max(rewards, axis=-1), (255*video).astype(jnp.uint8)
 
-def evaluate(env, x0s, T, policy, chunk_policy, rng_key):
+
+def evaluate(env, x0s, T, policy, rng_key):
     N = stanza.util.axis_size(x0s, 0)
 
     # shard the x0s
@@ -167,7 +158,7 @@ def evaluate(env, x0s, T, policy, chunk_policy, rng_key):
     #     x0s
     # )
 
-    rewards, videos = jax.vmap(partial(eval, env, policy, chunk_policy, T))(
+    rewards, videos = jax.vmap(partial(eval, env, policy, T))(
         x0s,
         jax.random.split(rng_key, N)
     )
@@ -203,7 +194,7 @@ def main(config : Config):
         )
     ).as_pytree()
     #test_x0s = jax.tree.map(lambda x: x[:1], test_x0s)
-    eval = functools.partial(evaluate, env, test_x0s, config.timesteps)
+    #eval = functools.partial(evaluate, env, test_x0s, config.timesteps)
 
     wandb_run = wandb.init(
         project="policy_eval",
@@ -211,12 +202,13 @@ def main(config : Config):
     )
     logger.info(f"Logging to [blue]{wandb_run.url}[/blue]")
 
-    policy, chunk_policy = config.policy.train_policy(
+    policy = config.policy.train_policy(
         wandb_run, train_data, env, eval, rng
     )
     logger.info(f"Performing final evaluation...")
 
-    output = jax.jit(partial(eval,policy, chunk_policy))(jax.random.key(42))
+    #output = jax.jit(partial(eval,policy))(jax.random.key(42))
+    output = evaluate(env, test_x0s, config.timesteps, policy, jax.random.key(42))
     # get the metrics and final reportables
     # from the eval output
     metrics, reportables = stanza.train.reporting.as_log_dict(output)
