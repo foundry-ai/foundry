@@ -17,3 +17,7 @@ policy_eval = "policy_eval:run"
 
 [tool.pdm]
 distribution = true
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"

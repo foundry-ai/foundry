@@ -39,3 +39,8 @@ dev = [
 # These are annoying and not used...
 [tool.pdm.resolution]
 excludes = ["pytinyrenderer", "evdev"]
+
+[tool.nixpy]
+extra-links = [
+	"file://${PROJECT_ROOT}/nix-custom/"
+]
