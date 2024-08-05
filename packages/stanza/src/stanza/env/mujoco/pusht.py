@@ -118,6 +118,9 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
             )
         else:
             raise ValueError("Unsupported observation type")
+        
+    def get_action(self, state):
+        return self.observe(state).agent_pos
 
     # For computing the reward
     def _block_points(self, pos, rot):
@@ -256,6 +259,9 @@ class PositionalObsEnv(EnvWrapper):
             block_pos=obs.block_pos,
             block_rot=obs.block_rot
         )
+    
+    def get_action(self, state):
+        return self.observe(state).agent_pos
 
 @dataclass
 class KeypointObsEnv(EnvWrapper):
@@ -274,6 +280,9 @@ class KeypointObsEnv(EnvWrapper):
             block_pos=obs.block_pos,
             block_end=end
         )
+    
+    def get_action(self, state):
+        return self.observe(state).agent_pos
 
 @dataclass
 class RelKeypointObsEnv(EnvWrapper):
@@ -298,6 +307,9 @@ class RelKeypointObsEnv(EnvWrapper):
             rel_block_pos=obs.block_pos - self.goal_pos,
             rel_block_end=end - goal_end,
         )
+    
+    def get_action(self, state):
+        return self.observe(state).agent_block_pos
 
 environments = EnvironmentRegistry[PushTEnv]()
 environments.register(PushTEnv)

@@ -13,7 +13,6 @@ from stanza import canvas
 from stanza.policy import PolicyInput, PolicyOutput
 
 
-from stanza.env.mujoco.pusht import PushTObs
 
 
 from jax.experimental import mesh_utils
@@ -53,8 +52,8 @@ class Config:
     obs_length: int = 2
     action_length: int = 16
     policy: PolicyConfig = None
-    timesteps: int = 400
-    train_data_size: int = 150
+    timesteps: int = 100
+    train_data_size: int = 10
 
     @staticmethod
     def parse(config: ConfigProvider) -> "Config":
@@ -89,7 +88,7 @@ def process_data(config, env, data):
     )
     def process_chunk(chunk):
         states = chunk.elements
-        actions = jax.vmap(lambda s: env.observe(s, PushTObs()).agent_pos)(states)
+        actions = jax.vmap(lambda s: env.get_action(s))(states)
         actions = jax.tree.map(lambda x: x[-config.action_length:], actions)
         obs_states = jax.tree.map(lambda x: x[:config.obs_length], states)
         curr_state = jax.tree.map(lambda x: x[-1], obs_states)
@@ -157,7 +156,6 @@ def evaluate(env, x0s, T, policy, rng_key):
     #     lambda x: jax.lax.with_sharding_constraint(x, sharding.reshape((jax.device_count(),) + (1,)*(x.ndim-1))),
     #     x0s
     # )
-
     rewards, videos = jax.vmap(partial(eval, env, policy, T))(
         x0s,
         jax.random.split(rng_key, N)
@@ -187,7 +185,7 @@ def main(config : Config):
     # train_data = train_data.slice(0,5)
     # jax.debug.print("{s}", s=train_data.as_pytree())
 
-    test_data = dataset.splits["test"].truncate(1).slice(0,8)
+    test_data = dataset.splits["test"].truncate(1).slice(0,3)
     test_x0s = test_data.map(
         lambda x: env.full_state(
             jax.tree.map(lambda x: x[0], x.reduced_state)

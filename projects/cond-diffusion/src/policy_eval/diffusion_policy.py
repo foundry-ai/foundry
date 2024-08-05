@@ -6,7 +6,6 @@ from stanza.runtime import ConfigProvider
 from stanza.random import PRNGSequence
 from stanza.policy import PolicyInput, PolicyOutput
 from stanza.policy.transforms import ChunkingTransform
-from stanza.env.mujoco.pusht import PushTObs
 
 from stanza.dataclasses import dataclass
 import dataclasses
@@ -100,13 +99,6 @@ def diffusion_policy_from_checkpoint(
 
 def train_net_diffusion_policy(
         config : DiffusionPolicyConfig,  wandb_run, train_data, env, eval):
-    
-    # data_agent_pos = jax.vmap(
-    #     #TODO: refactor pushtobs
-    #     lambda x: env.observe(x, PushTObs()).agent_pos
-    # )(train_data_tree.state)
-    # actions = train_data_tree.actions - data_agent_pos[:, None, :]
-    # train_data = PyTreeData(Sample(train_data_tree.state, train_data_tree.observations, actions))
     
     train_sample = train_data[0]
     normalizer = StdNormalizer.from_data(train_data)
