@@ -81,7 +81,10 @@ def load_robomimic_dataset(task, dataset_type, max_trajectories=None, quiet=Fals
     return _load_robomimic_hdf5(hdf5_path, max_trajectories)
 
 ENV_MAP = {
-    "PickPlaceCan": "can"
+    "PickPlaceCan": "pickplace/can",
+    "PickPlaceMilk": "pickplace/milk",
+    "PickPlaceBread": "pickplace/bread",
+    "PickPlaceCereal": "pickplace/cereal",
 }
 
 def _load_robomimic_hdf5(hdf5_path, max_trajectories=None):

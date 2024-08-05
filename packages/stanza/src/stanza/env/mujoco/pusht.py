@@ -102,10 +102,10 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
         ))
     
     @jax.jit
-    def observe(self, state, config : ObserveConfig = None):
+    def observe(self, state, config : ObserveConfig | None = None):
         if config is None: config = PushTObs()
         if isinstance(config, PushTObs):
-            data = self.simulator.data(state)
+            data = self.simulator.system_data(state)
             return PushTObs(
                 # Extract agent pos, vel
                 agent_pos=data.xpos[1,:2],
@@ -170,7 +170,7 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
     def render(self, state : SimulatorState, config : RenderConfig | None = None): 
         config = config or ImageRender(width=256, height=256)
         if isinstance(config, ImageRender):
-            data = self.simulator.data(state)
+            data = self.simulator.system_data(state)
             image = jnp.ones((config.height, config.width, 3))
             target = render_2d(
                 self.model, data, 

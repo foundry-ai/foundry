@@ -51,7 +51,7 @@ class Simulator(abc.ABC, Generic[SimulatorState]):
             action : Action, rng_key : jax.Array) -> SimulatorState: ...
 
     @abc.abstractmethod
-    def data(self, state: SimulatorState) -> SystemData: ...
+    def system_data(self, state: SimulatorState) -> SystemData: ...
 
     @abc.abstractmethod
     def reduce_state(self, state: SimulatorState) -> SystemState: ...
@@ -117,13 +117,13 @@ class MujocoEnvironment(Environment[SimulatorState, SystemState, Action], Generi
     def render(self, state: SimulatorState, config: RenderConfig | None = None) -> jax.Array:
         config = config or ImageRender(width=256, height=256)
         if isinstance(config, ImageRender):
-            data = self.simulator.data(state)
+            state = self.simulator.reduce_state(state)
             camera = config.camera if config.camera is not None else -1
             return self.native_simulator.render(
-                data, config.width, config.height, (), camera
+                state, config.width, config.height, (), camera
             )
         elif isinstance(config, HtmlRender):
-            data = self.simulator.data(state) # type: SystemData
+            data = self.simulator.system_data(state) # type: SystemData
             if data.qpos.ndim == 1:
                 data = jax.tree_map(lambda x: jnp.expand_dims(x, 0), data)
         else:
@@ -139,9 +139,8 @@ class MujocoEnvironment(Environment[SimulatorState, SystemState, Action], Generi
         elif backend == "mjx":
             from .backends.mjx import MjxSimulator
             return MjxSimulator(model)
-        elif backend == "brax":
-            from .backends.brax import BraxSimulator
-            return BraxSimulator(model)
+        else:
+            raise ValueError(f"Unsupported simulator backend {backend}")
 
 # Utilities
 

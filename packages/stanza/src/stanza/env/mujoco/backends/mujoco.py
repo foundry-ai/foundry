@@ -61,10 +61,10 @@ class MujocoSimulator(Simulator[SystemData]):
             max_workers=threads, 
             initializer=initializer
         )
-    
+
     @property
     def qpos0(self) -> jax.Array:
-        return jnp.copy(self.model.qpos0)
+        return jnp.zeros_like(self.data_structure.qpos)
 
     @property
     def qvel0(self) -> jax.Array:
@@ -108,24 +108,7 @@ class MujocoSimulator(Simulator[SystemData]):
             data = self.pool.submit(self._step_job, step).result()
             return data
         else:
-            batch_shape = step.qpos.shape[:-1]
-            batch_size = np.prod(batch_shape)
-            step = jax.tree.map(
-                lambda x: jnp.reshape(x, (batch_size,) + x.shape[len(batch_shape):]),
-                step
-            )
-            # split the step batch into a list
-            steps = [jax.tree.map(lambda x: x[i], step) for i in range(step.qpos.shape[0])]
-            # submit to the thread pool
-            data = self.pool.map(self._step_job, steps)
-            # stack the results and return
-            data = jax.tree.map(lambda *x: jnp.stack(x), *data)
-            # reshape the data back to the original shape
-            data = jax.tree.map(
-                lambda x: jnp.reshape(x, batch_shape + x.shape[1:]),
-                data
-            )
-            return data
+            assert False
 
     def step(self, state: MujocoState,
                    action : jax.Array, rng_key: jax.Array) -> SystemData:
@@ -142,7 +125,7 @@ class MujocoSimulator(Simulator[SystemData]):
                 state.data.time, state.data.qpos, state.data.qvel, 
                 state.data.act, action, state.qacc_warmstart
             ),
-            vectorized=True
+            vectorized=False
         )
 
     def _forward_job(self, step: MujocoStep) -> MujocoState:
@@ -174,24 +157,15 @@ class MujocoSimulator(Simulator[SystemData]):
 
     # (on host) calls forward
     def _forward(self, step: MujocoStep) -> MujocoState:
-        if step.qpos.ndim == 1:
+        # regularize the batch shapes
+        if step.qpos.ndim == 1: # if unvectorized
             data = self.pool.submit(self._forward_job, step).result()
             return data
         else:
-            batch_shape = step.qpos.shape[:-1]
-            batch_size = np.prod(batch_shape)
-            step = jax.tree.map(
-                lambda x: jnp.reshape(x, (batch_size,) + x.shape[len(batch_shape):]),
-                step
-            )
-            steps = [jax.tree.map(lambda x: x[i], step) for i in range(step.qpos.shape[0])]
-            data = self.pool.map(self._forward_job, steps)
-            data = jax.tree.map(lambda *x: jnp.stack(x, axis=0), *data)
-            data = jax.tree.map(
-                lambda x: jnp.reshape(x, batch_shape +  x.shape[1:]),
-                data
-            )
-            return data
+            assert False
+            # TODO: handle the vectorized case...
+            # This is complicated as only certain
+            # inputs may be vectorized
 
     def full_state(self, state: SystemState) -> MujocoState:
         assert state.time.ndim == 0
@@ -205,16 +179,15 @@ class MujocoSimulator(Simulator[SystemData]):
                                     self.data_structure.qvel.dtype)
         )
         return jax.pure_callback(self._forward, 
-            structure, step, vectorized=True)
+            structure, step, vectorized=False)
 
     def reduce_state(self, state: MujocoState) -> SystemState:
         return SystemState(
             state.data.time, state.data.qpos, state.data.qvel, state.data.act
         )
 
-    def data(self, state: MujocoState) -> SystemData:
+    def system_data(self, state: MujocoState) -> SystemData:
         return state.data
-    
 
     # render a given SystemData using
     # the opengl-based mujoco rendering engine
@@ -222,7 +195,7 @@ class MujocoSimulator(Simulator[SystemData]):
     def _render_job(self, width : int, height: int,
                     geom_groups : Sequence[bool],
                     camera : int | str,
-                    data: SystemData) -> jax.Array:
+                    state: SystemState) -> jax.Array:
         # get the thread-local MjData object
         # copy over the jax arrays
         renderer = self.local_data.renderer
@@ -231,51 +204,34 @@ class MujocoSimulator(Simulator[SystemData]):
                 self.model, self.buffer_height, self.buffer_width
             )
             self.local_data.renderer = renderer
-        data = self.local_data.data
-        data.time = 0
-        data.qpos[:] = data.qpos
-        data.qvel[:] = data.qvel
-        data.act[:] = data.act
-        data.qacc[:] = data.qacc
-        data.act_dot[:] = data.act_dot
-        data.xpos[:] = data.xpos
-        data.xquat[:] = data.xquat
-        data.actuator_velocity[:] = data.actuator_velocity
-        data.cvel[:] = data.cvel
-
+        ldata = self.local_data.data
+        ldata.time = 0
+        ldata.qpos[:] = state.qpos
+        ldata.qvel[:] = state.qvel
+        mujoco.mj_forward(self.model, ldata)
         vopt = mujoco.MjvOption()
         # disable rendering of collision geoms
         for i, g in enumerate(geom_groups):
             vopt.geomgroup[i] = 1 if g else 0
         arr = np.empty((self.buffer_height, self.buffer_width, 3), dtype=np.uint8)
-        renderer.update_scene(data, camera, vopt)
+        renderer.update_scene(ldata, camera, vopt)
         renderer.render(out=arr)
         return jnp.array(arr)
 
-    def _render(self, width, height, geom_groups, camera, data: SystemData) -> jax.Array:
+    def _render(self, width, height, geom_groups, camera, state: SystemState) -> jax.Array:
         job = partial(self._render_job, width, height, geom_groups, camera)
-        if data.qpos.ndim == 1:
-            data = self.pool.submit(job, data).result()
+        if state.qpos.ndim == 1:
+            data = self.pool.submit(job, state).result()
             return data
         else:
-            batch_shape = data.qpos.shape[:-1]
-            batch_size = np.prod(batch_shape)
-            data = jax.tree.map(
-                lambda x: jnp.reshape(x, (batch_size,) + x.shape[len(batch_shape):]),
-                data
-            )
-            datas = [jax.tree.map(lambda x: x[i], data) for i in range(data.qpos.shape[0])]
-            res = self.pool.map(job, datas)
-            res = jax.tree.map(lambda *x: jnp.stack(x, axis=0), *res)
-            res = jax.tree.map(lambda x: jnp.reshape(x, batch_shape +  x.shape[1:]), res)
-            return data
+            assert False
 
-    def render(self, data: SystemData, width: int, height: int, geom_groups: Sequence[bool], camera: int | str = -1) -> jax.Array:
-        assert data.time.ndim == 0
+    def render(self, state: SystemState, width: int, height: int, geom_groups: Sequence[bool], camera: int | str = -1) -> jax.Array:
+        assert state.time.ndim == 0
         buffer = jax.pure_callback(
             partial(self._render, width, height, geom_groups, camera),
             jax.ShapeDtypeStruct((self.buffer_height, self.buffer_width, 3), jnp.uint8),
-            data, vectorized=True
+            state, vectorized=False
         )
         buffer = buffer.astype(jnp.float32) / 255.0
         buffer = jax.image.resize(buffer, (height, width,3), method="linear")

@@ -17,15 +17,15 @@ class MjxSimulator(Simulator[mjx.Data]):
 
     @property
     def qpos0(self) -> jax.Array:
-        return jnp.copy(self.model.qpos0)
+        return jnp.zeros_like(self.model.qpos0)
 
     @property
     def qvel0(self) -> jax.Array:
-        return jnp.zeros_like(self.data_structure.qvel)
+        return jnp.zeros_like(self.model.qvel0)
 
     @property
     def act0(self) -> jax.Array:
-        return jnp.zeros_like(self.data_structure.act)
+        return jnp.zeros_like(self.model.act0)
 
     @jax.jit
     def step(self, state, action, rng_key):
@@ -61,8 +61,8 @@ class MjxSimulator(Simulator[mjx.Data]):
             qvel=state.qvel,
             act=state.act
         )
-    
-    def data(self, state: mjx.Data) -> SystemData:
+
+    def system_data(self, state: mjx.Data) -> SystemData:
         return SystemData(
             time=state.time,
             qpos=state.qpos,
