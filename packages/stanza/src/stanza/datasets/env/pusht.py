@@ -20,15 +20,17 @@ class PushTDataset(EnvDataset[Step]):
             PushTEnv,
             PositionalControlTransform,
             PositionalObsTransform,
+            KeypointObsTransform,
             RelKeypointObsTransform
         )
         from stanza.env.transforms import ChainedTransform, MultiStepTransform
         env = PushTEnv()
         env = ChainedTransform([
             PositionalControlTransform(),
-            # PositionalObsTransform()
             MultiStepTransform(10),
-            RelKeypointObsTransform()
+            #PositionalObsTransform()
+            KeypointObsTransform()
+            #RelKeypointObsTransform()
         ]).apply(env)
         return env
 

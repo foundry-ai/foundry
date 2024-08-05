@@ -80,4 +80,4 @@ def estimator_diffusion_policy(
     policy = ChunkingTransform(
         obs_length, config.action_horizon
     ).apply(chunk_policy)
-    return policy, chunk_policy
+    return policy
