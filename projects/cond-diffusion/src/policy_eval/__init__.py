@@ -52,15 +52,15 @@ class Config:
     obs_length: int = 2
     action_length: int = 16
     policy: PolicyConfig = None
-    timesteps: int = 100
-    train_data_size: int = 10
+    timesteps: int = 400
+    train_data_size: int = 150
+    render_traj: bool = False
 
     @staticmethod
     def parse(config: ConfigProvider) -> "Config":
         defaults = Config()
 
-        from . import diffusion_policy
-        from . import diffusion_estimator
+        from . import diffusion_policy, diffusion_estimator, nearest_neighbor, behavior_cloning
         
         # Check for a default policy override
         policy = config.get("policy", str, default=None)
@@ -68,6 +68,10 @@ class Config:
             defaults = replace(defaults, policy=diffusion_policy.DiffusionPolicyConfig())
         elif policy == "diffusion_estimator":
             defaults = replace(defaults, policy=diffusion_estimator.DiffusionEstimatorConfig())
+        elif policy == "nearest_neighbor":
+            defaults = replace(defaults, policy=nearest_neighbor.NNConfig())
+        elif policy == "behavior_cloning":
+            defaults = replace(defaults, policy=behavior_cloning.BCConfig())
         else:
             defaults = replace(defaults, policy=diffusion_estimator.DiffusionEstimatorConfig())
         return config.get_dataclass(defaults)
@@ -98,7 +102,7 @@ def process_data(config, env, data):
         )
     return data.map(process_chunk)
 
-def eval(env, policy, T, x0, rng_key):
+def eval(config, env, policy, T, x0, rng_key):
     r = stanza.policy.rollout(
         env.step, x0, 
         policy, observe=env.observe,
@@ -114,38 +118,40 @@ def eval(env, policy, T, x0, rng_key):
     rewards = jax.vmap(env.reward)(pre_states, actions, post_states)
 
     # render predicted action trajectories
+    if config.render_traj:
+        def draw_action_chunk(action_chunk, img_config):
+            T = action_chunk.shape[0]
+            colors = jnp.array((jnp.arange(T)/T, jnp.zeros(T), jnp.zeros(T))).T
+            circles = canvas.fill(
+                canvas.circle(action_chunk, 0.02*jnp.ones(T)),
+                color=colors
+            )
+            circles = canvas.stack_batch(circles)
+            circles = canvas.transform(circles,
+                translation=(1,-1),
+                scale=(img_config.width/2, -img_config.height/2)
+            )
+            return circles
 
-    # def draw_action_chunk(action_chunk, img_config):
-    #     T = action_chunk.shape[0]
-    #     colors = jnp.array((jnp.arange(T)/T, jnp.zeros(T), jnp.zeros(T))).T
-    #     circles = canvas.fill(
-    #         canvas.circle(action_chunk, 0.02*jnp.ones(T)),
-    #         color=colors
-    #     )
-    #     circles = canvas.stack_batch(circles)
-    #     circles = canvas.transform(circles,
-    #         translation=(1,-1),
-    #         scale=(img_config.width/2, -img_config.height/2)
-    #     )
-    #     return circles
+        def render_frame(state, action_chunk, img_config):
+            image = env.render(state, img_config)
+            circles = canvas.stack_batch(jax.vmap(draw_action_chunk, in_axes=(0,None))(action_chunk, img_config))
+            image = canvas.paint(image, circles)
+            return image
+        
+        video = jax.vmap(
+            lambda state, action_chunk: render_frame(state, action_chunk[None], ImageRender(256, 256))        
+        )(r.states, r.info)
 
-    # def render_frame(state, action_chunk, img_config):
-    #     image = env.render(state, img_config)
-    #     circles = canvas.stack_batch(jax.vmap(draw_action_chunk, in_axes=(0,None))(action_chunk, img_config))
-    #     image = canvas.paint(image, circles)
-    #     return image
-    
-    # video = jax.vmap(
-    #     lambda state, action_chunk: render_frame(state, action_chunk[None], ImageRender(256, 256))        
-    # )(r.states, r.info)
+    else:
+        video = jax.vmap(
+            lambda x: env.render(x, ImageRender(64, 64))
+        )(r.states)
 
-    video = jax.vmap(
-        lambda x: env.render(x, ImageRender(64, 64))
-    )(r.states)
     return jnp.max(rewards, axis=-1), (255*video).astype(jnp.uint8)
 
 
-def evaluate(env, x0s, T, policy, rng_key):
+def evaluate(config, env, x0s, T, policy, rng_key):
     N = stanza.util.axis_size(x0s, 0)
 
     # shard the x0s
@@ -156,7 +162,7 @@ def evaluate(env, x0s, T, policy, rng_key):
     #     lambda x: jax.lax.with_sharding_constraint(x, sharding.reshape((jax.device_count(),) + (1,)*(x.ndim-1))),
     #     x0s
     # )
-    rewards, videos = jax.vmap(partial(eval, env, policy, T))(
+    rewards, videos = jax.vmap(partial(eval, config, env, policy, T))(
         x0s,
         jax.random.split(rng_key, N)
     )
@@ -206,7 +212,7 @@ def main(config : Config):
     logger.info(f"Performing final evaluation...")
 
     #output = jax.jit(partial(eval,policy))(jax.random.key(42))
-    output = evaluate(env, test_x0s, config.timesteps, policy, jax.random.key(42))
+    output = evaluate(config, env, test_x0s, config.timesteps, policy, jax.random.key(42))
     # get the metrics and final reportables
     # from the eval output
     metrics, reportables = stanza.train.reporting.as_log_dict(output)

@@ -75,7 +75,7 @@ def estimator_diffusion_policy(
             agent_pos = env.get_action(input.state)
             action = action + agent_pos
         action = action[:config.action_horizon]
-        return PolicyOutput(action=action)
+        return PolicyOutput(action=action, info=action)
     policy = ChunkingTransform(
         obs_length, config.action_horizon
     ).apply(chunk_policy)

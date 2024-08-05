@@ -16,9 +16,9 @@ from stanza.env.transforms import (
     EnvTransform, ChainedTransform,
     MultiStepTransform
 )
-from stanza.env.mujoco import (
+from stanza.env.mujoco.core import (
     MujocoEnvironment,
-    SystemState, SimulatorState
+    SystemState, SimulatorState, Action
 )
 
 from functools import partial
@@ -129,7 +129,7 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
     def observe(self, state, config : ObserveConfig = None):
         if config is None: config = PickPlaceObs()
         if isinstance(config, PickPlaceObs):
-            data = self.simulator.data(state)
+            data = self.simulator.system_data(state)
             eef_id = self.model.body("gripper0_eef").id
             return PickPlaceObs(
                 eef_pos=data.xpos[eef_id, :],
@@ -149,6 +149,13 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
     def get_action(self, state):
         #return self.observe(state).eef_pos
         return jnp.zeros(self.model.nu)
+    
+    @jax.jit
+    def reward(self, state : SimulatorState, 
+                action : Action, 
+                next_state : SimulatorState):
+        #TODO
+        return 0
         
 @dataclass
 class PickPlaceObs:
