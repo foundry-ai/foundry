@@ -41,7 +41,7 @@ class RobosuiteEnv(MujocoEnvironment[SimulatorState]):
         return {}
 
     @jax_static_property
-    def model_initializers(self) -> tuple[mujoco.MjModel, Sequence[RobotInitializer], ObjectInitializer]:
+    def _model_initializers(self) -> tuple[mujoco.MjModel, Sequence[RobotInitializer], ObjectInitializer]:
         _setup_macros()
         import robosuite as suite
         env = suite.make(
@@ -62,10 +62,10 @@ class RobosuiteEnv(MujocoEnvironment[SimulatorState]):
     
     @property
     def model(self):
-        return self.model_initializers[0]
+        return self._model_initializers[0]
 
     @jax.jit
-    def reset(self, rng_key : jax.Array) -> SimulatorState:
+    def _reset_internal(self, rng_key : jax.Array) -> SystemState:
         state = SystemState(
             time=jnp.zeros((), jnp.float32),
             qpos=self.simulator.qpos0,
@@ -73,14 +73,18 @@ class RobosuiteEnv(MujocoEnvironment[SimulatorState]):
             act=self.simulator.act0
         )
         # get the model, robot initializers, and object initializers
-        model, robots, initializer = self.model_initializers
+        model, robots, initializer = self._model_initializers
         keys = jax.random.split(rng_key, len(robots) + 1)
         r_keys, i_key = keys[:-1], keys[-1]
         for rk, r in zip(r_keys, robots):
             state = r.reset(rk, state)
         placements = initializer.generate(i_key)
         state = ObjectInitializer.update_state(model, state, placements.values())
-
+        return state
+    
+    @jax.jit
+    def reset(self, rng_key: jax.Array) -> SimulatorState:
+        state = self._reset_internal(rng_key)
         return self.full_state(state)
 
     # use the "frontview" camera for rendering
@@ -98,6 +102,13 @@ class RobosuiteEnv(MujocoEnvironment[SimulatorState]):
                 state, config.width, config.height, (False, True), camera
             )
         return super().render(config, state)
+
+_OBJECT_JOINT_MAP = {
+    "can": "Can_joint0",
+    "milk": "Milk_joint0",
+    "bread": "Bread_joint0",
+    "cereal": "Cereal_joint0"
+}
 
 @dataclass(kw_only=True)
 class PickAndPlace(RobosuiteEnv[SimulatorState]):
@@ -120,6 +131,33 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
         else:
             return {"single_object_mode": 0}
 
+    def _reset_internal(self, rng_key : jax.Array) -> SystemState:
+        # randomly select one of the nuts to remove
+        def remove_objects(state, names):
+            qpos = state.qpos
+            for n in names:
+                qpos = _set_joint_qpos(self.model, _OBJECT_JOINT_MAP[n],
+                    qpos, jnp.array([0, 0, 0, 1, 0, 0, 0])
+                )
+            return replace(state, qpos=qpos)
+
+        if self.num_objects == 1 and len(self.objects) > 1:
+            # randomly select objects to remove
+            objects = list(self.objects)
+            rng_key, sk = jax.random.split(rng_key)
+            state = super()._reset_internal(rng_key)
+            branches = [partial(remove_objects, names=[o for o in objects if o != obj]) for obj in objects]
+            state = jax.lax.switch(jax.random.randint(sk, (), 0, len(self.objects)), branches, state)
+            return state
+        elif self.num_objects == 1 and len(self.objects) == 1:
+            state = super()._reset_internal(rng_key)
+            if self.objects[0] == "can": state = remove_objects(state, ("milk", "bread", "cereal"))
+            elif self.objects[0] == "milk": state = remove_objects(state, ("can", "bread", "cereal"))
+            elif self.objects[0] == "bread": state = remove_objects(state, ("can", "milk", "cereal"))
+            elif self.objects[0] == "cereal": state = remove_objects(state, ("can", "milk", "bread"))
+            return state
+        else:
+            return super()._reset_internal(rng_key)
 
     # For pick and place, use camera 1 by default
     def render(self, state, config = None):
@@ -214,11 +252,60 @@ class PositionalObsEnv(EnvWrapper):
         #return self.observe(state).eef_pos
         return jnp.zeros(self.model.nu)
 
+_NUT_JOINT_MAP = {
+    "round": "RoundNut_joint0",
+    "square": "SquareNut_joint0"
+}
+
 @dataclass(kw_only=True)
 class NutAssembly(RobosuiteEnv[SimulatorState]):
+    num_objects: int = field(default=2, pytree_node=False)
+    # the type of the nut
+    objects: Sequence[str] = field(
+        default=("round","square"),
+        pytree_node=False
+    )
+
     @property
     def env_name(self):
         return "NutAssembly"
+
+    @property
+    def _env_args(self):
+        if self.num_objects == 1 and len(self.objects) == 1:
+            return {"single_object_mode": 2, "nut_type": self.objects[0]}
+        elif self.num_objects == 1:
+            return {"single_object_mode": 1}
+        elif self.num_objects == 2:
+            return {}
+        else:
+            raise ValueError(f"Unsupported number of objects {self.num_objects}")
+    
+    def _reset_internal(self, rng_key : jax.Array) -> SystemState:
+        # randomly select one of the nuts to remove
+        def remove_nuts(state, names):
+            qpos = state.qpos
+            for n in names:
+                qpos = _set_joint_qpos(self.model, _NUT_JOINT_MAP[n],
+                    qpos, jnp.array([10, 10, 10, 1, 0, 0, 0])
+                )
+            return replace(state, qpos=qpos)
+
+        if self.num_objects == 1 and len(self.objects) > 1:
+            # randomly select a nut to remove
+            objects = list(self.objects)
+            rng_key, sk = jax.random.split(rng_key)
+            state = super()._reset_internal(rng_key)
+            branches = [partial(remove_nuts, names=[o for o in objects if o != obj]) for obj in objects]
+            state = jax.lax.switch(jax.random.randint(sk, (), 0, len(objects)),
+                branches, state)
+        elif self.num_objects == 1 and len(self.objects) == 1:
+            state = super()._reset_internal(rng_key)
+            if self.objects[0] == "round": state = remove_nuts(state, ("square",))
+            elif self.objects[0] == "square": state = remove_nuts(state, ("round",))
+        else:
+            state = super()._reset_internal(rng_key)
+        return state
 
 @dataclass(kw_only=True)
 class DoorOpen(RobosuiteEnv[SimulatorState]):
@@ -227,8 +314,13 @@ class DoorOpen(RobosuiteEnv[SimulatorState]):
         return "DoorOpen"
 
 environments = EnvironmentRegistry[RobosuiteEnv]()
+
+# Pick and place environments
 environments.register("pickplace", partial(PickAndPlace, 
     num_objects=4, objects=("can","milk", "bread", "cereal"), robots=("panda",)
+))
+environments.register("pickplace/random", partial(PickAndPlace, 
+    num_objects=1, objects=("can","milk", "bread", "cereal"), robots=("panda",)
 ))
 environments.register("pickplace/can", partial(PickAndPlace, 
     num_objects=1, objects=("can",), robots=("panda",)
@@ -243,8 +335,18 @@ environments.register("pickplace/cereal", partial(PickAndPlace,
     num_objects=1, objects=("cereal",), robots=("panda",)
 ))
 
+# Nut assembly environments
 environments.register("nutassembly", partial(NutAssembly,
     robots=("panda",)
+))
+environments.register("nutassembly/random", partial(NutAssembly,
+    num_objects=1, robots=("panda",)
+))
+environments.register("nutassembly/square", partial(NutAssembly,
+    num_objects=1, objects=("square",), robots=("panda",)
+))
+environments.register("nutassembly/round", partial(NutAssembly,
+    num_objects=1, objects=("round",), robots=("panda",)
 ))
 
 # Convert robosuite object/robot 
@@ -264,19 +366,30 @@ class ObjectPlacement:
 class RobotInitializer:
     init_qpos: jax.Array
     joint_indices: np.ndarray = field(pytree_node=False)
+    noiser: Callable[[jax.Array, jax.Array], jax.Array] | None = None
 
     def reset(self, rng_key : jax.Array | None, state: SystemState) -> SystemState:
         robot_qpos = self.init_qpos
-        if rng_key is not None:
-            pass
+        if rng_key is not None and self.noiser is not None:
+            robot_qpos = self.noiser(rng_key, robot_qpos)
         qpos = state.qpos.at[self.joint_indices].set(robot_qpos)
         return replace(state, qpos=qpos)
 
     @staticmethod
-    def from_robosuite(robot: Any) -> "RobotInitializer":
+    def from_robosuite(robot: Any, randomized : bool = True) -> "RobotInitializer":
+        noiser = None
+        if robot.initialization_noise["type"] == "gaussian":
+            def noiser(rng_key, qpos):
+                m = robot.initialization_noise["magnitude"]
+                return qpos + m * jax.random.normal(rng_key, qpos.shape)
+        elif robot.initialization_noise["type"] == "uniform":
+            def noiser(rng_key, qpos):
+                m = robot.initialization_noise["magnitude"]
+                return qpos + m * jax.random.uniform(rng_key, qpos.shape, minval=-1, maxval=1)
         return RobotInitializer(
             robot.init_qpos,
-            np.array(robot._ref_joint_pos_indexes)
+            np.array(robot._ref_joint_pos_indexes),
+            noiser if randomized else None
         )
 
 @dataclass
@@ -310,8 +423,8 @@ class ObjectInitializer:
         )
         samplers = []
         if isinstance(sampler, SequentialCompositeSampler):
-            for (s, sa) in zip(sampler.samplers.values(), sampler.sample_args):
-                initializer = ObjectInitializer.from_robosuite(s, sa)
+            for s in sampler.samplers.values():
+                initializer = ObjectInitializer.from_robosuite(s, sampler.sample_args)
                 samplers.extend(initializer.object_samplers)
         else:
             object_info = list(
@@ -338,16 +451,21 @@ class ObjectInitializer:
                 min_pos = min_pos + reference_pos[:2]
                 max_pos = max_pos + reference_pos[:2]
                 z_offset = z_offset + reference_pos[2]
+                on_top = sample_args.get("on_top", True) if sample_args else True
 
                 def uniform_sampler(rng_key: jax.Array, fixtures: dict[str, ObjectPlacement]) -> dict[str, ObjectPlacement]:
                     placements = {}
                     keys = jax.random.split(rng_key, len(object_info))
-                    for rk, (name, joint_names, horz_radius, bot_off, top_off) in zip(keys, object_info):
-                        xy_k, a_k = jax.random.split(rk)
-                        xy_pos = jax.random.uniform(xy_k, (2,), 
-                            minval=min_pos, maxval=max_pos
-                        )
+                    for rk, (name, joint_names, horiz_radius, bot_off, top_off) in zip(keys, object_info):
                         z_pos = z_offset[None]
+                        if on_top: z_pos = z_pos - (bot_off[-1])[None]
+
+                        def sampler(sk):
+                            return jax.random.uniform(sk, (2,), 
+                                minval=min_pos + horiz_radius, maxval=max_pos - horiz_radius
+                            )
+                        xy_k, a_k = jax.random.split(rk)
+                        xy_pos = _loop_sample(placements, horiz_radius, top_off, bot_off, z_pos, xy_k, sampler)
                         pos = jnp.concatenate((xy_pos, z_pos))
                         rot = jax.random.uniform(a_k, (), minval=rot_range[0], maxval=rot_range[1]) \
                             if rot_range is not None else rotation
@@ -356,7 +474,7 @@ class ObjectInitializer:
                             pos=pos,
                             quat=quat,
                             joint_names=joint_names,
-                            object_horiz_radius=horz_radius,
+                            object_horiz_radius=horiz_radius,
                             object_bottom_offset=bot_off,
                             object_top_offset=top_off
                         )
@@ -366,6 +484,32 @@ class ObjectInitializer:
             else:
                 raise ValueError(f"Unsupported sampler type {sampler}")
         return ObjectInitializer(samplers)
+
+def _loop_sample(placements, horiz_radius, 
+            top_offset, bot_offset, z, rng_key, sample_fn):
+    if not placements:
+        return sample_fn(rng_key)
+    # stack the positions of the objects that have been placed already
+    o_xy_pos = jnp.stack(list(p.pos[:2] for p in placements.values()))
+    o_z_pos = jnp.array(list(p.pos[2] for p in placements.values()))
+    o_horiz_radius = jnp.array(list(p.object_horiz_radius for p in placements.values()))
+    o_top_offset = jnp.array(list(p.object_top_offset[-1] for p in placements.values()))
+
+    def sample_pos(loop_state):
+        i, r, _ = loop_state
+        sk, r = jax.random.split(r)
+        return i + 1, r, sample_fn(sk)
+    def is_invalid(loop_state):
+        i, _, xy_pos = loop_state
+        too_close = jnp.sum(jnp.square(xy_pos - o_xy_pos), axis=-1) <= (horiz_radius + o_horiz_radius) ** 2
+        underneath = o_z_pos - z <= o_top_offset - bot_offset[-1]
+        return jnp.logical_and(i < 64, jnp.any(jnp.logical_and(too_close, underneath)))
+    loop_state = sample_pos((
+        jnp.zeros((), jnp.uint32), 
+        rng_key, jnp.zeros((2,), jnp.float32)
+    ))
+    _, _, xy_pos = jax.lax.while_loop(is_invalid, sample_pos, loop_state)
+    return xy_pos
 
 # random utilities
 def _set_joint_qpos(model, joint_name, qpos, joint_val):

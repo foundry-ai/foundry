@@ -13,6 +13,8 @@ from stanza.data.sequence import (
 from stanza.env.mujoco import SystemState
 from stanza.dataclasses import dataclass
 
+import stanza.util.serialize
+
 from . import EnvDataset
 from .. import DatasetRegistry
 from ..util import download, cache_path
@@ -64,27 +66,55 @@ def load_robomimic_dataset(task, dataset_type, max_trajectories=None, quiet=Fals
     job_name = f"robomimic_{task}_{dataset_type}.hdf5"
     hdf5_path = cache_path("robomimic", job_name)
     if dataset_type == "ph": # proficient human
-        url = f"http://downloads.cs.stanford.edu/downloads/rt_benchmark/{task}/ph/low_dim_v141.hdf5"
+        url = f"http://downloads.cs.stanford.edu/downloads/rt_benchmark/{name}/ph/low_dim_v141.hdf5"
     elif dataset_type == "mh": # multi human
-        url = f"http://downloads.cs.stanford.edu/downloads/rt_benchmark/{task}/mh/low_dim_v141.hdf5"
+        url = f"http://downloads.cs.stanford.edu/downloads/rt_benchmark/{name}/mh/low_dim_v141.hdf5"
     elif dataset_type == "mg": # machine generated
-        url = f"http://downloads.cs.stanford.edu/downloads/rt_benchmark/{task}/mg/low_dim_dense_v141.hdf5"
+        url = f"http://downloads.cs.stanford.edu/downloads/rt_benchmark/{name}/mg/low_dim_dense_v141.hdf5"
     elif dataset_type == "paired": # paired
-        url = "http://downloads.cs.stanford.edu/downloads/rt_benchmark/can/paired/low_dim_v141.hdf5"
+        url = f"http://downloads.cs.stanford.edu/downloads/rt_benchmark/{name}/paired/low_dim_v141.hdf5"
     else:
         raise ValueError(f"Unknown dataset type: {dataset_type}")
-    download(hdf5_path,
-        job_name=job_name,
-        url=url,
-        quiet=quiet
-    )
-    return _load_robomimic_hdf5(hdf5_path, max_trajectories)
+
+
+def load_robomimic_dataset(name, dataset_type, max_trajectories=None, quiet=False):
+    """
+    Load a RoboMimic dataset for a given task and dataset type.
+
+    Args:
+        name (str): name of task
+        dataset_type (str): type of dataset
+        max_trajectories (int): maximum number of trajectories to load
+        quiet (bool): whether to suppress download progress
+    
+    Returns:
+        env_name (str): name of environment
+        data (SequenceData): sequence data containing states and actions for all trajectories
+    """
+
+    zarr_name = f"robomimic_{name}_{dataset_type}.zarr"
+    zarr_path = cache_path("robomimic", zarr_name)
+    if not zarr_path.exists():
+        job_name = f"robomimic_{name}_{dataset_type}.hdf5"
+        hdf5_path = cache_path("robomimic", job_name)
+        download(hdf5_path,
+            job_name=job_name,
+            url=make_url(name, dataset_type),
+            quiet=quiet
+        )
+        env_name, data = _load_robomimic_hdf5(hdf5_path, max_trajectories)
+        stanza.util.serialize.save_zarr(zarr_path, 
+            tree=data, meta=env_name
+        )
+    return stanza.util.serialize.load_zarr(zarr_path)
 
 ENV_MAP = {
     "PickPlaceCan": "pickplace/can",
     "PickPlaceMilk": "pickplace/milk",
     "PickPlaceBread": "pickplace/bread",
     "PickPlaceCereal": "pickplace/cereal",
+    "NutAssemblySquare": "nutassembly/square",
+    "NutAssemblyRound": "nutassembly/round"
 }
 
 def _load_robomimic_hdf5(hdf5_path, max_trajectories=None):
@@ -146,13 +176,13 @@ def _load_robomimic_hdf5(hdf5_path, max_trajectories=None):
             observation=None,
             action=actions
         )
-        return env_meta, SequenceData(PyTreeData(steps), PyTreeData(infos))
+        return ENV_MAP[env_meta["env_name"]], SequenceData(PyTreeData(steps), PyTreeData(infos))
     
-def load_robomimic(*, task=None, dataset_type=None, quiet=False, **kwargs):
-    if task is None or dataset_type is None:
+def load_robomimic(*, name=None, dataset_type=None, quiet=False, **kwargs):
+    if name is None or dataset_type is None:
         raise ValueError("Must specify a task, dataset_type to load robomimic dataset.")
-    env_meta, data = load_robomimic_dataset(
-        task=task, dataset_type=dataset_type, quiet=quiet
+    env_name, data = load_robomimic_dataset(
+        name=name, dataset_type=dataset_type, quiet=quiet
     )
     train = data.slice(0, len(data) - 16)
     test = data.slice(len(data) - 16, 16)
@@ -162,4 +192,17 @@ def load_robomimic(*, task=None, dataset_type=None, quiet=False, **kwargs):
     )
 
 datasets = DatasetRegistry[RobomimicDataset]()
-datasets.register("can/ph", partial(load_robomimic,task="can",dataset_type="ph"))
+for dataset_type in ["ph", "mh", "mg"]:
+    for task in ["pickplace", "nutassembly"]:
+        if task == "pickplace":
+            for obj in ["can", "milk", "bread", "cereal"]:
+                name = obj
+                datasets.register(f"{task}/{obj}/{dataset_type}", 
+                    partial(load_robomimic,name=name, dataset_type=dataset_type)
+                )
+        elif task == "nutassembly":
+            for obj in ["square", "round"]:
+                name = obj
+                datasets.register(f"{task}/{obj}/{dataset_type}", 
+                    partial(load_robomimic,name=name, dataset_type=dataset_type)
+                )

@@ -192,11 +192,12 @@ class DemonstrationCollector:
             self.collect_task.cancel()
         self.collect_task = None
         self.collect_button.description = 'Collect (c)'
-        if self.curr_demonstration is not None and len(self.curr_demonstration) > 0:
-            steps = jax.tree.map(lambda *xs: jnp.stack(xs), *self.curr_demonstration)
-            self.demonstrations = self.demonstrations.append(
-                SequenceData.from_trajectory(PyTreeData(steps))
-            )
+        if self.curr_demonstration is not None:
+            if len(self.curr_demonstration) > 0:
+                steps = jax.tree.map(lambda *xs: jnp.stack(xs), *self.curr_demonstration)
+                self.demonstrations = self.demonstrations.append(
+                    SequenceData.from_trajectory(PyTreeData(steps))
+                )
             self.curr_demonstration = None
             self.curr_state = None
             self._demo_changed()
