@@ -26,45 +26,10 @@ class RobomimicDataset(EnvDataset[Step]):
     env_name: str = None
 
     def create_env(self):
-
         from stanza.env.mujoco.robosuite import environments
-        env = environments.create(self.env_name)
-    
-        from stanza.env.mujoco.robosuite import (
-            PositionalControlTransform, PositionalObsTransform
-        )
-        from stanza.env.transforms import ChainedTransform, MultiStepTransform
-        env = ChainedTransform([
-            PositionalControlTransform(),
-            MultiStepTransform(10),
-            PositionalObsTransform()
-        ]).apply(env)
-        return env
+        return environments.create(self.env_name)
 
-def load_robomimic_dataset(task, dataset_type, max_trajectories=None, quiet=False):
-    """
-    Load a RoboMimic dataset for a given task and dataset type.
-
-    all proficient human datasets:
-    ph_tasks = ["lift", "can", "square", "transport", "tool_hang", "lift_real", "can_real", "tool_hang_real"]
-
-    all multi human datasets:
-    mh_tasks = ["lift", "can", "square", "transport"]
-
-    all machine generated datasets:
-    mg_tasks = ["lift", "can"]
-
-    Returns:
-        env_meta (dict): environment metadata, which should be loaded from demonstration
-                hdf5. Contains 3 keys:
-
-                    :`'env_name'`: name of environment
-                    :`'type'`: type of environment, should be a value in EB.EnvType
-                    :`'env_kwargs'`: dictionary of keyword arguments to pass to environment constructor
-        SequenceData: contains states and actions for all trajectories
-    """
-    job_name = f"robomimic_{task}_{dataset_type}.hdf5"
-    hdf5_path = cache_path("robomimic", job_name)
+def make_url(name, dataset_type):
     if dataset_type == "ph": # proficient human
         url = f"http://downloads.cs.stanford.edu/downloads/rt_benchmark/{name}/ph/low_dim_v141.hdf5"
     elif dataset_type == "mh": # multi human
@@ -184,11 +149,10 @@ def load_robomimic(*, name=None, dataset_type=None, quiet=False, **kwargs):
     env_name, data = load_robomimic_dataset(
         name=name, dataset_type=dataset_type, quiet=quiet
     )
-    train = data.slice(0, len(data) - 16)
-    test = data.slice(len(data) - 16, 16)
+    
     return RobomimicDataset(
-        splits={"train": train, "test": test},
-        env_name=ENV_MAP[env_meta["env_name"]],
+        splits={"train": data},
+        env_name=env_name
     )
 
 datasets = DatasetRegistry[RobomimicDataset]()
