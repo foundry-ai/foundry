@@ -26,8 +26,8 @@ from stanza.util.ipython import STYLE
 logger = logging.getLogger(__name__)
 
 class DemonstrationCollector:
-    def __init__(self, env, interactive_policy, 
-                demonstrations, save, width, height, fps=30):
+    def __init__(self, demonstrations, env, interactive_policy=None, 
+                save=None, width=256, height=256, fps=30):
         self.demonstrations = demonstrations
         self._save_fn = save
 
@@ -42,7 +42,9 @@ class DemonstrationCollector:
 
         self._step_fn = jax.jit(env.step)
         self._reset_fn = jax.jit(env.reset)
+        self._reward_fn = jax.jit(env.reward)
         self._reduce_state = jax.jit(env.reduce_state)
+        self._full_state = jax.jit(env.full_state)
         self._render_fn = jax.jit(
             lambda x: env.render(env.full_state(x), ImageRender(width, height)),
             out_shardings=sharding
@@ -52,8 +54,13 @@ class DemonstrationCollector:
 
         # precompile the reset and step functions
         s = self._reset_fn(jax.random.key(42))
-        self._sample_input = env.sample_action(jax.random.key(42))
-        self._step_fn(s, self._sample_input, jax.random.key(42))
+        self._sample_action = env.sample_action(jax.random.key(42))
+        # Try computing the reward
+        try:
+            self._reward_fn(s, self._sample_action, s)
+        except NotImplementedError:
+            self._reward_fn = None
+        self._step_fn(s, self._sample_action, jax.random.key(42))
         self._render_fn(self._reduce_state(s))
 
         self.env = env
@@ -70,6 +77,7 @@ class DemonstrationCollector:
         # The reseted state, if we want to collect a new demonstration
         self.reset_state = None
 
+        self.info_label = Label(value='')
         self.demonstration_slider = IntSlider(min=0, max=len(demonstrations))
         self.step_slider = IntSlider()
         self.demonstration_slider.observe(lambda _: self._demo_changed(), names='value')
@@ -89,8 +97,6 @@ class DemonstrationCollector:
         self.trim_button = Button(description='Trim')
         self.trim_button.on_click(lambda _: self._trim_demonstration())
 
-        self.countdown = Label(value='')
-
         self.loop = asyncio.new_event_loop()
         def run_loop():
             asyncio.set_event_loop(self.loop)
@@ -107,28 +113,47 @@ class DemonstrationCollector:
     def _ipython_display_(self):
         display(HBox([self.demonstration_slider, self.step_slider]))
         display(self.interface)
+        display(self.info_label)
         display(HBox([self.delete_button, self.reset_button, self.collect_button, self.trim_button, self.save_button]))
-        display(self.countdown)
-    
+
     def _visualize(self):
         d = self.demonstration_slider.value
         T = self.step_slider.value
+        prev_state, prev_action = None, None
         if (len(self.demonstrations) > 0) and \
                 (d < len(self.demonstrations)):
             dem = self.demonstrations[d]
             T = min(T, len(dem) - 1)
             state = self.demonstrations[d][T].reduced_state
+            if T > 0:
+                prev_state = self.demonstrations[d][T - 1].reduced_state
+                prev_action = self.demonstrations[d][T - 1].action
         elif self.curr_state is not None and self.curr_demonstration is not None:
             T = min(T, len(self.curr_demonstration))
             if T < len(self.curr_demonstration):
-                state = self.curr_demonstration[self.step_slider.value].state
+                state = self.curr_demonstration[T].reduced_state
+                if T > 0:
+                    prev_state = self.curr_demonstration[T - 1].reduced_state
+                    prev_action = self.curr_demonstration[T - 1].action
             else:
                 state = self._reduce_state(self.curr_state)
+                if len(self.curr_demonstration) > 0:
+                    prev_state = self.curr_demonstration[-1].reduced_state
+                    prev_action = self.curr_demonstration[-1].action
         else:
             return
         image = self._render_fn(state)
+        reward = None
+        if self._reward_fn is not None:
+            if prev_state is None:
+                prev_state = state
+                prev_action = self._sample_action
+            reward = self._reward_fn(
+                self._full_state(prev_state), prev_action, self._full_state(state)
+            )
+        self.info_label.value = f'Reward: {reward}' if reward is not None else ''
         self.interface.update(image)
-    
+
     def _do_save(self, change):
         self.save()
     

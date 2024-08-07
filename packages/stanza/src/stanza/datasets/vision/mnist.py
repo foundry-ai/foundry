@@ -1,11 +1,13 @@
-from stanza.datasets import ImageClassDataset, DatasetRegistry
+from stanza.datasets import DatasetRegistry
 import stanza.data as du
 from stanza.data import normalizer as nu
 from stanza.data.transform import (
     random_horizontal_flip, random_subcrop, random_cutout
 )
 
-from .util import cache_path, download
+from ..util import cache_path, download
+
+from . import ImageClassDataset, LabeledImage
 
 import gzip
 
@@ -38,24 +40,24 @@ def _load_mnist(quiet=False, **kwargs):
                 # Add channel dimension
                 return jnp.expand_dims(img, -1)
 
-        for job_name, filename in [
-                    ("MNIST Train Images", "train-images-idx3-ubyte.gz"),
-                    ("MNIST Train Labels", "train-labels-idx1-ubyte.gz"),
-                    ("MNIST Test Images", "t10k-images-idx3-ubyte.gz"),
-                    ("MNIST Test Labels", "t10k-labels-idx1-ubyte.gz")
+        for job_name, filename, md5 in [
+                    ("MNIST Train Images", "train-images-idx3-ubyte.gz", "f68b3c2dcbeaaa9fbdd348bbdeb94873"),
+                    ("MNIST Train Labels", "train-labels-idx1-ubyte.gz", "d53e105ee54ea40749a09fcbcd1e9432"),
+                    ("MNIST Test Images", "t10k-images-idx3-ubyte.gz", "9fb629c4189551a2d022fa330f9573f3"),
+                    ("MNIST Test Labels", "t10k-labels-idx1-ubyte.gz", "ec29112dd5afa0611ce80d1b7f02629c")
                 ]:
             download(data_path/filename, url=base_url + filename, 
-                    job_name=job_name,
+                    job_name=job_name, md5=md5,
                     quiet=quiet)
         
         train_images = parse_images(data_path / "train-images-idx3-ubyte.gz")
         train_labels = parse_labels(data_path / "train-labels-idx1-ubyte.gz")
-        train_data = (train_images, train_labels)
+        train_data = LabeledImage(train_images, train_labels)
         test_images = parse_images(data_path / "t10k-images-idx3-ubyte.gz")
         test_labels = parse_labels(data_path / "t10k-labels-idx1-ubyte.gz")
-        test_data = (test_images, test_labels)
+        test_data = LabeledImage(test_images, test_labels)
 
-        train_normalized = du.PyTreeData((train_images.astype(jnp.float32) / 128.0) - 1)
+        train_normalized = du.PyTreeData(LabeledImage((train_images.astype(jnp.float32) / 128.0) - 1, None))
         return ImageClassDataset(
             splits={
                 "train": du.PyTreeData(train_data),
@@ -95,5 +97,5 @@ def _load_mnist(quiet=False, **kwargs):
             classes=[str(i) for i in range(10)]
         )
 
-registry = DatasetRegistry[ImageClassDataset]()
-registry.register("mnist", _load_mnist)
+datasets = DatasetRegistry[ImageClassDataset]()
+datasets.register(_load_mnist)

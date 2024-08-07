@@ -72,6 +72,8 @@ class MjxSimulator(Simulator[mjx.Data]):
             act_dot=state.act_dot,
             xpos=state.xpos,
             xquat=state.xquat,
+            site_xpos=state.site_xpos,
+            site_xquat=None,
             actuator_velocity=state.actuator_velocity,
             cvel=state.cvel
         )

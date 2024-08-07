@@ -55,7 +55,6 @@ class RobosuiteEnv(MujocoEnvironment[SimulatorState]):
             **self._env_args
         )
         env.reset()
-        env.reset()
         model =  env.sim.model._model
         robots = tuple(RobotInitializer.from_robosuite(r) for r in env.robots)
         initializer = ObjectInitializer.from_robosuite(env.placement_initializer)
@@ -110,6 +109,12 @@ _OBJECT_JOINT_MAP = {
     "bread": "Bread_joint0",
     "cereal": "Cereal_joint0"
 }
+_TARGET_BIN_ID = {
+    "milk": 0,
+    "bread": 1,
+    "cereal": 2,
+    "can": 3
+}
 
 @dataclass(kw_only=True)
 class PickAndPlace(RobosuiteEnv[SimulatorState]):
@@ -159,22 +164,50 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
             return state
         else:
             return super()._reset_internal(rng_key)
+    
+    def _over_bin(self, pos, bin_id):
+        bin_low = self.model.body_pos[self.model.body("bin2").id][:2]
+        bin_size = jnp.array((0.39, 0.49, 0.82)) / 2
+        if bin_id == 0 or bin_id == 2:
+            bin_low  = bin_low - jnp.array((bin_size[0], 0))
+        if bin_id < 2:
+            bin_low = bin_low - jnp.array((0, bin_size[0]))
+        bin_high = bin_low + bin_size[:2]
+        return jnp.logical_and(jnp.all(pos[:2] >= bin_low), jnp.all(pos[:2] <= bin_high))
+        
+    @jax.jit
+    def reward(self, state, action, next_state):
+        obs = self.observe(next_state, ManipulationTaskObs())
+        objects_over_bins = jnp.array([self._over_bin(obj_pos, _TARGET_BIN_ID[obj]) \
+                                       for obj, obj_pos in zip(self.objects, obs.object_pos)])
 
-    # For pick and place, use camera 1 by default
+        object_z_pos = obs.object_pos[:,2]
+        bin_z = self.model.body_pos[self.model.body("bin2").id][2]
+        bin_z_check = jnp.logical_and(object_z_pos >= bin_z, object_z_pos <= bin_z + 0.1)
+
+        objects_in_bins = jnp.logical_and(objects_over_bins, bin_z_check)
+        return 0.5*jnp.mean(objects_over_bins) + 0.5*jnp.mean(objects_in_bins)
+
+    def is_finished(self, state: SimulatorState) -> jax.Array:
+        return super().is_finished(state)
+
+    @jax.jit
     def render(self, state, config = None):
         return super().render(state, config)
     
     @jax.jit
-    def observe(self, state, config : ObserveConfig = None):
-        if config is None: config = PickPlaceObs()
-        data = self.simulator.system_data(state)
-        eef_id = self.model.body("gripper0_eef").id
-        if isinstance(config, PickPlaceObs):
-            return PickPlaceObs(
+    def observe(self, state, config : ObserveConfig | None = None):
+        if config is None: config = ManipulationTaskObs()
+        if isinstance(config, ManipulationTaskObs):
+            data = self.simulator.system_data(state)
+            eef_id = self.model.body("gripper0_eef").id
+            grip_site_id = self.model.site("gripper0_grip_site").id
+            return ManipulationTaskObs(
                 eef_pos=data.xpos[eef_id, :],
                 eef_vel=data.cvel[eef_id, :3],
                 eef_quat=data.xquat[eef_id, :],
                 eef_rot_vel=data.cvel[eef_id, 3:],
+                grip_site_pos=data.site_xpos[grip_site_id, :],
                 object_pos=jnp.stack([
                     data.xpos[self.model.joint(_OBJECT_JOINT_MAP[obj]).id, :] for obj in self.objects
                 ]),
@@ -182,42 +215,140 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
                     data.xquat[self.model.joint(_OBJECT_JOINT_MAP[obj]).id, :] for obj in self.objects
                 ])
             )
-        elif isinstance(config, PickPlaceEEFPose):
+        elif isinstance(config, ManipulationTaskEEFPose):
             return jnp.concatenate([data.xpos[eef_id, :], data.xquat[eef_id, :]])
         else:
             raise ValueError("Unsupported observation type")
+
+_NUT_JOINT_MAP = {
+    "round": "RoundNut_joint0",
+    "square": "SquareNut_joint0"
+}
+
+_PEG_ID_NUT_MAP = {
+    "square": 0,
+    "round": 1,
+}
+
+@dataclass(kw_only=True)
+class NutAssembly(RobosuiteEnv[SimulatorState]):
+    num_objects: int = field(default=2, pytree_node=False)
+    # the type of the nut
+    objects: Sequence[str] = field(
+        default=("round","square"),
+        pytree_node=False
+    )
+
+    @property
+    def env_name(self):
+        return "NutAssembly"
+
+    @property
+    def _env_args(self):
+        if self.num_objects == 1 and len(self.objects) == 1:
+            return {"single_object_mode": 2, "nut_type": self.objects[0]}
+        elif self.num_objects == 1:
+            return {"single_object_mode": 1}
+        elif self.num_objects == 2:
+            return {}
+        else:
+            raise ValueError(f"Unsupported number of objects {self.num_objects}")
     
+    def _reset_internal(self, rng_key : jax.Array) -> SystemState:
+        # randomly select one of the nuts to remove
+        def remove_nuts(state, names):
+            qpos = state.qpos
+            for n in names:
+                qpos = _set_joint_qpos(self.model, _NUT_JOINT_MAP[n],
+                    qpos, jnp.array([10, 10, 10, 1, 0, 0, 0])
+                )
+            return replace(state, qpos=qpos)
+
+        if self.num_objects == 1 and len(self.objects) > 1:
+            # randomly select a nut to remove
+            objects = list(self.objects)
+            rng_key, sk = jax.random.split(rng_key)
+            state = super()._reset_internal(rng_key)
+            branches = [partial(remove_nuts, names=[o for o in objects if o != obj]) for obj in objects]
+            state = jax.lax.switch(jax.random.randint(sk, (), 0, len(objects)),
+                branches, state)
+        elif self.num_objects == 1 and len(self.objects) == 1:
+            state = super()._reset_internal(rng_key)
+            if self.objects[0] == "round": state = remove_nuts(state, ("square",))
+            elif self.objects[0] == "square": state = remove_nuts(state, ("round",))
+        else:
+            state = super()._reset_internal(rng_key)
+        return state
+
     @jax.jit
-    def reward(self, state : SimulatorState, 
-                action : Action, 
-                next_state : SimulatorState):
-        #TODO
-        return 0
+    def observe(self, state, config : ObserveConfig | None = None):
+        if config is None: config = ManipulationTaskObs()
+        if isinstance(config, ManipulationTaskObs):
+            data = self.simulator.system_data(state)
+            eef_id = self.model.body("gripper0_eef").id
+            grip_site_id = self.model.site("gripper0_grip_site").id
+            return ManipulationTaskObs(
+                eef_pos=data.xpos[eef_id, :],
+                eef_vel=data.cvel[eef_id, :3],
+                eef_quat=data.xquat[eef_id, :],
+                eef_rot_vel=data.cvel[eef_id, 3:],
+                grip_site_pos=data.site_xpos[grip_site_id, :],
+                object_pos=jnp.stack([
+                    data.xpos[self.model.body(f"{obj.capitalize()}Nut_main").id, :] for obj in self.objects
+                ]),
+                object_quat=jnp.stack([
+                    data.xquat[self.model.body(f"{obj.capitalize()}Nut_main").id, :] for obj in self.objects
+                ])
+            )
+        else:
+            raise ValueError("Unsupported observation type")
+
+    @jax.jit
+    def reward(self, state, action, next_state):
+        peg_ids = [self.model.body("peg1").id, self.model.body("peg2").id]
+        data = self.simulator.system_data(next_state)
+        peg_pos = jnp.stack([data.xpos[peg_ids[_PEG_ID_NUT_MAP[obj]], :] for obj in self.objects])
+        obs = self.observe(next_state, ManipulationTaskObs())
+        over_peg = jnp.linalg.norm(peg_pos[:2] - obs.object_pos[:2], axis=-1) < 0.12
+        z_pos = obs.object_pos[:,2]
+        peg_z_range = jnp.logical_and(z_pos >= peg_pos[:,2] - 0.12, z_pos <= peg_pos[:,2] + 0.08)
+        on_peg = jnp.logical_and(over_peg, peg_z_range)
+        return 0.5*jnp.mean(over_peg) + 0.5*jnp.mean(on_peg)
+
+@dataclass(kw_only=True)
+class DoorOpen(RobosuiteEnv[SimulatorState]):
+    @property
+    def env_name(self):
+        return "DoorOpen"
 
 @dataclass
-class PickPlaceEEFPose:
+class ManipulationTaskEEFPose:
     pass
 
 @dataclass
-class PickPlaceObs:
-    eef_pos: jax.Array = None # (3,) -- end-effector position
-    eef_vel: jax.Array = None # (3,) -- end-effector velocity
-    eef_quat: jax.Array = None # (4,) -- end-effector quaternion
-    eef_rot_vel: jax.Array = None # (3,) -- end-effector angular velocity
-
-    object_pos: jax.Array = None # (n, 3) where n is the number of objects in the scene
-    object_quat: jax.Array = None # (n, 4) where n is the number of objects in the scene
-
-@dataclass
-class PickPlacePosObs:
+class ManipulationTaskPosObs:
     eef_pos: jax.Array = None
     eef_quat: jax.Array = None
     object_pos: jax.Array = None
     object_quat: jax.Array = None
 
 @dataclass
-class PickPlaceEulerObs:
-    pass
+class ManipulationTaskObs:
+    eef_pos: jax.Array = None # (n_robots, 3,) -- end-effector position
+    eef_vel: jax.Array = None # (n_robots, 3,) -- end-effector velocity
+    eef_quat: jax.Array = None # (n_robots, 4,) -- end-effector quaternion
+    eef_rot_vel: jax.Array = None # (n_robots, 3,) -- end-effector angular velocity
+    grip_site_pos: jax.Array = None # (n_robots, 3,) -- gripper site position
+
+    object_pos: jax.Array = None # (n_objects, 3) where n is the number of objects in the scene
+    object_quat: jax.Array = None # (n_objects, 4) where n is the number of objects in the scene
+
+@dataclass
+class ManipulationTaskPosObs:
+    eef_pos: jax.Array = None
+    eef_quat: jax.Array = None
+    object_pos: jax.Array = None
+    object_quat: jax.Array = None
 
 @dataclass
 class PositionalControlTransform(EnvTransform):
@@ -281,84 +412,21 @@ class PositionalControlEnv(EnvWrapper):
             a = jnp.zeros(self.model.nu, dtype=jnp.float32)
         return self.base.step(state, a, None)
 
+
 @dataclass
 class PositionalObsEnv(EnvWrapper):
     def observe(self, state, config=None):
-        if config is None: config = PickPlacePosObs()
-        if not isinstance(config, PickPlacePosObs):
+        if config is None: config = ManipulationTaskPosObs()
+        if not isinstance(config, ManipulationTaskPosObs):
             return self.base.observe(state, config)
-        obs = self.base.observe(state, PickPlaceObs())
-        return PickPlacePosObs(
+        obs = self.base.observe(state, ManipulationTaskObs())
+        return ManipulationTaskPosObs(
             eef_pos=obs.eef_pos,
             eef_quat=obs.eef_quat,
+            grip_site_pos=obs.grip_site_pos,
             object_pos=obs.object_pos,
             object_quat=obs.object_quat
         )
-    
-    def get_action(self, state):
-        #return self.observe(state).eef_pos
-        return jnp.zeros(self.model.nu)
-
-_NUT_JOINT_MAP = {
-    "round": "RoundNut_joint0",
-    "square": "SquareNut_joint0"
-}
-
-@dataclass(kw_only=True)
-class NutAssembly(RobosuiteEnv[SimulatorState]):
-    num_objects: int = field(default=2, pytree_node=False)
-    # the type of the nut
-    objects: Sequence[str] = field(
-        default=("round","square"),
-        pytree_node=False
-    )
-
-    @property
-    def env_name(self):
-        return "NutAssembly"
-
-    @property
-    def _env_args(self):
-        if self.num_objects == 1 and len(self.objects) == 1:
-            return {"single_object_mode": 2, "nut_type": self.objects[0]}
-        elif self.num_objects == 1:
-            return {"single_object_mode": 1}
-        elif self.num_objects == 2:
-            return {}
-        else:
-            raise ValueError(f"Unsupported number of objects {self.num_objects}")
-    
-    def _reset_internal(self, rng_key : jax.Array) -> SystemState:
-        # randomly select one of the nuts to remove
-        def remove_nuts(state, names):
-            qpos = state.qpos
-            for n in names:
-                qpos = _set_joint_qpos(self.model, _NUT_JOINT_MAP[n],
-                    qpos, jnp.array([10, 10, 10, 1, 0, 0, 0])
-                )
-            return replace(state, qpos=qpos)
-
-        if self.num_objects == 1 and len(self.objects) > 1:
-            # randomly select a nut to remove
-            objects = list(self.objects)
-            rng_key, sk = jax.random.split(rng_key)
-            state = super()._reset_internal(rng_key)
-            branches = [partial(remove_nuts, names=[o for o in objects if o != obj]) for obj in objects]
-            state = jax.lax.switch(jax.random.randint(sk, (), 0, len(objects)),
-                branches, state)
-        elif self.num_objects == 1 and len(self.objects) == 1:
-            state = super()._reset_internal(rng_key)
-            if self.objects[0] == "round": state = remove_nuts(state, ("square",))
-            elif self.objects[0] == "square": state = remove_nuts(state, ("round",))
-        else:
-            state = super()._reset_internal(rng_key)
-        return state
-
-@dataclass(kw_only=True)
-class DoorOpen(RobosuiteEnv[SimulatorState]):
-    @property
-    def env_name(self):
-        return "DoorOpen"
 
 environments = EnvironmentRegistry[RobosuiteEnv]()
 

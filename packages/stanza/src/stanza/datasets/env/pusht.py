@@ -9,6 +9,7 @@ from stanza.data.sequence import (
 
 from ..util import download, cache_path
 
+import stanza.util.serialize
 import jax
 import jax.numpy as jnp
 import zarr
@@ -19,9 +20,7 @@ class PushTDataset(EnvDataset[Step]):
         from stanza.env.mujoco.pusht import (
             PushTEnv,
             PositionalControlTransform,
-            PositionalObsTransform,
             KeypointObsTransform,
-            RelKeypointObsTransform
         )
         from stanza.env.transforms import ChainedTransform, MultiStepTransform
         env = PushTEnv()
@@ -87,14 +86,21 @@ def load_pytorch_pusht_data(zarr_path, max_trajectories=None):
     return SequenceData(PyTreeData(steps), PyTreeData(infos))
 
 def load_chi_pusht_data(max_trajectories=None, quiet=False):
-    zip_path = cache_path("pusht", "pusht_data.zarr.zip")
-    download(zip_path,
-        job_name="PushT (Diffusion Policy Data)",
-        gdrive_id="1ALI_Ua7U1EJRCAim5tvtQUJbBP5MGMyR",
-        md5="48a64828d7f2e1e8902a97b57ebd0bdd",
-        quiet=quiet
-    )
-    return load_pytorch_pusht_data(zip_path, max_trajectories)
+    zip_path = cache_path("pusht", "pusht_data_raw.zarr.zip")
+    processed_path = cache_path("pusht", "pusht_data.zarr.zip")
+    if not processed_path.exists():
+        download(zip_path,
+            job_name="PushT (Diffusion Policy Data)",
+            gdrive_id="1ALI_Ua7U1EJRCAim5tvtQUJbBP5MGMyR",
+            md5="48a64828d7f2e1e8902a97b57ebd0bdd",
+            quiet=quiet
+        )
+        data = load_pytorch_pusht_data(zip_path, max_trajectories)
+        stanza.util.serialize.save_zarr(processed_path, data, None)
+        # remove the raw data
+        zip_path.unlink()
+    data, _ = stanza.util.serialize.load_zarr(processed_path)
+    return data
 
 def load_chi_pusht(quiet=False, train_trajs=None, test_trajs=10):
     data = load_chi_pusht_data()

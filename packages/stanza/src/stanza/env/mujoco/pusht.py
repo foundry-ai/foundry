@@ -22,6 +22,7 @@ from stanza.env.mujoco.core import (
 
 import shapely.geometry as sg
 import jax.numpy as jnp
+import numpy as np
 import jax.random
 import mujoco
 
@@ -40,13 +41,12 @@ class PushTObs:
 
 @dataclass
 class PushTEnv(MujocoEnvironment[SimulatorState]):
+    goal_pos: jax.Array = field(default_factory=lambda: jnp.zeros((2,), jnp.float32))
+    goal_rot: jax.Array = field(default_factory=lambda: jnp.array(-jnp.pi/4, jnp.float32))
     # use the mjx backend by default
     physics_backend: str = field(default="mjx", pytree_node=False)
 
     success_threshold: float = field(default=0.9, pytree_node=False)
-
-    goal_pos: jax.Array = field(default_factory=lambda: jnp.zeros((2,), jnp.float32), pytree_node=False)
-    goal_rot: jax.Array = field(default_factory=lambda: jnp.array(-jnp.pi/4, jnp.float32), pytree_node=False)
 
     agent_radius : float = field(default=15/252, pytree_node=False)
     block_scale : float = field(default=30/252, pytree_node=False)
@@ -58,10 +58,7 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
             xml = f.read()
         com = 0.5*(self.block_scale/2) + 0.5*(self.block_scale + 1.5*self.block_scale)
         return xml.format(
-            goal_pos_x=self.goal_pos[0], goal_pos_y=self.goal_pos[1], 
-            goal_rot=self.goal_rot, 
             agent_radius=self.agent_radius,
-
             world_scale=self.world_scale,
             half_world_scale=self.world_scale/2,
             # the other constants needed for the block
@@ -241,7 +238,7 @@ class PositionalControlEnv(EnvWrapper):
     k_v : float = 2
 
     def step(self, state, action, rng_key=None):
-        obs = self.base.observe(state, PushTObs())
+        obs = self.base.observe(state, PushTObs)
         if action is not None:
             a = self.k_p * (action - obs.agent_pos) + self.k_v * (-obs.agent_vel)
         else: 
@@ -252,10 +249,10 @@ class PositionalControlEnv(EnvWrapper):
 @dataclass
 class PositionalObsEnv(EnvWrapper):
     def observe(self, state, config=None):
-        if config is None: config = PushTPosObs()
-        if not isinstance(config, PushTPosObs):
+        if config is None: config = PushTPosObs
+        if config != PushTPosObs:
             return self.base.observe(state, config)
-        obs = self.base.observe(state, PushTObs())
+        obs = self.base.observe(state, PushTObs)
         return PushTPosObs(
             agent_pos=obs.agent_pos,
             block_pos=obs.block_pos,

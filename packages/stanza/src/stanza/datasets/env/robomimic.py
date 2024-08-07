@@ -26,59 +26,59 @@ class RobomimicDataset(EnvDataset[Step]):
     def create_env(self):
 
         from stanza.env.mujoco.robosuite import environments
-        env = environments.create(self.env_name)
-    
-        from stanza.env.mujoco.robosuite import (
-            PositionalControlTransform, PositionalObsTransform
-        )
-        from stanza.env.transforms import ChainedTransform, MultiStepTransform
-        env = ChainedTransform([
-            PositionalControlTransform(),
-            MultiStepTransform(10),
-            PositionalObsTransform()
-        ]).apply(env)
-        return env
+        return environments.create(self.env_name)
 
-def load_robomimic_dataset(task, dataset_type, max_trajectories=None, quiet=False):
+MD5_MAP = {
+    ("can", "ph"): "758590f0916079d36fb881bd1ac5196d",
+    ("square", "ph"): "ded04e6775389ca11cf77ff250b6d612",
+}
+
+def make_url(name, dataset_type):
+    if dataset_type == "ph": # proficient human
+        return f"http://downloads.cs.stanford.edu/downloads/rt_benchmark/{name}/ph/low_dim_v141.hdf5"
+    elif dataset_type == "mh": # multi human
+        return f"http://downloads.cs.stanford.edu/downloads/rt_benchmark/{name}/mh/low_dim_v141.hdf5"
+    elif dataset_type == "mg": # machine generated
+        return f"http://downloads.cs.stanford.edu/downloads/rt_benchmark/{name}/mg/low_dim_dense_v141.hdf5"
+    elif dataset_type == "paired": # paired
+        return f"http://downloads.cs.stanford.edu/downloads/rt_benchmark/{name}/paired/low_dim_v141.hdf5"
+    else:
+        raise ValueError(f"Unknown dataset type: {dataset_type}")
+
+def load_robomimic_dataset(name, dataset_type, max_trajectories=None, quiet=False):
     """
     Load a RoboMimic dataset for a given task and dataset type.
 
-    all proficient human datasets:
-    ph_tasks = ["lift", "can", "square", "transport", "tool_hang", "lift_real", "can_real", "tool_hang_real"]
-
-    all multi human datasets:
-    mh_tasks = ["lift", "can", "square", "transport"]
-
-    all machine generated datasets:
-    mg_tasks = ["lift", "can"]
-
+    Args:
+        name (str): name of task
+        dataset_type (str): type of dataset
+        max_trajectories (int): maximum number of trajectories to load
+        quiet (bool): whether to suppress download progress
+    
     Returns:
-        env_meta (dict): environment metadata, which should be loaded from demonstration
-                hdf5. Contains 3 keys:
-
-                    :`'env_name'`: name of environment
-                    :`'type'`: type of environment, should be a value in EB.EnvType
-                    :`'env_kwargs'`: dictionary of keyword arguments to pass to environment constructor
-        SequenceData: contains states and actions for all trajectories
+        env_name (str): name of environment
+        data (SequenceData): sequence data containing states and actions for all trajectories
     """
-    job_name = f"robomimic_{task}_{dataset_type}.hdf5"
-    hdf5_path = cache_path("robomimic", job_name)
-    if dataset_type == "ph": # proficient human
-        url = f"http://downloads.cs.stanford.edu/downloads/rt_benchmark/{task}/ph/low_dim_v141.hdf5"
-    elif dataset_type == "mh": # multi human
-        url = f"http://downloads.cs.stanford.edu/downloads/rt_benchmark/{task}/mh/low_dim_v141.hdf5"
-    elif dataset_type == "mg": # machine generated
-        url = f"http://downloads.cs.stanford.edu/downloads/rt_benchmark/{task}/mg/low_dim_dense_v141.hdf5"
-    elif dataset_type == "paired": # paired
-        url = "http://downloads.cs.stanford.edu/downloads/rt_benchmark/can/paired/low_dim_v141.hdf5"
-    else:
-        raise ValueError(f"Unknown dataset type: {dataset_type}")
-    download(hdf5_path,
-        job_name=job_name,
-        url=url,
-        quiet=quiet
-    )
-    return _load_robomimic_hdf5(hdf5_path, max_trajectories)
+
+    zarr_name = f"robomimic_{name}_{dataset_type}.zarr.zip"
+    zarr_path = cache_path("robomimic", zarr_name)
+    if not zarr_path.exists():
+        job_name = f"robomimic_{name}_{dataset_type}.hdf5"
+        hdf5_path = cache_path("robomimic", job_name)
+        url = make_url(name, dataset_type)
+        md5 = MD5_MAP.get((name, dataset_type), None)
+        download(hdf5_path,
+            job_name=job_name,
+            url=url, md5=md5,
+            quiet=quiet
+        )
+        env_name, data = _load_robomimic_hdf5(hdf5_path, max_trajectories)
+        stanza.util.serialize.save_zarr(zarr_path, 
+            tree=data, meta=env_name
+        )
+        hdf5_path.unlink()
+    data, env_name = stanza.util.serialize.load_zarr(zarr_path)
+    return env_name, data
 
 ENV_MAP = {
     "PickPlaceCan": "pickplace/can",

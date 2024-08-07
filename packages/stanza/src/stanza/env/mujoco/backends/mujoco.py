@@ -41,6 +41,7 @@ class MujocoSimulator(Simulator[SystemData]):
             example_data.qpos, example_data.qvel, 
             example_data.act, example_data.qacc, example_data.act_dot,
             example_data.xpos, example_data.xquat,
+            example_data.site_xpos, None,
             example_data.actuator_velocity, example_data.cvel,
             example_data.qfrc_bias, example_data.qM
         )
@@ -74,6 +75,25 @@ class MujocoSimulator(Simulator[SystemData]):
     @property
     def act0(self) -> jax.Array:
         return jnp.zeros_like(self.data_structure.act)
+    
+    @staticmethod
+    def _extract_data(data: mujoco.MjData) -> SystemData:
+        return SystemData(
+            jnp.array(data.time, dtype=jnp.float32),
+            jnp.copy(data.qpos.astype(jnp.float32)),
+            jnp.copy(data.qvel.astype(jnp.float32)),
+            jnp.copy(data.act.astype(jnp.float32)),
+            jnp.copy(data.qacc.astype(jnp.float32)),
+            jnp.copy(data.act_dot.astype(jnp.float32)),
+            jnp.copy(data.xpos.astype(jnp.float32)),
+            jnp.copy(data.xquat.astype(jnp.float32)),
+            jnp.copy(data.site_xpos.astype(jnp.float32)),
+            jnp.copy(data.site_xmat.astype(jnp.float32)),
+            jnp.copy(data.actuator_velocity.astype(jnp.float32)),
+            jnp.copy(data.cvel.astype(jnp.float32)),
+            jnp.copy(data.qfrc_bias.astype(jnp.float32)),
+            jnp.copy(data.qM.astype(jnp.float32))
+        )
 
     def _step_job(self, step: MujocoStep) -> MujocoState:
         # get the thread-local MjData object
@@ -87,19 +107,7 @@ class MujocoSimulator(Simulator[SystemData]):
         data.qacc_warmstart[:] = step.qacc_warmstart
         mujoco.mj_step(self.model, data)
         state = MujocoState(
-            data=SystemData(jnp.array(data.time, dtype=jnp.float32), 
-                jnp.copy(data.qpos.astype(jnp.float32)), 
-                jnp.copy(data.qvel.astype(jnp.float32)), 
-                jnp.copy(data.act.astype(jnp.float32)),
-                jnp.copy(data.qacc.astype(jnp.float32)),
-                jnp.copy(data.act_dot.astype(jnp.float32)),
-                jnp.copy(data.xpos.astype(jnp.float32)),
-                jnp.copy(data.xquat.astype(jnp.float32)),
-                jnp.copy(data.actuator_velocity.astype(jnp.float32)),
-                jnp.copy(data.cvel.astype(jnp.float32)),
-                jnp.copy(data.qfrc_bias.astype(jnp.float32)),
-                jnp.copy(data.qM.astype(jnp.float32))
-            ),
+            data=self._extract_data(data),
             qacc_warmstart=jnp.copy(data.qacc_warmstart.astype(jnp.float32))
         )
         return state
@@ -143,19 +151,7 @@ class MujocoSimulator(Simulator[SystemData]):
             data.qacc_warmstart[:] = step.qacc_warmstart
         mujoco.mj_forward(self.model, data)
         state = MujocoState(
-            data=SystemData(jnp.array(data.time, dtype=jnp.float32), 
-                jnp.copy(data.qpos.astype(jnp.float32)), 
-                jnp.copy(data.qvel.astype(jnp.float32)), 
-                jnp.copy(data.act.astype(jnp.float32)),
-                jnp.copy(data.qacc.astype(jnp.float32)),
-                jnp.copy(data.act_dot.astype(jnp.float32)),
-                jnp.copy(data.xpos.astype(jnp.float32)),
-                jnp.copy(data.xquat.astype(jnp.float32)),
-                jnp.copy(data.actuator_velocity.astype(jnp.float32)),
-                jnp.copy(data.cvel.astype(jnp.float32)),
-                jnp.copy(data.qfrc_bias.astype(jnp.float32)),
-                jnp.copy(data.qM.astype(jnp.float32))
-            ),
+            data=self._extract_data(data),
             qacc_warmstart=jnp.copy(data.qacc_warmstart.astype(jnp.float32))
         )
         return state

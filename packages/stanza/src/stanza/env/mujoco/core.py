@@ -37,6 +37,11 @@ class SystemData(SystemState):
     # position dependent:
     xpos: jax.Array
     xquat: jax.Array
+
+    # site locations
+    site_xpos: jax.Array
+    site_xquat: jax.Array
+
     # position, velocity dependent:
     actuator_velocity: jax.Array
     cvel: jax.Array
@@ -66,10 +71,6 @@ class Simulator(abc.ABC, Generic[SimulatorState]):
 @dataclass(kw_only=True)
 class MujocoEnvironment(Environment[SimulatorState, SystemState, Action], Generic[SimulatorState]):
     physics_backend : str = field(default="mujoco", pytree_node=False)
-
-    @jax_static_property
-    def xml(self):
-        raise NotImplementedError()
 
     @jax_static_property
     def model(self) -> mujoco.MjModel:

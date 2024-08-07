@@ -5,7 +5,7 @@ import pickle
 from stanza.data import PyTreeData
 from stanza.data import normalizer as nu
 from stanza.datasets import DatasetRegistry
-from . import ImageClassDataset
+from . import ImageClassDataset, LabeledImage
 from ..util import download, extract, cache_path
 from stanza.data.transform import (
     random_horizontal_flip, random_subcrop, random_cutout
@@ -51,8 +51,8 @@ def _load_cifar10(quiet=False):
     train_data = jnp.concatenate([x[0] for x in train_batches])
     train_labels = jnp.concatenate([x[1] for x in train_batches])
 
-    train = PyTreeData((train_data, train_labels))
-    test = PyTreeData((test_data, test_labels))
+    train = PyTreeData(LabeledImage(train_data, train_labels))
+    test = PyTreeData(LabeledImage(test_data, test_labels))
     data = {
         "train": train,
         "test": test
@@ -107,8 +107,8 @@ def _load_cifar100(quiet=False):
             classes = fine_label_names
     extract(tar_path, extract_handler,
             job_name="CIFAR-100", quiet=True)
-    train = PyTreeData((train_data, train_labels))
-    test = PyTreeData((test_data, test_labels))
+    train = PyTreeData(LabeledImage(train_data, train_labels))
+    test = PyTreeData(LabeledImage(test_data, test_labels))
     data = {
         "train": train,
         "test": test
@@ -117,7 +117,7 @@ def _load_cifar100(quiet=False):
         splits=data,
         normalizers={
             "hypercube": lambda: nu.Compose(
-                (nu.ImageNormalizer(jax.ShapeDtypeStruct((32, 32, 3), jnp.uint8)), 
+                (nu.ImageNormalizer(LabeledImage(jax.ShapeDtypeStruct((32, 32, 3), jnp.uint8), None)), 
                     nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))
             )
         },

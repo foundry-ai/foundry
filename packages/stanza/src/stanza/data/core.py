@@ -5,12 +5,14 @@ from typing import (
     TypeVar, Generic, Callable, Sequence,
     Generator
 )
+from jax.typing import ArrayLike
 from .stream import StreamBuilder, DataStream
 
 import math
 import jax
 import jax.tree_util
 import jax.numpy as jnp
+import numpy as np
 
 T = TypeVar('T')
 V = TypeVar('V')
@@ -28,7 +30,7 @@ class Data(Generic[T]):
     def __len__(self) -> int:
         raise NotImplementedError()
 
-    def __getitem__(self, idx : jax.typing.ArrayLike) -> T:
+    def __getitem__(self, idx : ArrayLike) -> T:
         raise NotImplementedError()
     
     def stream(self) -> StreamBuilder[T]:
@@ -63,7 +65,8 @@ class Data(Generic[T]):
         idxs = jnp.arange(len(self), dtype=idx_dtype)
         return jax.vmap(lambda i: self[i])(idxs)
 
-    def slice(self, off : int, length : int) -> "Data[T]":
+    def slice(self, off : ArrayLike, length : ArrayLike) -> "Data[T]":
+        length = np.array(length).item()
         length = length or len(self) - off
         idxs = jnp.arange(length, dtype=idx_dtype) + off
         return PyTreeData(jax.vmap(lambda i: self[i])(idxs))
@@ -85,7 +88,7 @@ class MappedData(Data[T]):
     def __len__(self) -> int:
         return len(self.data)
 
-    def __getitem__(self, idx : jax.typing.ArrayLike) -> T:
+    def __getitem__(self, idx : ArrayLike) -> T:
         return self.fn(self.data[idx])
     
     def stream(self) -> StreamBuilder[T]:
@@ -112,28 +115,27 @@ class MappedData(Data[T]):
     def as_pytree(self) -> "T":
         return jax.vmap(self.fn)(self.data.as_pytree())
     
-    def slice(self, off : int, length : int) -> T:
+    def slice(self, off : ArrayLike, length : ArrayLike) -> T:
         return self.data.slice(off, length).map(self.fn)
 
 # A Data backed by a jax pytree
 class PyTreeData(Data[T]):
-    def __init__(self, tree: T | None = None, n: int | None = None):
+    def __init__(self, tree: T | None = None):
         if tree is None:
             self.n = 0
             self.tree = tree
         else:
-            if n is None:
-                with jax.ensure_compile_time_eval():
-                    ns = jnp.array([x.shape[0] for x in jax.tree_leaves(tree)], dtype=idx_dtype)
-                    n = ns[0]
-                    assert jnp.all(ns == n)
+            with jax.ensure_compile_time_eval():
+                ns = jnp.array([x.shape[0] for x in jax.tree_leaves(tree)], dtype=idx_dtype)
+                n = ns[0]
+                assert jnp.all(ns == n)
             self.n = n
             self.tree = tree
 
     def __len__(self):
         return self.n
 
-    def __getitem__(self, idx : jax.typing.ArrayLike) -> T:
+    def __getitem__(self, idx : ArrayLike) -> T:
         idx = jnp.array(idx, dtype=idx_dtype)
         assert idx.ndim == 0
         return jax.tree.map(
@@ -148,7 +150,9 @@ class PyTreeData(Data[T]):
             self.tree
         )
 
-    def slice(self, off : int, length : int) -> T:
+    def slice(self, off : ArrayLike, length : ArrayLike) -> T:
+        # the length must be a scalar
+        length = np.array(length).item()
         return PyTreeData(jax.tree.map(
             lambda x: jax.lax.dynamic_slice(x,
                     jnp.broadcast_to(jnp.array(off, dtype=idx_dtype), (x.ndim,)),
@@ -168,8 +172,8 @@ class PyTreeData(Data[T]):
 
 jax.tree_util.register_pytree_node(
     PyTreeData,
-    lambda d: ((d.tree,), d.n),
-    lambda n, c: PyTreeData(c[0], n)
+    lambda d: ((d.tree,), None),
+    lambda n, c: PyTreeData(c[0])
 )
 
 @dataclass
