@@ -13,6 +13,8 @@ from stanza.data.sequence import (
 from stanza.env.mujoco import SystemState
 from stanza.dataclasses import dataclass
 
+import stanza.util.serialize
+
 from . import EnvDataset
 from .. import DatasetRegistry
 from ..util import download, cache_path
@@ -24,9 +26,19 @@ class RobomimicDataset(EnvDataset[Step]):
     env_name: str = None
 
     def create_env(self):
-
         from stanza.env.mujoco.robosuite import environments
-        return environments.create(self.env_name)
+        from stanza.env.mujoco.robosuite import (
+            PositionalControlTransform,
+            PositionalObsTransform,
+        )
+        from stanza.env.transforms import ChainedTransform, MultiStepTransform
+        env = environments.create(self.env_name)
+        env = ChainedTransform([
+            PositionalControlTransform(),
+            MultiStepTransform(10),
+            PositionalObsTransform()
+        ]).apply(env)
+        return env
 
 MD5_MAP = {
     ("can", "ph"): "758590f0916079d36fb881bd1ac5196d",
@@ -85,6 +97,8 @@ ENV_MAP = {
     "PickPlaceMilk": "pickplace/milk",
     "PickPlaceBread": "pickplace/bread",
     "PickPlaceCereal": "pickplace/cereal",
+    "NutAssemblySquare": "nutassembly/square",
+    "NutAssemblyRound": "nutassembly/round"
 }
 
 def _load_robomimic_hdf5(hdf5_path, max_trajectories=None):
@@ -146,20 +160,33 @@ def _load_robomimic_hdf5(hdf5_path, max_trajectories=None):
             observation=None,
             action=actions
         )
-        return env_meta, SequenceData(PyTreeData(steps), PyTreeData(infos))
+        return ENV_MAP[env_meta["env_name"]], SequenceData(PyTreeData(steps), PyTreeData(infos))
     
-def load_robomimic(*, task=None, dataset_type=None, quiet=False, **kwargs):
-    if task is None or dataset_type is None:
+def load_robomimic(*, name=None, dataset_type=None, quiet=False, **kwargs):
+    if name is None or dataset_type is None:
         raise ValueError("Must specify a task, dataset_type to load robomimic dataset.")
-    env_meta, data = load_robomimic_dataset(
-        task=task, dataset_type=dataset_type, quiet=quiet
+    env_name, data = load_robomimic_dataset(
+        name=name, dataset_type=dataset_type, quiet=quiet
     )
     train = data.slice(0, len(data) - 16)
     test = data.slice(len(data) - 16, 16)
     return RobomimicDataset(
         splits={"train": train, "test": test},
-        env_name=ENV_MAP[env_meta["env_name"]],
+        env_name=env_name
     )
 
 datasets = DatasetRegistry[RobomimicDataset]()
-datasets.register("can/ph", partial(load_robomimic,task="can",dataset_type="ph"))
+for dataset_type in ["ph", "mh", "mg"]:
+    for task in ["pickplace", "nutassembly"]:
+        if task == "pickplace":
+            for obj in ["can", "milk", "bread", "cereal"]:
+                name = obj
+                datasets.register(f"{task}/{obj}/{dataset_type}", 
+                    partial(load_robomimic,name=name, dataset_type=dataset_type)
+                )
+        elif task == "nutassembly":
+            for obj in ["square", "round"]:
+                name = obj
+                datasets.register(f"{task}/{obj}/{dataset_type}", 
+                    partial(load_robomimic,name=name, dataset_type=dataset_type)
+                )

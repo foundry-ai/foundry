@@ -238,7 +238,7 @@ class PositionalControlEnv(EnvWrapper):
     k_v : float = 2
 
     def step(self, state, action, rng_key=None):
-        obs = self.base.observe(state, PushTObs)
+        obs = self.base.observe(state, PushTObs())
         if action is not None:
             a = self.k_p * (action - obs.agent_pos) + self.k_v * (-obs.agent_vel)
         else: 
@@ -252,7 +252,7 @@ class PositionalObsEnv(EnvWrapper):
         if config is None: config = PushTPosObs
         if config != PushTPosObs:
             return self.base.observe(state, config)
-        obs = self.base.observe(state, PushTObs)
+        obs = self.base.observe(state, PushTObs())
         return PushTPosObs(
             agent_pos=obs.agent_pos,
             block_pos=obs.block_pos,

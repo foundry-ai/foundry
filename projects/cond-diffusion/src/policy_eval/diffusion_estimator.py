@@ -15,7 +15,7 @@ from stanza.diffusion import nonparametric
 
 from stanza.env.core import ObserveConfig
 from stanza.env.mujoco.pusht import PushTAgentPos
-from stanza.env.mujoco.robosuite import PickPlaceEEFPose
+from stanza.env.mujoco.robosuite import ManipulationTaskEEFPose
 
 from typing import Callable
 
@@ -29,9 +29,9 @@ logger = logging.getLogger(__name__)
 class DiffusionEstimatorConfig:
     estimator: str = "nw"
     kernel_bandwidth: float = 0.01
-    diffusion_steps: int = 100
+    diffusion_steps: int = 50
     relative_actions: bool = True
-    agent_pos_config: ObserveConfig = PickPlaceEEFPose()
+    agent_pos_config: ObserveConfig = ManipulationTaskEEFPose()
     action_horizon: int = 8
 
     def parse(self, config: ConfigProvider) -> "DiffusionEstimatorConfig":

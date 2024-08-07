@@ -13,7 +13,7 @@ from stanza.train.reporting import Video
 from stanza import canvas
 from stanza.policy import PolicyInput, PolicyOutput
 from stanza.env.mujoco.pusht import PushTAgentPos
-from stanza.env.mujoco.robosuite import PickPlaceEEFPose
+from stanza.env.mujoco.robosuite import ManipulationTaskEEFPose
 
 
 
@@ -54,9 +54,9 @@ class Config:
     obs_length: int = 2
     action_length: int = 16
     policy: PolicyConfig = None
-    action_config: ObserveConfig = PickPlaceEEFPose()
+    action_config: ObserveConfig = ManipulationTaskEEFPose()
     timesteps: int = 400
-    train_data_size: int = 150
+    train_data_size: int | None = None
     render_traj: bool = False
 
     @staticmethod
@@ -187,7 +187,9 @@ def main(config : Config):
     logger.info(f"Loading dataset [blue]{config.dataset}[/blue]")
     dataset = datasets.create(config.dataset)
     env = dataset.create_env()
-    train_data = dataset.splits["train"].slice(0,config.train_data_size)
+    train_data = dataset.splits["train"]
+    if config.train_data_size is not None:
+        train_data = train_data.slice(0,config.train_data_size)
     logger.info(f"Processing dataset.")
     train_data = process_data(config, env, train_data).cache()
     # jax.debug.print("{s}", s=train_data)

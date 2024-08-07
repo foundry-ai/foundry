@@ -198,9 +198,9 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
     @jax.jit
     def observe(self, state, config : ObserveConfig | None = None):
         if config is None: config = ManipulationTaskObs()
+        data = self.simulator.system_data(state)
+        eef_id = self.model.body("gripper0_eef").id
         if isinstance(config, ManipulationTaskObs):
-            data = self.simulator.system_data(state)
-            eef_id = self.model.body("gripper0_eef").id
             grip_site_id = self.model.site("gripper0_grip_site").id
             return ManipulationTaskObs(
                 eef_pos=data.xpos[eef_id, :],
@@ -375,13 +375,12 @@ class PositionalControlEnv(EnvWrapper):
             robot = self._model_initializers[1][0]
             eef_id = self.model.body("gripper0_eef").id
 
-            print(self.model.nv)
-            print(data.qM)
-            jacp, jacv = self.native_simulator.get_jacs(state, eef_id)
+            system_state = self.simulator.reduce_state(state)
+            jacp, jacv = self.native_simulator.get_jacs(system_state, eef_id)
             J_pos = jnp.array(jacp.reshape((3, -1))[:, robot.qvel_indices])
             J_ori = jnp.array(jacv.reshape((3, -1))[:, robot.qvel_indices])
             
-            mass_matrix = self.native_simulator.get_fullM(state)
+            mass_matrix = self.native_simulator.get_fullM(system_state)
             mass_matrix = jnp.reshape(mass_matrix, (len(data.qvel), len(data.qvel)))
             mass_matrix = mass_matrix[robot.qvel_indices, :][:, robot.qvel_indices]
 
@@ -423,7 +422,6 @@ class PositionalObsEnv(EnvWrapper):
         return ManipulationTaskPosObs(
             eef_pos=obs.eef_pos,
             eef_quat=obs.eef_quat,
-            grip_site_pos=obs.grip_site_pos,
             object_pos=obs.object_pos,
             object_quat=obs.object_quat
         )
@@ -463,6 +461,14 @@ environments.register("nutassembly/square", partial(NutAssembly,
 environments.register("nutassembly/round", partial(NutAssembly,
     num_objects=1, objects=("round",), robots=("panda",)
 ))
+
+# def _make_positional(**kwargs):
+#     env = RobosuiteEnv(**kwargs)
+#     return ChainedTransform([
+#         PositionalControlTransform(),
+#         PositionalObsTransform
+#     ]).apply(env)
+# environments.register("positional", _make_positional)
 
 # Convert robosuite object/robot 
 # initializers to jax-friendly format

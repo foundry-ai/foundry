@@ -37,14 +37,7 @@ class MujocoSimulator(Simulator[SystemData]):
         # store up to 256 MjData objects for this model
         self.model = model
         example_data = mujoco.MjData(self.model)
-        example_data = SystemData(np.array(example_data.time),
-            example_data.qpos, example_data.qvel, 
-            example_data.act, example_data.qacc, example_data.act_dot,
-            example_data.xpos, example_data.xquat,
-            example_data.site_xpos, None,
-            example_data.actuator_velocity, example_data.cvel,
-            example_data.qfrc_bias, example_data.qM
-        )
+        example_data = self._extract_data(example_data)
         self.data_structure = jax.tree.map(
             lambda x: jax.ShapeDtypeStruct(x.shape,
                 x.dtype if x.dtype != np.float64 else np.float32
@@ -91,8 +84,7 @@ class MujocoSimulator(Simulator[SystemData]):
             jnp.copy(data.site_xmat.astype(jnp.float32)),
             jnp.copy(data.actuator_velocity.astype(jnp.float32)),
             jnp.copy(data.cvel.astype(jnp.float32)),
-            jnp.copy(data.qfrc_bias.astype(jnp.float32)),
-            jnp.copy(data.qM.astype(jnp.float32))
+            jnp.copy(data.qfrc_bias.astype(jnp.float32))
         )
 
     def _step_job(self, step: MujocoStep) -> MujocoState:
@@ -192,38 +184,43 @@ class MujocoSimulator(Simulator[SystemData]):
     
     def _get_jac_job(self, state: SystemState, id):
         data = self.local_data.data
-        data.time[:] = state.time
+        data.time = state.time
         data.qpos[:] = state.qpos
         data.qvel[:] = state.qvel
         data.act[:] = state.act
         mujoco.mj_forward(self.model, data)
-        jacp = np.zeros((3, self.model.nv), dtype=jnp.float32)
-        jacv = np.zeros((3, self.model.nv), dtype=jnp.float32)
+        jacp = np.zeros((3, self.model.nv), dtype=jnp.float64)
+        jacv = np.zeros((3, self.model.nv), dtype=jnp.float64)
         mujoco.mj_jacSite(self.model, data, jacp, None, id)
         mujoco.mj_jacSite(self.model, data, None, jacv, id)
-        return jacp, jacv
+        return jacp.astype(jnp.float32), jacv.astype(jnp.float32)
     
     def _get_jac(self, state, id):
         return self.pool.submit(self._get_jac_job, state, id).result()
     
-    def get_jacs(self, state: MujocoState, id: int) -> jax.Array:
+    def get_jacs(self, state: SystemState, id: int) -> jax.Array:
         """Returns the position and orientation parts of the Jacobian of the site at the given id."""
         structure = (jnp.zeros((3, self.model.nv), dtype=jnp.float32), jnp.zeros((3, self.model.nv), dtype=jnp.float32))
         jacp, jacv = jax.pure_callback(self._get_jac, structure, state, id)
         return jacp, jacv
     
-    def _get_fullM_job(self, state):
-        data = self.system_data(state)
-        mass_matrix = np.zeros(self.model.nv**2, dtype=jnp.float32)
-        mujoco.mj_fullM(self.model, mass_matrix, data.qM)
-        return mass_matrix
+    def _get_fullM_job(self, state: SystemState):
+        data = self.local_data.data
+        data.time = state.time
+        data.qpos[:] = state.qpos
+        data.qvel[:] = state.qvel
+        data.act[:] = state.act
+        mujoco.mj_forward(self.model, data)
+        mass_matrix = np.zeros((self.model.nv, self.model.nv), dtype=jnp.float64, order="C")
+        mujoco.mj_fullM(self.model, mass_matrix, np.array(data.qM))
+        return mass_matrix.astype(jnp.float32)
     
-    def _get_fullM(self, state):
+    def _get_fullM(self, state: SystemState):
         return self.pool.submit(self._get_fullM_job, state).result()
 
-    def get_fullM(self, state) -> jax.Array:
-        """Returns the full mass matrix of the robot."""
-        structure = jnp.zeros(self.model.nv**2, dtype=jnp.float32)
+    def get_fullM(self, state: SystemState) -> jax.Array:
+        """Returns the full mass matrix."""
+        structure = jnp.zeros((self.model.nv, self.model.nv), dtype=jnp.float32)
         M = jax.pure_callback(self._get_fullM, structure, state)
         M = M.reshape((self.model.nv, self.model.nv))
         return M

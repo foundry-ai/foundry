@@ -40,15 +40,13 @@ class SystemData(SystemState):
 
     # site locations
     site_xpos: jax.Array
-    site_xquat: jax.Array
+    site_xmat: jax.Array
 
     # position, velocity dependent:
     actuator_velocity: jax.Array
     cvel: jax.Array
     # forces
     qfrc_bias: jax.Array
-    # inertia
-    qM: jax.Array
 
 # Must be a jax pytree type!
 class Simulator(abc.ABC, Generic[SimulatorState]):
