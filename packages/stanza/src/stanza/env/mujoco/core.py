@@ -64,10 +64,6 @@ class MujocoEnvironment(Environment[SimulatorState, SystemState, Action], Generi
     physics_backend : str = field(default="mujoco", pytree_node=False)
 
     @jax_static_property
-    def xml(self):
-        raise NotImplementedError()
-
-    @jax_static_property
     def model(self) -> mujoco.MjModel:
         raise NotImplementedError()
     

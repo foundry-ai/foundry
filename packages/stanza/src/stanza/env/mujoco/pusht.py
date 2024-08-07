@@ -22,6 +22,7 @@ from stanza.env.mujoco.core import (
 
 import shapely.geometry as sg
 import jax.numpy as jnp
+import numpy as np
 import jax.random
 import mujoco
 
@@ -40,13 +41,12 @@ class PushTObs:
 
 @dataclass
 class PushTEnv(MujocoEnvironment[SimulatorState]):
+    goal_pos: jax.Array = field(default_factory=lambda: jnp.zeros((2,), jnp.float32))
+    goal_rot: jax.Array = field(default_factory=lambda: jnp.array(-jnp.pi/4, jnp.float32))
     # use the mjx backend by default
     physics_backend: str = field(default="mjx", pytree_node=False)
 
     success_threshold: float = field(default=0.9, pytree_node=False)
-
-    goal_pos: jax.Array = field(default_factory=lambda: jnp.zeros((2,), jnp.float32), pytree_node=False)
-    goal_rot: jax.Array = field(default_factory=lambda: jnp.array(-jnp.pi/4, jnp.float32), pytree_node=False)
 
     agent_radius : float = field(default=15/252, pytree_node=False)
     block_scale : float = field(default=30/252, pytree_node=False)
@@ -58,10 +58,7 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
             xml = f.read()
         com = 0.5*(self.block_scale/2) + 0.5*(self.block_scale + 1.5*self.block_scale)
         return xml.format(
-            goal_pos_x=self.goal_pos[0], goal_pos_y=self.goal_pos[1], 
-            goal_rot=self.goal_rot, 
             agent_radius=self.agent_radius,
-
             world_scale=self.world_scale,
             half_world_scale=self.world_scale/2,
             # the other constants needed for the block

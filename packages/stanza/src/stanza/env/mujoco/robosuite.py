@@ -50,7 +50,6 @@ class RobosuiteEnv(MujocoEnvironment[SimulatorState]):
             **self._env_args
         )
         env.reset()
-        env.reset()
         model =  env.sim.model._model
         robots = tuple(RobotInitializer.from_robosuite(r) for r in env.robots)
         initializer = ObjectInitializer.from_robosuite(env.placement_initializer)
@@ -154,6 +153,14 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
             return state
         else:
             return super()._reset_internal(rng_key)
+        
+    def reward(self, state, action, next_state):
+        data = self.simulator.system_data(next_state)
+        print(data)
+        pass
+
+    def is_finished(self, state: SimulatorState) -> jax.Array:
+        return super().is_finished(state)
 
     # For pick and place, use camera 1 by default
     def render(self, state, config = None):
