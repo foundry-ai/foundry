@@ -12,9 +12,13 @@ from stanza.env import (
     Environment,
     EnvironmentRegistry
 )
-from stanza.env.mujoco import (
+from stanza.env.transforms import (
+    EnvTransform, ChainedTransform,
+    MultiStepTransform
+)
+from stanza.env.mujoco.core import (
     MujocoEnvironment,
-    SystemState, SimulatorState
+    SystemState, SimulatorState, Action
 )
 
 from functools import partial
@@ -165,6 +169,95 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
     # For pick and place, use camera 1 by default
     def render(self, state, config = None):
         return super().render(state, config)
+    
+    @jax.jit
+    def observe(self, state, config : ObserveConfig = None):
+        if config is None: config = PickPlaceObs()
+        if isinstance(config, PickPlaceObs):
+            data = self.simulator.system_data(state)
+            eef_id = self.model.body("gripper0_eef").id
+            return PickPlaceObs(
+                eef_pos=data.xpos[eef_id, :],
+                eef_vel=data.cvel[eef_id, :3],
+                eef_quat=data.xquat[eef_id, :],
+                eef_rot_vel=data.cvel[eef_id, 3:],
+                object_pos=jnp.stack([
+                    data.xpos[self.model.body(f"{obj.capitalize()}_main").id, :] for obj in self.objects
+                ]),
+                object_quat=jnp.stack([
+                    data.xquat[self.model.body(f"{obj.capitalize()}_main").id, :] for obj in self.objects
+                ])
+            )
+        else:
+            raise ValueError("Unsupported observation type")
+    
+    def get_action(self, state):
+        #return self.observe(state).eef_pos
+        return jnp.zeros(self.model.nu)
+    
+    @jax.jit
+    def reward(self, state : SimulatorState, 
+                action : Action, 
+                next_state : SimulatorState):
+        #TODO
+        return 0
+        
+@dataclass
+class PickPlaceObs:
+    eef_pos: jax.Array = None # (3,) -- end-effector position
+    eef_vel: jax.Array = None # (3,) -- end-effector velocity
+    eef_quat: jax.Array = None # (4,) -- end-effector quaternion
+    eef_rot_vel: jax.Array = None # (3,) -- end-effector angular velocity
+
+    object_pos: jax.Array = None # (n, 3) where n is the number of objects in the scene
+    object_quat: jax.Array = None # (n, 4) where n is the number of objects in the scene
+
+@dataclass
+class PickPlacePosObs:
+    eef_pos: jax.Array = None
+    eef_quat: jax.Array = None
+    object_pos: jax.Array = None
+    object_quat: jax.Array = None
+
+@dataclass
+class PickPlaceEulerObs:
+    pass
+
+@dataclass
+class PositionalControlTransform(EnvTransform):
+    #TODO
+    def apply(self, env):
+        return PositionalControlEnv(env)
+    
+@dataclass
+class PositionalObsTransform(EnvTransform):
+    def apply(self, env):
+        return PositionalObsEnv(env)
+
+@dataclass
+class PositionalControlEnv(EnvWrapper):
+    #TODO
+    def step(self, state, action, rng_key=None):
+        a = jnp.zeros(self.base.model.nu)
+        return self.base.step(state, a, None)
+
+@dataclass
+class PositionalObsEnv(EnvWrapper):
+    def observe(self, state, config=None):
+        if config is None: config = PickPlacePosObs()
+        if not isinstance(config, PickPlacePosObs):
+            return self.base.observe(state, config)
+        obs = self.base.observe(state, PickPlaceObs())
+        return PickPlacePosObs(
+            eef_pos=obs.eef_pos,
+            eef_quat=obs.eef_quat,
+            object_pos=obs.object_pos,
+            object_quat=obs.object_quat
+        )
+    
+    def get_action(self, state):
+        #return self.observe(state).eef_pos
+        return jnp.zeros(self.model.nu)
 
 _NUT_JOINT_MAP = {
     "round": "RoundNut_joint0",

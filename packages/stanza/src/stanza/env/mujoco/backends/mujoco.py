@@ -113,7 +113,7 @@ class MujocoSimulator(Simulator[SystemData]):
     def step(self, state: MujocoState,
                    action : jax.Array, rng_key: jax.Array) -> SystemData:
         assert state.data.time.ndim == 0
-        assert action.shape == (self.model.nu,)
+        assert action.shape == (self.model.nu,), f"action shape {action.shape} != {self.model.nu}"
         return jax.pure_callback(
             self._step, MujocoState(
                 self.data_structure,

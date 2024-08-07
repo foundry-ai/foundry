@@ -6,13 +6,11 @@ from stanza.runtime import ConfigProvider
 from stanza.random import PRNGSequence
 from stanza.policy import PolicyInput, PolicyOutput
 from stanza.policy.transforms import ChunkingTransform
-from stanza.env.mujoco.pusht import PushTObs
 
 from stanza.dataclasses import dataclass
 import dataclasses
 from stanza.data import Data, PyTreeData
 from stanza.data.normalizer import LinearNormalizer, StdNormalizer
-from stanza.diffusion import nonparametric
 from stanza import train
 import stanza.train.ipython
 import wandb
@@ -28,8 +26,6 @@ import jax.numpy as jnp
 import logging
 import pickle
 import os
-import orbax.checkpoint
-from flax.training import orbax_utils
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +38,7 @@ class DiffusionPolicyConfig:
     iterations: int = 50000
     batch_size: int = 64
 
-
+    # MLP config
     net_width: int = 4096
     net_depth: int = 3
     embed_type: str = "film"
@@ -100,13 +96,6 @@ def diffusion_policy_from_checkpoint(
 
 def train_net_diffusion_policy(
         config : DiffusionPolicyConfig,  wandb_run, train_data, env, eval):
-    
-    # data_agent_pos = jax.vmap(
-    #     #TODO: refactor pushtobs
-    #     lambda x: env.observe(x, PushTObs()).agent_pos
-    # )(train_data_tree.state)
-    # actions = train_data_tree.actions - data_agent_pos[:, None, :]
-    # train_data = PyTreeData(Sample(train_data_tree.state, train_data_tree.observations, actions))
     
     train_sample = train_data[0]
     normalizer = StdNormalizer.from_data(train_data)
@@ -189,14 +178,18 @@ def train_net_diffusion_policy(
     # checkpoint_manager = orbax.checkpoint.CheckpointManager(
     #     '/tmp/flax_ckpt/orbax/managed', orbax_checkpointer, options)
 
+    # Create a directory to save checkpoints
     current_dir = os.path.dirname(os.path.realpath(__file__))
     ckpts_dir = os.path.join(current_dir, "checkpoints")
     if not os.path.exists(ckpts_dir):
         os.makedirs(ckpts_dir)
 
     train_data_batched = train_data.stream().batch(config.batch_size)
+
+    # Keep track of the exponential moving average of the model parameters
     ema = optax.ema(0.9)
     ema_state = ema.init(vars)
+
     with stanza.train.loop(train_data_batched, 
                 rng_key=next(rng),
                 iterations=config.iterations,

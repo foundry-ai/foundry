@@ -10,7 +10,6 @@ dependencies = [
     "stanza-models"
 ]
 requires-python = ">=3.10"
-readme = "README.md"
 license = {text = "MIT"}
 
 [project.scripts]

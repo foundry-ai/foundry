@@ -9,7 +9,6 @@ from stanza.policy import PolicyInput, PolicyOutput
 from stanza.policy.transforms import ChunkingTransform
 
 from stanza.env import Environment
-from stanza.env.mujoco.pusht import PushTObs
 
 from stanza.dataclasses import dataclass
 from stanza.diffusion import nonparametric
@@ -59,7 +58,7 @@ def estimator_diffusion_policy(
         obs = input.observation
         if config.relative_actions:
             data_agent_pos = jax.vmap(
-                lambda x: env.observe(x, PushTObs()).agent_pos
+                lambda x: env.get_action(x)
             )(train_data.state)
             actions = train_data.actions - data_agent_pos[:, None, :]
         else:
@@ -73,10 +72,10 @@ def estimator_diffusion_policy(
         diffuser = estimator(obs)
         action = schedule.sample(input.rng_key, diffuser, action_sample)
         if config.relative_actions:
-            agent_pos = env.observe(input.state, PushTObs()).agent_pos
+            agent_pos = env.get_action(input.state)
             action = action + agent_pos
         action = action[:config.action_horizon]
-        return PolicyOutput(action=action)
+        return PolicyOutput(action=action, info=action)
     policy = ChunkingTransform(
         obs_length, config.action_horizon
     ).apply(chunk_policy)

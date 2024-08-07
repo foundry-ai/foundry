@@ -45,6 +45,9 @@ class Environment(typing.Generic[State, ReducedState, Action]):
     def observe(self, state: State,
             config: ObserveConfig[Observation] | None = None) -> Observation:
         raise NotImplementedError()
+    
+    def get_action(self, state: State) -> Action:
+        raise NotImplementedError()
 
     def reward(self, state: State,
                action : Action, next_state : State) -> jax.Array:
