@@ -18,7 +18,8 @@ from stanza.env.transforms import (
 )
 from stanza.env.mujoco.core import (
     MujocoEnvironment,
-    SystemState, SimulatorState, Action
+    SystemState, SimulatorState, Action,
+    quat_to_mat, orientation_error
 )
 
 from functools import partial
@@ -166,27 +167,25 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
     @jax.jit
     def observe(self, state, config : ObserveConfig = None):
         if config is None: config = PickPlaceObs()
+        data = self.simulator.system_data(state)
+        eef_id = self.model.body("gripper0_eef").id
         if isinstance(config, PickPlaceObs):
-            data = self.simulator.system_data(state)
-            eef_id = self.model.body("gripper0_eef").id
             return PickPlaceObs(
                 eef_pos=data.xpos[eef_id, :],
                 eef_vel=data.cvel[eef_id, :3],
                 eef_quat=data.xquat[eef_id, :],
                 eef_rot_vel=data.cvel[eef_id, 3:],
                 object_pos=jnp.stack([
-                    data.xpos[self.model.body(f"{obj.capitalize()}_main").id, :] for obj in self.objects
+                    data.xpos[self.model.joint(_OBJECT_JOINT_MAP[obj]).id, :] for obj in self.objects
                 ]),
                 object_quat=jnp.stack([
-                    data.xquat[self.model.body(f"{obj.capitalize()}_main").id, :] for obj in self.objects
+                    data.xquat[self.model.joint(_OBJECT_JOINT_MAP[obj]).id, :] for obj in self.objects
                 ])
             )
+        elif isinstance(config, PickPlaceEEFPose):
+            return jnp.concatenate([data.xpos[eef_id, :], data.xquat[eef_id, :]])
         else:
             raise ValueError("Unsupported observation type")
-    
-    def get_action(self, state):
-        #return self.observe(state).eef_pos
-        return jnp.zeros(self.model.nu)
     
     @jax.jit
     def reward(self, state : SimulatorState, 
@@ -194,7 +193,11 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
                 next_state : SimulatorState):
         #TODO
         return 0
-        
+
+@dataclass
+class PickPlaceEEFPose:
+    pass
+
 @dataclass
 class PickPlaceObs:
     eef_pos: jax.Array = None # (3,) -- end-effector position
@@ -218,9 +221,11 @@ class PickPlaceEulerObs:
 
 @dataclass
 class PositionalControlTransform(EnvTransform):
-    #TODO
+    k_p : jax.Array = jnp.array([15]*6) # (6,) -- [0:3] corresponds to position, [3:6] corresponds to orientation
+    k_d : jax.Array = jnp.array([2]*6) # (6,) -- [0:3] corresponds to position, [3:6] corresponds to orientation
+
     def apply(self, env):
-        return PositionalControlEnv(env)
+        return PositionalControlEnv(env, self.k_p, self.k_d)
     
 @dataclass
 class PositionalObsTransform(EnvTransform):
@@ -229,9 +234,51 @@ class PositionalObsTransform(EnvTransform):
 
 @dataclass
 class PositionalControlEnv(EnvWrapper):
-    #TODO
+    k_p : jax.Array 
+    k_d : jax.Array 
+
     def step(self, state, action, rng_key=None):
-        a = jnp.zeros(self.base.model.nu)
+        obs = self.base.observe(state)
+        if action is not None:
+            data = self.simulator.system_data(state)
+            robot = self._model_initializers[1][0]
+            eef_id = self.model.body("gripper0_eef").id
+
+            print(self.model.nv)
+            print(data.qM)
+            jacp, jacv = self.native_simulator.get_jacs(state, eef_id)
+            J_pos = jnp.array(jacp.reshape((3, -1))[:, robot.qvel_indices])
+            J_ori = jnp.array(jacv.reshape((3, -1))[:, robot.qvel_indices])
+            
+            mass_matrix = self.native_simulator.get_fullM(state)
+            mass_matrix = jnp.reshape(mass_matrix, (len(data.qvel), len(data.qvel)))
+            mass_matrix = mass_matrix[robot.qvel_indices, :][:, robot.qvel_indices]
+
+            # Compute lambda matrices
+            mass_matrix_inv = jnp.linalg.inv(mass_matrix)
+            lambda_pos_inv = J_pos @ mass_matrix_inv @ J_pos.T
+            lambda_ori_inv = J_ori @ mass_matrix_inv @ J_ori.T
+            # take the inverses, but zero out small singular values for stability
+            lambda_pos = jnp.linalg.pinv(lambda_pos_inv)
+            lambda_ori = jnp.linalg.pinv(lambda_ori_inv)
+
+            pos_error = action[:3] - obs.eef_pos
+            vel_pos_error = -obs.eef_vel
+
+            eef_ori_mat = quat_to_mat(obs.eef_quat)
+            action_ori_mat = quat_to_mat(action[3:])
+            ori_error = orientation_error(action_ori_mat, eef_ori_mat)
+            vel_ori_error = -obs.eef_rot_vel
+
+            F_r = self.k_p[:3] * pos_error + self.k_d[:3] * vel_pos_error
+            Tau_r = self.k_p[3:] * ori_error + self.k_d[3:] * vel_ori_error
+            compensation = data.qfrc_bias[robot.qvel_indices]
+
+            torques = J_pos.T @ lambda_pos @ F_r + J_ori.T @ lambda_ori @ Tau_r + compensation
+            a = jnp.zeros(self.model.nu, dtype=jnp.float32)
+            a = a.at[robot.qvel_indices].set(torques)
+        else: 
+            a = jnp.zeros(self.model.nu, dtype=jnp.float32)
         return self.base.step(state, a, None)
 
 @dataclass
@@ -366,13 +413,15 @@ class ObjectPlacement:
 class RobotInitializer:
     init_qpos: jax.Array
     joint_indices: np.ndarray = field(pytree_node=False)
+    qpos_indices: np.ndarray = field(pytree_node=False)
+    qvel_indices: np.ndarray = field(pytree_node=False)
     noiser: Callable[[jax.Array, jax.Array], jax.Array] | None = None
 
     def reset(self, rng_key : jax.Array | None, state: SystemState) -> SystemState:
         robot_qpos = self.init_qpos
         if rng_key is not None and self.noiser is not None:
             robot_qpos = self.noiser(rng_key, robot_qpos)
-        qpos = state.qpos.at[self.joint_indices].set(robot_qpos)
+        qpos = state.qpos.at[self.qpos_indices].set(robot_qpos)
         return replace(state, qpos=qpos)
 
     @staticmethod
@@ -388,7 +437,9 @@ class RobotInitializer:
                 return qpos + m * jax.random.uniform(rng_key, qpos.shape, minval=-1, maxval=1)
         return RobotInitializer(
             robot.init_qpos,
+            np.array(robot._ref_joint_indexes),
             np.array(robot._ref_joint_pos_indexes),
+            np.array(robot._ref_joint_vel_indexes),
             noiser if randomized else None
         )
 
