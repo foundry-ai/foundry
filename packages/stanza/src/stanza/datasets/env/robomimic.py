@@ -30,7 +30,8 @@ class RobomimicDataset(EnvDataset[Step]):
         return environments.create(self.env_name)
 
 MD5_MAP = {
-    ("can", "ph"): "758590f0916079d36fb881bd1ac5196d"
+    ("can", "ph"): "758590f0916079d36fb881bd1ac5196d",
+    ("square", "ph"): "ded04e6775389ca11cf77ff250b6d612",
 }
 
 def make_url(name, dataset_type):

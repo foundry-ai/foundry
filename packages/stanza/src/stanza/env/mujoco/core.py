@@ -37,6 +37,11 @@ class SystemData(SystemState):
     # position dependent:
     xpos: jax.Array
     xquat: jax.Array
+
+    # site locations
+    site_xpos: jax.Array
+    site_xquat: jax.Array
+
     # position, velocity dependent:
     actuator_velocity: jax.Array
     cvel: jax.Array
