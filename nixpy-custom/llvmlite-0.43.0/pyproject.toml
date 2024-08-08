@@ -1,0 +1,9 @@
+[project]
+name = "llvmlite"
+version = "0.43.0"
+
+dependencies = []
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"

@@ -1,0 +1,7 @@
+[project]
+name = "pyobjc-core"
+version = "10.3.1"
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"

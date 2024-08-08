@@ -15,16 +15,18 @@
         });
         in {
             devShells = forEachSupportedSystem ({ pkgs }: 
-                let py = pkgs.python310; 
-                    env = (import ./requirements.nix) {
+                let nixpy-custom = import ./nixpy-custom;
+                    py = pkgs.python310; 
+                    requirements = (import ./requirements.nix) {
                         buildPythonPackage = py.pkgs.buildPythonPackage;
                         fetchurl = pkgs.fetchurl;
                         nixpkgs = pkgs;
                         python = py;
+                        nixpy-custom = nixpy-custom;
                     };
                     pythonEnv = py.withPackages(
                         ps: 
-                        with env.packages; [numpy scipy]
+                        with requirements.env; [stanza-meta]
                     );
                 in {
                 default = pkgs.mkShell {

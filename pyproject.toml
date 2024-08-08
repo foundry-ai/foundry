@@ -41,6 +41,5 @@ dev = [
 excludes = ["pytinyrenderer", "evdev"]
 
 [tool.nixpy]
-extra-links = [
-	"file://${PROJECT_ROOT}/nix-custom/"
-]
+python-version = "3.10"
+platforms = ["x86_64-linux", "powerpc64le-linux", "aarch64-darwin"]
