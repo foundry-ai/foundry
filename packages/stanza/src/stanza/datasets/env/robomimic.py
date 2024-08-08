@@ -27,7 +27,18 @@ class RobomimicDataset(EnvDataset[Step]):
 
     def create_env(self):
         from stanza.env.mujoco.robosuite import environments
-        return environments.create(self.env_name)
+        from stanza.env.mujoco.robosuite import (
+            PositionalControlTransform,
+            PositionalObsTransform,
+        )
+        from stanza.env.transforms import ChainedTransform, MultiStepTransform
+        env = environments.create(self.env_name)
+        env = ChainedTransform([
+            PositionalControlTransform(),
+            MultiStepTransform(10),
+            PositionalObsTransform()
+        ]).apply(env)
+        return env
 
 MD5_MAP = {
     ("can", "ph"): "758590f0916079d36fb881bd1ac5196d",
@@ -157,9 +168,10 @@ def load_robomimic(*, name=None, dataset_type=None, quiet=False, **kwargs):
     env_name, data = load_robomimic_dataset(
         name=name, dataset_type=dataset_type, quiet=quiet
     )
-    
+    train = data.slice(0, len(data) - 16)
+    test = data.slice(len(data) - 16, 16)
     return RobomimicDataset(
-        splits={"train": data},
+        splits={"train": train, "test": test},
         env_name=env_name
     )
 

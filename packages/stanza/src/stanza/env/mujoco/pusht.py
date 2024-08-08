@@ -100,9 +100,9 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
     
     @jax.jit
     def observe(self, state, config : ObserveConfig | None = None):
-        if config is None: config = PushTObs
-        if config == PushTObs:
-            data = self.simulator.system_data(state)
+        if config is None: config = PushTObs()
+        data = self.simulator.system_data(state)
+        if isinstance(config, PushTObs):
             return PushTObs(
                 # Extract agent pos, vel
                 agent_pos=data.xpos[1,:2],
@@ -113,11 +113,10 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
                 block_vel=data.cvel[2,3:5],
                 block_rot_vel=data.cvel[2,2],
             )
+        elif isinstance(config, PushTAgentPos):
+            return data.xpos[1,:2]
         else:
             raise ValueError("Unsupported observation type")
-        
-    def get_action(self, state):
-        return self.observe(state).agent_pos
 
     # For computing the reward
     def _block_points(self, pos, rot):
@@ -185,6 +184,9 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
         else:
             raise ValueError("Unsupported render config")
 
+@dataclass
+class PushTAgentPos:
+    pass
 
 @dataclass
 class PushTPosObs:
@@ -236,7 +238,7 @@ class PositionalControlEnv(EnvWrapper):
     k_v : float = 2
 
     def step(self, state, action, rng_key=None):
-        obs = self.base.observe(state, PushTObs)
+        obs = self.base.observe(state, PushTObs())
         if action is not None:
             a = self.k_p * (action - obs.agent_pos) + self.k_v * (-obs.agent_vel)
         else: 
@@ -250,15 +252,12 @@ class PositionalObsEnv(EnvWrapper):
         if config is None: config = PushTPosObs
         if config != PushTPosObs:
             return self.base.observe(state, config)
-        obs = self.base.observe(state, PushTObs)
+        obs = self.base.observe(state, PushTObs())
         return PushTPosObs(
             agent_pos=obs.agent_pos,
             block_pos=obs.block_pos,
             block_rot=obs.block_rot
         )
-    
-    def get_action(self, state):
-        return self.observe(state).agent_pos
 
 @dataclass
 class KeypointObsEnv(EnvWrapper):
@@ -277,9 +276,6 @@ class KeypointObsEnv(EnvWrapper):
             block_pos=obs.block_pos,
             block_end=end
         )
-    
-    def get_action(self, state):
-        return self.observe(state).agent_pos
 
 @dataclass
 class RelKeypointObsEnv(EnvWrapper):
@@ -304,9 +300,6 @@ class RelKeypointObsEnv(EnvWrapper):
             rel_block_pos=obs.block_pos - self.goal_pos,
             rel_block_end=end - goal_end,
         )
-    
-    def get_action(self, state):
-        return self.observe(state).agent_block_pos
 
 environments = EnvironmentRegistry[PushTEnv]()
 environments.register(PushTEnv)

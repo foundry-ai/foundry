@@ -73,9 +73,10 @@ class MjxSimulator(Simulator[mjx.Data]):
             xpos=state.xpos,
             xquat=state.xquat,
             site_xpos=state.site_xpos,
-            site_xquat=None,
+            site_xmat=None,
             actuator_velocity=state.actuator_velocity,
-            cvel=state.cvel
+            cvel=state.cvel,
+            qfrc_bias=state.qfrc_bias
         )
 
 jax.tree_util.register_pytree_node(

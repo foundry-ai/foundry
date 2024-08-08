@@ -8,10 +8,12 @@ from stanza.datasets.env import datasets
 from stanza.datasets.env import datasets
 from stanza.random import PRNGSequence
 from stanza.env import ImageRender
+from stanza.env.core import ObserveConfig
 from stanza.train.reporting import Video
 from stanza import canvas
 from stanza.policy import PolicyInput, PolicyOutput
-
+from stanza.env.mujoco.pusht import PushTAgentPos
+from stanza.env.mujoco.robosuite import ManipulationTaskEEFPose
 
 
 
@@ -52,8 +54,9 @@ class Config:
     obs_length: int = 2
     action_length: int = 16
     policy: PolicyConfig = None
+    action_config: ObserveConfig = ManipulationTaskEEFPose()
     timesteps: int = 400
-    train_data_size: int = 150
+    train_data_size: int | None = None
     render_traj: bool = False
 
     @staticmethod
@@ -92,7 +95,7 @@ def process_data(config, env, data):
     )
     def process_chunk(chunk):
         states = chunk.elements
-        actions = jax.vmap(lambda s: env.get_action(s))(states)
+        actions = jax.vmap(lambda s: env.observe(s, config.action_config))(states)
         actions = jax.tree.map(lambda x: x[-config.action_length:], actions)
         obs_states = jax.tree.map(lambda x: x[:config.obs_length], states)
         curr_state = jax.tree.map(lambda x: x[-1], obs_states)
@@ -184,14 +187,16 @@ def main(config : Config):
     logger.info(f"Loading dataset [blue]{config.dataset}[/blue]")
     dataset = datasets.create(config.dataset)
     env = dataset.create_env()
-    train_data = dataset.splits["train"].slice(0,config.train_data_size)
+    train_data = dataset.splits["train"]
+    if config.train_data_size is not None:
+        train_data = train_data.slice(0,config.train_data_size)
     logger.info(f"Processing dataset.")
     train_data = process_data(config, env, train_data).cache()
     # jax.debug.print("{s}", s=train_data)
     # train_data = train_data.slice(0,5)
     # jax.debug.print("{s}", s=train_data.as_pytree())
 
-    test_data = dataset.splits["test"].truncate(1).slice(0,3)
+    test_data = dataset.splits["test"].truncate(1).slice(0,8)
     test_x0s = test_data.map(
         lambda x: env.full_state(
             jax.tree.map(lambda x: x[0], x.reduced_state)

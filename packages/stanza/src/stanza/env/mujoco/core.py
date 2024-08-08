@@ -40,11 +40,13 @@ class SystemData(SystemState):
 
     # site locations
     site_xpos: jax.Array
-    site_xquat: jax.Array
+    site_xmat: jax.Array
 
     # position, velocity dependent:
     actuator_velocity: jax.Array
     cvel: jax.Array
+    # forces
+    qfrc_bias: jax.Array
 
 # Must be a jax pytree type!
 class Simulator(abc.ABC, Generic[SimulatorState]):
@@ -209,3 +211,58 @@ def quat_to_angle(quat):
     w3 = quat[3] # sin(theta/2)
     angle = 2*jax.numpy.atan2(w3, w0)
     return angle
+
+def quat_to_mat(quat):
+    """
+    Adapted from robosuite transform_utils.py
+    Converts given quaternion to matrix.
+
+    Args:
+        quat (np.array): (x,y,z,w) vec4 float angles
+
+    Returns:
+        jnp.array: 3x3 rotation matrix
+    """
+    # awkward semantics for use with numba
+    inds = jnp.array([3, 0, 1, 2])
+    q = quat[inds]
+
+    n = jnp.dot(q, q)
+    q *= jnp.sqrt(2.0 / n)
+    q2 = jnp.outer(q, q)
+    return jnp.array(
+        [
+            [1.0 - q2[2, 2] - q2[3, 3], q2[1, 2] - q2[3, 0], q2[1, 3] + q2[2, 0]],
+            [q2[1, 2] + q2[3, 0], 1.0 - q2[1, 1] - q2[3, 3], q2[2, 3] - q2[1, 0]],
+            [q2[1, 3] - q2[2, 0], q2[2, 3] + q2[1, 0], 1.0 - q2[1, 1] - q2[2, 2]],
+        ]
+    )
+
+def orientation_error(desired, current):
+    """
+    Adapted from robosuite control_utils.py
+    This function calculates a 3-dimensional orientation error vector for use in the
+    impedance controller. It does this by computing the delta rotation between the
+    inputs and converting that rotation to exponential coordinates (axis-angle
+    representation, where the 3d vector is axis * angle).
+    See https://en.wikipedia.org/wiki/Axis%E2%80%93angle_representation for more information.
+    Optimized function to determine orientation error from matrices
+
+    Args:
+        desired (np.array): 2d array representing target orientation matrix
+        current (np.array): 2d array representing current orientation matrix
+
+    Returns:
+        np.array: 2d array representing orientation error as a matrix
+    """
+    rc1 = current[0:3, 0]
+    rc2 = current[0:3, 1]
+    rc3 = current[0:3, 2]
+    rd1 = desired[0:3, 0]
+    rd2 = desired[0:3, 1]
+    rd3 = desired[0:3, 2]
+
+    error = 0.5 * (jnp.cross(rc1, rd1) + jnp.cross(rc2, rd2) + jnp.cross(rc3, rd3))
+
+    return error
+

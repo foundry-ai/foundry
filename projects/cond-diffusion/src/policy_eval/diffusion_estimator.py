@@ -13,6 +13,10 @@ from stanza.env import Environment
 from stanza.dataclasses import dataclass
 from stanza.diffusion import nonparametric
 
+from stanza.env.core import ObserveConfig
+from stanza.env.mujoco.pusht import PushTAgentPos
+from stanza.env.mujoco.robosuite import ManipulationTaskEEFPose
+
 from typing import Callable
 
 import stanza.util
@@ -25,8 +29,9 @@ logger = logging.getLogger(__name__)
 class DiffusionEstimatorConfig:
     estimator: str = "nw"
     kernel_bandwidth: float = 0.01
-    diffusion_steps: int = 100
+    diffusion_steps: int = 50
     relative_actions: bool = True
+    agent_pos_config: ObserveConfig = ManipulationTaskEEFPose()
     action_horizon: int = 8
 
     def parse(self, config: ConfigProvider) -> "DiffusionEstimatorConfig":
@@ -58,7 +63,7 @@ def estimator_diffusion_policy(
         obs = input.observation
         if config.relative_actions:
             data_agent_pos = jax.vmap(
-                lambda x: env.get_action(x)
+                lambda x: env.observe(x, config.agent_pos_config)
             )(train_data.state)
             actions = train_data.actions - data_agent_pos[:, None, :]
         else:
@@ -72,7 +77,7 @@ def estimator_diffusion_policy(
         diffuser = estimator(obs)
         action = schedule.sample(input.rng_key, diffuser, action_sample)
         if config.relative_actions:
-            agent_pos = env.get_action(input.state)
+            agent_pos = env.observe(input.state, config.agent_pos_config)
             action = action + agent_pos
         action = action[:config.action_horizon]
         return PolicyOutput(action=action, info=action)
