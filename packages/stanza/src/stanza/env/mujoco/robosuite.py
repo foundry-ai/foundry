@@ -199,14 +199,16 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
     def observe(self, state, config : ObserveConfig | None = None):
         if config is None: config = ManipulationTaskObs()
         data = self.simulator.system_data(state)
-        eef_id = self.model.body("gripper0_eef").id
+        eef_id = self.model.site("gripper0_grip_site").id
+        grip_site_id = self.model.site("gripper0_grip_site").id
+        system_state = self.simulator.reduce_state(state)
+        jacp, jacr = self.native_simulator.get_jacs(system_state, eef_id)
         if isinstance(config, ManipulationTaskObs):
-            grip_site_id = self.model.site("gripper0_grip_site").id
             return ManipulationTaskObs(
                 eef_pos=data.xpos[eef_id, :],
-                eef_vel=data.cvel[eef_id, :3],
-                eef_quat=data.xquat[eef_id, :],
-                eef_rot_vel=data.cvel[eef_id, 3:],
+                eef_vel=jnp.dot(jacp, system_state.qvel),
+                eef_ori_mat=data.site_xmat[eef_id, :].reshape([3, 3]),
+                eef_ori_vel=jnp.dot(jacr, system_state.qvel),
                 grip_site_pos=data.site_xpos[grip_site_id, :],
                 object_pos=jnp.stack([
                     data.xpos[self.model.joint(_OBJECT_JOINT_MAP[obj]).id, :] for obj in self.objects
@@ -216,7 +218,7 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
                 ])
             )
         elif isinstance(config, ManipulationTaskEEFPose):
-            return jnp.concatenate([data.xpos[eef_id, :], data.xquat[eef_id, :]])
+            return data.xpos[eef_id, :], data.site_xmat[eef_id, :].reshape([3, 3])
         else:
             raise ValueError("Unsupported observation type")
 
@@ -285,10 +287,10 @@ class NutAssembly(RobosuiteEnv[SimulatorState]):
         if config is None: config = ManipulationTaskObs()
         if isinstance(config, ManipulationTaskObs):
             data = self.simulator.system_data(state)
-            eef_id = self.model.body("gripper0_eef").id
+            eef_id = self.model.site("gripper0_grip_site").id
             grip_site_id = self.model.site("gripper0_grip_site").id
             return ManipulationTaskObs(
-                eef_pos=data.xpos[eef_id, :],
+                eef_pos=data.site_xpos[eef_id, :],
                 eef_vel=data.cvel[eef_id, :3],
                 eef_quat=data.xquat[eef_id, :],
                 eef_rot_vel=data.cvel[eef_id, 3:],
@@ -326,18 +328,11 @@ class ManipulationTaskEEFPose:
     pass
 
 @dataclass
-class ManipulationTaskPosObs:
-    eef_pos: jax.Array = None
-    eef_quat: jax.Array = None
-    object_pos: jax.Array = None
-    object_quat: jax.Array = None
-
-@dataclass
 class ManipulationTaskObs:
     eef_pos: jax.Array = None # (n_robots, 3,) -- end-effector position
     eef_vel: jax.Array = None # (n_robots, 3,) -- end-effector velocity
-    eef_quat: jax.Array = None # (n_robots, 4,) -- end-effector quaternion
-    eef_rot_vel: jax.Array = None # (n_robots, 3,) -- end-effector angular velocity
+    eef_ori_mat: jax.Array = None # (n_robots, 4,) -- end-effector quaternion
+    eef_ori_vel: jax.Array = None # (n_robots, 3,) -- end-effector angular velocity
     grip_site_pos: jax.Array = None # (n_robots, 3,) -- gripper site position
 
     object_pos: jax.Array = None # (n_objects, 3) where n is the number of objects in the scene
@@ -346,14 +341,14 @@ class ManipulationTaskObs:
 @dataclass
 class ManipulationTaskPosObs:
     eef_pos: jax.Array = None
-    eef_quat: jax.Array = None
+    eef_ori_mat: jax.Array = None
     object_pos: jax.Array = None
     object_quat: jax.Array = None
 
 @dataclass
 class PositionalControlTransform(EnvTransform):
-    k_p : jax.Array = jnp.array([15]*6) # (6,) -- [0:3] corresponds to position, [3:6] corresponds to orientation
-    k_d : jax.Array = jnp.array([2]*6) # (6,) -- [0:3] corresponds to position, [3:6] corresponds to orientation
+    k_p : jax.Array = jnp.array([1500]*6) # (6,) -- [0:3] corresponds to position, [3:6] corresponds to orientation
+    k_d : jax.Array = jnp.array([240]*6) # (6,) -- [0:3] corresponds to position, [3:6] corresponds to orientation
 
     def apply(self, env):
         return PositionalControlEnv(env, self.k_p, self.k_d)
@@ -371,9 +366,10 @@ class PositionalControlEnv(EnvWrapper):
     def step(self, state, action, rng_key=None):
         obs = self.base.observe(state)
         if action is not None:
+            action_pos, action_ori_mat = action
             data = self.simulator.system_data(state)
             robot = self._model_initializers[1][0]
-            eef_id = self.model.body("gripper0_eef").id
+            eef_id = self.model.site("gripper0_grip_site").id
 
             system_state = self.simulator.reduce_state(state)
             jacp, jacv = self.native_simulator.get_jacs(system_state, eef_id)
@@ -392,13 +388,12 @@ class PositionalControlEnv(EnvWrapper):
             lambda_pos = jnp.linalg.pinv(lambda_pos_inv)
             lambda_ori = jnp.linalg.pinv(lambda_ori_inv)
 
-            pos_error = action[:3] - obs.eef_pos
+            pos_error = action_pos - obs.eef_pos
             vel_pos_error = -obs.eef_vel
 
-            eef_ori_mat = quat_to_mat(obs.eef_quat)
-            action_ori_mat = quat_to_mat(action[3:])
+            eef_ori_mat = obs.eef_ori_mat
             ori_error = orientation_error(action_ori_mat, eef_ori_mat)
-            vel_ori_error = -obs.eef_rot_vel
+            vel_ori_error = -obs.eef_ori_vel
 
             F_r = self.k_p[:3] * pos_error + self.k_d[:3] * vel_pos_error
             Tau_r = self.k_p[3:] * ori_error + self.k_d[3:] * vel_ori_error
@@ -407,6 +402,9 @@ class PositionalControlEnv(EnvWrapper):
             torques = J_pos.T @ lambda_pos @ F_r + J_ori.T @ lambda_ori @ Tau_r + compensation
             a = jnp.zeros(self.model.nu, dtype=jnp.float32)
             a = a.at[robot.qvel_indices].set(torques)
+            #jax.debug.print("J_pos: {J_pos}, J_ori: {J_ori}, lambda_pos: {lambda_pos}, lambda_ori: {lambda_ori}", J_pos=J_pos, J_ori=J_ori, lambda_pos=lambda_pos, lambda_ori=lambda_ori)
+            #jax.debug.print("{s}, {t}, {u}", s=J_pos.T @ lambda_pos @ F_r, t=J_ori.T @ lambda_ori @ Tau_r, u=compensation)
+            #jax.debug.print("{s}", s=a)
         else: 
             a = jnp.zeros(self.model.nu, dtype=jnp.float32)
         return self.base.step(state, a, None)
@@ -421,7 +419,7 @@ class PositionalObsEnv(EnvWrapper):
         obs = self.base.observe(state, ManipulationTaskObs())
         return ManipulationTaskPosObs(
             eef_pos=obs.eef_pos,
-            eef_quat=obs.eef_quat,
+            eef_ori_mat=obs.eef_ori_mat,
             object_pos=obs.object_pos,
             object_quat=obs.object_quat
         )
