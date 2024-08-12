@@ -205,7 +205,7 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
         jacp, jacr = self.native_simulator.get_jacs(system_state, eef_id)
         if isinstance(config, ManipulationTaskObs):
             return ManipulationTaskObs(
-                eef_pos=data.xpos[eef_id, :],
+                eef_pos=data.site_xpos[eef_id, :],
                 eef_vel=jnp.dot(jacp, system_state.qvel),
                 eef_ori_mat=data.site_xmat[eef_id, :].reshape([3, 3]),
                 eef_ori_vel=jnp.dot(jacr, system_state.qvel),
@@ -218,7 +218,8 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
                 ])
             )
         elif isinstance(config, ManipulationTaskEEFPose):
-            return data.xpos[eef_id, :], data.site_xmat[eef_id, :].reshape([3, 3])
+            #return jnp.concatenate([data.site_xpos[eef_id, :], data.site_xmat[eef_id, :]])
+            return data.site_xpos[eef_id, :].reshape(3,), data.site_xmat[eef_id, :].reshape([3, 3])
         else:
             raise ValueError("Unsupported observation type")
 
@@ -366,7 +367,11 @@ class PositionalControlEnv(EnvWrapper):
     def step(self, state, action, rng_key=None):
         obs = self.base.observe(state)
         if action is not None:
+            # action_pos = jax.tree.map(lambda x: x[:,:3].reshape(3,), action)
+            # action_ori_mat = jax.tree.map(lambda x: x[:,3:].reshape([3,3]), action)
             action_pos, action_ori_mat = action
+            action_pos = jnp.squeeze(action_pos)
+            action_ori_mat = jnp.squeeze(action_ori_mat)
             data = self.simulator.system_data(state)
             robot = self._model_initializers[1][0]
             eef_id = self.model.site("gripper0_grip_site").id
@@ -399,6 +404,7 @@ class PositionalControlEnv(EnvWrapper):
             Tau_r = self.k_p[3:] * ori_error + self.k_d[3:] * vel_ori_error
             compensation = data.qfrc_bias[robot.qvel_indices]
 
+            #print(J_pos.T.shape, lambda_pos.shape, F_r.shape, J_ori.T.shape, lambda_ori.shape, Tau_r.shape, compensation.shape)
             torques = J_pos.T @ lambda_pos @ F_r + J_ori.T @ lambda_ori @ Tau_r + compensation
             a = jnp.zeros(self.model.nu, dtype=jnp.float32)
             a = a.at[robot.qvel_indices].set(torques)

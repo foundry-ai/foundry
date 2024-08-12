@@ -148,7 +148,7 @@ def eval(config, env, policy, T, x0, rng_key):
 
     else:
         video = jax.vmap(
-            lambda x: env.render(x, ImageRender(64, 64))
+            lambda x: env.render(x, ImageRender(128, 128))
         )(r.states)
 
     return jnp.max(rewards, axis=-1), (255*video).astype(jnp.uint8)
@@ -196,7 +196,7 @@ def main(config : Config):
     # train_data = train_data.slice(0,5)
     # jax.debug.print("{s}", s=train_data.as_pytree())
 
-    test_data = dataset.splits["test"].truncate(1).slice(0,8)
+    test_data = dataset.splits["train"].truncate(1).slice(0,1)
     test_x0s = test_data.map(
         lambda x: env.full_state(
             jax.tree.map(lambda x: x[0], x.reduced_state)

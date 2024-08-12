@@ -30,7 +30,7 @@ class DiffusionEstimatorConfig:
     estimator: str = "nw"
     kernel_bandwidth: float = 0.01
     diffusion_steps: int = 50
-    relative_actions: bool = True
+    relative_actions: bool = False
     agent_pos_config: ObserveConfig = ManipulationTaskEEFPose()
     action_horizon: int = 8
 
@@ -65,7 +65,13 @@ def estimator_diffusion_policy(
             data_agent_pos = jax.vmap(
                 lambda x: env.observe(x, config.agent_pos_config)
             )(train_data.state)
-            actions = train_data.actions - data_agent_pos[:, None, :]
+            if config.agent_pos_config == PushTAgentPos():
+                actions = train_data.actions - data_agent_pos[:, None, :]
+            elif config.agent_pos_config == ManipulationTaskEEFPose():
+                actions = (train_data.actions[0] - data_agent_pos[0][:, None, :], 
+                           train_data.actions[1])
+            else:
+                raise ValueError(f"Unsupported agent_pos_config {config.agent_pos_config}")
         else:
             actions = train_data.actions
         data = train_data.observations, actions
@@ -78,7 +84,12 @@ def estimator_diffusion_policy(
         action = schedule.sample(input.rng_key, diffuser, action_sample)
         if config.relative_actions:
             agent_pos = env.observe(input.state, config.agent_pos_config)
-            action = action + agent_pos
+            if config.agent_pos_config == PushTAgentPos():
+                action = action + agent_pos
+            elif config.agent_pos_config == ManipulationTaskEEFPose():
+                action = (action[0] + agent_pos[0], action[1])
+            else:
+                raise ValueError(f"Unsupported agent_pos_config {config.agent_pos_config}")
         action = action[:config.action_horizon]
         return PolicyOutput(action=action, info=action)
     policy = ChunkingTransform(
