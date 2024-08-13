@@ -148,7 +148,7 @@ def eval(config, env, policy, T, x0, rng_key):
 
     else:
         video = jax.vmap(
-            lambda x: env.render(x, ImageRender(128, 128))
+            lambda x: env.render(x, ImageRender(256, 256))
         )(r.states)
 
     return jnp.max(rewards, axis=-1), (255*video).astype(jnp.uint8)

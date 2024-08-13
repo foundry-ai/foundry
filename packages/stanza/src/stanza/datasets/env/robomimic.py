@@ -35,7 +35,7 @@ class RobomimicDataset(EnvDataset[Step]):
         env = environments.create(self.env_name)
         env = ChainedTransform([
             PositionalControlTransform(),
-            MultiStepTransform(10),
+            MultiStepTransform(20),
             PositionalObsTransform()
         ]).apply(env)
         return env

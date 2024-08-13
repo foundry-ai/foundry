@@ -203,12 +203,16 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
         grip_site_id = self.model.site("gripper0_grip_site").id
         system_state = self.simulator.reduce_state(state)
         jacp, jacr = self.native_simulator.get_jacs(system_state, eef_id)
+
+        robot = self._model_initializers[1][0]
+        grip_qpos = self.reduce_state(state).qpos[robot.gripper_actuator_indices]
         if isinstance(config, ManipulationTaskObs):
             return ManipulationTaskObs(
                 eef_pos=data.site_xpos[eef_id, :],
                 eef_vel=jnp.dot(jacp, system_state.qvel),
                 eef_ori_mat=data.site_xmat[eef_id, :].reshape([3, 3]),
                 eef_ori_vel=jnp.dot(jacr, system_state.qvel),
+                grip_obs=grip_qpos,
                 grip_site_pos=data.site_xpos[grip_site_id, :],
                 object_pos=jnp.stack([
                     data.xpos[self.model.joint(_OBJECT_JOINT_MAP[obj]).id, :] for obj in self.objects
@@ -219,7 +223,7 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
             )
         elif isinstance(config, ManipulationTaskEEFPose):
             #return jnp.concatenate([data.site_xpos[eef_id, :], data.site_xmat[eef_id, :]])
-            return data.site_xpos[eef_id, :].reshape(3,), data.site_xmat[eef_id, :].reshape([3, 3])
+            return data.site_xpos[eef_id, :].reshape(3,), data.site_xmat[eef_id, :].reshape([3, 3]), grip_qpos
         else:
             raise ValueError("Unsupported observation type")
 
@@ -332,12 +336,20 @@ class ManipulationTaskEEFPose:
 class ManipulationTaskObs:
     eef_pos: jax.Array = None # (n_robots, 3,) -- end-effector position
     eef_vel: jax.Array = None # (n_robots, 3,) -- end-effector velocity
-    eef_ori_mat: jax.Array = None # (n_robots, 4,) -- end-effector quaternion
-    eef_ori_vel: jax.Array = None # (n_robots, 3,) -- end-effector angular velocity
+    eef_ori_mat: jax.Array = None # (n_robots, 3, 3) -- end-effector orientation matrix
+    eef_ori_vel: jax.Array = None # (n_robots, 3,) -- end-effector orientation velocity
+
+    grip_obs: jax.Array = None # (n_robots, 1,) -- gripper action, value in (-1, 1) where -1 is open, 1 is closed
+
     grip_site_pos: jax.Array = None # (n_robots, 3,) -- gripper site position
 
     object_pos: jax.Array = None # (n_objects, 3) where n is the number of objects in the scene
     object_quat: jax.Array = None # (n_objects, 4) where n is the number of objects in the scene
+
+@dataclass
+class ManipulationTaskRelObs:
+    eef_obj_rel_pos: jax.Array = None # (n_robots, n_objects, 3) -- relative position of the end-effector to the object
+    eef_obj_rel_ori_mat: jax.Array = None # (n_robots, n_objects, 4) -- relative orientation of the end-effector to the object
 
 @dataclass
 class ManipulationTaskPosObs:
@@ -358,6 +370,7 @@ class PositionalControlTransform(EnvTransform):
 class PositionalObsTransform(EnvTransform):
     def apply(self, env):
         return PositionalObsEnv(env)
+    
 
 @dataclass
 class PositionalControlEnv(EnvWrapper):
@@ -369,7 +382,7 @@ class PositionalControlEnv(EnvWrapper):
         if action is not None:
             # action_pos = jax.tree.map(lambda x: x[:,:3].reshape(3,), action)
             # action_ori_mat = jax.tree.map(lambda x: x[:,3:].reshape([3,3]), action)
-            action_pos, action_ori_mat = action
+            action_pos, action_ori_mat, grip_action = action
             action_pos = jnp.squeeze(action_pos)
             action_ori_mat = jnp.squeeze(action_ori_mat)
             data = self.simulator.system_data(state)
@@ -411,6 +424,9 @@ class PositionalControlEnv(EnvWrapper):
             #jax.debug.print("J_pos: {J_pos}, J_ori: {J_ori}, lambda_pos: {lambda_pos}, lambda_ori: {lambda_ori}", J_pos=J_pos, J_ori=J_ori, lambda_pos=lambda_pos, lambda_ori=lambda_ori)
             #jax.debug.print("{s}, {t}, {u}", s=J_pos.T @ lambda_pos @ F_r, t=J_ori.T @ lambda_ori @ Tau_r, u=compensation)
             #jax.debug.print("{s}", s=a)
+
+            a = a.at[jnp.squeeze(robot.gripper_actuator_indices)].set(jnp.squeeze(grip_action))
+
         else: 
             a = jnp.zeros(self.model.nu, dtype=jnp.float32)
         return self.base.step(state, a, None)
@@ -493,6 +509,7 @@ class RobotInitializer:
     joint_indices: np.ndarray = field(pytree_node=False)
     qpos_indices: np.ndarray = field(pytree_node=False)
     qvel_indices: np.ndarray = field(pytree_node=False)
+    gripper_actuator_indices: np.ndarray = field(pytree_node=False)
     noiser: Callable[[jax.Array, jax.Array], jax.Array] | None = None
 
     def reset(self, rng_key : jax.Array | None, state: SystemState) -> SystemState:
@@ -518,6 +535,7 @@ class RobotInitializer:
             np.array(robot._ref_joint_indexes),
             np.array(robot._ref_joint_pos_indexes),
             np.array(robot._ref_joint_vel_indexes),
+            np.array(robot._ref_joint_gripper_actuator_indexes),
             noiser if randomized else None
         )
 
