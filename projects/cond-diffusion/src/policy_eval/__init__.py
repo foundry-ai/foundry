@@ -51,8 +51,8 @@ class PolicyConfig:
 class Config:
     seed: int = 42
     dataset: str = "pusht/chi"
-    obs_length: int = 2
-    action_length: int = 16
+    obs_length: int = 1
+    action_length: int = 4
     policy: PolicyConfig = None
     action_config: ObserveConfig = ManipulationTaskEEFPose()
     timesteps: int = 400
@@ -196,7 +196,7 @@ def main(config : Config):
     # train_data = train_data.slice(0,5)
     # jax.debug.print("{s}", s=train_data.as_pytree())
 
-    test_data = dataset.splits["train"].truncate(1).slice(0,1)
+    test_data = dataset.splits["test"].truncate(1).slice(0,2)
     test_x0s = test_data.map(
         lambda x: env.full_state(
             jax.tree.map(lambda x: x[0], x.reduced_state)

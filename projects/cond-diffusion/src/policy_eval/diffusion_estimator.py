@@ -30,13 +30,12 @@ class DiffusionEstimatorConfig:
     estimator: str = "nw"
     kernel_bandwidth: float = 0.01
     diffusion_steps: int = 50
-    relative_actions: bool = False
+    relative_actions: bool = True
     agent_pos_config: ObserveConfig = ManipulationTaskEEFPose()
     action_horizon: int = 8
 
     def parse(self, config: ConfigProvider) -> "DiffusionEstimatorConfig":
-        default = DiffusionEstimatorConfig()
-        return config.get_dataclass(default, flatten={"train"})
+        return config.get_dataclass(self)
 
     def train_policy(self, wandb_run, train_data, env, eval, rng):
         return estimator_diffusion_policy(self, wandb_run, train_data, env, eval, rng)
@@ -69,7 +68,7 @@ def estimator_diffusion_policy(
                 actions = train_data.actions - data_agent_pos[:, None, :]
             elif config.agent_pos_config == ManipulationTaskEEFPose():
                 actions = (train_data.actions[0] - data_agent_pos[0][:, None, :], 
-                           train_data.actions[1])
+                           train_data.actions[1], train_data.actions[2])
             else:
                 raise ValueError(f"Unsupported agent_pos_config {config.agent_pos_config}")
         else:
@@ -87,7 +86,7 @@ def estimator_diffusion_policy(
             if config.agent_pos_config == PushTAgentPos():
                 action = action + agent_pos
             elif config.agent_pos_config == ManipulationTaskEEFPose():
-                action = (action[0] + agent_pos[0], action[1])
+                action = (action[0] + agent_pos[0], action[1], action[2])
             else:
                 raise ValueError(f"Unsupported agent_pos_config {config.agent_pos_config}")
         action = action[:config.action_horizon]

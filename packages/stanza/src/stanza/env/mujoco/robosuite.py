@@ -212,7 +212,7 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
                 eef_vel=jnp.dot(jacp, system_state.qvel),
                 eef_ori_mat=data.site_xmat[eef_id, :].reshape([3, 3]),
                 eef_ori_vel=jnp.dot(jacr, system_state.qvel),
-                grip_obs=grip_qpos,
+                grip_qpos=grip_qpos,
                 grip_site_pos=data.site_xpos[grip_site_id, :],
                 object_pos=jnp.stack([
                     data.xpos[self.model.joint(_OBJECT_JOINT_MAP[obj]).id, :] for obj in self.objects
@@ -338,8 +338,7 @@ class ManipulationTaskObs:
     eef_vel: jax.Array = None # (n_robots, 3,) -- end-effector velocity
     eef_ori_mat: jax.Array = None # (n_robots, 3, 3) -- end-effector orientation matrix
     eef_ori_vel: jax.Array = None # (n_robots, 3,) -- end-effector orientation velocity
-
-    grip_obs: jax.Array = None # (n_robots, 1,) -- gripper action, value in (-1, 1) where -1 is open, 1 is closed
+    grip_qpos: jax.Array = None # (n_robots, 2,) -- gripper qpos
 
     grip_site_pos: jax.Array = None # (n_robots, 3,) -- gripper site position
 
@@ -349,12 +348,16 @@ class ManipulationTaskObs:
 @dataclass
 class ManipulationTaskRelObs:
     eef_obj_rel_pos: jax.Array = None # (n_robots, n_objects, 3) -- relative position of the end-effector to the object
-    eef_obj_rel_ori_mat: jax.Array = None # (n_robots, n_objects, 4) -- relative orientation of the end-effector to the object
+    obj_pos: jax.Array = None
+    eef_ori_mat: jax.Array = None # (n_robots, 3, 3) -- end-effector orientation matrix
+    object_quat: jax.Array = None # (n_objects, 4) -- object orientation
+    grip_qpos: jax.Array = None # (n_robots, 2,) -- gripper qpos
 
 @dataclass
 class ManipulationTaskPosObs:
     eef_pos: jax.Array = None
     eef_ori_mat: jax.Array = None
+    grip_qpos: jax.Array = None
     object_pos: jax.Array = None
     object_quat: jax.Array = None
 
@@ -370,6 +373,11 @@ class PositionalControlTransform(EnvTransform):
 class PositionalObsTransform(EnvTransform):
     def apply(self, env):
         return PositionalObsEnv(env)
+    
+@dataclass
+class RelPosObsTransform(EnvTransform):
+    def apply(self, env):
+        return RelPosObsEnv(env)
     
 
 @dataclass
@@ -444,6 +452,21 @@ class PositionalObsEnv(EnvWrapper):
             eef_ori_mat=obs.eef_ori_mat,
             object_pos=obs.object_pos,
             object_quat=obs.object_quat
+        )
+
+@dataclass 
+class RelPosObsEnv(EnvWrapper):
+    def observe(self, state, config=None):
+        if config is None: config = ManipulationTaskRelObs()
+        if not isinstance(config, ManipulationTaskRelObs):
+            return self.base.observe(state, config)
+        obs = self.base.observe(state, ManipulationTaskObs())
+        return ManipulationTaskRelObs(
+            eef_obj_rel_pos=obs.object_pos - obs.eef_pos,
+            obj_pos=obs.object_pos,
+            eef_ori_mat=None, #obs.eef_ori_mat,
+            object_quat=None, # obs.object_quat,
+            grip_qpos=obs.grip_qpos
         )
 
 environments = EnvironmentRegistry[RobosuiteEnv]()

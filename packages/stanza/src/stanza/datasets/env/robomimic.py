@@ -29,14 +29,15 @@ class RobomimicDataset(EnvDataset[Step]):
         from stanza.env.mujoco.robosuite import environments
         from stanza.env.mujoco.robosuite import (
             PositionalControlTransform,
-            PositionalObsTransform,
+            PositionalObsTransform, RelPosObsTransform
         )
         from stanza.env.transforms import ChainedTransform, MultiStepTransform
         env = environments.create(self.env_name)
         env = ChainedTransform([
             PositionalControlTransform(),
             MultiStepTransform(20),
-            PositionalObsTransform()
+            #PositionalObsTransform()
+            RelPosObsTransform()
         ]).apply(env)
         return env
 
