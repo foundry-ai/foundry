@@ -1,0 +1,8 @@
+[project]
+name = "kiwisolver"
+version = "1.4.5"
+dependencies = ["typing_extensions;python_version<'3.8'"]
+
+[build-system]
+requires = ["setuptools>=61.2", "wheel", "setuptools_scm[toml]>=3.4.3", "cppy>=1.2.0"]
+build-backend = "setuptools.build_meta"

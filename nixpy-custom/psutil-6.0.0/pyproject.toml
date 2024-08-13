@@ -1,0 +1,7 @@
+[project]
+name = "psutil"
+version = "6.0.0"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"

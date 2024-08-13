@@ -1,0 +1,9 @@
+[project]
+name = "pillow"
+version = "10.4.0"
+
+dependencies = []
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"

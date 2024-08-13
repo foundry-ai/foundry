@@ -1,0 +1,57 @@
+[build-system]
+build-backend = 'mesonpy'
+backend-path = ['.']
+requires = [
+  'meson >= 0.63.3; python_version < "3.12"',
+  'meson >= 1.2.1; python_version >= "3.12"',
+  'ninja >= 1.1',
+  'packaging >= 19.0',
+  'pyproject-metadata >= 0.7.1',
+  'tomli >= 1.0.0; python_version < "3.11"',
+]
+
+[project]
+name = 'meson-python'
+version = '0.13.1'
+description = 'Meson Python build backend (PEP 517)'
+readme = 'README.rst'
+requires-python = '>= 3.7'
+license = { file = 'LICENSES/MIT.txt' }
+keywords = ['meson', 'build', 'backend', 'pep517', 'package']
+maintainers = [
+  { name = 'Ralf Gommers', email = 'ralf.gommers@gmail.com' },
+  { name = 'Daniele Nicolodi', email = 'daniele@grinta.net' },
+  { name = 'Henry Schreiner', email = 'HenrySchreinerIII@gmail.com' },
+  { name = 'Thomas Li', email = '47963215+lithomas1@users.noreply.github.com' },
+]
+classifiers = [
+  'Development Status :: 5 - Production/Stable',
+  'Programming Language :: Python',
+  'Topic :: Software Development :: Build Tools',
+]
+
+dependencies = [
+  'meson >= 0.63.3; python_version < "3.12"',
+  'meson >= 1.2.1; python_version >= "3.12"',
+  'packaging >= 19.0',
+  'pyproject-metadata >= 0.7.1',
+  'tomli >= 1.0.0; python_version < "3.11"',
+]
+
+[project.optional-dependencies]
+test = [
+  'build',
+  'pytest >= 6.0',
+  'pytest-cov[toml]',
+  'pytest-mock',
+  'cython >= 3.0.3', # required for Python 3.12 support
+  'wheel',
+  'typing-extensions >= 3.7.4; python_version < "3.11"',
+]
+docs = [
+  'furo >= 2023.5.20',
+  'sphinx ~= 6.2',
+  'sphinx-copybutton >= 0.5.0',
+  'sphinx-design >= 0.1.0',
+  'sphinxext-opengraph >= 0.7.0',
+]

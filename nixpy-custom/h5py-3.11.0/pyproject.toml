@@ -1,0 +1,15 @@
+[build-system]
+requires = [
+    "Cython >=0.29.31,<4",
+    "numpy ; python_version>='3.9'",
+    "pkgconfig",
+    "setuptools >=61",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "h5py"
+version = "3.11.0"
+dependencies = [
+    "numpy >= 1.17.3"
+]

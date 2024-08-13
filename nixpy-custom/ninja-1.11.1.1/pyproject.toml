@@ -1,0 +1,12 @@
+[project]
+name = "ninja"
+version = "1.11.1.1"
+dependencies = []
+
+[build-system]
+requires = [
+    "setuptools >=42",
+    "setuptools-scm[toml]",
+    "scikit-build",
+]
+build-backend = "setuptools.build_meta"

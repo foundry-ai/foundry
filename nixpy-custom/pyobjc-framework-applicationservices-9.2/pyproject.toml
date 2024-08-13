@@ -1,0 +1,12 @@
+[project]
+name = "pyobjc-framework-applicationservices"
+version = "9.2"
+dependencies = [
+    "pyobjc-core>=10,<11",
+    "pyobjc-framework-cocoa==9.2",
+    "pyobjc-framework-quartz==9.2"
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
