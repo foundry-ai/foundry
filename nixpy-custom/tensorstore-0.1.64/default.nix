@@ -21,10 +21,68 @@ let lib = nixpkgs.lib;
 
     # CommonCrypto = nixpkgs.darwin.CommonCrypto;
     CoreFoundation = nixpkgs.darwin.apple_sdk.frameworks.CoreFoundation;
-    libDER = nixpkgs.darwin.apple_sdk.libs.libDER;
+    curl = nixpkgs.curl;
     CoreServices = nixpkgs.darwin.apple_sdk.frameworks.CoreServices;
+    SystemConfiguration = nixpkgs.darwin.apple_sdk.frameworks.SystemConfiguration;
     Security = nixpkgs.darwin.apple_sdk.frameworks.Security;
     Foundation = nixpkgs.darwin.apple_sdk.frameworks.Foundation;
+
+
+    bazelPath = "${bazel}/bin/bazel";
+    grpcPatch = ./grpc.patch;
+    bazelExtraFlags = ["-Wno-unused-command-line-argument"] ++
+        (lib.optionals stdenv.isDarwin [
+            # "-isystem ${libDER}/include"
+            "-F${Security}/Library/Frameworks"
+            "-F${CoreFoundation}/Library/Frameworks"
+            "-F${CoreServices}/Library/Frameworks"
+            "-F${Foundation}/Library/Frameworks"
+            "-F${SystemConfiguration}/Library/Frameworks"
+            "-L${nixpkgs.llvmPackages.libcxx}/lib"
+            "-L${nixpkgs.libiconv}/lib"
+            "-L${nixpkgs.darwin.libobjc}/lib"
+            "-resource-dir=${nixpkgs.stdenv.cc}/resource-root"
+            "-Wno-elaborated-enum-base"
+    ]);
+    bazelLinkerFlags = lib.optionals stdenv.isDarwin [
+        "-F${Security}/Library/Frameworks"
+        "-F${CoreFoundation}/Library/Frameworks"
+        "-F${CoreServices}/Library/Frameworks"
+        "-F${Foundation}/Library/Frameworks"
+        "-F${SystemConfiguration}/Library/Frameworks"
+        "-L${nixpkgs.llvmPackages.libcxx}/lib"
+        "-L${nixpkgs.libiconv}/lib"
+        "-L${nixpkgs.darwin.libobjc}/lib"
+    ];
+    rcFlags = (lib.strings.concatMapStrings 
+        (x: ''build --cxxopt="${x}" --host_cxxopt="${x}"
+        build --copt="${x}" --host_copt="${x}"
+        '') bazelExtraFlags) + (lib.strings.concatMapStrings
+        (x: ''build --linkopt="${x}" --host_linkopt="${x}"
+        '') bazelLinkerFlags) + (lib.optionalString stdenv.isDarwin
+            ''build --cxxopt="-xc++" --host_cxxopt="-xc++"
+            build --sandbox_debug
+        '');
+
+    curlBuildExternal = nixpkgs.writeText "curl.BUILD" 
+''cc_library(
+    name = "curl",
+    defines = ["TENSORSTORE_SYSTEM_CURL"],
+    linkopts = ["-lcurl -L${curl.out}/lib"],
+    hdrs = glob(["include/**/*.h"]),
+    includes = ["include"],
+    visibility = ["//visibility:public"],
+)'';
+    curlWorkspaceExternal = nixpkgs.writeText "workspace.bzl" 
+''load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
+def repo():
+    maybe(
+        native.new_local_repository,
+        name = "se_curl",
+        path = "${curl.dev}",
+        build_file = "third_party/se_curl/system.BUILD.bazel"
+    )'';
+
 in
 buildPythonPackage rec {
   pname = "tensorstore";
@@ -42,28 +100,14 @@ buildPythonPackage rec {
   dependencies = [numpy_dep ml-dtypes];
 
   buildInputs = [nixpkgs.libcxx];
-  nativeBuildInputs = [bazel] ++ lib.optional stdenv.isDarwin [cctools libDER]; # ++ lib.optional stdenv.isDarwin [CoreFoundation CoreServices Security Foundation cctools];
-  bazelPath = "${bazel}/bin/bazel";
+  nativeBuildInputs = [bazel] ++ lib.optionals stdenv.isDarwin [
+    cctools CoreFoundation CoreServices 
+    Security Foundation SystemConfiguration
+    curl.dev
+  ];
 
   # use the darwin cctools libtool
   env.LIBTOOL = lib.optionalString stdenv.isDarwin "${cctools}/bin/libtool";
-  bazelExtraFlags = ["-Wno-unused-command-line-argument"] ++
-    (lib.optionals stdenv.isDarwin [
-        # "-I${libDER}/include"
-        "-F${Security}/Library/Frameworks"
-        "-F${CoreFoundation}/Library/Frameworks"
-        "-F${CoreServices}/Library/Frameworks"
-        "-F${Foundation}/Library/Frameworks"
-        "-L${nixpkgs.llvmPackages.libcxx}/lib"
-        "-L${nixpkgs.libiconv}/lib"
-        "-L${nixpkgs.darwin.libobjc}/lib"
-        "-resource-dir=${nixpkgs.stdenv.cc}/resource-root"
-        "-Wno-elaborated-enum-base"
-  ]);
-  rcFlags = lib.strings.concatMapStrings 
-    (x: ''build --cxxopt="${x}" --host_cxxopt="${x}"
-    build --copt="${x}" --host_copt="${x}"
-    '') bazelExtraFlags;
   # For darwin only:
   postPatch = ''
     substituteInPlace bazelisk.py \
@@ -73,16 +117,16 @@ buildPythonPackage rec {
 "
     substituteInPlace .bazelversion \
       --replace-fail "6.4.0" "6.5.0"
-    substituteInPlace .bazelrc \
-      --replace-fail "# Configure C++17 mode" '
-      build --cxxopt="-xc++" --host_cxxopt="-xc++"
-      ${rcFlags}
-    '
-    '';
+    RCFLAGS='${rcFlags}'
+    echo -e "$RCFLAGS\n$(cat .bazelrc)" > .bazelrc
+    cp ${curlBuildExternal} third_party/se_curl/system.BUILD.bazel
+    cp ${curlWorkspaceExternal} third_party/se_curl/workspace.bzl
+    cp ${grpcPatch} third_party/com_github_grpc_grpc/patches/absl-fix.patch
+    substituteInPlace third_party/com_github_grpc_grpc/workspace.bzl \
+      --replace-fail 'patches = [' 'patches = [
+        Label("//third_party:com_github_grpc_grpc/patches/absl-fix.patch"),'
+  '';
   preBuild = ''
-    BAZELRC=$(cat .bazelrc)
-    echo BAZELRC=$BAZELRC
-    echo $CC
-    echo $CXX
+    # bazel clean --expunge
   '';
 }
