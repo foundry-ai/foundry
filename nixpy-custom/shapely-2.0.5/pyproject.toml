@@ -1,0 +1,9 @@
+[project]
+name = "shapely"
+version = "2.0.5"
+
+dependencies = ["numpy"]
+
+[build-system]
+requires = ["setuptools", "Cython>=3", "numpy>=2"]
+build-backend = "setuptools.build_meta"

@@ -113,8 +113,6 @@ class ImageRender(RenderConfig[jax.Array]):
     height: int = field(pytree_node=False, default=256)
     camera: int | str | None = field(pytree_node=False, default=None)
 
-@dataclass
-class SequenceRender(ImageRender): ...
 
 class HtmlRender(RenderConfig[str]): ...
 

@@ -1,0 +1,9 @@
+[project]
+name = "numba"
+version = "0.60.0"
+
+dependencies = ["numpy", "llvmlite"]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"

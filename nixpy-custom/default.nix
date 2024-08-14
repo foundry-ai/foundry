@@ -1,4 +1,8 @@
 {
+    setuptools_rust_1_10_1 = import ./setuptools-rust-1.10.1;
+    maturin_1_7_0 = import ./maturin-1.7.0;
+    cmake_3_30_2 = import ./cmake-3.30.2;
+
     llvmlite_0_43_0 = import ./llvmlite-0.43.0;
     meson_python_0_13_1 = import ./meson-python-0.13.1;
     meson_python_0_15_0 = import ./meson-python-0.15.0;
@@ -22,5 +26,12 @@
     numpy_2_0_1 = import ./numpy-2.0.1;
     scipy_1_14_0 = import ./scipy-1.14.0;
 
+    matplotlib_3_9_1 = import ./matplotlib-3.9.1;
+
+    shapely_2_0_5 = import ./shapely-2.0.5;
+    sentencepiece_0_2_0 = import ./sentencepiece-0.2.0;
+
+    numba_0_60_0 = import ./numba-0.60.0;
+    tensorstore_0_1_64 = import ./tensorstore-0.1.64;
     jaxlib_0_4_30 = import ./jaxlib-0.4.30;
 }

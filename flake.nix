@@ -26,7 +26,7 @@
                     };
                     pythonEnv = py.withPackages(
                         ps: 
-                        with requirements.env; [stanza-meta]
+                        with requirements.env; [tensorstore]
                     );
                 in {
                 default = pkgs.mkShell {
