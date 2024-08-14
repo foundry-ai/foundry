@@ -223,7 +223,7 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
             )
         elif isinstance(config, ManipulationTaskEEFPose):
             #return jnp.concatenate([data.site_xpos[eef_id, :], data.site_xmat[eef_id, :]])
-            return data.site_xpos[eef_id, :].reshape(3,), data.site_xmat[eef_id, :].reshape([3, 3]), grip_qpos
+            return jnp.concatenate([data.site_xpos[eef_id, :], data.site_xmat[eef_id, :], grip_qpos])
         else:
             raise ValueError("Unsupported observation type")
 
@@ -388,11 +388,10 @@ class PositionalControlEnv(EnvWrapper):
     def step(self, state, action, rng_key=None):
         obs = self.base.observe(state)
         if action is not None:
-            # action_pos = jax.tree.map(lambda x: x[:,:3].reshape(3,), action)
-            # action_ori_mat = jax.tree.map(lambda x: x[:,3:].reshape([3,3]), action)
-            action_pos, action_ori_mat, grip_action = action
-            action_pos = jnp.squeeze(action_pos)
-            action_ori_mat = jnp.squeeze(action_ori_mat)
+            action_pos = jax.tree_map(lambda x: jnp.squeeze(x[:,0:3]), action)
+            action_ori_mat = jax.tree_map(lambda x: x[:,3:12].reshape([3,3]), action)
+            grip_action = jax.tree_map(lambda x: x[:,12:14], action)
+            #print(action_pos.shape, action_ori_mat.shape, grip_action.shape)
             data = self.simulator.system_data(state)
             robot = self._model_initializers[1][0]
             eef_id = self.model.site("gripper0_grip_site").id

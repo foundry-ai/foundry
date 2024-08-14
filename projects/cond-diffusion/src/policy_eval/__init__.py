@@ -51,8 +51,8 @@ class PolicyConfig:
 class Config:
     seed: int = 42
     dataset: str = "pusht/chi"
-    obs_length: int = 1
-    action_length: int = 4
+    obs_length: int = 2
+    action_length: int = 16
     policy: PolicyConfig = None
     action_config: ObserveConfig = ManipulationTaskEEFPose()
     timesteps: int = 400
