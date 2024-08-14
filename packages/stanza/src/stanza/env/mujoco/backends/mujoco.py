@@ -189,11 +189,12 @@ class MujocoSimulator(Simulator[SystemData]):
         data.qvel[:] = state.qvel
         data.act[:] = state.act
         mujoco.mj_forward(self.model, data)
-        jacp = np.zeros((3, self.model.nv), dtype=jnp.float64)
-        jacv = np.zeros((3, self.model.nv), dtype=jnp.float64)
+        jacp = np.zeros((3, self.model.nv), dtype=np.float64)
+        jacr = np.zeros((3, self.model.nv), dtype=np.float64)
         mujoco.mj_jacSite(self.model, data, jacp, None, id)
-        mujoco.mj_jacSite(self.model, data, None, jacv, id)
-        return jacp.astype(jnp.float32), jacv.astype(jnp.float32)
+        mujoco.mj_jacSite(self.model, data, None, jacr, id)
+        #jax.debug.print("jacp: {s}", s=jacp)
+        return jacp.astype(jnp.float32), jacr.astype(jnp.float32)
     
     def _get_jac(self, state, id):
         return self.pool.submit(self._get_jac_job, state, id).result()
@@ -201,8 +202,8 @@ class MujocoSimulator(Simulator[SystemData]):
     def get_jacs(self, state: SystemState, id: int) -> jax.Array:
         """Returns the position and orientation parts of the Jacobian of the site at the given id."""
         structure = (jnp.zeros((3, self.model.nv), dtype=jnp.float32), jnp.zeros((3, self.model.nv), dtype=jnp.float32))
-        jacp, jacv = jax.pure_callback(self._get_jac, structure, state, id)
-        return jacp, jacv
+        jacp, jacr = jax.pure_callback(self._get_jac, structure, state, id)
+        return jacp, jacr
     
     def _get_fullM_job(self, state: SystemState):
         data = self.local_data.data
@@ -211,7 +212,7 @@ class MujocoSimulator(Simulator[SystemData]):
         data.qvel[:] = state.qvel
         data.act[:] = state.act
         mujoco.mj_forward(self.model, data)
-        mass_matrix = np.zeros((self.model.nv, self.model.nv), dtype=jnp.float64, order="C")
+        mass_matrix = np.zeros((self.model.nv, self.model.nv), dtype=np.float64, order="C")
         mujoco.mj_fullM(self.model, mass_matrix, np.array(data.qM))
         return mass_matrix.astype(jnp.float32)
     

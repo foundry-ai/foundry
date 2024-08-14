@@ -181,7 +181,7 @@ class ArgumentsProvider(ConfigProvider):
 
     def get(self, name: str, type, desc: str = "", default=MISSING):
         if self._prefix:
-            name = f"{self._prefix}_{name}"
+            name = f"{self._prefix}.{name}"
 
         if not self._active:
             self._args.add_option(name, desc)

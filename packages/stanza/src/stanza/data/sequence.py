@@ -49,7 +49,7 @@ class SequenceData(Generic[T,I]):
 
     def slice(self, idx, len):
         start_off = self.sequences[idx].start_idx
-        end_off = self.sequences[idx + len].end_idx
+        end_off = self.sequences[idx + len].start_idx
         elem = self.elements.slice(start_off, end_off - start_off)
         seq = self.sequences.slice(idx, len).map(
             lambda x: replace(x, start_idx=x.start_idx - start_off)

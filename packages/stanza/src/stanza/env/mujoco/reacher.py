@@ -9,16 +9,24 @@ from functools import partial, cached_property
 
 from stanza.dataclasses import dataclass, field
 from stanza.env import (
-    EnvWrapper, RenderConfig, 
+    EnvWrapper, RenderConfig, ObserveConfig,
     ImageRender, SequenceRender,
     HtmlRender, Environment,
     EnvironmentRegistry
 )
-from stanza.env.mujoco import MujocoEnvironment, MujocoState
+from stanza.env.mujoco.core import (
+    MujocoEnvironment, SystemState, 
+    SimulatorState, Action,
+    quat_to_angle, render_2d,
+    orientation_error
+)
 from stanza.policy import Policy, PolicyInput
-from stanza.policy.transforms import Transform, chain_transforms
+from stanza.env.transforms import (
+    EnvTransform, ChainedTransform,
+    MultiStepTransform
+)
 from stanza import canvas
-from stanza.policy.mpc import MPC
+from stanza.util import jax_static_property
 from jax.random import PRNGKey
 
 
@@ -48,6 +56,7 @@ XML = """
 				<geom fromto="0 0 0 0.1 0 0" name="link1" rgba="0.0 0.4 0.6 1" size=".01" type="capsule"/>
 				<body name="fingertip" pos="0.11 0 0">
 					<geom contype="0" name="fingertip" pos="0 0 0" rgba="0.0 0.8 0.6 1" size=".01" type="sphere"/>
+                    <site name="eef" pos="0 0 0" size="0.01 0.01 0.01" rgba="1 0 0 0.5" type="sphere" group="1" />
 				</body>
 			</body>
 		</body>
@@ -68,80 +77,103 @@ XML = """
 
 @dataclass
 class ReacherObs:
-    fingertip_pos: jnp.array
-    fingertip_vel: jnp.array
+    fingertip_pos: jnp.array = None
+    fingertip_vel: jnp.array = None
 
-    body0_pos: jnp.array
-    body0_rot: jnp.array
-    body0_rot_vel: jnp.array
+    eef_pos: jax.Array = None # (n_robots, 3,) -- end-effector position
+    eef_vel: jax.Array = None # (n_robots, 3,) -- end-effector velocity
+    eef_ori_mat: jax.Array = None # (n_robots, 4,) -- end-effector quaternion
+    eef_ori_vel: jax.Array = None # (n_robots, 3,) -- end-effector angular velocity
 
-    body1_pos: jnp.array
-    body1_rot: jnp.array
-    body1_rot_vel: jnp.array
+    body0_pos: jnp.array = None
+    body0_rot: jnp.array = None
+    body0_rot_vel: jnp.array = None
+
+    body1_pos: jnp.array = None
+    body1_rot: jnp.array = None
+    body1_rot_vel: jnp.array = None
 
 @dataclass
 class ReacherPosObs:
-    fingertip_pos: jnp.array
-    body0_pos: jnp.array
-    body0_rot: jnp.array
-    body1_pos: jnp.array
-    body1_rot: jnp.array
-
+    fingertip_pos: jnp.array = None
+    eef_pos: jax.Array = None
+    eef_ori_mat: jax.Array = None
+    body0_pos: jnp.array = None
+    body0_rot: jnp.array = None
+    body1_pos: jnp.array = None
+    body1_rot: jnp.array = None
 
 @dataclass
-class ReacherEnv(MujocoEnvironment):
+class ReacherAgentPos:
+    pass
+
+@dataclass
+class ReacherEnv(MujocoEnvironment[SimulatorState]):
     body0_id: int = 1
     body1_id: int = 2
     fingertip_id: int = 3
+    eef_id: int = 0
     target_id: int = 4
     target_pos: jax.Array = field(default_factory=lambda:jnp.array([-0.1, 0.1]))
 
-    @cached_property
-    def mj_model(self):
-        with jax.ensure_compile_time_eval():
-            return mujoco.MjModel.from_xml_string(XML)
+    @jax_static_property
+    def model(self):
+        return mujoco.MjModel.from_xml_string(XML)
 
     @jax.jit
     def sample_action(self, rng_key: jax.Array):
-        pos_agent = jax.random.randint(rng_key, (2,), 50, 450).astype(float)
-        return pos_agent
+        return jax.random.randint(rng_key, (12,), 0, 10).astype(jnp.float32)
 
     @jax.jit
     def sample_state(self, rng_key):
         return self.reset(rng_key)
 
     @jax.jit
-    def reset(self, rng_key : jax.Array): 
+    def reset(self, rng_key : jax.Array) -> SimulatorState: 
         b0_rot, b1_rot = jax.random.split(rng_key, 2)
         body0_rot = jax.random.uniform(b0_rot, (), minval=-jnp.pi, maxval=jnp.pi)
         body1_rot = jax.random.uniform(b1_rot, (), minval=-jnp.pi, maxval=jnp.pi)
 
         qpos = jnp.concatenate([body0_rot[jnp.newaxis], body1_rot[jnp.newaxis], self.target_pos])
-        return MujocoState(
-            qpos,
-            jnp.zeros_like(qpos)
-        )
+        # qpos = jnp.zeros((4,), dtype=jnp.float32)
+        return self.full_state(SystemState(
+            jnp.zeros((), dtype=jnp.float32), 
+            qpos, 
+            jnp.zeros_like(qpos), 
+            jnp.zeros((0,), dtype=jnp.float32)
+        ))
 
-    @jax.jit
-    def observe(self, state): 
-        mjx_data = mjx.make_data(self.mjx_model)
-        mjx_data = mjx_data.replace(qpos=state.q, qvel=state.qd)
-        mjx_data = mjx.forward(self.mjx_model, mjx_data)
-        return ReacherObs(
-            fingertip_pos=mjx_data.xpos[self.fingertip_id,:2],
-            fingertip_vel=mjx_data.cvel[self.fingertip_id, 3:5],
-            body0_pos=mjx_data.xpos[self.body0_id,:2],
-            body0_rot=MujocoEnvironment._quat_to_angle(mjx_data.xquat[self.body0_id,:4]),
-            body0_rot_vel=mjx_data.cvel[self.body0_id, 2],
-            body1_pos=mjx_data.xpos[self.body1_id,:2],
-            body1_rot=MujocoEnvironment._quat_to_angle(mjx_data.xquat[self.body1_id,:4]),
-            body1_rot_vel=mjx_data.cvel[self.body1_id, 2]
-        )
     
+    @jax.jit
+    def observe(self, state, config : ObserveConfig | None = None):
+        if config is None: config = ReacherObs()
+        data = self.simulator.system_data(state)
+        if isinstance(config, ReacherObs):
+            system_state = self.simulator.reduce_state(state)
+            jacp, jacr = self.native_simulator.get_jacs(system_state, self.eef_id)
+            return ReacherObs(
+                fingertip_pos=data.xpos[self.fingertip_id,:],
+                fingertip_vel=data.cvel[self.fingertip_id, 3:5],
+                eef_pos=data.site_xpos[self.eef_id, :],
+                eef_vel=jnp.dot(jacp, system_state.qvel),
+                eef_ori_mat=data.site_xmat[self.eef_id, :].reshape([3, 3]),
+                eef_ori_vel=jnp.dot(jacr, system_state.qvel),
+                body0_pos=data.xpos[self.body0_id,:2],
+                body0_rot=quat_to_angle(data.xquat[self.body0_id,:4]),
+                body0_rot_vel=data.cvel[self.body0_id, 2],
+                body1_pos=data.xpos[self.body1_id,:2],
+                body1_rot=quat_to_angle(data.xquat[self.body1_id,:4]),
+                body1_rot_vel=data.cvel[self.body1_id, 2]
+            )
+        elif isinstance(config, ReacherAgentPos):
+            return jnp.concatenate([data.xpos[self.eef_id, :], data.site_xmat[self.eef_id, :]])
+        else:
+            raise ValueError("Unsupported observation type")
+
     @jax.jit
     def reward(self, state, action, next_state) -> jax.Array:
         obs = self.observe(next_state)
-        reward_dist = -jnp.linalg.norm(obs.fingertip_pos - self.target_pos)
+        reward_dist = -jnp.linalg.norm(obs.eef_pos[:2] - self.target_pos)
         reward_control = -jnp.sum(jnp.square(action))
         return reward_dist + reward_control
 
@@ -168,7 +200,7 @@ class ReacherEnv(MujocoEnvironment):
                 color=canvas.colors.Blue
             ),
             translation=obs.body1_pos*jnp.array([1, -1]),
-            rotation=obs.body1_rot
+            rotation=-obs.body1_rot
         )
         world = canvas.stack(target, body0, body1)
         translation = (0.25,0.25)
@@ -180,36 +212,16 @@ class ReacherEnv(MujocoEnvironment):
         image = canvas.paint(image, world)
         return image
     
-    @jax.jit
-    def render(self, state: MujocoState, config: RenderConfig) -> jax.Array:
-        if type(config) == ImageRender or type(config) == SequenceRender:
-            obs = ReacherEnv.observe(self, state)
-            return self._render_image(obs, config.width, config.height)
-        elif type(config) == HtmlRender:
-            if data.qpos.ndim == 1:
-                data = jax.tree_map(lambda x: x[None], data)
-            return MujocoEnvironment.brax_render(ReacherEnv.mj_model, data)
+    # @jax.jit
+    # def render(self, state: SimulatorState, config: RenderConfig):
+    #     if type(config) == ImageRender or type(config) == SequenceRender:
+    #         obs = ReacherEnv.observe(self, state)
+    #         return self._render_image(obs, config.width, config.height)
+    #     elif type(config) == HtmlRender:
+    #         if data.qpos.ndim == 1:
+    #             data = jax.tree_map(lambda x: x[None], data)
+    #         return MujocoEnvironment.brax_render(self.model, data)
         
-
-# def compute_goal_rot(action_pos):
-#     """
-#     Compute the desired body0_rot given the action position.
-#     """
-#     rot_action = jnp.atan2(action_pos[1], action_pos[0])
-#     # distance from joint0 to action_pos
-#     dist_joint0_fingertip = jnp.min(jnp.array([jnp.linalg.norm(action_pos), 0.19]))
-#     # distance from joint0 to joint1, i.e. length of body0
-#     dist_body0 = 0.1 
-#     # angle between vector from joint0 to fingertip and goal body0, always positive
-#     rot_fingertip_goal = jnp.arccos((dist_joint0_fingertip/2)/dist_body0)
-#     angle = rot_fingertip_goal + rot_action
-#     return jnp.atan2(jnp.sin(angle),jnp.cos(angle))
-
-# def compute_goal_pos(body0_rot):
-#     return jnp.array([jnp.cos(body0_rot), jnp.sin(body0_rot)]) * 0.1
-
-# def angle_between_vectors(v1, v2):
-#     return jnp.arcsin(jnp.cross(v1, v2) / (jnp.linalg.norm(v1) * jnp.linalg.norm(v2)))
 
 
 '''
@@ -238,65 +250,83 @@ class MPCEnv(EnvWrapper):
 '''
 
 @dataclass
-class PositionalControlTransform(Transform):
-    k_p : float = 15
-    k_v : float = 2
+class PositionalControlTransform(EnvTransform):
+    k_p : jax.Array = jnp.array([15]*6) # (6,) -- [0:3] corresponds to position, [3:6] corresponds to orientation
+    k_d : jax.Array = jnp.array([2]*6) # (6,) -- [0:3] corresponds to position, [3:6] corresponds to orientation
 
-    def transform_policy(self, policy):
-        raise NotImplementedError()
-    
-    def transform_env(self, env):
-        return PositionalControlEnv(env, self.k_p, self.k_v)
+    def apply(self, env):
+        return PositionalControlEnv(env, self.k_p, self.k_d)
 
 
 @dataclass
 class PositionalControlEnv(EnvWrapper):
-    k_p : float = 10
-    k_v : float = 2
+    k_p : jax.Array
+    k_d : jax.Array
 
     def step(self, state, action, rng_key=None):
+        obs = self.base.observe(state)
         if action is not None:
-            obs = ReacherEnv.observe(self.base, state)
-            a = self.k_p * (action - obs.fingertip_pos) + self.k_v * (-obs.body0_rot_vel)
-        else:
-            a = jnp.zeros((2,))
-        res = self.base.step(state, a, rng_key)
-        return res
+            action_pos = action[:3]
+            action_ori_mat = action[3:].reshape([3,3])
+            data = self.simulator.system_data(state)
+            qvel_indices = jnp.array([0,1])
+            eef_id = self.eef_id
+
+            system_state = self.simulator.reduce_state(state)
+            jacp, jacv = self.native_simulator.get_jacs(system_state, eef_id)
+            J_pos = jnp.array(jacp.reshape((3, -1))[:, qvel_indices])
+            J_ori = jnp.array(jacv.reshape((3, -1))[:, qvel_indices])
+            
+            mass_matrix = self.native_simulator.get_fullM(system_state)
+            mass_matrix = jnp.reshape(mass_matrix, (len(data.qvel), len(data.qvel)))
+            mass_matrix = mass_matrix[qvel_indices, :][:, qvel_indices]
+
+            # Compute lambda matrices
+            mass_matrix_inv = jnp.linalg.inv(mass_matrix)
+            lambda_pos_inv = J_pos @ mass_matrix_inv @ J_pos.T
+            lambda_ori_inv = J_ori @ mass_matrix_inv @ J_ori.T
+            # take the inverses, but zero out small singular values for stability
+            lambda_pos = jnp.linalg.pinv(lambda_pos_inv)
+            lambda_ori = jnp.linalg.pinv(lambda_ori_inv)
+
+            pos_error = action_pos - obs.eef_pos
+            vel_pos_error = -obs.eef_vel
+
+            eef_ori_mat = obs.eef_ori_mat
+            #print(action_ori_mat.shape, eef_ori_mat.shape)
+            ori_error = orientation_error(action_ori_mat, eef_ori_mat)
+            vel_ori_error = -obs.eef_ori_vel
+
+            F_r = self.k_p[:3] * pos_error + self.k_d[:3] * vel_pos_error
+            Tau_r = self.k_p[3:] * ori_error + self.k_d[3:] * vel_ori_error
+            compensation = data.qfrc_bias[qvel_indices]
+
+            torques = J_pos.T @ lambda_pos @ F_r + J_ori.T @ lambda_ori @ Tau_r + compensation
+            a = jnp.zeros(self.model.nu, dtype=jnp.float32)
+            a = a.at[qvel_indices].set(torques)
+            #jax.debug.print("J_pos: {J_pos}, J_ori: {J_ori}, lambda_pos: {lambda_pos}, lambda_ori: {lambda_ori}", J_pos=J_pos, J_ori=J_ori, lambda_pos=lambda_pos, lambda_ori=lambda_ori)
+            #jax.debug.print("{s}, {t}, {u}", s=J_pos.T @ lambda_pos @ F_r, t=J_ori.T @ lambda_ori @ Tau_r, u=compensation)
+            #jax.debug.print("{s}", s=a)
+        else: 
+            a = jnp.zeros(self.model.nu, dtype=jnp.float32)
+        return self.base.step(state, a, None)
 
 @dataclass
-class PositionalObsTransform(Transform):
-    def transform_policy(self, policy):
-        return PositionalObsPolicy(policy)
-    
-    def transform_env(self, env):
+class PositionalObsTransform(EnvTransform):
+    def apply(self, env):
         return PositionalObsEnv(env)
 
 @dataclass
-class PositionalObsPolicy(Policy):
-    policy: Policy
-
-    @property
-    def rollout_length(self):
-        return self.policy.rollout_length
-
-    def __call__(self, input):
-        obs = input.observation
-        obs = ReacherPosObs(
-            fingertip_pos=obs.fingertip.position,
-            body0_pos=obs.body0.position,
-            body0_rot=obs.body0.rotation,
-            body1_pos=obs.body1.position,
-            body1_rot=obs.body1.rotation
-        )
-        input = dataclasses.replace(input, observation=obs)
-        return self.policy(input)
-
-@dataclass
 class PositionalObsEnv(EnvWrapper):
-    def observe(self, state):
-        obs = self.base.observe(state)
+    def observe(self, state, config=None):
+        if config is None: config = ReacherPosObs()
+        if not isinstance(config, ReacherPosObs):
+            return self.base.observe(state, config)
+        obs = self.base.observe(state, ReacherObs())
         return ReacherPosObs(
             fingertip_pos=obs.fingertip_pos,
+            eef_pos = obs.eef_pos,
+            eef_ori_mat = obs.eef_ori_mat,
             body0_pos=obs.body0_pos,
             body0_rot=obs.body0_rot,
             body1_pos=obs.body1_pos,
@@ -309,8 +339,8 @@ environments = EnvironmentRegistry[ReacherEnv]()
 environments.register("", ReacherEnv)
 def _make_positional(**kwargs):
     env = ReacherEnv(**kwargs)
-    return chain_transforms(
+    return ChainedTransform(
         PositionalControlTransform(),
         PositionalObsTransform
-    ).transform_env(env)
+    ).apply(env)
 environments.register("positional", _make_positional)
