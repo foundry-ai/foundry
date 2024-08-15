@@ -1,0 +1,8 @@
+[project]
+name = "sentencepiece"
+version = "0.2.0"
+dependencies = []
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"

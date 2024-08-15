@@ -3,6 +3,9 @@
         numpy = dependencies.numpy;
         pytestCheckHook = python.pkgs.pytestCheckHook;
         fetchFromGitHub = nixpkgs.fetchFromGitHub;
+        lib = nixpkgs.lib;
+        stdenv = nixpkgs.stdenv;
+        libcxx = nixpkgs.libcxx;
     in
         buildPythonPackage rec {
     name = "ml_dtypes";
@@ -31,6 +34,8 @@
       --replace "numpy==2.0.0rc1" "numpy" \
       --replace "setuptools~=68.1.0" "setuptools"
     '';
+
+    env.NIX_CFLAGS_COMPILE = lib.optionalString stdenv.isDarwin "-I${lib.getDev libcxx}/include/c++/v1";
 
     nativeBuildInputs = [ setuptools ];
     propagatedBuildInputs = [ numpy ];
