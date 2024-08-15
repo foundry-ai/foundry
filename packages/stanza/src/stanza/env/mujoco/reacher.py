@@ -10,7 +10,7 @@ from functools import partial, cached_property
 from stanza.dataclasses import dataclass, field
 from stanza.env import (
     EnvWrapper, RenderConfig, ObserveConfig,
-    ImageRender, ImageRenderTraj,
+    ImageRender, 
     HtmlRender, Environment,
     EnvironmentRegistry
 )

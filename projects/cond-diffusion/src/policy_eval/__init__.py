@@ -7,7 +7,7 @@ from stanza.runtime import ConfigProvider, command
 from stanza.datasets.env import datasets
 from stanza.datasets.env import datasets
 from stanza.random import PRNGSequence
-from stanza.env import ImageRender, ImageRenderTraj
+from stanza.env import ImageRender
 from stanza.env.core import ObserveConfig, RenderConfig
 from stanza.train.reporting import Video
 from stanza import canvas
@@ -57,7 +57,8 @@ class Config:
     action_config: ObserveConfig = ManipulationTaskEEFPose()
     timesteps: int = 200
     train_data_size: int | None = None
-    render_config: RenderConfig = ImageRenderTraj(256, 256)
+    test_data_size: int | None = None
+    render_config: RenderConfig = ImageRender(256, 256)
 
     @staticmethod
     def parse(config: ConfigProvider) -> "Config":
@@ -121,7 +122,7 @@ def eval(config, env, policy, T, x0, rng_key):
     rewards = jax.vmap(env.reward)(pre_states, actions, post_states)
 
     # render predicted action trajectories
-    if isinstance(config.render_config, ImageRenderTraj):
+    if isinstance(config.render_config, ImageRender):
         #TODO: move to config for pushT
         # def draw_action_chunk(action_chunk, img_config):
         #     T = action_chunk.shape[0]
@@ -195,8 +196,9 @@ def main(config : Config):
     # jax.debug.print("{s}", s=train_data)
     # train_data = train_data.slice(0,5)
     # jax.debug.print("{s}", s=train_data.as_pytree())
-
-    test_data = dataset.splits["test"].truncate(1).slice(0,2)
+    test_data = dataset.splits["test"].truncate(1)
+    if config.test_data_size is not None:
+        test_data = test_data.slice(0,8)
     test_x0s = test_data.map(
         lambda x: env.full_state(
             jax.tree.map(lambda x: x[0], x.reduced_state)

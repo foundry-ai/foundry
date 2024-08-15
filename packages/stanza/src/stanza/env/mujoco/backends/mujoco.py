@@ -267,7 +267,7 @@ class MujocoSimulator(Simulator[SystemData]):
                            pos1[0], pos1[1], pos1[2],
                            pos2[0], pos2[1], pos2[2])
             T = trajectory.shape[0]
-            colors = np.array((np.arange(T)/T, np.zeros(T), np.zeros(T), np.ones(T)), dtype=np.float32).T
+            colors = np.array((np.arange(T)/T, np.zeros(T), np.ones(T), np.ones(T)), dtype=np.float32).T
             for i in range(trajectory.shape[0]-1):
                 addSphere(renderer.scene, trajectory[i], trajectory[i+1], colors[i])
         renderer.render(out=arr)

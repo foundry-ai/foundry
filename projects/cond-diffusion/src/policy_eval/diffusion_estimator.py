@@ -31,7 +31,7 @@ class DiffusionEstimatorConfig:
     estimator: str = "nw"
     kernel_bandwidth: float = 0.01
     diffusion_steps: int = 50
-    relative_actions: bool = False
+    relative_actions: bool = True
     agent_pos_config: ObserveConfig = ManipulationTaskEEFPose()
     action_horizon: int = 8
 
@@ -69,7 +69,7 @@ def estimator_diffusion_policy(
                 actions = train_data.actions - data_agent_pos[:, None, :]
             elif config.agent_pos_config == ManipulationTaskEEFPose():
                 expand_agent_pos = jnp.zeros_like(train_data.actions)
-                expand_agent_pos = expand_agent_pos.at[0:3].set(data_agent_pos[0])
+                expand_agent_pos = expand_agent_pos.at[...,0:3].set(data_agent_pos[:,None,0:3])
                 actions = train_data.actions - expand_agent_pos
             else:
                 raise ValueError(f"Unsupported agent_pos_config {config.agent_pos_config}")
@@ -89,7 +89,7 @@ def estimator_diffusion_policy(
                 action = action + agent_pos
             elif config.agent_pos_config == ManipulationTaskEEFPose():
                 expand_agent_pos = jnp.zeros_like(action)
-                expand_agent_pos = expand_agent_pos.at[0:3].set(agent_pos[0])
+                expand_agent_pos = expand_agent_pos.at[...,0:3].set(agent_pos[0:3])
                 action = action + agent_pos
             else:
                 raise ValueError(f"Unsupported agent_pos_config {config.agent_pos_config}")

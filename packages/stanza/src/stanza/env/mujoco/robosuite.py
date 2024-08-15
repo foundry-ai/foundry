@@ -8,7 +8,7 @@ from stanza.dataclasses import dataclass, field, replace
 from stanza.util import jax_static_property
 from stanza.env import (
     EnvWrapper, RenderConfig, ObserveConfig,
-    ImageRender, ImageRenderTraj,
+    ImageRender, 
     Environment,
     EnvironmentRegistry
 )
@@ -93,7 +93,7 @@ class RobosuiteEnv(MujocoEnvironment[SimulatorState]):
         if config is None: config = ImageRender(width=256, height=256)
         # custom image rendering for robosuite
         # which disables the collision geometry visualization
-        if isinstance(config, ImageRenderTraj):
+        if isinstance(config, ImageRender):
             state = self.simulator.reduce_state(state)
             camera = config.camera if config.camera is not None else "frontview"
             # render only the visual geometries
@@ -101,15 +101,6 @@ class RobosuiteEnv(MujocoEnvironment[SimulatorState]):
             return self.native_simulator.render(
                 state, config.width, config.height, (False, True), camera, config.trajectory
             )
-        elif isinstance(config, ImageRender):
-            state = self.simulator.reduce_state(state)
-            camera = config.camera if config.camera is not None else "frontview"
-            # render only the visual geometries
-            # do not include the collision geometries
-            return self.native_simulator.render(
-                state, config.width, config.height, (False, True), camera
-            )
-        
         return super().render(config, state)
 
 _OBJECT_JOINT_MAP = {
