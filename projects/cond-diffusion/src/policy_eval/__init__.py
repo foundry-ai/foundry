@@ -198,7 +198,7 @@ def main(config : Config):
     # jax.debug.print("{s}", s=train_data.as_pytree())
     test_data = dataset.splits["test"].truncate(1)
     if config.test_data_size is not None:
-        test_data = test_data.slice(0,8)
+        test_data = test_data.slice(0,config.test_data_size)
     test_x0s = test_data.map(
         lambda x: env.full_state(
             jax.tree.map(lambda x: x[0], x.reduced_state)
