@@ -1,6 +1,6 @@
 from stanza.env import (
     Environment, RenderConfig,
-    HtmlRender, ImageRender
+    HtmlRender, ImageRender, ImageRenderTraj
 )
 from stanza.dataclasses import dataclass, field
 from stanza.util import jax_static_property
@@ -119,7 +119,13 @@ class MujocoEnvironment(Environment[SimulatorState, SystemState, Action], Generi
     @jax.jit
     def render(self, state: SimulatorState, config: RenderConfig | None = None) -> jax.Array:
         config = config or ImageRender(width=256, height=256)
-        if isinstance(config, ImageRender):
+        if isinstance(config, ImageRenderTraj):
+            state = self.simulator.reduce_state(state)
+            camera = config.camera if config.camera is not None else -1
+            return self.native_simulator.render(
+                state, config.width, config.height, (), camera, config.trajectory
+            )
+        elif isinstance(config, ImageRender):
             state = self.simulator.reduce_state(state)
             camera = config.camera if config.camera is not None else -1
             return self.native_simulator.render(

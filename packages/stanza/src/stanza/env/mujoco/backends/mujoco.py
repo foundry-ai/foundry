@@ -4,7 +4,7 @@ from stanza.dataclasses import dataclass
 
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
-from typing import Sequence
+from typing import Sequence, Optional
 
 import mujoco
 import jax
@@ -233,7 +233,8 @@ class MujocoSimulator(Simulator[SystemData]):
     def _render_job(self, width : int, height: int,
                     geom_groups : Sequence[bool],
                     camera : int | str,
-                    state: SystemState) -> jax.Array:
+                    state: SystemState,
+                    trajectory: Optional[jax.Array] = None) -> jax.Array:
         # get the thread-local MjData object
         # copy over the jax arrays
         renderer = self.local_data.renderer
@@ -253,23 +254,41 @@ class MujocoSimulator(Simulator[SystemData]):
             vopt.geomgroup[i] = 1 if g else 0
         arr = np.empty((self.buffer_height, self.buffer_width, 3), dtype=np.uint8)
         renderer.update_scene(ldata, camera, vopt)
+        if trajectory is not None:
+            def addSphere(scene, pos1, pos2, rgba):
+                if scene.ngeom >= scene.maxgeom:
+                    return
+                scene.ngeom += 1  # increment ngeom
+                mujoco.mjv_initGeom(scene.geoms[scene.ngeom-1],
+                                    mujoco.mjtGeom.mjGEOM_CAPSULE, np.zeros(3),
+                                    np.zeros(3), np.zeros(9), rgba)
+                mujoco.mjv_makeConnector(scene.geoms[scene.ngeom-1],
+                           mujoco.mjtGeom.mjGEOM_CAPSULE, 0.01,
+                           pos1[0], pos1[1], pos1[2],
+                           pos2[0], pos2[1], pos2[2])
+            T = trajectory.shape[0]
+            colors = np.array((np.arange(T)/T, np.zeros(T), np.zeros(T), np.ones(T)), dtype=np.float32).T
+            for i in range(trajectory.shape[0]-1):
+                addSphere(renderer.scene, trajectory[i], trajectory[i+1], colors[i])
         renderer.render(out=arr)
         return jnp.array(arr)
 
-    def _render(self, width, height, geom_groups, camera, state: SystemState) -> jax.Array:
+    def _render(self, width, height, geom_groups, camera, state: SystemState, 
+                trajectory: Optional[jax.Array] = None) -> jax.Array:
         job = partial(self._render_job, width, height, geom_groups, camera)
         if state.qpos.ndim == 1:
-            data = self.pool.submit(job, state).result()
+            data = self.pool.submit(job, state, trajectory).result()
             return data
         else:
             assert False
 
-    def render(self, state: SystemState, width: int, height: int, geom_groups: Sequence[bool], camera: int | str = -1) -> jax.Array:
+    def render(self, state: SystemState, width: int, height: int, geom_groups: Sequence[bool], camera: int | str = -1,
+               trajectory: Optional[jax.Array] = None) -> jax.Array:
         assert state.time.ndim == 0
         buffer = jax.pure_callback(
             partial(self._render, width, height, geom_groups, camera),
             jax.ShapeDtypeStruct((self.buffer_height, self.buffer_width, 3), jnp.uint8),
-            state, vectorized=False
+            state, trajectory, vectorized=False
         )
         buffer = buffer.astype(jnp.float32) / 255.0
         buffer = jax.image.resize(buffer, (height, width,3), method="linear")

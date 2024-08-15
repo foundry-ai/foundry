@@ -8,7 +8,7 @@ from stanza.dataclasses import dataclass, field, replace
 from stanza.util import jax_static_property
 from stanza.env import (
     EnvWrapper, RenderConfig, ObserveConfig,
-    ImageRender, SequenceRender,
+    ImageRender, ImageRenderTraj,
     Environment,
     EnvironmentRegistry
 )
@@ -90,10 +90,18 @@ class RobosuiteEnv(MujocoEnvironment[SimulatorState]):
     # use the "frontview" camera for rendering
     # if not specified
     def render(self, state, config = None):
-        config = config or ImageRender(width=256, height=256)
+        if config is None: config = ImageRender(width=256, height=256)
         # custom image rendering for robosuite
         # which disables the collision geometry visualization
-        if isinstance(config, ImageRender):
+        if isinstance(config, ImageRenderTraj):
+            state = self.simulator.reduce_state(state)
+            camera = config.camera if config.camera is not None else "frontview"
+            # render only the visual geometries
+            # do not include the collision geometries
+            return self.native_simulator.render(
+                state, config.width, config.height, (False, True), camera, config.trajectory
+            )
+        elif isinstance(config, ImageRender):
             state = self.simulator.reduce_state(state)
             camera = config.camera if config.camera is not None else "frontview"
             # render only the visual geometries
@@ -101,6 +109,7 @@ class RobosuiteEnv(MujocoEnvironment[SimulatorState]):
             return self.native_simulator.render(
                 state, config.width, config.height, (False, True), camera
             )
+        
         return super().render(config, state)
 
 _OBJECT_JOINT_MAP = {
@@ -388,9 +397,10 @@ class PositionalControlEnv(EnvWrapper):
     def step(self, state, action, rng_key=None):
         obs = self.base.observe(state)
         if action is not None:
-            action_pos = jax.tree_map(lambda x: jnp.squeeze(x[:,0:3]), action)
-            action_ori_mat = jax.tree_map(lambda x: x[:,3:12].reshape([3,3]), action)
-            grip_action = jax.tree_map(lambda x: x[:,12:14], action)
+            action = jnp.squeeze(action)
+            action_pos = action[0:3]
+            action_ori_mat = action[3:12].reshape([3,3])
+            grip_action = action[12:14]
             #print(action_pos.shape, action_ori_mat.shape, grip_action.shape)
             data = self.simulator.system_data(state)
             robot = self._model_initializers[1][0]
