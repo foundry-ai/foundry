@@ -1,6 +1,4 @@
 {
-    setuptools_rust_1_10_1 = import ./setuptools-rust-1.10.1;
-    maturin_1_7_0 = import ./maturin-1.7.0;
     cmake_3_30_2 = import ./cmake-3.30.2;
 
     llvmlite_0_43_0 = import ./llvmlite-0.43.0;
@@ -16,6 +14,8 @@
 
     ml_dtypes_0_4_0 = import ./ml_dtypes-0.4.0;
     h5py_3_11_0 = import ./h5py-3.11.0;
+    rpds_py_0_20_0 = import ./rpds-py-0.20.0;
+    mujoco_3_2_2 = import ./mujoco-3.2.2;
 
     pyobjc_core_10_3_1 = import ./pyobjc-core-10.3.1;
     pyobjc_framework_cocoa_9_2 = import ./pyobjc-framework-cocoa-9.2;

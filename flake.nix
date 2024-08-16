@@ -26,7 +26,7 @@
                     };
                     pythonEnv = py.withPackages(
                         ps: 
-                        with requirements.env; [tensorstore]
+                        with requirements.env; [mujoco]
                     );
                 in {
                 default = pkgs.mkShell {
