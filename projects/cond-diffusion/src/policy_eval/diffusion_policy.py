@@ -35,20 +35,20 @@ class DiffusionPolicyConfig:
     model: str = "unet"
 
     seed: int = 42
-    iterations: int = 50000
+    iterations: int = 100
     batch_size: int = 64
 
     # MLP config
-    net_width: int = 4096
-    net_depth: int = 3
-    embed_type: str = "film"
-    has_skip: bool = True
+    # net_width: int = 4096
+    # net_depth: int = 3
+    # embed_type: str = "film"
+    # has_skip: bool = True
 
     diffusion_steps: int = 100
     action_horizon: int = 8
     
     from_checkpoint: bool = False
-    checkpoint_filename: str = "5nupde5h_final.pkl"
+    checkpoint_filename: str = None
 
     def parse(self, config: ConfigProvider) -> "DiffusionPolicyConfig":
         return config.get_dataclass(self, flatten={"train"})
@@ -282,6 +282,7 @@ class DiffusionUNet(UNet):
         ])(time_embed)
 
         obs_flat, _ = jax.flatten_util.ravel_pytree(obs)
+        
         # FiLM embedding
         obs_embed = nn.Sequential([
             nn.Dense(self.embed_dim),

@@ -8,7 +8,7 @@ from stanza.dataclasses import dataclass, field, replace
 from stanza.util import jax_static_property
 from stanza.env import (
     EnvWrapper, RenderConfig, ObserveConfig,
-    ImageRender, SequenceRender,
+    ImageRender, 
     Environment,
     EnvironmentRegistry
 )
@@ -90,7 +90,7 @@ class RobosuiteEnv(MujocoEnvironment[SimulatorState]):
     # use the "frontview" camera for rendering
     # if not specified
     def render(self, state, config = None):
-        config = config or ImageRender(width=256, height=256)
+        if config is None: config = ImageRender(width=256, height=256)
         # custom image rendering for robosuite
         # which disables the collision geometry visualization
         if isinstance(config, ImageRender):
@@ -99,7 +99,7 @@ class RobosuiteEnv(MujocoEnvironment[SimulatorState]):
             # render only the visual geometries
             # do not include the collision geometries
             return self.native_simulator.render(
-                state, config.width, config.height, (False, True), camera
+                state, config.width, config.height, (False, True), camera, config.trajectory
             )
         return super().render(config, state)
 
@@ -223,7 +223,7 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
             )
         elif isinstance(config, ManipulationTaskEEFPose):
             #return jnp.concatenate([data.site_xpos[eef_id, :], data.site_xmat[eef_id, :]])
-            return data.site_xpos[eef_id, :].reshape(3,), data.site_xmat[eef_id, :].reshape([3, 3]), grip_qpos
+            return jnp.concatenate([data.site_xpos[eef_id, :], data.site_xmat[eef_id, :], grip_qpos])
         else:
             raise ValueError("Unsupported observation type")
 
@@ -388,11 +388,11 @@ class PositionalControlEnv(EnvWrapper):
     def step(self, state, action, rng_key=None):
         obs = self.base.observe(state)
         if action is not None:
-            # action_pos = jax.tree.map(lambda x: x[:,:3].reshape(3,), action)
-            # action_ori_mat = jax.tree.map(lambda x: x[:,3:].reshape([3,3]), action)
-            action_pos, action_ori_mat, grip_action = action
-            action_pos = jnp.squeeze(action_pos)
-            action_ori_mat = jnp.squeeze(action_ori_mat)
+            action = jnp.squeeze(action)
+            action_pos = action[0:3]
+            action_ori_mat = action[3:12].reshape([3,3])
+            grip_action = action[12:14]
+            #print(action_pos.shape, action_ori_mat.shape, grip_action.shape)
             data = self.simulator.system_data(state)
             robot = self._model_initializers[1][0]
             eef_id = self.model.site("gripper0_grip_site").id

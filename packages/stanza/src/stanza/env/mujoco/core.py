@@ -123,7 +123,7 @@ class MujocoEnvironment(Environment[SimulatorState, SystemState, Action], Generi
             state = self.simulator.reduce_state(state)
             camera = config.camera if config.camera is not None else -1
             return self.native_simulator.render(
-                state, config.width, config.height, (), camera
+                state, config.width, config.height, (), camera, config.trajectory
             )
         elif isinstance(config, HtmlRender):
             data = self.simulator.system_data(state) # type: SystemData

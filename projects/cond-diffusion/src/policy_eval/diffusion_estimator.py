@@ -22,6 +22,7 @@ from typing import Callable
 import stanza.util
 
 import jax
+import jax.numpy as jnp
 import logging
 logger = logging.getLogger(__name__)
 
@@ -67,8 +68,9 @@ def estimator_diffusion_policy(
             if config.agent_pos_config == PushTAgentPos():
                 actions = train_data.actions - data_agent_pos[:, None, :]
             elif config.agent_pos_config == ManipulationTaskEEFPose():
-                actions = (train_data.actions[0] - data_agent_pos[0][:, None, :], 
-                           train_data.actions[1], train_data.actions[2])
+                expand_agent_pos = jnp.zeros_like(train_data.actions)
+                expand_agent_pos = expand_agent_pos.at[...,0:3].set(data_agent_pos[:,None,0:3])
+                actions = train_data.actions - expand_agent_pos
             else:
                 raise ValueError(f"Unsupported agent_pos_config {config.agent_pos_config}")
         else:
@@ -86,7 +88,9 @@ def estimator_diffusion_policy(
             if config.agent_pos_config == PushTAgentPos():
                 action = action + agent_pos
             elif config.agent_pos_config == ManipulationTaskEEFPose():
-                action = (action[0] + agent_pos[0], action[1], action[2])
+                expand_agent_pos = jnp.zeros_like(action)
+                expand_agent_pos = expand_agent_pos.at[...,0:3].set(agent_pos[0:3])
+                action = action + agent_pos
             else:
                 raise ValueError(f"Unsupported agent_pos_config {config.agent_pos_config}")
         action = action[:config.action_horizon]

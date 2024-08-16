@@ -2,7 +2,7 @@ from .core import (
     State, Action, Observation, Render,
     Environment, EnvironmentRegistry,
     RenderConfig, ImageRender,
-    HtmlRender, SequenceRender,
+    HtmlRender, 
     ObserveConfig,
     EnvWrapper,
 )

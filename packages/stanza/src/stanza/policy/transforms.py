@@ -1,6 +1,6 @@
 from stanza.policy import Policy, PolicyInput, PolicyOutput
 from stanza.env import (
-    EnvWrapper, RenderConfig, ImageRender, SequenceRender,
+    EnvWrapper, RenderConfig, ImageRender, 
     Render
 )
 from typing import Callable, List, Any
