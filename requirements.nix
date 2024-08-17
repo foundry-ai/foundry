@@ -9,7 +9,7 @@
         build-system = with packages;
         [pdm-backend];
         dependencies = with packages;
-        [stanza.with_docs_ipython stanza-models.d77f99a90 cond-diffusion image-classifier language-model wandb];
+        [stanza.with_docs_ipython stanza-models.dc49e5940 cond-diffusion image-classifier language-model wandb];
         doCheck=false;
       } ;
       powerpc64le-linux = buildPythonPackage {
@@ -20,7 +20,7 @@
         build-system = with packages;
         [pdm-backend];
         dependencies = with packages;
-        [stanza.with_docs_ipython stanza-models.d15584a78 cond-diffusion image-classifier language-model wandb];
+        [stanza.with_docs_ipython stanza-models.dfcd36668 cond-diffusion image-classifier language-model wandb];
         doCheck=false;
       } ;
       aarch64-darwin = buildPythonPackage {
@@ -31,7 +31,7 @@
         build-system = with packages;
         [pdm-backend];
         dependencies = with packages;
-        [stanza.with_docs_ipython stanza-models.d15fcd9c6 cond-diffusion image-classifier language-model wandb];
+        [stanza.with_docs_ipython stanza-models.dc0d662a2 cond-diffusion image-classifier language-model wandb];
         doCheck=false;
       } ;
     }.${
@@ -47,7 +47,7 @@
           build-system = with packages;
           [pdm-backend];
           dependencies = with packages;
-          [jax rich flax optax.d12151c5f pandas chex numpy.v1_26_4 ffmpegio einops matplotlib plotly nbformat beautifulsoup4 trajax zarr mujoco-mjx shapely robosuite sentencepiece h5py];
+          [jax rich flax optax.d9189e16a pandas chex numpy.v1_26_4 ffmpegio einops matplotlib plotly nbformat beautifulsoup4 trajax zarr mujoco-mjx shapely robosuite sentencepiece h5py];
           doCheck=false;
         } ;
         powerpc64le-linux = buildPythonPackage {
@@ -58,7 +58,7 @@
           build-system = with packages;
           [pdm-backend];
           dependencies = with packages;
-          [jax rich flax optax.d608f9bc8 pandas chex numpy.v1_26_4 ffmpegio einops matplotlib plotly nbformat beautifulsoup4 trajax zarr mujoco-mjx shapely robosuite sentencepiece h5py];
+          [jax rich flax optax.d5316f792 pandas chex numpy.v1_26_4 ffmpegio einops matplotlib plotly nbformat beautifulsoup4 trajax zarr mujoco-mjx shapely robosuite sentencepiece h5py];
           doCheck=false;
         } ;
         aarch64-darwin = buildPythonPackage {
@@ -69,13 +69,24 @@
           build-system = with packages;
           [pdm-backend];
           dependencies = with packages;
-          [jax rich flax optax.df0d4678e pandas chex numpy.v1_26_4 ffmpegio einops matplotlib plotly nbformat beautifulsoup4 trajax zarr mujoco-mjx shapely robosuite sentencepiece h5py];
+          [jax rich flax optax.da4acf241 pandas chex numpy.v1_26_4 ffmpegio einops matplotlib plotly nbformat beautifulsoup4 trajax zarr mujoco-mjx shapely robosuite sentencepiece h5py];
           doCheck=false;
         } ;
       }.${
         nixpkgs.system
       };
       default = {
+        aarch64-darwin = buildPythonPackage {
+          pname = "stanza";
+          version = "0.1.0";
+          format="pyproject";
+          src = ./packages/stanza;
+          build-system = with packages;
+          [pdm-backend];
+          dependencies = with packages;
+          [jax rich flax optax.da4acf241 pandas chex numpy.v1_26_4 ffmpegio einops matplotlib plotly nbformat beautifulsoup4 trajax zarr mujoco-mjx shapely robosuite sentencepiece h5py];
+          doCheck=false;
+        } ;
         x86_64-linux = buildPythonPackage {
           pname = "stanza";
           version = "0.1.0";
@@ -84,18 +95,7 @@
           build-system = with packages;
           [pdm-backend];
           dependencies = with packages;
-          [jax rich flax optax.d12151c5f pandas chex numpy.v1_26_4 ffmpegio einops matplotlib plotly nbformat beautifulsoup4 trajax zarr mujoco-mjx shapely robosuite sentencepiece h5py];
-          doCheck=false;
-        } ;
-        aarch64-darwin = buildPythonPackage {
-          pname = "stanza";
-          version = "0.1.0";
-          format="pyproject";
-          src = ./packages/stanza;
-          build-system = with packages;
-          [pdm-backend];
-          dependencies = with packages;
-          [jax rich flax optax.df0d4678e pandas chex numpy.v1_26_4 ffmpegio einops matplotlib plotly nbformat beautifulsoup4 trajax zarr mujoco-mjx shapely robosuite sentencepiece h5py];
+          [jax rich flax optax.d9189e16a pandas chex numpy.v1_26_4 ffmpegio einops matplotlib plotly nbformat beautifulsoup4 trajax zarr mujoco-mjx shapely robosuite sentencepiece h5py];
           doCheck=false;
         } ;
         powerpc64le-linux = buildPythonPackage {
@@ -106,7 +106,7 @@
           build-system = with packages;
           [pdm-backend];
           dependencies = with packages;
-          [jax rich flax optax.d608f9bc8 pandas chex numpy.v1_26_4 ffmpegio einops matplotlib plotly nbformat beautifulsoup4 trajax zarr mujoco-mjx shapely robosuite sentencepiece h5py];
+          [jax rich flax optax.d5316f792 pandas chex numpy.v1_26_4 ffmpegio einops matplotlib plotly nbformat beautifulsoup4 trajax zarr mujoco-mjx shapely robosuite sentencepiece h5py];
           doCheck=false;
         } ;
       }.${
@@ -115,7 +115,7 @@
     };
     stanza-models = {
       x86_64-linux = {
-        d47230ecd = buildPythonPackage {
+        d7359ef46 = buildPythonPackage {
           pname = "stanza-models";
           version = "0.1.0";
           format="pyproject";
@@ -126,7 +126,7 @@
           [stanza.default];
           doCheck=false;
         } ;
-        d77f99a90 = buildPythonPackage {
+        dc49e5940 = buildPythonPackage {
           pname = "stanza-models";
           version = "0.1.0";
           format="pyproject";
@@ -139,7 +139,7 @@
         } ;
       };
       powerpc64le-linux = {
-        d0df2b604 = buildPythonPackage {
+        d408ec37f = buildPythonPackage {
           pname = "stanza-models";
           version = "0.1.0";
           format="pyproject";
@@ -150,7 +150,7 @@
           [stanza.default];
           doCheck=false;
         } ;
-        d15584a78 = buildPythonPackage {
+        dfcd36668 = buildPythonPackage {
           pname = "stanza-models";
           version = "0.1.0";
           format="pyproject";
@@ -163,18 +163,7 @@
         } ;
       };
       aarch64-darwin = {
-        d3ed8f687 = buildPythonPackage {
-          pname = "stanza-models";
-          version = "0.1.0";
-          format="pyproject";
-          src = ./projects/models;
-          build-system = with packages;
-          [pdm-backend];
-          dependencies = with packages;
-          [stanza.default];
-          doCheck=false;
-        } ;
-        d15fcd9c6 = buildPythonPackage {
+        dc0d662a2 = buildPythonPackage {
           pname = "stanza-models";
           version = "0.1.0";
           format="pyproject";
@@ -183,6 +172,17 @@
           [pdm-backend];
           dependencies = with packages;
           [stanza.with_docs_ipython];
+          doCheck=false;
+        } ;
+        d83fa5d2f = buildPythonPackage {
+          pname = "stanza-models";
+          version = "0.1.0";
+          format="pyproject";
+          src = ./projects/models;
+          build-system = with packages;
+          [pdm-backend];
+          dependencies = with packages;
+          [stanza.default];
           doCheck=false;
         } ;
       };
@@ -201,17 +201,6 @@
       doCheck=false;
     } ;
     image-classifier = {
-      x86_64-linux = buildPythonPackage {
-        pname = "image-classifier";
-        version = "0.1.0";
-        format="pyproject";
-        src = ./projects/image-classifier;
-        build-system = with packages;
-        [pdm-backend];
-        dependencies = with packages;
-        [stanza.with_docs_ipython stanza-models.d77f99a90];
-        doCheck=false;
-      } ;
       powerpc64le-linux = buildPythonPackage {
         pname = "image-classifier";
         version = "0.1.0";
@@ -220,7 +209,7 @@
         build-system = with packages;
         [pdm-backend];
         dependencies = with packages;
-        [stanza.with_docs_ipython stanza-models.d15584a78];
+        [stanza.with_docs_ipython stanza-models.dfcd36668];
         doCheck=false;
       } ;
       aarch64-darwin = buildPythonPackage {
@@ -231,24 +220,24 @@
         build-system = with packages;
         [pdm-backend];
         dependencies = with packages;
-        [stanza.with_docs_ipython stanza-models.d15fcd9c6];
+        [stanza.with_docs_ipython stanza-models.dc0d662a2];
+        doCheck=false;
+      } ;
+      x86_64-linux = buildPythonPackage {
+        pname = "image-classifier";
+        version = "0.1.0";
+        format="pyproject";
+        src = ./projects/image-classifier;
+        build-system = with packages;
+        [pdm-backend];
+        dependencies = with packages;
+        [stanza.with_docs_ipython stanza-models.dc49e5940];
         doCheck=false;
       } ;
     }.${
       nixpkgs.system
     };
     language-model = {
-      x86_64-linux = buildPythonPackage {
-        pname = "language-model";
-        version = "0.1.0";
-        format="pyproject";
-        src = ./projects/language-model;
-        build-system = with packages;
-        [pdm-backend];
-        dependencies = with packages;
-        [stanza.with_docs_ipython stanza-models.d77f99a90];
-        doCheck=false;
-      } ;
       aarch64-darwin = buildPythonPackage {
         pname = "language-model";
         version = "0.1.0";
@@ -257,7 +246,18 @@
         build-system = with packages;
         [pdm-backend];
         dependencies = with packages;
-        [stanza.with_docs_ipython stanza-models.d15fcd9c6];
+        [stanza.with_docs_ipython stanza-models.dc0d662a2];
+        doCheck=false;
+      } ;
+      x86_64-linux = buildPythonPackage {
+        pname = "language-model";
+        version = "0.1.0";
+        format="pyproject";
+        src = ./projects/language-model;
+        build-system = with packages;
+        [pdm-backend];
+        dependencies = with packages;
+        [stanza.with_docs_ipython stanza-models.dc49e5940];
         doCheck=false;
       } ;
       powerpc64le-linux = buildPythonPackage {
@@ -268,7 +268,7 @@
         build-system = with packages;
         [pdm-backend];
         dependencies = with packages;
-        [stanza.with_docs_ipython stanza-models.d15584a78];
+        [stanza.with_docs_ipython stanza-models.dfcd36668];
         doCheck=false;
       } ;
     }.${
@@ -303,7 +303,7 @@
       };
     };
     matplotlib = {
-      x86_64-linux = nixpy-custom.matplotlib_3_9_1 {
+      aarch64-darwin = nixpy-custom.matplotlib_3_9_1 {
         buildPythonPackage=buildPythonPackage;
         build-system=with packages;
         {
@@ -314,7 +314,7 @@
         };
         dependencies=with packages;
         {
-          contourpy = contourpy.d5010b16e;
+          contourpy = contourpy.d970e07c5;
           cycler = cycler;
           fonttools = fonttools;
           kiwisolver = kiwisolver;
@@ -339,7 +339,7 @@
         };
         dependencies=with packages;
         {
-          contourpy = contourpy.d1d8201af;
+          contourpy = contourpy.ddafab5ac;
           cycler = cycler;
           fonttools = fonttools;
           kiwisolver = kiwisolver;
@@ -353,7 +353,7 @@
         nixpkgs=nixpkgs;
         python=python;
       };
-      aarch64-darwin = nixpy-custom.matplotlib_3_9_1 {
+      x86_64-linux = nixpy-custom.matplotlib_3_9_1 {
         buildPythonPackage=buildPythonPackage;
         build-system=with packages;
         {
@@ -364,7 +364,7 @@
         };
         dependencies=with packages;
         {
-          contourpy = contourpy.d3971e2da;
+          contourpy = contourpy.d0a9ae57d;
           cycler = cycler;
           fonttools = fonttools;
           kiwisolver = kiwisolver;
@@ -490,24 +490,7 @@
         {
           scipy = scipy;
           numpy = numpy.v1_26_4;
-          ml-dtypes = ml-dtypes.d00e8de91;
-        };
-        fetchurl=fetchurl;
-        nixpkgs=nixpkgs;
-        python=python;
-      };
-      powerpc64le-linux = nixpy-custom.jaxlib_0_4_30 {
-        buildPythonPackage=buildPythonPackage;
-        build-system=with packages;
-        {
-          setuptools = setuptools.v72_2_0;
-          wheel = wheel;
-        };
-        dependencies=with packages;
-        {
-          scipy = scipy;
-          numpy = numpy.v1_26_4;
-          ml-dtypes = ml-dtypes.dee03ec48;
+          ml-dtypes = ml-dtypes.d653f3de5;
         };
         fetchurl=fetchurl;
         nixpkgs=nixpkgs;
@@ -524,7 +507,24 @@
         {
           scipy = scipy;
           numpy = numpy.v1_26_4;
-          ml-dtypes = ml-dtypes.d10321aa1;
+          ml-dtypes = ml-dtypes.de6798c3a;
+        };
+        fetchurl=fetchurl;
+        nixpkgs=nixpkgs;
+        python=python;
+      };
+      powerpc64le-linux = nixpy-custom.jaxlib_0_4_30 {
+        buildPythonPackage=buildPythonPackage;
+        build-system=with packages;
+        {
+          setuptools = setuptools.v72_2_0;
+          wheel = wheel;
+        };
+        dependencies=with packages;
+        {
+          scipy = scipy;
+          numpy = numpy.v1_26_4;
+          ml-dtypes = ml-dtypes.ded84f622;
         };
         fetchurl=fetchurl;
         nixpkgs=nixpkgs;
@@ -568,22 +568,7 @@
     };
     ml-dtypes = {
       powerpc64le-linux = {
-        d1f88019a = nixpy-custom.ml_dtypes_0_4_0 {
-          buildPythonPackage=buildPythonPackage;
-          build-system=with packages;
-          {
-            numpy = numpy.v2_0_1;
-            setuptools = setuptools.v70_1_1;
-          };
-          dependencies=with packages;
-          {
-            numpy = numpy.v2_0_1;
-          };
-          fetchurl=fetchurl;
-          nixpkgs=nixpkgs;
-          python=python;
-        };
-        dee03ec48 = nixpy-custom.ml_dtypes_0_4_0 {
+        ded84f622 = nixpy-custom.ml_dtypes_0_4_0 {
           buildPythonPackage=buildPythonPackage;
           build-system=with packages;
           {
@@ -598,9 +583,7 @@
           nixpkgs=nixpkgs;
           python=python;
         };
-      };
-      aarch64-darwin = {
-        dde056ede = nixpy-custom.ml_dtypes_0_4_0 {
+        d68f84947 = nixpy-custom.ml_dtypes_0_4_0 {
           buildPythonPackage=buildPythonPackage;
           build-system=with packages;
           {
@@ -610,21 +593,6 @@
           dependencies=with packages;
           {
             numpy = numpy.v2_0_1;
-          };
-          fetchurl=fetchurl;
-          nixpkgs=nixpkgs;
-          python=python;
-        };
-        d10321aa1 = nixpy-custom.ml_dtypes_0_4_0 {
-          buildPythonPackage=buildPythonPackage;
-          build-system=with packages;
-          {
-            numpy = numpy.v2_0_1;
-            setuptools = setuptools.v70_1_1;
-          };
-          dependencies=with packages;
-          {
-            numpy = numpy.v1_26_4;
           };
           fetchurl=fetchurl;
           nixpkgs=nixpkgs;
@@ -632,7 +600,22 @@
         };
       };
       x86_64-linux = {
-        da30d380f = nixpy-custom.ml_dtypes_0_4_0 {
+        d653f3de5 = nixpy-custom.ml_dtypes_0_4_0 {
+          buildPythonPackage=buildPythonPackage;
+          build-system=with packages;
+          {
+            numpy = numpy.v2_0_1;
+            setuptools = setuptools.v70_1_1;
+          };
+          dependencies=with packages;
+          {
+            numpy = numpy.v1_26_4;
+          };
+          fetchurl=fetchurl;
+          nixpkgs=nixpkgs;
+          python=python;
+        };
+        d69469298 = nixpy-custom.ml_dtypes_0_4_0 {
           buildPythonPackage=buildPythonPackage;
           build-system=with packages;
           {
@@ -647,7 +630,24 @@
           nixpkgs=nixpkgs;
           python=python;
         };
-        d00e8de91 = nixpy-custom.ml_dtypes_0_4_0 {
+      };
+      aarch64-darwin = {
+        ddff46d54 = nixpy-custom.ml_dtypes_0_4_0 {
+          buildPythonPackage=buildPythonPackage;
+          build-system=with packages;
+          {
+            numpy = numpy.v2_0_1;
+            setuptools = setuptools.v70_1_1;
+          };
+          dependencies=with packages;
+          {
+            numpy = numpy.v2_0_1;
+          };
+          fetchurl=fetchurl;
+          nixpkgs=nixpkgs;
+          python=python;
+        };
+        de6798c3a = nixpy-custom.ml_dtypes_0_4_0 {
           buildPythonPackage=buildPythonPackage;
           build-system=with packages;
           {
@@ -708,19 +708,7 @@
           hash="sha256-VohwNzUTPQ3FN+maHWRhmKScnUctRxX95L1DfEQVG9c=";
         };
         dependencies = with packages;
-        [jaxlib ml-dtypes.d00e8de91 numpy.v1_26_4 opt-einsum scipy];
-        doCheck=false;
-      } ;
-      powerpc64le-linux = buildPythonPackage {
-        pname = "jax";
-        version = "0.4.31";
-        format="wheel";
-        src = fetchurl {
-          url="https://files.pythonhosted.org/packages/7e/cf/5f51b43bd692e90585c0ef6e8d1b0db5d254fe0224a6570daa59a1be014f/jax-0.4.31-py3-none-any.whl";
-          hash="sha256-VohwNzUTPQ3FN+maHWRhmKScnUctRxX95L1DfEQVG9c=";
-        };
-        dependencies = with packages;
-        [jaxlib ml-dtypes.dee03ec48 numpy.v1_26_4 opt-einsum scipy];
+        [jaxlib ml-dtypes.d653f3de5 numpy.v1_26_4 opt-einsum scipy];
         doCheck=false;
       } ;
       aarch64-darwin = buildPythonPackage {
@@ -732,7 +720,19 @@
           hash="sha256-VohwNzUTPQ3FN+maHWRhmKScnUctRxX95L1DfEQVG9c=";
         };
         dependencies = with packages;
-        [jaxlib ml-dtypes.d10321aa1 numpy.v1_26_4 opt-einsum scipy];
+        [jaxlib ml-dtypes.de6798c3a numpy.v1_26_4 opt-einsum scipy];
+        doCheck=false;
+      } ;
+      powerpc64le-linux = buildPythonPackage {
+        pname = "jax";
+        version = "0.4.31";
+        format="wheel";
+        src = fetchurl {
+          url="https://files.pythonhosted.org/packages/7e/cf/5f51b43bd692e90585c0ef6e8d1b0db5d254fe0224a6570daa59a1be014f/jax-0.4.31-py3-none-any.whl";
+          hash="sha256-VohwNzUTPQ3FN+maHWRhmKScnUctRxX95L1DfEQVG9c=";
+        };
+        dependencies = with packages;
+        [jaxlib ml-dtypes.ded84f622 numpy.v1_26_4 opt-einsum scipy];
         doCheck=false;
       } ;
     }.${
@@ -879,20 +879,6 @@
         [numpy.v1_26_4];
         doCheck=false;
       } ;
-      powerpc64le-linux = buildPythonPackage {
-        pname = "opencv-python";
-        version = "4.10.0.84";
-        format="pyproject";
-        src = fetchurl {
-          url="https://files.pythonhosted.org/packages/4a/e7/b70a2d9ab205110d715906fc8ec83fbb00404aeb3a37a0654fdb68eb0c8c/opencv-python-4.10.0.84.tar.gz";
-          hash="sha256-ctI05Fgullj/6o6crltj1IitBplO8S2B3DA7F0cvNSY=";
-        };
-        build-system = with packages;
-        [cmake numpy.v2_0_1 pip scikit-build.d9afde8a0 setuptools.v59_2_0];
-        dependencies = with packages;
-        [numpy.v1_26_4];
-        doCheck=false;
-      } ;
       aarch64-darwin = buildPythonPackage {
         pname = "opencv-python";
         version = "4.10.0.84";
@@ -907,22 +893,24 @@
         [numpy.v1_26_4];
         doCheck=false;
       } ;
+      powerpc64le-linux = buildPythonPackage {
+        pname = "opencv-python";
+        version = "4.10.0.84";
+        format="pyproject";
+        src = fetchurl {
+          url="https://files.pythonhosted.org/packages/4a/e7/b70a2d9ab205110d715906fc8ec83fbb00404aeb3a37a0654fdb68eb0c8c/opencv-python-4.10.0.84.tar.gz";
+          hash="sha256-ctI05Fgullj/6o6crltj1IitBplO8S2B3DA7F0cvNSY=";
+        };
+        build-system = with packages;
+        [cmake numpy.v2_0_1 pip scikit-build.d9afde8a0 setuptools.v59_2_0];
+        dependencies = with packages;
+        [numpy.v1_26_4];
+        doCheck=false;
+      } ;
     }.${
       nixpkgs.system
     };
     pynput = {
-      aarch64-darwin = buildPythonPackage {
-        pname = "pynput";
-        version = "1.7.7";
-        format="wheel";
-        src = fetchurl {
-          url="https://files.pythonhosted.org/packages/ef/1d/fdef3fdc9dc8dedc65898c8ad0e8922a914bb89c5308887e45f9aafaec36/pynput-1.7.7-py2.py3-none-any.whl";
-          hash="sha256-r8Q/ZRaEyYgY3gSKvHat+fLT15cIPLB8H4K+dkotRMs=";
-        };
-        dependencies = with packages;
-        [pyobjc-framework-applicationservices pyobjc-framework-quartz six];
-        doCheck=false;
-      } ;
       x86_64-linux = buildPythonPackage {
         pname = "pynput";
         version = "1.7.7";
@@ -933,6 +921,18 @@
         };
         dependencies = with packages;
         [evdev python-xlib six];
+        doCheck=false;
+      } ;
+      aarch64-darwin = buildPythonPackage {
+        pname = "pynput";
+        version = "1.7.7";
+        format="wheel";
+        src = fetchurl {
+          url="https://files.pythonhosted.org/packages/ef/1d/fdef3fdc9dc8dedc65898c8ad0e8922a914bb89c5308887e45f9aafaec36/pynput-1.7.7-py2.py3-none-any.whl";
+          hash="sha256-r8Q/ZRaEyYgY3gSKvHat+fLT15cIPLB8H4K+dkotRMs=";
+        };
+        dependencies = with packages;
+        [pyobjc-framework-applicationservices pyobjc-framework-quartz six];
         doCheck=false;
       } ;
       powerpc64le-linux = buildPythonPackage {
@@ -998,17 +998,18 @@
         doCheck=false;
       } ;
     };
-    glfw = buildPythonPackage {
-      pname = "glfw";
-      version = "2.7.0";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/1f/fe/fd827e0e0babed43c08949644d1c2cafe5bc0f0ddcd369248eb27841c81c/glfw-2.7.0.tar.gz";
-        hash="sha256-DiCa04+oxb5nylkNexdTPZWtHrV9Cj8HuYEx22m3kAA=";
+    glfw = nixpy-custom.glfw_2_7_0 {
+      buildPythonPackage=buildPythonPackage;
+      build-system=with packages;
+      {
+        setuptools = setuptools.v72_2_0;
       };
-      build-system = with packages;
-      [setuptools.v72_2_0];
-      doCheck=false;
-    } ;
+      dependencies={
+      };
+      fetchurl=fetchurl;
+      nixpkgs=nixpkgs;
+      python=python;
+    };
     pyopengl = buildPythonPackage {
       pname = "pyopengl";
       version = "3.1.7";
@@ -1020,6 +1021,18 @@
       doCheck=false;
     } ;
     llvmlite = nixpy-custom.llvmlite_0_43_0 {
+      buildPythonPackage=buildPythonPackage;
+      build-system=with packages;
+      {
+        setuptools = setuptools.v72_2_0;
+      };
+      dependencies={
+      };
+      fetchurl=fetchurl;
+      nixpkgs=nixpkgs;
+      python=python;
+    };
+    evdev = nixpy-custom.evdev_1_7_1 {
       buildPythonPackage=buildPythonPackage;
       build-system=with packages;
       {
@@ -1073,13 +1086,49 @@
       [mdurl];
       doCheck=false;
     } ;
-    wandb = buildPythonPackage {
-      pname = "wandb";
-      version = "0.17.6";
+    pandas = buildPythonPackage {
+      pname = "pandas";
+      version = "2.2.2";
+      format="pyproject";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/88/d9/ecf715f34c73ccb1d8ceb82fc01cd1028a65a5f6dbc57bfa6ea155119058/pandas-2.2.2.tar.gz";
+        hash="sha256-nnkBmrpDy0/ank2YP46IygNzrbtpeunGxDCTIY3ii1Q=";
+      };
+      build-system = with packages;
+      [cython.v3_0_5 meson-python.v0_13_1 meson.v1_2_1 numpy.v2_0_1 versioneer wheel];
+      dependencies = with packages;
+      [numpy.v1_26_4 python-dateutil pytz tzdata];
+      doCheck=false;
+    } ;
+    python-dateutil = buildPythonPackage {
+      pname = "python-dateutil";
+      version = "2.9.0.post0";
       format="wheel";
       src = fetchurl {
-        url="https://files.pythonhosted.org/packages/84/ff/67a3b4bdd24d0885894446cccd92ab8f7930ee866978c15440699e42471e/wandb-0.17.6-py3-none-any.whl";
-        hash="sha256-MMTxENQGNopGU/oTetBOi6Cmje4lg23lXDyjhLI+MMI=";
+        url="https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl";
+        hash="sha256-qLK8e/+uKCKByBQKl9OqnBTaCxNt/oP4UO6ppfdHBCc=";
+      };
+      dependencies = with packages;
+      [six];
+      doCheck=false;
+    } ;
+    mdurl = buildPythonPackage {
+      pname = "mdurl";
+      version = "0.1.2";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl";
+        hash="sha256-hACKQeUWFaSfyZZhkf+RUJ48QLk5F25kP9UKXCGWuPg=";
+      };
+      doCheck=false;
+    } ;
+    wandb = buildPythonPackage {
+      pname = "wandb";
+      version = "0.17.7";
+      format="wheel";
+      src = fetchurl {
+        url="https://files.pythonhosted.org/packages/ab/5f/502508715966a471e9c06ab26ecdc427e5f4f593d3828acd6250d6bf3da2/wandb-0.17.7-py3-none-any.whl";
+        hash="sha256-QvN9fU8ZNPxaMyM74d4PDI47v/BKRAOzrGAw5XfMhOE=";
       };
       dependencies = with packages;
       [click docker-pycreds gitpython platformdirs protobuf psutil pyyaml requests sentry-sdk setproctitle setuptools.v72_2_0];
@@ -1163,42 +1212,6 @@
         doCheck=false;
       } ;
     };
-    pandas = buildPythonPackage {
-      pname = "pandas";
-      version = "2.2.2";
-      format="pyproject";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/88/d9/ecf715f34c73ccb1d8ceb82fc01cd1028a65a5f6dbc57bfa6ea155119058/pandas-2.2.2.tar.gz";
-        hash="sha256-nnkBmrpDy0/ank2YP46IygNzrbtpeunGxDCTIY3ii1Q=";
-      };
-      build-system = with packages;
-      [cython.v3_0_5 meson-python.v0_13_1 meson.v1_2_1 numpy.v2_0_1 versioneer wheel];
-      dependencies = with packages;
-      [numpy.v1_26_4 python-dateutil pytz tzdata];
-      doCheck=false;
-    } ;
-    python-dateutil = buildPythonPackage {
-      pname = "python-dateutil";
-      version = "2.9.0.post0";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/ec/57/56b9bcc3c9c6a792fcbaf139543cee77261f3651ca9da0c93f5c1221264b/python_dateutil-2.9.0.post0-py2.py3-none-any.whl";
-        hash="sha256-qLK8e/+uKCKByBQKl9OqnBTaCxNt/oP4UO6ppfdHBCc=";
-      };
-      dependencies = with packages;
-      [six];
-      doCheck=false;
-    } ;
-    mdurl = buildPythonPackage {
-      pname = "mdurl";
-      version = "0.1.2";
-      format="wheel";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl";
-        hash="sha256-hACKQeUWFaSfyZZhkf+RUJ48QLk5F25kP9UKXCGWuPg=";
-      };
-      doCheck=false;
-    } ;
     ffmpegio = buildPythonPackage {
       pname = "ffmpegio";
       version = "0.10.0.post0";
@@ -1247,11 +1260,11 @@
     } ;
     trimesh = buildPythonPackage {
       pname = "trimesh";
-      version = "4.4.4";
+      version = "4.4.6";
       format="wheel";
       src = fetchurl {
-        url="https://files.pythonhosted.org/packages/9b/61/36c3373568f3b88282ebc922a4f6ba81d79c6cadb1ebe36732244debc64b/trimesh-4.4.4-py3-none-any.whl";
-        hash="sha256-AcN60yNV3E5avKl/d+5lMvdf1bQt9WfwzmITIEa4Fu8=";
+        url="https://files.pythonhosted.org/packages/3c/b5/5772d5e3d059f9949f4f4cf96248c6e69d035f50c548c2c145ed6eb980f0/trimesh-4.4.6-py3-none-any.whl";
+        hash="sha256-95W6x2DviHtdhbKJ6cUn+Mkp0ulEKWiFhpBWYAV6FWI=";
       };
       dependencies = with packages;
       [numpy.v1_26_4];
@@ -1277,19 +1290,7 @@
           hash="sha256-yW5G0cSKMA0BDr9cSEbxY73XrMbv/1/yv7HLWwiqZdg=";
         };
         dependencies = with packages;
-        [jax msgpack numpy.v1_26_4 optax.d12151c5f orbax-checkpoint.d2a18f845 pyyaml rich tensorstore typing-extensions];
-        doCheck=false;
-      } ;
-      powerpc64le-linux = buildPythonPackage {
-        pname = "flax";
-        version = "0.8.5";
-        format="wheel";
-        src = fetchurl {
-          url="https://files.pythonhosted.org/packages/1c/a9/6978d2547b1d8ca0ce75b534c0ba5c60e8e7b918c5c1800225aa0169cb7f/flax-0.8.5-py3-none-any.whl";
-          hash="sha256-yW5G0cSKMA0BDr9cSEbxY73XrMbv/1/yv7HLWwiqZdg=";
-        };
-        dependencies = with packages;
-        [jax msgpack numpy.v1_26_4 optax.d608f9bc8 orbax-checkpoint.db4335557 pyyaml rich tensorstore typing-extensions];
+        [jax msgpack numpy.v1_26_4 optax.d9189e16a orbax-checkpoint.dbb12244d pyyaml rich tensorstore typing-extensions];
         doCheck=false;
       } ;
       aarch64-darwin = buildPythonPackage {
@@ -1301,7 +1302,19 @@
           hash="sha256-yW5G0cSKMA0BDr9cSEbxY73XrMbv/1/yv7HLWwiqZdg=";
         };
         dependencies = with packages;
-        [jax msgpack numpy.v1_26_4 optax.df0d4678e orbax-checkpoint.d9a0a951d pyyaml rich tensorstore typing-extensions];
+        [jax msgpack numpy.v1_26_4 optax.da4acf241 orbax-checkpoint.de5297718 pyyaml rich tensorstore typing-extensions];
+        doCheck=false;
+      } ;
+      powerpc64le-linux = buildPythonPackage {
+        pname = "flax";
+        version = "0.8.5";
+        format="wheel";
+        src = fetchurl {
+          url="https://files.pythonhosted.org/packages/1c/a9/6978d2547b1d8ca0ce75b534c0ba5c60e8e7b918c5c1800225aa0169cb7f/flax-0.8.5-py3-none-any.whl";
+          hash="sha256-yW5G0cSKMA0BDr9cSEbxY73XrMbv/1/yv7HLWwiqZdg=";
+        };
+        dependencies = with packages;
+        [jax msgpack numpy.v1_26_4 optax.d5316f792 orbax-checkpoint.de4524ac3 pyyaml rich tensorstore typing-extensions];
         doCheck=false;
       } ;
     }.${
@@ -1322,7 +1335,7 @@
     };
     orbax-checkpoint = {
       aarch64-darwin = {
-        d9a0a951d = buildPythonPackage {
+        de5297718 = buildPythonPackage {
           pname = "orbax-checkpoint";
           version = "0.5.23";
           format="wheel";
@@ -1334,7 +1347,7 @@
           [absl-py etils.with_epath jax jaxlib msgpack nest-asyncio numpy.v1_26_4 protobuf pyyaml tensorstore typing-extensions];
           doCheck=false;
         } ;
-        d8fc61236 = buildPythonPackage {
+        d409ed456 = buildPythonPackage {
           pname = "orbax-checkpoint";
           version = "0.5.23";
           format="wheel";
@@ -1348,7 +1361,7 @@
         } ;
       };
       powerpc64le-linux = {
-        dea864a42 = buildPythonPackage {
+        dbecc00e6 = buildPythonPackage {
           pname = "orbax-checkpoint";
           version = "0.5.23";
           format="wheel";
@@ -1360,7 +1373,7 @@
           [absl-py etils.with_epath_epy jax jaxlib msgpack nest-asyncio numpy.v1_26_4 protobuf pyyaml tensorstore typing-extensions];
           doCheck=false;
         } ;
-        db4335557 = buildPythonPackage {
+        de4524ac3 = buildPythonPackage {
           pname = "orbax-checkpoint";
           version = "0.5.23";
           format="wheel";
@@ -1374,19 +1387,7 @@
         } ;
       };
       x86_64-linux = {
-        d2a18f845 = buildPythonPackage {
-          pname = "orbax-checkpoint";
-          version = "0.5.23";
-          format="wheel";
-          src = fetchurl {
-            url="https://files.pythonhosted.org/packages/6a/2e/0a2efe062084f477113ea07ba2e0e7298b05b3ca8c5d3568bf5ce6991b6e/orbax_checkpoint-0.5.23-py3-none-any.whl";
-            hash="sha256-DecT4kKuKVrGEUdv+4MIfNsKrSIefVS8H+qk29ExjEE=";
-          };
-          dependencies = with packages;
-          [absl-py etils.with_epath jax jaxlib msgpack nest-asyncio numpy.v1_26_4 protobuf pyyaml tensorstore typing-extensions];
-          doCheck=false;
-        } ;
-        dd4063223 = buildPythonPackage {
+        d2b5513e4 = buildPythonPackage {
           pname = "orbax-checkpoint";
           version = "0.5.23";
           format="wheel";
@@ -1396,6 +1397,18 @@
           };
           dependencies = with packages;
           [absl-py etils.with_epath_epy jax jaxlib msgpack nest-asyncio numpy.v1_26_4 protobuf pyyaml tensorstore typing-extensions];
+          doCheck=false;
+        } ;
+        dbb12244d = buildPythonPackage {
+          pname = "orbax-checkpoint";
+          version = "0.5.23";
+          format="wheel";
+          src = fetchurl {
+            url="https://files.pythonhosted.org/packages/6a/2e/0a2efe062084f477113ea07ba2e0e7298b05b3ca8c5d3568bf5ce6991b6e/orbax_checkpoint-0.5.23-py3-none-any.whl";
+            hash="sha256-DecT4kKuKVrGEUdv+4MIfNsKrSIefVS8H+qk29ExjEE=";
+          };
+          dependencies = with packages;
+          [absl-py etils.with_epath jax jaxlib msgpack nest-asyncio numpy.v1_26_4 protobuf pyyaml tensorstore typing-extensions];
           doCheck=false;
         } ;
       };
@@ -1415,7 +1428,7 @@
         dependencies=with packages;
         {
           numpy = numpy.v1_26_4;
-          ml-dtypes = ml-dtypes.d00e8de91;
+          ml-dtypes = ml-dtypes.d653f3de5;
         };
         fetchurl=fetchurl;
         nixpkgs=nixpkgs;
@@ -1433,7 +1446,7 @@
         dependencies=with packages;
         {
           numpy = numpy.v1_26_4;
-          ml-dtypes = ml-dtypes.dee03ec48;
+          ml-dtypes = ml-dtypes.ded84f622;
         };
         fetchurl=fetchurl;
         nixpkgs=nixpkgs;
@@ -1451,7 +1464,7 @@
         dependencies=with packages;
         {
           numpy = numpy.v1_26_4;
-          ml-dtypes = ml-dtypes.d10321aa1;
+          ml-dtypes = ml-dtypes.de6798c3a;
         };
         fetchurl=fetchurl;
         nixpkgs=nixpkgs;
@@ -1471,46 +1484,8 @@
       doCheck=false;
     } ;
     optax = {
-      powerpc64le-linux = {
-        d608f9bc8 = buildPythonPackage {
-          pname = "optax";
-          version = "0.2.3";
-          format="wheel";
-          src = fetchurl {
-            url="https://files.pythonhosted.org/packages/a3/8b/7032a6788205e9da398a8a33e1030ee9a22bd9289126e5afed9aac33bcde/optax-0.2.3-py3-none-any.whl";
-            hash="sha256-CD5gPc1zHX502Z9xwS93k33VP3kAG0wJwpDk9H3S6U8=";
-          };
-          dependencies = with packages;
-          [absl-py chex etils.with_epath jax jaxlib numpy.v1_26_4];
-          doCheck=false;
-        } ;
-        d2fa8443c = buildPythonPackage {
-          pname = "optax";
-          version = "0.2.3";
-          format="wheel";
-          src = fetchurl {
-            url="https://files.pythonhosted.org/packages/a3/8b/7032a6788205e9da398a8a33e1030ee9a22bd9289126e5afed9aac33bcde/optax-0.2.3-py3-none-any.whl";
-            hash="sha256-CD5gPc1zHX502Z9xwS93k33VP3kAG0wJwpDk9H3S6U8=";
-          };
-          dependencies = with packages;
-          [absl-py chex etils.with_epath_epy jax jaxlib numpy.v1_26_4];
-          doCheck=false;
-        } ;
-      };
       x86_64-linux = {
-        d12151c5f = buildPythonPackage {
-          pname = "optax";
-          version = "0.2.3";
-          format="wheel";
-          src = fetchurl {
-            url="https://files.pythonhosted.org/packages/a3/8b/7032a6788205e9da398a8a33e1030ee9a22bd9289126e5afed9aac33bcde/optax-0.2.3-py3-none-any.whl";
-            hash="sha256-CD5gPc1zHX502Z9xwS93k33VP3kAG0wJwpDk9H3S6U8=";
-          };
-          dependencies = with packages;
-          [absl-py chex etils.with_epath jax jaxlib numpy.v1_26_4];
-          doCheck=false;
-        } ;
-        d697214df = buildPythonPackage {
+        d56126211 = buildPythonPackage {
           pname = "optax";
           version = "0.2.3";
           format="wheel";
@@ -1520,11 +1495,23 @@
           };
           dependencies = with packages;
           [absl-py chex etils.with_epath_epy jax jaxlib numpy.v1_26_4];
+          doCheck=false;
+        } ;
+        d9189e16a = buildPythonPackage {
+          pname = "optax";
+          version = "0.2.3";
+          format="wheel";
+          src = fetchurl {
+            url="https://files.pythonhosted.org/packages/a3/8b/7032a6788205e9da398a8a33e1030ee9a22bd9289126e5afed9aac33bcde/optax-0.2.3-py3-none-any.whl";
+            hash="sha256-CD5gPc1zHX502Z9xwS93k33VP3kAG0wJwpDk9H3S6U8=";
+          };
+          dependencies = with packages;
+          [absl-py chex etils.with_epath jax jaxlib numpy.v1_26_4];
           doCheck=false;
         } ;
       };
       aarch64-darwin = {
-        df0d4678e = buildPythonPackage {
+        da4acf241 = buildPythonPackage {
           pname = "optax";
           version = "0.2.3";
           format="wheel";
@@ -1536,7 +1523,33 @@
           [absl-py chex etils.with_epath jax jaxlib numpy.v1_26_4];
           doCheck=false;
         } ;
-        d7ad298e5 = buildPythonPackage {
+        d7a51ac62 = buildPythonPackage {
+          pname = "optax";
+          version = "0.2.3";
+          format="wheel";
+          src = fetchurl {
+            url="https://files.pythonhosted.org/packages/a3/8b/7032a6788205e9da398a8a33e1030ee9a22bd9289126e5afed9aac33bcde/optax-0.2.3-py3-none-any.whl";
+            hash="sha256-CD5gPc1zHX502Z9xwS93k33VP3kAG0wJwpDk9H3S6U8=";
+          };
+          dependencies = with packages;
+          [absl-py chex etils.with_epath_epy jax jaxlib numpy.v1_26_4];
+          doCheck=false;
+        } ;
+      };
+      powerpc64le-linux = {
+        d5316f792 = buildPythonPackage {
+          pname = "optax";
+          version = "0.2.3";
+          format="wheel";
+          src = fetchurl {
+            url="https://files.pythonhosted.org/packages/a3/8b/7032a6788205e9da398a8a33e1030ee9a22bd9289126e5afed9aac33bcde/optax-0.2.3-py3-none-any.whl";
+            hash="sha256-CD5gPc1zHX502Z9xwS93k33VP3kAG0wJwpDk9H3S6U8=";
+          };
+          dependencies = with packages;
+          [absl-py chex etils.with_epath jax jaxlib numpy.v1_26_4];
+          doCheck=false;
+        } ;
+        d42da47d5 = buildPythonPackage {
           pname = "optax";
           version = "0.2.3";
           format="wheel";
@@ -1610,18 +1623,6 @@
       [numpy.v1_26_4];
       doCheck=false;
     } ;
-    evdev = buildPythonPackage {
-      pname = "evdev";
-      version = "1.7.1";
-      format="pyproject";
-      src = fetchurl {
-        url="https://files.pythonhosted.org/packages/12/bb/f622a8a5e64d46ca83020a761877c0ead19140903c9aaf1431f3c531fdf6/evdev-1.7.1.tar.gz";
-        hash="sha256-DHLDcL2inYV+GI2TEBnDJlGpweqXfAjI2TmxztFjf94=";
-      };
-      build-system = with packages;
-      [setuptools.v72_2_0];
-      doCheck=false;
-    } ;
     pygments = buildPythonPackage {
       pname = "pygments";
       version = "2.18.0";
@@ -1633,22 +1634,8 @@
       doCheck=false;
     } ;
     contourpy = {
-      aarch64-darwin = {
-        dc06ec434 = buildPythonPackage {
-          pname = "contourpy";
-          version = "1.2.1";
-          format="pyproject";
-          src = fetchurl {
-            url="https://files.pythonhosted.org/packages/8d/9e/e4786569b319847ffd98a8326802d5cf8a5500860dbfc2df1f0f4883ed99/contourpy-1.2.1.tar.gz";
-            hash="sha256-TYkIs77hyInlR4Z8pM3FTlq2vm0+B4VWgUoiRX9JQjw=";
-          };
-          build-system = with packages;
-          [meson-python.v0_15_0 meson.v1_5_1 pybind11.v2_13_4];
-          dependencies = with packages;
-          [numpy.v2_0_1];
-          doCheck=false;
-        } ;
-        d3971e2da = buildPythonPackage {
+      powerpc64le-linux = {
+        ddafab5ac = buildPythonPackage {
           pname = "contourpy";
           version = "1.2.1";
           format="pyproject";
@@ -1660,25 +1647,25 @@
           [meson-python.v0_15_0 meson.v1_5_1 pybind11.v2_13_4];
           dependencies = with packages;
           [numpy.v1_26_4];
+          doCheck=false;
+        } ;
+        d7f85b98e = buildPythonPackage {
+          pname = "contourpy";
+          version = "1.2.1";
+          format="pyproject";
+          src = fetchurl {
+            url="https://files.pythonhosted.org/packages/8d/9e/e4786569b319847ffd98a8326802d5cf8a5500860dbfc2df1f0f4883ed99/contourpy-1.2.1.tar.gz";
+            hash="sha256-TYkIs77hyInlR4Z8pM3FTlq2vm0+B4VWgUoiRX9JQjw=";
+          };
+          build-system = with packages;
+          [meson-python.v0_15_0 meson.v1_5_1 pybind11.v2_13_4];
+          dependencies = with packages;
+          [numpy.v2_0_1];
           doCheck=false;
         } ;
       };
-      powerpc64le-linux = {
-        d1a38d1dc = buildPythonPackage {
-          pname = "contourpy";
-          version = "1.2.1";
-          format="pyproject";
-          src = fetchurl {
-            url="https://files.pythonhosted.org/packages/8d/9e/e4786569b319847ffd98a8326802d5cf8a5500860dbfc2df1f0f4883ed99/contourpy-1.2.1.tar.gz";
-            hash="sha256-TYkIs77hyInlR4Z8pM3FTlq2vm0+B4VWgUoiRX9JQjw=";
-          };
-          build-system = with packages;
-          [meson-python.v0_15_0 meson.v1_5_1 pybind11.v2_13_4];
-          dependencies = with packages;
-          [numpy.v2_0_1];
-          doCheck=false;
-        } ;
-        d1d8201af = buildPythonPackage {
+      aarch64-darwin = {
+        d970e07c5 = buildPythonPackage {
           pname = "contourpy";
           version = "1.2.1";
           format="pyproject";
@@ -1690,11 +1677,25 @@
           [meson-python.v0_15_0 meson.v1_5_1 pybind11.v2_13_4];
           dependencies = with packages;
           [numpy.v1_26_4];
+          doCheck=false;
+        } ;
+        d41f880e9 = buildPythonPackage {
+          pname = "contourpy";
+          version = "1.2.1";
+          format="pyproject";
+          src = fetchurl {
+            url="https://files.pythonhosted.org/packages/8d/9e/e4786569b319847ffd98a8326802d5cf8a5500860dbfc2df1f0f4883ed99/contourpy-1.2.1.tar.gz";
+            hash="sha256-TYkIs77hyInlR4Z8pM3FTlq2vm0+B4VWgUoiRX9JQjw=";
+          };
+          build-system = with packages;
+          [meson-python.v0_15_0 meson.v1_5_1 pybind11.v2_13_4];
+          dependencies = with packages;
+          [numpy.v2_0_1];
           doCheck=false;
         } ;
       };
       x86_64-linux = {
-        d8028d5eb = buildPythonPackage {
+        d7a5ea1b8 = buildPythonPackage {
           pname = "contourpy";
           version = "1.2.1";
           format="pyproject";
@@ -1708,7 +1709,7 @@
           [numpy.v2_0_1];
           doCheck=false;
         } ;
-        d5010b16e = buildPythonPackage {
+        d0a9ae57d = buildPythonPackage {
           pname = "contourpy";
           version = "1.2.1";
           format="pyproject";
@@ -2293,32 +2294,6 @@
       doCheck=false;
     } ;
     scikit-build = {
-      aarch64-darwin = {
-        d7ad7183e = buildPythonPackage {
-          pname = "scikit-build";
-          version = "0.18.0";
-          format="wheel";
-          src = fetchurl {
-            url="https://files.pythonhosted.org/packages/24/43/a0b5837cf30db1561a04187edd262bdefaffcb61222cb441eadef35f9103/scikit_build-0.18.0-py3-none-any.whl";
-            hash="sha256-6hcfVSnm4LW2Zhk0M4Ma9hoo1+35c7M4hOyMeCoV7jg=";
-          };
-          dependencies = with packages;
-          [distro packaging setuptools.v59_2_0 tomli wheel];
-          doCheck=false;
-        } ;
-        d40f70522 = buildPythonPackage {
-          pname = "scikit-build";
-          version = "0.18.0";
-          format="wheel";
-          src = fetchurl {
-            url="https://files.pythonhosted.org/packages/24/43/a0b5837cf30db1561a04187edd262bdefaffcb61222cb441eadef35f9103/scikit_build-0.18.0-py3-none-any.whl";
-            hash="sha256-6hcfVSnm4LW2Zhk0M4Ma9hoo1+35c7M4hOyMeCoV7jg=";
-          };
-          dependencies = with packages;
-          [distro packaging setuptools.v72_2_0 tomli wheel];
-          doCheck=false;
-        } ;
-      };
       x86_64-linux = {
         d1ab31f70 = buildPythonPackage {
           pname = "scikit-build";
@@ -2346,6 +2321,18 @@
         } ;
       };
       powerpc64le-linux = {
+        d621388f4 = buildPythonPackage {
+          pname = "scikit-build";
+          version = "0.18.0";
+          format="wheel";
+          src = fetchurl {
+            url="https://files.pythonhosted.org/packages/24/43/a0b5837cf30db1561a04187edd262bdefaffcb61222cb441eadef35f9103/scikit_build-0.18.0-py3-none-any.whl";
+            hash="sha256-6hcfVSnm4LW2Zhk0M4Ma9hoo1+35c7M4hOyMeCoV7jg=";
+          };
+          dependencies = with packages;
+          [distro packaging setuptools.v72_2_0 tomli wheel];
+          doCheck=false;
+        } ;
         d9afde8a0 = buildPythonPackage {
           pname = "scikit-build";
           version = "0.18.0";
@@ -2358,7 +2345,9 @@
           [distro packaging setuptools.v59_2_0 tomli wheel];
           doCheck=false;
         } ;
-        d621388f4 = buildPythonPackage {
+      };
+      aarch64-darwin = {
+        d40f70522 = buildPythonPackage {
           pname = "scikit-build";
           version = "0.18.0";
           format="wheel";
@@ -2368,6 +2357,18 @@
           };
           dependencies = with packages;
           [distro packaging setuptools.v72_2_0 tomli wheel];
+          doCheck=false;
+        } ;
+        d7ad7183e = buildPythonPackage {
+          pname = "scikit-build";
+          version = "0.18.0";
+          format="wheel";
+          src = fetchurl {
+            url="https://files.pythonhosted.org/packages/24/43/a0b5837cf30db1561a04187edd262bdefaffcb61222cb441eadef35f9103/scikit_build-0.18.0-py3-none-any.whl";
+            hash="sha256-6hcfVSnm4LW2Zhk0M4Ma9hoo1+35c7M4hOyMeCoV7jg=";
+          };
+          dependencies = with packages;
+          [distro packaging setuptools.v59_2_0 tomli wheel];
           doCheck=false;
         } ;
       };
@@ -2407,6 +2408,20 @@
       doCheck=false;
     } ;
     ninja = {
+      x86_64-linux = nixpy-custom.ninja_1_11_1_1 {
+        buildPythonPackage=buildPythonPackage;
+        build-system=with packages;
+        {
+          setuptools = setuptools.v72_2_0;
+          setuptools-scm = setuptools-scm.with_toml;
+          scikit-build = scikit-build.d7ca557f9;
+        };
+        dependencies={
+        };
+        fetchurl=fetchurl;
+        nixpkgs=nixpkgs;
+        python=python;
+      };
       aarch64-darwin = nixpy-custom.ninja_1_11_1_1 {
         buildPythonPackage=buildPythonPackage;
         build-system=with packages;
@@ -2428,20 +2443,6 @@
           setuptools = setuptools.v72_2_0;
           setuptools-scm = setuptools-scm.with_toml;
           scikit-build = scikit-build.d621388f4;
-        };
-        dependencies={
-        };
-        fetchurl=fetchurl;
-        nixpkgs=nixpkgs;
-        python=python;
-      };
-      x86_64-linux = nixpy-custom.ninja_1_11_1_1 {
-        buildPythonPackage=buildPythonPackage;
-        build-system=with packages;
-        {
-          setuptools = setuptools.v72_2_0;
-          setuptools-scm = setuptools-scm.with_toml;
-          scikit-build = scikit-build.d7ca557f9;
         };
         dependencies={
         };
@@ -2549,317 +2550,317 @@
   envs = {
     x86_64-linux = with packages;
     {
+      flax = flax;
+      tzdata = tzdata;
+      pytz = pytz;
+      sentry-sdk = sentry-sdk;
+      contextlib2 = contextlib2;
+      gitdb = gitdb;
+      setproctitle = setproctitle;
+      pandas = pandas;
+      pyparsing = pyparsing;
+      pyopengl = pyopengl;
+      fonttools = fonttools;
+      mdurl = mdurl;
+      click = click;
+      tenacity = tenacity;
+      fastjsonschema = fastjsonschema;
+      ml-dtypes = ml-dtypes.d653f3de5;
+      nest-asyncio = nest-asyncio;
+      matplotlib = matplotlib;
+      rpds-py = rpds-py;
+      pynput = pynput;
+      platformdirs = platformdirs;
+      soupsieve = soupsieve;
+      numcodecs = numcodecs;
+      pyyaml = pyyaml;
+      nbformat = nbformat;
+      sentencepiece = sentencepiece;
+      mujoco = mujoco;
+      kiwisolver = kiwisolver;
+      typing-extensions = typing-extensions;
       python-xlib = python-xlib;
       opencv-python = opencv-python;
-      fasteners = fasteners;
-      requests = requests;
-      platformdirs = platformdirs;
-      pyyaml = pyyaml;
-      markdown-it-py = markdown-it-py;
-      beautifulsoup4 = beautifulsoup4;
-      pynput = pynput;
-      sentencepiece = sentencepiece;
-      docker-pycreds = docker-pycreds;
-      sentry-sdk = sentry-sdk;
-      click = click;
-      language-model = language-model;
-      pyopengl = pyopengl;
-      attrs = attrs;
-      wandb = wandb;
-      typing-extensions = typing-extensions;
-      rpds-py = rpds-py;
-      soupsieve = soupsieve;
-      jaxlib = jaxlib;
-      contextlib2 = contextlib2;
-      optax = optax.d12151c5f;
-      setuptools = setuptools.v72_2_0;
-      tensorstore = tensorstore;
-      msgpack = msgpack;
-      six = six;
-      pygments = pygments;
-      fonttools = fonttools;
-      stanza = stanza.with_docs_ipython;
-      zarr = zarr;
-      llvmlite = llvmlite;
-      mujoco = mujoco;
-      matplotlib = matplotlib;
-      termcolor = termcolor;
-      jsonschema = jsonschema;
-      robosuite = robosuite;
-      orbax-checkpoint = orbax-checkpoint.d2a18f845;
-      h5py = h5py;
-      mujoco-mjx = mujoco-mjx;
-      chex = chex;
-      trimesh = trimesh;
-      absl-py = absl-py;
-      pillow = pillow;
-      psutil = psutil;
-      ffmpegio-core = ffmpegio-core;
-      ffmpegio = ffmpegio;
-      image-classifier = image-classifier;
-      numba = numba;
-      nbformat = nbformat;
-      pytz = pytz;
-      trajax = trajax;
-      certifi = certifi;
       zipp = zipp;
-      cycler = cycler;
-      jax = jax;
-      shapely = shapely;
-      protobuf = protobuf;
-      fastjsonschema = fastjsonschema;
-      ml-dtypes = ml-dtypes.d00e8de91;
-      ml-collections = ml-collections;
-      pandas = pandas;
-      jsonschema-specifications = jsonschema-specifications;
-      gitpython = gitpython;
-      nest-asyncio = nest-asyncio;
-      packaging = packaging;
-      gitdb = gitdb;
-      glfw = glfw;
-      asciitree = asciitree;
-      traitlets = traitlets;
-      contourpy = contourpy.d5010b16e;
-      stanza-models = stanza-models.d77f99a90;
-      setproctitle = setproctitle;
-      rich = rich;
-      einops = einops;
-      numpy = numpy.v1_26_4;
-      kiwisolver = kiwisolver;
-      tenacity = tenacity;
-      mdurl = mdurl;
-      cond-diffusion = cond-diffusion;
-      numcodecs = numcodecs;
-      referencing = referencing;
-      pluggy = pluggy;
-      tzdata = tzdata;
-      fsspec = fsspec;
-      jupyter-core = jupyter-core;
-      smmap = smmap;
-      python-dateutil = python-dateutil;
-      plotly = plotly;
-      scipy = scipy;
-      idna = idna;
-      stanza-meta = stanza-meta;
-      evdev = evdev;
-      pyparsing = pyparsing;
       charset-normalizer = charset-normalizer;
-      toolz = toolz;
-      urllib3 = urllib3;
+      ffmpegio-core = ffmpegio-core;
+      trajax = trajax;
+      llvmlite = llvmlite;
+      psutil = psutil;
+      packaging = packaging;
+      pillow = pillow;
       etils = etils.with_epath;
-      importlib-resources = importlib-resources;
+      gitpython = gitpython;
+      einops = einops;
+      ffmpegio = ffmpegio;
+      shapely = shapely;
+      beautifulsoup4 = beautifulsoup4;
+      rich = rich;
+      scipy = scipy;
+      glfw = glfw;
+      mujoco-mjx = mujoco-mjx;
+      smmap = smmap;
+      referencing = referencing;
+      attrs = attrs;
+      stanza-meta = stanza-meta;
+      wandb = wandb;
+      traitlets = traitlets;
+      markdown-it-py = markdown-it-py;
+      protobuf = protobuf;
+      orbax-checkpoint = orbax-checkpoint.dbb12244d;
+      chex = chex;
+      pygments = pygments;
+      robosuite = robosuite;
+      six = six;
+      pluggy = pluggy;
+      image-classifier = image-classifier;
+      jsonschema = jsonschema;
+      setuptools = setuptools.v72_2_0;
+      ml-collections = ml-collections;
+      python-dateutil = python-dateutil;
+      idna = idna;
+      docker-pycreds = docker-pycreds;
+      language-model = language-model;
+      evdev = evdev;
+      cycler = cycler;
+      absl-py = absl-py;
+      trimesh = trimesh;
+      requests = requests;
+      asciitree = asciitree;
+      toolz = toolz;
+      tensorstore = tensorstore;
+      plotly = plotly;
+      jsonschema-specifications = jsonschema-specifications;
+      certifi = certifi;
+      fasteners = fasteners;
+      msgpack = msgpack;
       opt-einsum = opt-einsum;
-      flax = flax;
+      jupyter-core = jupyter-core;
+      urllib3 = urllib3;
+      stanza-models = stanza-models.dc49e5940;
+      jaxlib = jaxlib;
+      jax = jax;
+      zarr = zarr;
+      cond-diffusion = cond-diffusion;
+      importlib-resources = importlib-resources;
+      h5py = h5py;
+      fsspec = fsspec;
+      optax = optax.d9189e16a;
+      stanza = stanza.with_docs_ipython;
+      numba = numba;
+      contourpy = contourpy.d0a9ae57d;
+      numpy = numpy.v1_26_4;
+      termcolor = termcolor;
     };
     powerpc64le-linux = with packages;
     {
-      fsspec = fsspec;
-      typing-extensions = typing-extensions;
-      fasteners = fasteners;
-      h5py = h5py;
-      pyopengl = pyopengl;
-      charset-normalizer = charset-normalizer;
-      tenacity = tenacity;
-      stanza = stanza.with_docs_ipython;
-      docker-pycreds = docker-pycreds;
-      sentry-sdk = sentry-sdk;
-      matplotlib = matplotlib;
-      wandb = wandb;
-      pytz = pytz;
-      mdurl = mdurl;
-      plotly = plotly;
-      ml-collections = ml-collections;
-      jsonschema-specifications = jsonschema-specifications;
-      pyyaml = pyyaml;
-      rpds-py = rpds-py;
-      termcolor = termcolor;
-      flax = flax;
-      cond-diffusion = cond-diffusion;
-      etils = etils.with_epath;
-      sentencepiece = sentencepiece;
-      jaxlib = jaxlib;
-      asciitree = asciitree;
-      pynput = pynput;
-      opt-einsum = opt-einsum;
-      urllib3 = urllib3;
-      numcodecs = numcodecs;
-      tzdata = tzdata;
-      trajax = trajax;
-      setuptools = setuptools.v72_2_0;
-      referencing = referencing;
-      pygments = pygments;
-      orbax-checkpoint = orbax-checkpoint.db4335557;
-      contourpy = contourpy.d1d8201af;
-      mujoco = mujoco;
-      jupyter-core = jupyter-core;
-      opencv-python = opencv-python;
-      tensorstore = tensorstore;
-      scipy = scipy;
-      einops = einops;
-      evdev = evdev;
-      smmap = smmap;
-      chex = chex;
-      importlib-resources = importlib-resources;
-      beautifulsoup4 = beautifulsoup4;
-      absl-py = absl-py;
-      glfw = glfw;
-      cycler = cycler;
-      certifi = certifi;
-      msgpack = msgpack;
-      jax = jax;
-      kiwisolver = kiwisolver;
-      pillow = pillow;
-      ml-dtypes = ml-dtypes.dee03ec48;
-      setproctitle = setproctitle;
-      soupsieve = soupsieve;
-      zarr = zarr;
-      contextlib2 = contextlib2;
-      idna = idna;
-      stanza-meta = stanza-meta;
-      packaging = packaging;
-      six = six;
-      mujoco-mjx = mujoco-mjx;
-      stanza-models = stanza-models.d15584a78;
-      language-model = language-model;
-      jsonschema = jsonschema;
-      click = click;
-      requests = requests;
-      traitlets = traitlets;
-      fonttools = fonttools;
-      ffmpegio-core = ffmpegio-core;
-      python-dateutil = python-dateutil;
-      optax = optax.d608f9bc8;
-      rich = rich;
-      psutil = psutil;
-      ffmpegio = ffmpegio;
       llvmlite = llvmlite;
-      zipp = zipp;
-      image-classifier = image-classifier;
-      pandas = pandas;
-      nest-asyncio = nest-asyncio;
-      protobuf = protobuf;
-      python-xlib = python-xlib;
-      fastjsonschema = fastjsonschema;
-      gitpython = gitpython;
-      pluggy = pluggy;
-      robosuite = robosuite;
-      attrs = attrs;
-      gitdb = gitdb;
-      numba = numba;
-      numpy = numpy.v1_26_4;
-      shapely = shapely;
-      platformdirs = platformdirs;
-      trimesh = trimesh;
       markdown-it-py = markdown-it-py;
+      glfw = glfw;
+      termcolor = termcolor;
+      jsonschema = jsonschema;
+      packaging = packaging;
+      attrs = attrs;
+      trajax = trajax;
+      psutil = psutil;
+      h5py = h5py;
+      orbax-checkpoint = orbax-checkpoint.de4524ac3;
+      plotly = plotly;
+      pluggy = pluggy;
+      setuptools = setuptools.v72_2_0;
+      mdurl = mdurl;
+      trimesh = trimesh;
+      pillow = pillow;
+      wandb = wandb;
+      scipy = scipy;
+      traitlets = traitlets;
+      smmap = smmap;
+      rich = rich;
+      cycler = cycler;
+      click = click;
+      pandas = pandas;
+      fonttools = fonttools;
+      mujoco-mjx = mujoco-mjx;
+      contextlib2 = contextlib2;
+      zarr = zarr;
+      soupsieve = soupsieve;
+      rpds-py = rpds-py;
+      gitdb = gitdb;
+      ml-collections = ml-collections;
+      sentry-sdk = sentry-sdk;
+      opencv-python = opencv-python;
+      typing-extensions = typing-extensions;
+      jaxlib = jaxlib;
+      python-dateutil = python-dateutil;
+      setproctitle = setproctitle;
+      python-xlib = python-xlib;
+      certifi = certifi;
+      cond-diffusion = cond-diffusion;
+      pynput = pynput;
+      six = six;
+      tenacity = tenacity;
+      jax = jax;
+      ffmpegio = ffmpegio;
+      zipp = zipp;
+      pygments = pygments;
+      jupyter-core = jupyter-core;
+      docker-pycreds = docker-pycreds;
+      numpy = numpy.v1_26_4;
+      urllib3 = urllib3;
+      matplotlib = matplotlib;
+      fasteners = fasteners;
+      evdev = evdev;
+      language-model = language-model;
+      stanza-models = stanza-models.dfcd36668;
+      asciitree = asciitree;
+      tensorstore = tensorstore;
+      msgpack = msgpack;
+      gitpython = gitpython;
+      pyopengl = pyopengl;
+      requests = requests;
+      opt-einsum = opt-einsum;
+      numcodecs = numcodecs;
+      referencing = referencing;
       pyparsing = pyparsing;
-      toolz = toolz;
+      ffmpegio-core = ffmpegio-core;
+      optax = optax.d5316f792;
+      nest-asyncio = nest-asyncio;
+      numba = numba;
+      flax = flax;
+      platformdirs = platformdirs;
+      charset-normalizer = charset-normalizer;
+      pytz = pytz;
+      chex = chex;
+      kiwisolver = kiwisolver;
       nbformat = nbformat;
+      toolz = toolz;
+      fsspec = fsspec;
+      beautifulsoup4 = beautifulsoup4;
+      einops = einops;
+      image-classifier = image-classifier;
+      mujoco = mujoco;
+      absl-py = absl-py;
+      tzdata = tzdata;
+      stanza-meta = stanza-meta;
+      shapely = shapely;
+      pyyaml = pyyaml;
+      jsonschema-specifications = jsonschema-specifications;
+      etils = etils.with_epath;
+      contourpy = contourpy.ddafab5ac;
+      ml-dtypes = ml-dtypes.ded84f622;
+      fastjsonschema = fastjsonschema;
+      importlib-resources = importlib-resources;
+      sentencepiece = sentencepiece;
+      robosuite = robosuite;
+      protobuf = protobuf;
+      idna = idna;
+      stanza = stanza.with_docs_ipython;
     };
     aarch64-darwin = with packages;
     {
-      contextlib2 = contextlib2;
-      pynput = pynput;
-      stanza-meta = stanza-meta;
-      fasteners = fasteners;
-      gitpython = gitpython;
-      ml-collections = ml-collections;
-      stanza-models = stanza-models.d15fcd9c6;
-      plotly = plotly;
-      pyobjc-framework-cocoa = pyobjc-framework-cocoa;
-      sentencepiece = sentencepiece;
-      certifi = certifi;
-      packaging = packaging;
-      importlib-resources = importlib-resources;
-      glfw = glfw;
-      platformdirs = platformdirs;
-      sentry-sdk = sentry-sdk;
-      psutil = psutil;
-      cycler = cycler;
-      six = six;
-      msgpack = msgpack;
-      pytz = pytz;
-      orbax-checkpoint = orbax-checkpoint.d9a0a951d;
-      beautifulsoup4 = beautifulsoup4;
-      nbformat = nbformat;
-      pyobjc-framework-applicationservices = pyobjc-framework-applicationservices;
-      toolz = toolz;
       fsspec = fsspec;
-      numcodecs = numcodecs;
-      pillow = pillow;
-      wandb = wandb;
-      numba = numba;
-      termcolor = termcolor;
-      opencv-python = opencv-python;
-      jsonschema = jsonschema;
-      language-model = language-model;
-      pluggy = pluggy;
-      trajax = trajax;
-      attrs = attrs;
-      robosuite = robosuite;
-      pandas = pandas;
-      jaxlib = jaxlib;
-      requests = requests;
-      flax = flax;
-      gitdb = gitdb;
-      jupyter-core = jupyter-core;
-      pyobjc-core = pyobjc-core;
-      fastjsonschema = fastjsonschema;
-      mujoco-mjx = mujoco-mjx;
-      jax = jax;
-      ffmpegio-core = ffmpegio-core;
-      smmap = smmap;
-      mujoco = mujoco;
-      asciitree = asciitree;
-      etils = etils.with_epath;
-      jsonschema-specifications = jsonschema-specifications;
-      rich = rich;
-      zipp = zipp;
-      cond-diffusion = cond-diffusion;
-      trimesh = trimesh;
-      pyobjc-framework-quartz = pyobjc-framework-quartz;
-      h5py = h5py;
-      llvmlite = llvmlite;
-      idna = idna;
-      markdown-it-py = markdown-it-py;
-      click = click;
-      ffmpegio = ffmpegio;
-      pyyaml = pyyaml;
-      setuptools = setuptools.v72_2_0;
-      zarr = zarr;
       tenacity = tenacity;
-      pyopengl = pyopengl;
-      matplotlib = matplotlib;
-      tzdata = tzdata;
-      urllib3 = urllib3;
-      nest-asyncio = nest-asyncio;
-      traitlets = traitlets;
-      referencing = referencing;
-      rpds-py = rpds-py;
-      stanza = stanza.with_docs_ipython;
       image-classifier = image-classifier;
-      pygments = pygments;
-      setproctitle = setproctitle;
-      numpy = numpy.v1_26_4;
-      ml-dtypes = ml-dtypes.d10321aa1;
-      mdurl = mdurl;
-      optax = optax.df0d4678e;
-      charset-normalizer = charset-normalizer;
-      shapely = shapely;
-      contourpy = contourpy.d3971e2da;
-      opt-einsum = opt-einsum;
-      einops = einops;
-      soupsieve = soupsieve;
-      docker-pycreds = docker-pycreds;
-      chex = chex;
-      typing-extensions = typing-extensions;
-      tensorstore = tensorstore;
-      python-dateutil = python-dateutil;
-      fonttools = fonttools;
-      absl-py = absl-py;
-      kiwisolver = kiwisolver;
-      scipy = scipy;
+      pytz = pytz;
+      pyobjc-framework-quartz = pyobjc-framework-quartz;
+      certifi = certifi;
+      orbax-checkpoint = orbax-checkpoint.de5297718;
       pyparsing = pyparsing;
+      contourpy = contourpy.d970e07c5;
+      wandb = wandb;
+      pyobjc-framework-applicationservices = pyobjc-framework-applicationservices;
+      ffmpegio = ffmpegio;
+      mujoco = mujoco;
       protobuf = protobuf;
+      beautifulsoup4 = beautifulsoup4;
+      docker-pycreds = docker-pycreds;
+      packaging = packaging;
+      smmap = smmap;
+      markdown-it-py = markdown-it-py;
+      jsonschema = jsonschema;
+      cycler = cycler;
+      tensorstore = tensorstore;
+      shapely = shapely;
+      opt-einsum = opt-einsum;
+      jaxlib = jaxlib;
+      fasteners = fasteners;
+      typing-extensions = typing-extensions;
+      matplotlib = matplotlib;
+      pyobjc-framework-cocoa = pyobjc-framework-cocoa;
+      charset-normalizer = charset-normalizer;
+      rich = rich;
+      stanza = stanza.with_docs_ipython;
+      nest-asyncio = nest-asyncio;
+      stanza-models = stanza-models.dc0d662a2;
+      asciitree = asciitree;
+      setuptools = setuptools.v72_2_0;
+      zipp = zipp;
+      referencing = referencing;
+      llvmlite = llvmlite;
+      pillow = pillow;
+      contextlib2 = contextlib2;
+      einops = einops;
+      zarr = zarr;
+      ml-collections = ml-collections;
+      jsonschema-specifications = jsonschema-specifications;
+      kiwisolver = kiwisolver;
+      opencv-python = opencv-python;
+      pynput = pynput;
+      tzdata = tzdata;
+      six = six;
+      ffmpegio-core = ffmpegio-core;
+      attrs = attrs;
+      flax = flax;
+      mujoco-mjx = mujoco-mjx;
+      plotly = plotly;
+      platformdirs = platformdirs;
+      importlib-resources = importlib-resources;
+      sentencepiece = sentencepiece;
+      glfw = glfw;
+      termcolor = termcolor;
+      pluggy = pluggy;
+      h5py = h5py;
+      numpy = numpy.v1_26_4;
+      optax = optax.da4acf241;
+      pandas = pandas;
+      stanza-meta = stanza-meta;
+      trimesh = trimesh;
+      absl-py = absl-py;
+      gitpython = gitpython;
+      urllib3 = urllib3;
+      pyyaml = pyyaml;
+      numcodecs = numcodecs;
+      gitdb = gitdb;
+      robosuite = robosuite;
+      requests = requests;
+      soupsieve = soupsieve;
+      sentry-sdk = sentry-sdk;
+      chex = chex;
+      pyopengl = pyopengl;
+      rpds-py = rpds-py;
+      psutil = psutil;
+      language-model = language-model;
+      etils = etils.with_epath;
+      click = click;
+      jupyter-core = jupyter-core;
+      toolz = toolz;
+      jax = jax;
+      fonttools = fonttools;
+      cond-diffusion = cond-diffusion;
+      pyobjc-core = pyobjc-core;
+      msgpack = msgpack;
+      traitlets = traitlets;
+      pygments = pygments;
+      mdurl = mdurl;
+      scipy = scipy;
+      setproctitle = setproctitle;
+      trajax = trajax;
+      numba = numba;
+      ml-dtypes = ml-dtypes.de6798c3a;
+      idna = idna;
+      fastjsonschema = fastjsonschema;
+      nbformat = nbformat;
+      python-dateutil = python-dateutil;
     };
   };
   env = envs.${

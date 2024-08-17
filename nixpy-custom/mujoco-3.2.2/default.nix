@@ -48,12 +48,6 @@ buildPythonPackage rec {
     #     ./mujoco-system-deps-dont-fetch.patch 
     #     ./external-glfw.patch
     # ];
-
-    mujocoBuildInputs = [
-    ] ++ lib.optionals stdenv.isDarwin [
-        ApplicationServices
-        Cocoa
-    ];
     preConfigure = ''
         ${perl}/bin/perl -0777 -i -pe "s/GIT_REPO\n.*\n.*GIT_TAG\n.*\n//gm" mujoco/CMakeLists.txt
         ${perl}/bin/perl -0777 -i -pe "s/(FetchContent_Declare\(\n.*lodepng\n.*)(GIT_REPO.*\n.*GIT_TAG.*\n)(.*\))/\1\3/gm" mujoco/simulate/CMakeLists.txt
@@ -80,11 +74,11 @@ buildPythonPackage rec {
         # use nixpkgs' pybind11 since
         # this handles some cmake stuff better
         python.pkgs.pybind11
-    ] ++ mujocoBuildInputs;
+    ];
     propagatedBuildInputs = [
+        glfw # the glfw python package (so that it is available in the environment)
         absl-py
         etils
-        glfw
         numpy
         pyopengl
     ];

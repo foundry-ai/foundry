@@ -26,7 +26,7 @@
                     };
                     pythonEnv = py.withPackages(
                         ps: 
-                        with requirements.env; [mujoco]
+                        with requirements.env; [stanza-meta]
                     );
                 in {
                 default = pkgs.mkShell {

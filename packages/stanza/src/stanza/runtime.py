@@ -74,7 +74,8 @@ def setup_jax_cache():
         return
     from jax.experimental.compilation_cache import compilation_cache as cc
     import tempfile
-    JAX_CACHE = Path(tempfile.gettempdir()) / "jax_cache" / os.environ.get("USER", "stanza")
+    user = os.environ.get("USER", "stanza")
+    JAX_CACHE = Path(tempfile.gettempdir()) / f"jax_cache_{user}"
     JAX_CACHE = Path(os.environ.get("JAX_CACHE", JAX_CACHE))
     JAX_CACHE.mkdir(parents=True, exist_ok=True)
     cc.initialize_cache(str(JAX_CACHE))

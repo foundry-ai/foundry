@@ -121,7 +121,6 @@ let
       ];
       buildInputs = [
         pin.tmd
-
         # Mainline. The otherwise pinned glm realease from 2018 does
         # not build due to test failures and missing files.
         glm
@@ -172,11 +171,6 @@ in stdenv.mkDerivation rec {
   # Move things into place so that cmake doesn't try downloading dependencies.
   preConfigure = ''
     mkdir -p build/_deps
-    mkdir -p $out/lib
-    mkdir -p $out/include
-    echo "Building into..."
-    echo $out/lib
-    ls -la $out/lib
     ln -s ${pin.abseil-cpp} build/_deps/abseil-cpp-src
     ln -s ${pin.benchmark} build/_deps/benchmark-src
     ln -s ${pin.ccd} build/_deps/ccd-src
@@ -187,8 +181,6 @@ in stdenv.mkDerivation rec {
     ln -s ${pin.tinyobjloader} build/_deps/tinyobjloader-src
     ln -s ${pin.tinyxml2} build/_deps/tinyxml2-src
     ln -s ${pin.marchingcubecpp} build/_deps/marchingcubecpp-src
-  '' + lib.optionalString stdenv.isDarwin ''
-    echo $(which ar)
   '';
 
   passthru.pin = { inherit (pin) lodepng eigen3 abseil-cpp; };

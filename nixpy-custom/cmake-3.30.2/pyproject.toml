@@ -2,8 +2,10 @@
 name = "cmake"
 version = "3.30.2"
 requires-python = ">=3.7"
-
 dependencies = []
 
 [build-system]
-requires = ["scikit-build-core"]
+requires = [
+    "setuptools >= 61"
+]
+build-backend = "setuptools.build_meta"

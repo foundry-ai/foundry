@@ -1,5 +1,6 @@
 {
     cmake_3_30_2 = import ./cmake-3.30.2;
+    glfw_2_7_0 = import ./glfw-2.7.0;
 
     llvmlite_0_43_0 = import ./llvmlite-0.43.0;
     meson_python_0_13_1 = import ./meson-python-0.13.1;
@@ -21,6 +22,7 @@
     pyobjc_framework_cocoa_9_2 = import ./pyobjc-framework-cocoa-9.2;
     pyobjc_framework_quartz_9_2 = import ./pyobjc-framework-quartz-9.2;
     pyobjc_framework_applicationservices_9_2 = import ./pyobjc-framework-applicationservices-9.2;
+    evdev_1_7_1 = import ./evdev-1.7.1;
 
     numpy_1_26_4 = import ./numpy-1.26.4;
     numpy_2_0_1 = import ./numpy-2.0.1;
