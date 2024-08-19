@@ -52,13 +52,13 @@ class Config:
     seed: int = 42
     dataset: str = "pusht/chi"
     obs_length: int = 1
-    action_length: int = 32
+    action_length: int = 16
     policy: PolicyConfig = None
     action_config: ObserveConfig = ManipulationTaskEEFPose()
-    timesteps: int = 400
+    timesteps: int = 200
     train_data_size: int | None = None
-    test_data_size: int | None = 8
-    render_config: RenderConfig = ImageRender(256, 256)
+    test_data_size: int | None = 6
+    render_config: RenderConfig = ImageRender(128, 128)
 
     @staticmethod
     def parse(config: ConfigProvider) -> "Config":
