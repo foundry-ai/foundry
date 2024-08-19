@@ -19,7 +19,7 @@ from stanza.env.transforms import (
 from stanza.env.mujoco.core import (
     MujocoEnvironment,
     SystemState, SimulatorState, Action,
-    quat_to_mat, orientation_error
+    quat_to_mat, mat_to_quat, mat_to_euler, orientation_error
 )
 
 from functools import partial
@@ -200,7 +200,6 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
         if config is None: config = ManipulationTaskObs()
         data = self.simulator.system_data(state)
         eef_id = self.model.site("gripper0_grip_site").id
-        grip_site_id = self.model.site("gripper0_grip_site").id
         system_state = self.simulator.reduce_state(state)
         jacp, jacr = self.native_simulator.get_jacs(system_state, eef_id)
 
@@ -213,16 +212,14 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
                 eef_ori_mat=data.site_xmat[eef_id, :].reshape([3, 3]),
                 eef_ori_vel=jnp.dot(jacr, system_state.qvel),
                 grip_qpos=grip_qpos,
-                grip_site_pos=data.site_xpos[grip_site_id, :],
                 object_pos=jnp.stack([
-                    data.xpos[self.model.joint(_OBJECT_JOINT_MAP[obj]).id, :] for obj in self.objects
+                    data.xpos[self.model.body(f"{obj.capitalize()}_main").id, :] for obj in self.objects
                 ]),
                 object_quat=jnp.stack([
-                    data.xquat[self.model.joint(_OBJECT_JOINT_MAP[obj]).id, :] for obj in self.objects
+                    data.xquat[self.model.body(f"{obj.capitalize()}_main").id, :] for obj in self.objects
                 ])
             )
         elif isinstance(config, ManipulationTaskEEFPose):
-            #return jnp.concatenate([data.site_xpos[eef_id, :], data.site_xmat[eef_id, :]])
             return jnp.concatenate([data.site_xpos[eef_id, :], data.site_xmat[eef_id, :], grip_qpos])
         else:
             raise ValueError("Unsupported observation type")
@@ -290,16 +287,20 @@ class NutAssembly(RobosuiteEnv[SimulatorState]):
     @jax.jit
     def observe(self, state, config : ObserveConfig | None = None):
         if config is None: config = ManipulationTaskObs()
+        data = self.simulator.system_data(state)
+        eef_id = self.model.site("gripper0_grip_site").id
+        system_state = self.simulator.reduce_state(state)
+        jacp, jacr = self.native_simulator.get_jacs(system_state, eef_id)
+
+        robot = self._model_initializers[1][0]
+        grip_qpos = self.reduce_state(state).qpos[robot.gripper_actuator_indices]
         if isinstance(config, ManipulationTaskObs):
-            data = self.simulator.system_data(state)
-            eef_id = self.model.site("gripper0_grip_site").id
-            grip_site_id = self.model.site("gripper0_grip_site").id
             return ManipulationTaskObs(
                 eef_pos=data.site_xpos[eef_id, :],
-                eef_vel=data.cvel[eef_id, :3],
-                eef_quat=data.xquat[eef_id, :],
-                eef_rot_vel=data.cvel[eef_id, 3:],
-                grip_site_pos=data.site_xpos[grip_site_id, :],
+                eef_vel=jnp.dot(jacp, system_state.qvel),
+                eef_ori_mat=data.site_xmat[eef_id, :].reshape([3, 3]),
+                eef_ori_vel=jnp.dot(jacr, system_state.qvel),
+                grip_qpos=grip_qpos,
                 object_pos=jnp.stack([
                     data.xpos[self.model.body(f"{obj.capitalize()}Nut_main").id, :] for obj in self.objects
                 ]),
@@ -307,6 +308,8 @@ class NutAssembly(RobosuiteEnv[SimulatorState]):
                     data.xquat[self.model.body(f"{obj.capitalize()}Nut_main").id, :] for obj in self.objects
                 ])
             )
+        elif isinstance(config, ManipulationTaskEEFPose):
+            return jnp.concatenate([data.site_xpos[eef_id, :], data.site_xmat[eef_id, :], grip_qpos])
         else:
             raise ValueError("Unsupported observation type")
 
@@ -340,26 +343,33 @@ class ManipulationTaskObs:
     eef_ori_vel: jax.Array = None # (n_robots, 3,) -- end-effector orientation velocity
     grip_qpos: jax.Array = None # (n_robots, 2,) -- gripper qpos
 
-    grip_site_pos: jax.Array = None # (n_robots, 3,) -- gripper site position
-
     object_pos: jax.Array = None # (n_objects, 3) where n is the number of objects in the scene
     object_quat: jax.Array = None # (n_objects, 4) where n is the number of objects in the scene
 
 @dataclass
 class ManipulationTaskRelObs:
     eef_obj_rel_pos: jax.Array = None # (n_robots, n_objects, 3) -- relative position of the end-effector to the object
-    obj_pos: jax.Array = None
+
+    object_pos: jax.Array = None
+
+    eef_obj_rel_ori: jax.Array = None 
+
+    eef_ori: jax.Array = None # (n_robots, 3,) -- end-effector orientation in Euler coords
+    eef_quat: jax.Array = None # (n_robots, 4) -- end-effector orientation
     eef_ori_mat: jax.Array = None # (n_robots, 3, 3) -- end-effector orientation matrix
+
+    object_ori: jax.Array = None # (n_objects, 3,) -- object orientation in Euler coords
     object_quat: jax.Array = None # (n_objects, 4) -- object orientation
+
     grip_qpos: jax.Array = None # (n_robots, 2,) -- gripper qpos
 
 @dataclass
 class ManipulationTaskPosObs:
     eef_pos: jax.Array = None
-    eef_ori_mat: jax.Array = None
-    grip_qpos: jax.Array = None
+    eef_ori: jax.Array = None
     object_pos: jax.Array = None
-    object_quat: jax.Array = None
+    object_ori: jax.Array = None
+    grip_qpos: jax.Array = None
 
 @dataclass
 class PositionalControlTransform(EnvTransform):
@@ -449,9 +459,10 @@ class PositionalObsEnv(EnvWrapper):
         obs = self.base.observe(state, ManipulationTaskObs())
         return ManipulationTaskPosObs(
             eef_pos=obs.eef_pos,
-            eef_ori_mat=obs.eef_ori_mat,
+            eef_ori=mat_to_euler(obs.eef_ori_mat),
             object_pos=obs.object_pos,
-            object_quat=obs.object_quat
+            object_ori=mat_to_euler(quat_to_mat(obs.object_quat)),
+            grip_qpos=obs.grip_qpos
         )
 
 @dataclass 
@@ -461,11 +472,16 @@ class RelPosObsEnv(EnvWrapper):
         if not isinstance(config, ManipulationTaskRelObs):
             return self.base.observe(state, config)
         obs = self.base.observe(state, ManipulationTaskObs())
+        #jax.debug.print("{s}, {t}", s=quat_to_mat(obs.object_quat), t=mat_to_euler(obs.eef_ori_mat))
         return ManipulationTaskRelObs(
             eef_obj_rel_pos=obs.object_pos - obs.eef_pos,
-            obj_pos=obs.object_pos,
-            eef_ori_mat=None, #obs.eef_ori_mat,
-            object_quat=None, # obs.object_quat,
+            object_pos=obs.object_pos,
+            #eef_obj_rel_ori=mat_to_euler(quat_to_mat(obs.object_quat)) - mat_to_euler(obs.eef_ori_mat),
+            eef_ori=mat_to_euler(obs.eef_ori_mat),
+            object_ori=mat_to_euler(quat_to_mat(obs.object_quat)),
+            #eef_quat=mat_to_quat(obs.eef_ori_mat),
+            #eef_ori_mat=obs.eef_ori_mat,
+            #object_quat=obs.object_quat,
             grip_qpos=obs.grip_qpos
         )
 

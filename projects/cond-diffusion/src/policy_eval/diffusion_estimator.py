@@ -33,7 +33,7 @@ class DiffusionEstimatorConfig:
     diffusion_steps: int = 50
     relative_actions: bool = True
     agent_pos_config: ObserveConfig = ManipulationTaskEEFPose()
-    action_horizon: int = 8
+    action_horizon: int = 16
 
     def parse(self, config: ConfigProvider) -> "DiffusionEstimatorConfig":
         return config.get_dataclass(self)

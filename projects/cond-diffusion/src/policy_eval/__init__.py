@@ -51,14 +51,14 @@ class PolicyConfig:
 class Config:
     seed: int = 42
     dataset: str = "pusht/chi"
-    obs_length: int = 2
+    obs_length: int = 1
     action_length: int = 16
     policy: PolicyConfig = None
     action_config: ObserveConfig = ManipulationTaskEEFPose()
     timesteps: int = 200
     train_data_size: int | None = None
-    test_data_size: int | None = None
-    render_config: RenderConfig = ImageRender(256, 256)
+    test_data_size: int | None = 6
+    render_config: RenderConfig = ImageRender(128, 128)
 
     @staticmethod
     def parse(config: ConfigProvider) -> "Config":
@@ -198,7 +198,7 @@ def main(config : Config):
     # jax.debug.print("{s}", s=train_data.as_pytree())
     test_data = dataset.splits["test"].truncate(1)
     if config.test_data_size is not None:
-        test_data = test_data.slice(0,8)
+        test_data = test_data.slice(0,config.test_data_size)
     test_x0s = test_data.map(
         lambda x: env.full_state(
             jax.tree.map(lambda x: x[0], x.reduced_state)
