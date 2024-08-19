@@ -19,7 +19,7 @@ from stanza.env.transforms import (
 from stanza.env.mujoco.core import (
     MujocoEnvironment,
     SystemState, SimulatorState, Action,
-    quat_to_mat, orientation_error
+    quat_to_mat, mat_to_quat, mat_to_euler, orientation_error
 )
 
 from functools import partial
@@ -215,10 +215,10 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
                 grip_qpos=grip_qpos,
                 grip_site_pos=data.site_xpos[grip_site_id, :],
                 object_pos=jnp.stack([
-                    data.xpos[self.model.joint(_OBJECT_JOINT_MAP[obj]).id, :] for obj in self.objects
+                    data.xpos[self.model.body(f"{obj.capitalize()}_main").id, :] for obj in self.objects
                 ]),
                 object_quat=jnp.stack([
-                    data.xquat[self.model.joint(_OBJECT_JOINT_MAP[obj]).id, :] for obj in self.objects
+                    data.xquat[self.model.body(f"{obj.capitalize()}_main").id, :] for obj in self.objects
                 ])
             )
         elif isinstance(config, ManipulationTaskEEFPose):
@@ -349,6 +349,8 @@ class ManipulationTaskObs:
 class ManipulationTaskRelObs:
     eef_obj_rel_pos: jax.Array = None # (n_robots, n_objects, 3) -- relative position of the end-effector to the object
     obj_pos: jax.Array = None
+    eef_obj_rel_ori: jax.Array = None 
+    eef_quat: jax.Array = None # (n_robots, 4) -- end-effector orientation
     eef_ori_mat: jax.Array = None # (n_robots, 3, 3) -- end-effector orientation matrix
     object_quat: jax.Array = None # (n_objects, 4) -- object orientation
     grip_qpos: jax.Array = None # (n_robots, 2,) -- gripper qpos
@@ -357,9 +359,9 @@ class ManipulationTaskRelObs:
 class ManipulationTaskPosObs:
     eef_pos: jax.Array = None
     eef_ori_mat: jax.Array = None
-    grip_qpos: jax.Array = None
     object_pos: jax.Array = None
     object_quat: jax.Array = None
+    grip_qpos: jax.Array = None
 
 @dataclass
 class PositionalControlTransform(EnvTransform):
@@ -451,7 +453,8 @@ class PositionalObsEnv(EnvWrapper):
             eef_pos=obs.eef_pos,
             eef_ori_mat=obs.eef_ori_mat,
             object_pos=obs.object_pos,
-            object_quat=obs.object_quat
+            object_quat=obs.object_quat,
+            grip_qpos=obs.grip_qpos
         )
 
 @dataclass 
@@ -461,11 +464,14 @@ class RelPosObsEnv(EnvWrapper):
         if not isinstance(config, ManipulationTaskRelObs):
             return self.base.observe(state, config)
         obs = self.base.observe(state, ManipulationTaskObs())
+        #jax.debug.print("{s}, {t}", s=quat_to_mat(obs.object_quat), t=mat_to_euler(obs.eef_ori_mat))
         return ManipulationTaskRelObs(
             eef_obj_rel_pos=obs.object_pos - obs.eef_pos,
             obj_pos=obs.object_pos,
-            eef_ori_mat=None, #obs.eef_ori_mat,
-            object_quat=None, # obs.object_quat,
+            eef_obj_rel_ori=mat_to_euler(quat_to_mat(obs.object_quat)) - mat_to_euler(obs.eef_ori_mat),
+            #eef_quat=mat_to_quat(obs.eef_ori_mat),
+            #eef_ori_mat=obs.eef_ori_mat,
+            #object_quat=obs.object_quat,
             grip_qpos=obs.grip_qpos
         )
 

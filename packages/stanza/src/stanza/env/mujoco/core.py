@@ -214,29 +214,99 @@ def quat_to_angle(quat):
 
 def quat_to_mat(quat):
     """
-    Adapted from robosuite transform_utils.py
+    Adapted from diffusion_policy quatmath.py.
     Converts given quaternion to matrix.
 
     Args:
-        quat (np.array): (x,y,z,w) vec4 float angles
+        quat (jnp.array): (x,y,z,w) vec4 float angles
 
     Returns:
         jnp.array: 3x3 rotation matrix
     """
-    # awkward semantics for use with numba
-    inds = jnp.array([3, 0, 1, 2])
-    q = quat[inds]
+    quat = jnp.asarray(quat, dtype=jnp.float32)
+    assert quat.shape[-1] == 4, "Invalid shape quat {}".format(quat)
 
-    n = jnp.dot(q, q)
-    q *= jnp.sqrt(2.0 / n)
-    q2 = jnp.outer(q, q)
-    return jnp.array(
+    w, x, y, z = quat[..., 0], quat[..., 1], quat[..., 2], quat[..., 3]
+    Nq = jnp.sum(quat * quat, axis=-1)
+    s = 2.0 / Nq
+    X, Y, Z = x * s, y * s, z * s
+    wX, wY, wZ = w * X, w * Y, w * Z
+    xX, xY, xZ = x * X, x * Y, x * Z
+    yY, yZ, zZ = y * Y, y * Z, z * Z
+
+    mat = jnp.empty(quat.shape[:-1] + (3, 3), dtype=jnp.float32)
+    mat = mat.at[..., 0, 0].set(1.0 - (yY + zZ))
+    mat = mat.at[..., 0, 1].set(xY - wZ)
+    mat = mat.at[..., 0, 2].set(xZ + wY)
+    mat = mat.at[..., 1, 0].set(xY + wZ)
+    mat = mat.at[..., 1, 1].set(1.0 - (xX + zZ))
+    mat = mat.at[..., 1, 2].set(yZ - wX)
+    mat = mat.at[..., 2, 0].set(xZ - wY)
+    mat = mat.at[..., 2, 1].set(yZ + wX)
+    mat = mat.at[..., 2, 2].set(1.0 - (xX + yY))
+    return jnp.where((Nq > 1e-6)[..., jnp.newaxis, jnp.newaxis], mat, jnp.eye(3))
+
+def mat_to_quat(rmat):
+    """
+    Adapted from robosuite transform_utils.py
+    Converts given rotation matrix to quaternion.
+
+    Args:
+        rmat (jnp.array): 3x3 rotation matrix
+
+    Returns:
+        jnp.array: (x,y,z,w) float quaternion angles
+    """
+    M = jnp.asarray(rmat).astype(jnp.float32)[:3, :3]
+
+    m00 = M[0, 0]
+    m01 = M[0, 1]
+    m02 = M[0, 2]
+    m10 = M[1, 0]
+    m11 = M[1, 1]
+    m12 = M[1, 2]
+    m20 = M[2, 0]
+    m21 = M[2, 1]
+    m22 = M[2, 2]
+    # symmetric matrix K
+    K = jnp.array(
         [
-            [1.0 - q2[2, 2] - q2[3, 3], q2[1, 2] - q2[3, 0], q2[1, 3] + q2[2, 0]],
-            [q2[1, 2] + q2[3, 0], 1.0 - q2[1, 1] - q2[3, 3], q2[2, 3] - q2[1, 0]],
-            [q2[1, 3] - q2[2, 0], q2[2, 3] + q2[1, 0], 1.0 - q2[1, 1] - q2[2, 2]],
+            [m00 - m11 - m22, jnp.float32(0.0), jnp.float32(0.0), jnp.float32(0.0)],
+            [m01 + m10, m11 - m00 - m22, jnp.float32(0.0), jnp.float32(0.0)],
+            [m02 + m20, m12 + m21, m22 - m00 - m11, jnp.float32(0.0)],
+            [m21 - m12, m02 - m20, m10 - m01, m00 + m11 + m22],
         ]
     )
+    K /= 3.0
+    # quaternion is Eigen vector of K that corresponds to largest eigenvalue
+    w, V = jnp.linalg.eigh(K)
+    inds = jnp.array([3, 0, 1, 2])
+    q1 = V[inds, jnp.argmax(w)]
+    q1 *= jnp.sign(q1[0])
+    inds = jnp.array([1, 2, 3, 0])
+    return q1[inds]
+
+def mat_to_euler(mat):
+    """ 
+    Adapted from diffusion_policy quatmath.py. 
+    Convert Rotation Matrix to Euler Angles. 
+    """
+    mat = jnp.asarray(mat, dtype=jnp.float32)
+    assert mat.shape[-2:] == (3, 3), "Invalid shape matrix {}".format(mat)
+
+    cy = jnp.sqrt(mat[..., 2, 2] * mat[..., 2, 2] + mat[..., 1, 2] * mat[..., 1, 2])
+    condition = cy > 1e-6
+    euler = jnp.empty(mat.shape[:-1], dtype=jnp.float32)
+    euler = euler.at[..., 2].set(jnp.where(condition,
+                             -jnp.arctan2(mat[..., 0, 1], mat[..., 0, 0]),
+                             -jnp.arctan2(-mat[..., 1, 0], mat[..., 1, 1])))
+    euler = euler.at[..., 1].set(jnp.where(condition,
+                             -jnp.arctan2(-mat[..., 0, 2], cy),
+                             -jnp.arctan2(-mat[..., 0, 2], cy)))
+    euler = euler.at[..., 0].set(jnp.where(condition,
+                             -jnp.arctan2(mat[..., 1, 2], mat[..., 2, 2]),
+                             0.0))
+    return euler
 
 def orientation_error(desired, current):
     """
@@ -265,4 +335,6 @@ def orientation_error(desired, current):
     error = 0.5 * (jnp.cross(rc1, rd1) + jnp.cross(rc2, rd2) + jnp.cross(rc3, rd3))
 
     return error
+
+
 

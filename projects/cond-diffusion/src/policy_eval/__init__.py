@@ -51,13 +51,13 @@ class PolicyConfig:
 class Config:
     seed: int = 42
     dataset: str = "pusht/chi"
-    obs_length: int = 2
-    action_length: int = 16
+    obs_length: int = 1
+    action_length: int = 32
     policy: PolicyConfig = None
     action_config: ObserveConfig = ManipulationTaskEEFPose()
-    timesteps: int = 200
+    timesteps: int = 400
     train_data_size: int | None = None
-    test_data_size: int | None = None
+    test_data_size: int | None = 8
     render_config: RenderConfig = ImageRender(256, 256)
 
     @staticmethod
