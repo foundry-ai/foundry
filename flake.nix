@@ -35,6 +35,10 @@
                     shellHook = ''
                     export TMPDIR=/tmp/$USER-stanza-tmp
                     mkdir -p $TMPDIR
+                    STANZA=$(pwd)/packages/stanza/src
+                    COND_DIFFUSION=$(pwd)/projects/cond-diffusion/src
+                    IMAGE_CLASSIFIER=$(pwd)/projects/image-classifier/src
+                    export PYTHONPATH=$STANZA:$COND_DIFFUSION:$IMAGE_CLASSIFIER:$PYTHONPATH
                     exec fish
                     '';
                 };

@@ -1,0 +1,9 @@
+[project]
+name = "PyOpenGL"
+version = "3.1.7"
+
+dependencies = []
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"

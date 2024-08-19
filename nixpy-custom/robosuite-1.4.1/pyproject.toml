@@ -1,0 +1,16 @@
+[project]
+name = "robosuite"
+version = "1.4.1"
+dependencies = [
+    "numpy>=1.13.3",
+    "numba>=0.49.1",
+    "scipy>=1.2.3",
+    "mujoco>=2.3.0",
+    "Pillow",
+    "pynput",
+    "termcolor",
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"

@@ -13,7 +13,7 @@ from stanza.data import Data, PyTreeData
 from stanza.data.normalizer import LinearNormalizer, StdNormalizer
 from stanza import train
 from stanza.env import Environment
-import stanza.train.ipython
+import stanza.train.console
 import wandb
 import optax
 import flax.linen as nn

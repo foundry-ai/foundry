@@ -35,6 +35,8 @@
 
     numba_0_60_0 = import ./numba-0.60.0;
     tensorstore_0_1_64 = import ./tensorstore-0.1.64;
+    robosuite_1_4_1 = import ./robosuite-1.4.1;
+    pyopengl_3_1_7 = import ./pyopengl-3.1.7;
 
     jax_0_4_28 = import ./jax-0.4.28;
     jaxlib_0_4_28 = import ./jaxlib-0.4.28;
