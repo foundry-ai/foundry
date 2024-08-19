@@ -8,7 +8,7 @@
         libcxx = nixpkgs.libcxx;
     in
         buildPythonPackage rec {
-    name = "ml_dtypes";
+    name = "ml-dtypes";
     version = "0.4.0";
     # src = fetchurl {
     #     url="https://github.com/jax-ml/ml_dtypes/archive/b157c19cc98da40a754109993e02d7eab3d75358.zip";

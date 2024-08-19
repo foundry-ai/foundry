@@ -7,7 +7,7 @@
     meson_python_0_15_0 = import ./meson-python-0.15.0;
 
     pillow_10_4_0 = import ./pillow-10.4.0;
-    ninja_1_11_1_1 = import ./ninja-1.11.1.1;
+    ninja_1_12_1_1 = import ./ninja-1.12.1.1;
 
     kiwisolver_1_4_5 = import ./kiwisolver-1.4.5;
     msgpack_1_0_8 = import ./msgpack-1.0.8;
@@ -35,5 +35,7 @@
 
     numba_0_60_0 = import ./numba-0.60.0;
     tensorstore_0_1_64 = import ./tensorstore-0.1.64;
+
+    jax_0_4_30 = import ./jax-0.4.30;
     jaxlib_0_4_30 = import ./jaxlib-0.4.30;
 }

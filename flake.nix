@@ -11,7 +11,7 @@
         ];
 
         forEachSupportedSystem = f: nixpkgs.lib.genAttrs supportedSystems (system: f {
-            pkgs = import nixpkgs { inherit system; };
+            pkgs = import nixpkgs { inherit system; config.allowUnfree = true; };
         });
         in {
             devShells = forEachSupportedSystem ({ pkgs }: 
@@ -39,5 +39,17 @@
                     '';
                 };
             });
+            legacyPackages = forEachSupportedSystem ({ pkgs }:
+                let nixpy-custom = import ./nixpy-custom;
+                    py = pkgs.python310; 
+                    requirements = (import ./requirements.nix) {
+                        buildPythonPackage = py.pkgs.buildPythonPackage;
+                        fetchurl = pkgs.fetchurl;
+                        nixpkgs = pkgs;
+                        python = py;
+                        nixpy-custom = nixpy-custom;
+                    };
+                in requirements.env
+            );
         };
 }
