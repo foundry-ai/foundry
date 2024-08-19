@@ -2,7 +2,8 @@
 dependencies, nixpkgs, python, fetchurl} : 
 let cython = build-system.cython;
     setuptools = build-system.setuptools;
-    numpy = dependencies.numpy;
+    numpy = build-system.numpy;
+    numpy_dep = dependencies.numpy;
 in
  buildPythonPackage {
       pname = "shapely";
@@ -16,7 +17,7 @@ in
         cd $out
       '';
       build-system = [cython numpy setuptools];
-      dependencies = [numpy];
+      dependencies = [numpy_dep];
       buildInputs = [nixpkgs.geos];
       nativeBuildInputs = [cython numpy setuptools nixpkgs.geos];
 }

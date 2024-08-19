@@ -19,13 +19,12 @@ let
   # For some reason our env
   # dependencies don't work here
   # TODO: investigate
-  meson-python = python.pkgs.meson-python;
-  cython = python.pkgs.cython;
+  meson-python = build-system.meson-python;
+  cython = build-system.cython;
   pybind11 = python.pkgs.pybind11;
-  pythran = python.pkgs.pythran;
-  wheel = python.pkgs.wheel;
-  setuptools = python.pkgs.setuptools;
-  pooch = python.pkgs.pooch;
+  pythran = build-system.pythran;
+  wheel = build-system.wheel;
+  setuptools = build-system.setuptools;
 
   # build against our numpy
   numpy = dependencies.numpy;
@@ -115,7 +114,6 @@ buildPythonPackage {
     blas
     lapack
     pybind11
-    pooch
     xsimd
   ];
 
