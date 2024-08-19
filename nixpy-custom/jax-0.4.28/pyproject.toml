@@ -1,6 +1,6 @@
 [project]
 name = "jax"
-version = "0.4.30"
+version = "0.4.28"
 
 dependencies = [
     "numpy >=1.26.0 ; python_version >= '3.12'",
@@ -9,7 +9,7 @@ dependencies = [
     "scipy >=1.10",
     "opt-einsum",
     "ml-dtypes>=0.2.0",
-    "jaxlib==0.4.30"
+    "jaxlib==0.4.28"
 ]
 
 [build-system]

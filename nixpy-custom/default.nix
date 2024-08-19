@@ -36,6 +36,6 @@
     numba_0_60_0 = import ./numba-0.60.0;
     tensorstore_0_1_64 = import ./tensorstore-0.1.64;
 
-    jax_0_4_30 = import ./jax-0.4.30;
-    jaxlib_0_4_30 = import ./jaxlib-0.4.30;
+    jax_0_4_28 = import ./jax-0.4.28;
+    jaxlib_0_4_28 = import ./jaxlib-0.4.28;
 }

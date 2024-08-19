@@ -1,7 +1,7 @@
 {buildPythonPackage, build-system, dependencies, nixpkgs, python, fetchurl} : 
 let
   pname = "jax";
-  version = "0.4.30";
+  version = "0.4.28";
   fetchPypi = python.pkgs.fetchPypi;
   setuptools = build-system.setuptools;
   ml-dtypes = dependencies.ml-dtypes;
@@ -15,7 +15,7 @@ buildPythonPackage {
     format = "pyproject";
     src = fetchPypi {
         inherit pname version;
-        hash = "sha256-lNdLWy2w2AZyth2D8fY+v5nSq3OY7BKyygydHpev5Xc=";
+        hash = "sha256-3PCkSv8uFxPworNpKBzVt52MGPwQGJBcQSWJfLBrN+k=";
     };
     build-system = [setuptools];
     dependencies = [numpy scipy opt-einsum ml-dtypes jaxlib];

@@ -25,7 +25,7 @@ let lib = nixpkgs.lib;
 in
 let
   pname = "jaxlib";
-  version = "0.4.30";
+  version = "0.4.28";
   # It's necessary to consistently use backendStdenv when building with CUDA
   # support, otherwise we get libstdc++ errors downstream
   stdenv = throw "Use effectiveStdenv instead";
@@ -342,11 +342,12 @@ let
       sha256 =
         (
           if cudaSupport then
-            { x86_64-linux = "sha256-Uf0VMRE0jgaWEYiuphWkWloZ5jMeqaWBl3lSvk2y1HI="; }
+            { x86_64-linux = lib.fakeSha256; }
           else
             {
               x86_64-linux = "sha256-NzJJg6NlrPGMiR8Fn8u4+fu0m+AulfmN5Xqk63Um6sw=";
-              aarch64-linux = "sha256-Ro3qzrUxSR+3TH6ROoJTq+dLSufrDN/9oEo2MRkx7wM=";
+              aarch64-linux = lib.fakeSha256; 
+              powerpc64le-linux = lib.fakeSha256; 
             }
         ).${effectiveStdenv.system} or (throw "jaxlib: unsupported system: ${effectiveStdenv.system}");
 
@@ -426,6 +427,7 @@ buildPythonPackage {
     nixpkgs.giflib
     nixpkgs.jsoncpp
     nixpkgs.libjpeg_turbo
+    nixpkgs.snappy
     ml-dtypes
     numpy
     scipy
