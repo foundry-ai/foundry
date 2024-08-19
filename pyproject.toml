@@ -19,7 +19,7 @@ license = {text = "MIT"}
 
 [project.optional-dependencies]
 cuda12 = [
-    "jax[cuda12]>=0.4.30",
+    "jax[cuda12]>=0.4.28",
 ]
 
 [build-system]

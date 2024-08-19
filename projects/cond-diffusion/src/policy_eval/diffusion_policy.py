@@ -8,12 +8,9 @@ from stanza.policy import PolicyInput, PolicyOutput
 from stanza.policy.transforms import ChunkingTransform
 
 from stanza.dataclasses import dataclass
-import dataclasses
-from stanza.data import Data, PyTreeData
 from stanza.data.normalizer import LinearNormalizer, StdNormalizer
 from stanza import train
-import stanza.train.ipython
-import wandb
+import stanza.train.console
 import optax
 import flax.linen as nn
 import flax.linen.activation as activations
@@ -208,7 +205,7 @@ def train_net_diffusion_policy(
                 )
                 _, ema_state = ema.update(vars, ema_state)
                 if step.iteration % 100 == 0:
-                    train.ipython.log(step.iteration, metrics)
+                    train.console.log(step.iteration, metrics)
                     train.wandb.log(step.iteration, metrics, run=wandb_run)
                 if step.iteration > 0 and step.iteration % 20000 == 0:
                     ckpt = {
@@ -225,7 +222,7 @@ def train_net_diffusion_policy(
                     wandb_run.log_model(path=file_path, name=f"{wandb_run.id}_{step.iteration}")
                     # save_args = orbax_utils.save_args_from_target(ckpt)
                     # checkpoint_manager.save(step, ckpt, save_kwargs={'save_args': save_args})
-        train.ipython.log(step.iteration, metrics)
+        train.console.log(step.iteration, metrics)
         train.wandb.log(step.iteration, metrics, run=wandb_run)
 
     # save model

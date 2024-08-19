@@ -6,7 +6,7 @@ authors = [
     {name = "Daniel Pfrommer", email = "dan.pfrommer@gmail.com"},
 ]
 dependencies = [
-    "jax>=0.4.30",
+    "jax>=0.4.28",
     "rich>=13.7.0",
     "flax>=0.8.1",
     "optax>=0.1.9",

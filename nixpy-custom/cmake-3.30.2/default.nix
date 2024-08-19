@@ -1,24 +1,23 @@
 {buildPythonPackage, build-system, 
 dependencies, nixpkgs, python, fetchurl} : 
-let scikit-build-core = build-system.scikit-build-core;
-    fetchPypi = python.pkgs.fetchPypi;
+let lib = nixpkgs.lib;
+    setuptools = build-system.setuptools;
+    cmake = import ./system/system.nix { nixpkgs = nixpkgs; };
 in
 buildPythonPackage rec {
-    pname = "cmake";
-    version = "3.30.2";
-    format = "pyproject";
-    src = fetchPypi {
-        inherit pname version;
-        hash = "sha256-VNupjBLGt3vYa0Urccf387BAJwgfNFHhjN8tkm5GleU=";
-    };
-    build-system = [scikit-build-core];
-    nativeBuildInputs = [nixpkgs.cmake nixpkgs.ninja];
-    dependencies = [];
-    # remove the check for macOS version (it's broken)
-    postPatch = ''
-        substituteInPlace CMakeLists.txt \
-         --replace-fail 'message(FATAL_ERROR "Unsupported macOS deployment target: ''${CMAKE_OSX_DEPLOYMENT_TARGET} is less than 10.10")' \
-                        'set(binary_archive "macos10_10_binary")'
-    '';
-    dontUseCmakeConfigure = true;
+  pname = "cmake";
+  inherit (cmake) version;
+  format = "pyproject";
+  src = ./stub;
+  postUnpack = ''
+    substituteInPlace "$sourceRoot/pyproject.toml" \
+      --subst-var version
+
+    substituteInPlace "$sourceRoot/cmake/__init__.py" \
+      --subst-var version \
+      --subst-var-by CMAKE_BIN_DIR "${cmake}/bin"
+  '';
+  inherit (cmake) setupHooks;
+  nativeBuildInputs = [ setuptools ];
+  pythonImportsCheck = [ "cmake" ];
 }

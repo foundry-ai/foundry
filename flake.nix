@@ -11,7 +11,7 @@
         ];
 
         forEachSupportedSystem = f: nixpkgs.lib.genAttrs supportedSystems (system: f {
-            pkgs = import nixpkgs { inherit system; };
+            pkgs = import nixpkgs { inherit system; config.allowUnfree = true; };
         });
         in {
             devShells = forEachSupportedSystem ({ pkgs }: 
@@ -26,7 +26,7 @@
                     };
                     pythonEnv = py.withPackages(
                         ps: 
-                        with requirements.env; [tensorstore]
+                        with requirements.env; [stanza-meta]
                     );
                 in {
                 default = pkgs.mkShell {
@@ -35,9 +35,25 @@
                     shellHook = ''
                     export TMPDIR=/tmp/$USER-stanza-tmp
                     mkdir -p $TMPDIR
+                    STANZA=$(pwd)/packages/stanza/src
+                    COND_DIFFUSION=$(pwd)/projects/cond-diffusion/src
+                    IMAGE_CLASSIFIER=$(pwd)/projects/image-classifier/src
+                    export PYTHONPATH=$STANZA:$COND_DIFFUSION:$IMAGE_CLASSIFIER:$PYTHONPATH
                     exec fish
                     '';
                 };
             });
+            legacyPackages = forEachSupportedSystem ({ pkgs }:
+                let nixpy-custom = import ./nixpy-custom;
+                    py = pkgs.python310; 
+                    requirements = (import ./requirements.nix) {
+                        buildPythonPackage = py.pkgs.buildPythonPackage;
+                        fetchurl = pkgs.fetchurl;
+                        nixpkgs = pkgs;
+                        python = py;
+                        nixpy-custom = nixpy-custom;
+                    };
+                in requirements.env
+            );
         };
 }

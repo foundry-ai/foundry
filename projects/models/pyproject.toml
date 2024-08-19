@@ -7,7 +7,6 @@ authors = [
 ]
 dependencies = [
     "stanza",
-    "transformers>=4.42.3",
 ]
 requires-python = ">=3.10"
 license = {text = "MIT"}

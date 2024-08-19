@@ -24,6 +24,7 @@ let lib = nixpkgs.lib;
     gtk3 = nixpkgs.gtk3;
     cairo = nixpkgs.cairo;
     libX11 = nixpkgs.libX11;
+    wayland = nixpkgs.wayland;
     ffmpeg-headless = nixpkgs.ffmpeg-headless;
     freetype = nixpkgs.freetype;
     # freetype_old = freetype.overrideAttrs (_: {
@@ -39,10 +40,6 @@ let lib = nixpkgs.lib;
     ghostscript = nixpkgs.ghostscript;
 
     sage = python.pkgs.sage;
-
-    enableTk = false;
-    enableGtk3 = false;
-    enableGhostscript = false;
 in
 buildPythonPackage rec {
     pname = "matplotlib";
@@ -52,23 +49,21 @@ buildPythonPackage rec {
         inherit pname version;
         hash = "sha256-3gaxm425XdM9DcF8kmx8nr7Z9XIHS2+sT2UGimgU0BA=";
     };
+    postPatch = ''
+      substituteInPlace pyproject.toml \
+        --replace-fail '"numpy>=2.0.0rc1,<2.3",' ""
+      patchShebangs tools
+    '';
+
     build-system = [setuptools-scm pybind11 meson-python numpy];
     dependencies = [contourpy cycler fonttools kiwisolver numpy_dep packaging pillow pyparsing python-dateutil];
 
-    nativeBuildInputs = [ pkg-config ] ++ lib.optionals enableGtk3 [ gobject-introspection ];
+    nativeBuildInputs = [ pkg-config ] ;
 
     buildInputs = [
             ffmpeg-headless
             freetype
             qhull
-    ] ++ lib.optionals enableGhostscript [ ghostscript ]
-      ++ lib.optionals enableGtk3 [
-        cairo
-        gtk3
-    ] ++ lib.optionals enableTk [
-        # libX11
-        # tcl
-        # tk
     ] ++ lib.optionals stdenv.isDarwin [ Cocoa ];
 
     mesonFlags = lib.mapAttrsToList lib.mesonBool {
