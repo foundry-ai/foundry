@@ -19,7 +19,8 @@ let
   # For some reason our env
   # dependencies don't work here
   # TODO: investigate
-  meson-python = build-system.meson-python;
+  meson-python = python.pkgs.meson-python;
+
   cython = build-system.cython;
   pybind11 = python.pkgs.pybind11;
   pythran = build-system.pythran;

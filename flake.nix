@@ -55,5 +55,19 @@
                     };
                 in requirements.env
             );
+            packages = forEachSupportedSystem ({ pkgs }:
+                let nixpy-custom = import ./nixpy-custom;
+                    py = pkgs.python310; 
+                    requirements = (import ./requirements.nix) {
+                        buildPythonPackage = py.pkgs.buildPythonPackage;
+                        fetchurl = pkgs.fetchurl;
+                        nixpkgs = pkgs;
+                        python = py;
+                        nixpy-custom = nixpy-custom;
+                    };
+                in {
+		    default = requirements.env.stanza-meta;
+		}
+            );
         };
 }
