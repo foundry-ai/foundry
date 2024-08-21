@@ -52,7 +52,7 @@ class Config:
     seed: int = 42
     dataset: str = "pusht/chi"
     obs_length: int = 1
-    action_length: int = 16
+    action_length: int = 32
     policy: PolicyConfig = None
     action_config: ObserveConfig = ManipulationTaskEEFPose()
     timesteps: int = 200

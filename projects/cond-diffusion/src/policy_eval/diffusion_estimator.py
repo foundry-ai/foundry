@@ -31,9 +31,9 @@ class DiffusionEstimatorConfig:
     estimator: str = "nw"
     kernel_bandwidth: float = 0.01
     diffusion_steps: int = 50
-    relative_actions: bool = True
+    relative_actions: bool = False
     agent_pos_config: ObserveConfig = ManipulationTaskEEFPose()
-    action_horizon: int = 16
+    action_horizon: int = 32
 
     def parse(self, config: ConfigProvider) -> "DiffusionEstimatorConfig":
         return config.get_dataclass(self)
