@@ -1,4 +1,7 @@
 {
+    inputs = {
+	nixpkgs.url = "github:inductive-research/nixpkgs";
+    };
     outputs = { self, nixpkgs }:
         let
         # The systems supported for this flake
@@ -54,6 +57,20 @@
                         nixpy-custom = nixpy-custom;
                     };
                 in requirements.env
+            );
+            packages = forEachSupportedSystem ({ pkgs }:
+                let nixpy-custom = import ./nixpy-custom;
+                    py = pkgs.python310; 
+                    requirements = (import ./requirements.nix) {
+                        buildPythonPackage = py.pkgs.buildPythonPackage;
+                        fetchurl = pkgs.fetchurl;
+                        nixpkgs = pkgs;
+                        python = py;
+                        nixpy-custom = nixpy-custom;
+                    };
+                in {
+		    default = requirements.env.stanza-meta;
+		}
             );
         };
 }

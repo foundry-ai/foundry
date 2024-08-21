@@ -24,6 +24,8 @@
     pyobjc_framework_applicationservices_9_2 = import ./pyobjc-framework-applicationservices-9.2;
     evdev_1_7_1 = import ./evdev-1.7.1;
 
+    pybind11_2_13_1 = import ./pybind11-2.13.1;
+
     numpy_1_26_4 = import ./numpy-1.26.4;
     numpy_2_0_1 = import ./numpy-2.0.1;
     scipy_1_14_0 = import ./scipy-1.14.0;

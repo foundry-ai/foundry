@@ -23,12 +23,12 @@ let lib = nixpkgs.lib;
         "${major python.pythonVersion}${minor python.pythonVersion}";
     cpuPname = stdenv.hostPlatform.parsed.cpu.name;
     cpuName = if cpuPname == "x86_64" then "x86" else
-              if cpuPname == "aarch64" then "arm64" else
-              if cpuPname == "ppc64le" then "ppc64" else
+              if (stdenv.isDarwin && cpuPname == "aarch64") then "arm64" else
+              if cpuPname == "powerpc64le" then "ppc64le" else
               cpuPname;
     platform = with stdenv.hostPlatform.parsed; 
             if stdenv.isDarwin then "macosx-11.0-${cpuName}" 
-            else "${kernel.name}-${cpu.name}";
+            else "${kernel.name}-${cpuName}";
 in
 buildPythonPackage rec {
     pname = "mujoco";
@@ -54,6 +54,7 @@ buildPythonPackage rec {
         substituteInPlace mujoco/simulate/cmake/SimulateDependencies.cmake \
             --replace-fail "if(NOT SIMULATE_STANDALONE)" "if (NO)"
         build=build/temp.${platform}-cpython-${pythonVersionMajorMinor}/
+        echo "Linking into ''${build}"
         mkdir -p $build/_deps
         ln -s ${mujoco.pin.abseil-cpp} $build/_deps/abseil-cpp-src
         ln -s ${mujoco.pin.eigen3} $build/_deps/eigen-src
@@ -71,10 +72,9 @@ buildPythonPackage rec {
 
     buildInputs = [
         mujoco
-        # use nixpkgs' pybind11 since
-        # this handles some cmake stuff better
-        python.pkgs.pybind11
+        pybind11
     ];
+
     propagatedBuildInputs = [
         glfw # the glfw python package (so that it is available in the environment)
         absl-py

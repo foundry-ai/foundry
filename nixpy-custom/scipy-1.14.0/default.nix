@@ -19,18 +19,15 @@ let
   # For some reason our env
   # dependencies don't work here
   # TODO: investigate
-  meson-python = python.pkgs.meson-python;
-  cython = python.pkgs.cython;
-  pybind11 = python.pkgs.pybind11;
-  pythran = python.pkgs.pythran;
-  wheel = python.pkgs.wheel;
-  setuptools = python.pkgs.setuptools;
-  pooch = python.pkgs.pooch;
+  meson-python = build-system.meson-python;
+  cython = build-system.cython;
+  pybind11 = build-system.pybind11;
+  pythran = build-system.pythran;
+  wheel = build-system.wheel;
+  setuptools = build-system.setuptools;
 
   # build against our numpy
   numpy = dependencies.numpy;
-
-  sage = nixpkgs.sage;
 
   pname = "scipy";
   # DON'T UPDATE THESE ATTRIBUTES MANUALLY - USE:
@@ -90,7 +87,9 @@ buildPythonPackage {
   # experience.
   postPatch = ''
     substituteInPlace pyproject.toml \
-      --replace-fail 'numpy>=2.0.0rc1,' 'numpy' \
+      --replace-fail 'numpy>=2.0.0rc1,' 'numpy'
+    substituteInPlace pyproject.toml \
+      --replace-fail 'pybind11>=2.12.0,<2.13.0' 'pybind11'
   '';
 
   nativeBuildInputs = [
@@ -115,7 +114,6 @@ buildPythonPackage {
     blas
     lapack
     pybind11
-    pooch
     xsimd
   ];
 
@@ -196,9 +194,6 @@ buildPythonPackage {
       ]
       # Pass it the names of the datasets to update their hashes
       ++ (builtins.attrNames datasetsHashes);
-    tests = {
-      inherit sage;
-    };
   };
 
   SCIPY_USE_G77_ABI_WRAPPER = 1;

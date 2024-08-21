@@ -5,6 +5,8 @@
             blas = nixpkgs.blas;
             sage = nixpkgs.sage;
             lapack = nixpkgs.lapack;
+            coreutils = nixpkgs.coreutils;
+            fetchPypi = python.pkgs.fetchPypi;
             cfg = nixpkgs.writeTextFile {
                 name = "site.cfg";
                 text = lib.generators.toINI { } {
@@ -29,8 +31,10 @@
     buildPythonPackage rec {
         pname = "numpy";
         version = "1.26.4";
-        src = fetchurl {
-            url = "https://files.pythonhosted.org/packages/65/6e/09db70a523a96d25e115e71cc56a6f9031e7b8cd166c1ac8438307c14058/numpy-1.26.4.tar.gz";
+        format = "pyproject";
+        src = fetchPypi {
+            inherit pname version;
+            extension = "tar.gz";
             hash = "sha256-KgKrqe0S5KxOs+qUIcQgMBoMZGDZgw10qd+H76SRIBA=";
         };
         patches = lib.optionals python.hasDistutilsCxxPatch [ ./numpy-distutils-C++.patch ];
@@ -39,6 +43,7 @@
             build-system.cython
             nixpkgs.gfortran
             nixpkgs.pkg-config
+            nixpkgs.coreutils
         ] ++ lib.optionals (stdenv.isDarwin) [ nixpkgs.xcbuild.xcrun ]
           ++ lib.optionals (!stdenv.buildPlatform.canExecute stdenv.hostPlatform) [ nixpkgs.mesonEmulatorHook ];
         
@@ -48,6 +53,10 @@
         ];
         # Causes `error: argument unused during compilation: '-fno-strict-overflow'` due to `-Werror`.
         hardeningDisable = lib.optionals stdenv.cc.isClang [ "strictoverflow" ];
+
+        postPatch = ''
+            substituteInPlace "numpy/core/tests/test_cpu_features.py" --replace-fail "/bin/true" "${coreutils}/bin/true"
+        '';
 
         # we default openblas to build with 64 threads
         # if a machine has more than 64 threads, it will segfault
@@ -66,5 +75,4 @@
             ln -s ${cfg} site.cfg
         '';
         enableParallelBuilding = true;
-        doCheck = false;
     }

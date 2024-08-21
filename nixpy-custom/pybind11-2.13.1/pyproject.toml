@@ -1,0 +1,8 @@
+[project]
+name = "pybind11"
+version = "2.13.1"
+dependencies = []
+
+[build-system]
+requires = ["setuptools>=42", "cmake>=3.18", "ninja"]
+build-backend = "setuptools.build_meta"

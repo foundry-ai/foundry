@@ -14,5 +14,6 @@
         if builtins.hasAttr "tomli" build-system then [build-system.tomli]
         else []
     );
+    setupHooks = [ ./add-build-flags.sh ];
     doCheck = false;
 }
