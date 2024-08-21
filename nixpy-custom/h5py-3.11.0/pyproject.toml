@@ -11,5 +11,5 @@ build-backend = "setuptools.build_meta"
 name = "h5py"
 version = "3.11.0"
 dependencies = [
-    "numpy >= 1.17.3"
+    "numpy >= 1.23.3"
 ]

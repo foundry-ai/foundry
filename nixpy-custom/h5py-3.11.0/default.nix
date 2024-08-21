@@ -5,9 +5,9 @@ dependencies, nixpkgs, python, fetchurl} :
         pkgconfig = build-system.pkgconfig;
         setuptools = build-system.setuptools;
         numpy = build-system.numpy;
-        cython = python.pkgs.cython;
+        cython = build-system.cython;
         stdenv = nixpkgs.stdenv;
-        fetchPypi = python.pkgs.fetchPypi;
+        fetchFromGitHub = nixpkgs.fetchFromGitHub;
         pythonOlder = python.pkgs.pythonOlder;
         pythonRelaxDepsHook = python.pkgs.pythonRelaxDepsHook;
         mpi = hdf5.mpi;
@@ -20,22 +20,24 @@ buildPythonPackage rec {
 
   disabled = pythonOlder "3.7";
 
-  src = fetchPypi {
-    inherit pname version;
-    hash = "sha256-e36PeAcqLt7IfJg28l80ID/UkqRHVwmhi0F6M8+yH6k=";
+  src = fetchFromGitHub {
+    owner = "h5py";
+    repo = "h5py";
+    rev = "d9396a4ee16ecefd2800f83746ebeb6ee4c4930d";
+    hash = "sha256-CvPIG9UH1KBTw+7n1n+Q4hQH0SCX00zw16bCS846x3k=";
   };
-
-  patches = [
-    # Unlock an overly strict locking of mpi4py version (seems not to be necessary).
-    # See also: https://github.com/h5py/h5py/pull/2418/files#r1589372479
-    ./mpi4py-requirement.patch
-  ];
 
   # avoid strict pinning of numpy, can't be replaced with pythonRelaxDepsHook,
   # see: https://github.com/NixOS/nixpkgs/issues/327941
   postPatch = ''
     substituteInPlace pyproject.toml \
-      --replace-fail "numpy >=2.0.0rc1" "numpy"
+      --replace-fail "numpy >=2.0.0, <3" "numpy"
+    substituteInPlace setup.py \
+      --replace-fail "mpi4py ==3.1.1" "mi4py >=3.1.1"
+    substituteInPlace setup.py \
+      --replace-fail "mpi4py ==3.1.4" "mi4py >=3.1.4"
+    substituteInPlace setup.py \
+      --replace-fail "mpi4py ==3.1.6" "mi4py >=3.1.6"
   '';
   pythonRelaxDeps = [ "mpi4py" ];
 

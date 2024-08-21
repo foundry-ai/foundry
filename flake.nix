@@ -1,4 +1,7 @@
 {
+    inputs = {
+	nixpkgs.url = "github:inductive-research/nixpkgs";
+    };
     outputs = { self, nixpkgs }:
         let
         # The systems supported for this flake

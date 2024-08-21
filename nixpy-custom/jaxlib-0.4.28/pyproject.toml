@@ -10,5 +10,5 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["setuptools", "wheel"]
+requires = ["setuptools", "wheel", "build", "cython", "pybind11"]
 build-backend = "setuptools.build_meta"

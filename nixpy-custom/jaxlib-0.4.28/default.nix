@@ -11,6 +11,12 @@ let lib = nixpkgs.lib;
     scipy = dependencies.scipy;
     ml-dtypes = dependencies.ml-dtypes;
 
+    pybind11 = build-system.pybind11;
+    cython = build-system.cython;
+    setuptools = build-system.setuptools;
+    build = build-system.build;
+    wheel = build-system.wheel;
+
     cudaVersion = cudaPackages.cudaVersion;
     cudaFlags = cudaPackages.cudaFlags;
     nccl = cudaPackages.nccl;
@@ -146,6 +152,8 @@ let
     # KeyError: ('Linux', 'arm64')
     if effectiveStdenv.hostPlatform.isLinux && effectiveStdenv.hostPlatform.linuxArch == "arm64" then
       "aarch64"
+    else if effectiveStdenv.hostPlatform.isLinux && effectiveStdenv.hostPlatform.linuxArch == "powerpc" then
+      "ppc64le"
     else
       effectiveStdenv.hostPlatform.linuxArch;
 
@@ -189,13 +197,19 @@ let
       rev = "refs/tags/${pname}-v${version}";
       hash = "sha256-qSHPwi3is6Ts7pz5s4KzQHBMbcjGp+vAOsejW3o36Ek=";
     };
+    patches = [
+      ./patches/0002-bazelrc-edit.diff
+      ./patches/0003-Patched-openxla-for-tf_runtime.patch
+      # ./patches/0004-Remove-bazel-shutdown-call-from-jax-code.patch
+      ./patches/0005-Use-ppc64le-compatible-boringssl.patch
+    ];
     nativeBuildInputs = [
-      python.pkgs.cython
+      cython
       nixpkgs.flatbuffers
       nixpkgs.git
-      python.pkgs.setuptools
-      python.pkgs.wheel
-      python.pkgs.build
+      setuptools
+      wheel
+      build
       nixpkgs.which
     ] ++ lib.optionals effectiveStdenv.isDarwin [ nixpkgs.cctools ];
 
@@ -210,7 +224,7 @@ let
         nixpkgs.openssl
         nixpkgs.flatbuffers
         nixpkgs.protobuf
-        python.pkgs.pybind11
+        pybind11
         scipy
         python.pkgs.six
         nixpkgs.snappy
@@ -306,6 +320,8 @@ let
         # See https://bazel.build/external/advanced#overriding-repositories for
         # information on --override_repository flag.
         "--override_repository=xla=${xla}"
+        "--copt=-Wno-dangling-pointer"
+        "--host_copt=-Wno-dangling-pointer"
       ]
       ++ lib.optionals effectiveStdenv.cc.isClang [
         # bazel depends on the compiler frontend automatically selecting these flags based on file
@@ -345,9 +361,9 @@ let
             { x86_64-linux = lib.fakeSha256; }
           else
             {
-              x86_64-linux = "sha256-NzJJg6NlrPGMiR8Fn8u4+fu0m+AulfmN5Xqk63Um6sw=";
+              x86_64-linux = lib.fakeSha256;
+              powerpc64le-linux = "sha256-fD628yZ08zwFauMRyhGe+mf+vLzFjm/wpHuJizMZPD4="; # lib.fakeSha256; #"sha256-fD628yZ08zwFauMRyhGe+mf+vLzFjm/wpHuJizMZPD4=";
               aarch64-linux = lib.fakeSha256; 
-              powerpc64le-linux = lib.fakeSha256; 
             }
         ).${effectiveStdenv.system} or (throw "jaxlib: unsupported system: ${effectiveStdenv.system}");
 
