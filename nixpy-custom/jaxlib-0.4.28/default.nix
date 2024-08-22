@@ -322,7 +322,7 @@ let
         (
           if cudaSupport then
             { 
-              x86_64-linux = lib.fakeSha256; 
+              x86_64-linux = "sha256-rY0jDdP/uTM7vI7zxc9okk/Qy2/8LnZ24NrXtLld85A=";
               powerpc64le-linux = "sha256-bMoXnb3ZZYiXOdm7Q3aTAyF3jUyikY7ABKs+Ha/YZIk=";
             }
           else

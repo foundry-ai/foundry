@@ -5,7 +5,7 @@ let stdenv = nixpkgs.stdenv;
     autoPatchelfHook = nixpkgs.autoPatchelfHook;
 
     cuda-version = "12.2.2";
-    cudnn-version = "9.0.0";
+    cudnn-version = "9.3.0";
     cuda-capabilities = ["5.0" "6.0" "7.0" "8.0" "8.6"];
 
     toolkit-releases = {
@@ -31,10 +31,22 @@ let stdenv = nixpkgs.stdenv;
                 hash = "sha256-04kOYJ1lMO5biP+VtgyOaxwex/qWbsUzkl8g+Jb8xjA=";
             };
         };
+        "9.3.0" = {
+            x86_64-linux = {
+                url = "https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-9.3.0.75_cuda12-archive.tar.xz";
+                hash = "sha256-PW7xCqBtyTOaR34rBX4IX/hQC73ueeQsfhNlXJ7/LCY=";
+            };
+
+        };
 
     };
     toolkit-release = toolkit-releases."${cuda-version}"."${nixpkgs.system}";
     cudnn-release = cudnn-releases."${cudnn-version}"."${nixpkgs.system}";
+
+    arch = {
+        "powerpc64le-linux" = "ppc64le";
+        "x86_64-linux" = "x86_64";
+    }."${nixpkgs.system}";
 
     dropDot = ver: builtins.replaceStrings [ "." ] [ "" ] ver;
     archMapper = feat: lib.lists.map (computeCapability: "${feat}_${dropDot computeCapability}");
@@ -89,6 +101,9 @@ in rec {
         nativeBuildInputs = [
             autoPatchelfHook
         ];
+        buildInputs = lib.optionals stdenv.isx86_64 [
+            nixpkgs.rdma-core
+        ];
         preFixup = ''
             addAutoPatchelfSearchPath ${placeholder "out"}
             addAutoPatchelfSearchPath ${placeholder "out"}/nvvm
@@ -110,33 +125,33 @@ in rec {
         installPhase = ''
             runHook preInstall
 
-            target=$out/targets/ppc64le-linux/
+            target=$out/targets/${arch}-linux/
             lib64=$target/lib64
             include=$target/include
 
-            mkdir -p $out $out/bin $lib64 $target $doc
-            pushd $out
-            ln -s $out/targets/ppc64le-linux/lib64 $out/lib64
-            ln -s $out/targets/ppc64le-linux/include $out/include
-            popd
+            mkdir -p $out $out/bin $lib64 $include $target $doc
+            ln -s $lib64 $out/lib64
+            ln -s $include $out/include
 
+            pushd .
             for dir in pkg/builds/* pkg/builds/cuda_nvcc/nvvm pkg/builds/cuda_cupti/extras/CUPTI; do
                 if [ -d $dir/bin ]; then
                     mv $dir/bin/* $out/bin
                 fi
                 if [ -d $dir/doc ]; then
-                (cd $dir/doc && find . -type d -exec mkdir -p $doc/\{} \;)
-                (cd $dir/doc && find . \( -type f -o -type l \) -exec mv \{} $doc/\{} \;)
+                    (cd $dir/doc && find . -type d -exec mkdir -p $doc/\{} \;)
+                    (cd $dir/doc && find . \( -type f -o -type l \) -exec mv \{} $doc/\{} \;)
                 fi
                 if [ -L $dir/include ] || [ -d $dir/include ]; then
-                (cd $dir/include && find . -type d -exec mkdir -p $include/\{} \;)
-                (cd $dir/include && find . \( -type f -o -type l \) -exec mv \{} $include/\{} \;)
+                    (cd $dir/include && find . -type d -exec mkdir -p $include/\{} \;)
+                    (cd $dir/include && find . \( -type f -o -type l \) -exec mv \{} $include/\{} \;)
                 fi
                 if [ -L $dir/lib64 ] || [ -d $dir/lib64 ]; then
-                (cd $dir/lib64 && find . -type d -exec mkdir -p $lib64/\{} \;)
-                (cd $dir/lib64 && find . \( -type f -o -type l \) -exec mv \{} $lib64/\{} \;)
+                    (cd $dir/lib64 && find . -type d -exec mkdir -p $lib64/\{} \;)
+                    (cd $dir/lib64 && find . \( -type f -o -type l \) -exec mv \{} $lib64/\{} \;)
                 fi
             done
+            popd
             mv pkg/builds/cuda_nvcc/nvvm/ $out/nvvm
             mv pkg/builds/cuda_sanitizer_api $out/cuda_sanitizer_api
             ln -s $out/cuda_sanitizer_api/compute-sanitizer/compute-sanitizer $out/bin/compute-sanitizer
@@ -150,6 +165,9 @@ in rec {
 
             # remove for now (we can't patchelf this...)
             rm $out/bin/cuda-gdb
+
+            # sometimes this gets created?
+            rm -f $out/include/include
 
             rm $out/bin/cuda-uninstaller
             runHook postInstall
@@ -173,7 +191,7 @@ in rec {
     };
     cudnn = stdenv.mkDerivation {
         name = "cudnn";
-        version = "9.0.0";
+        version = cudnn-version;
 
         src = nixpkgs.fetchurl {
             url = cudnn-release.url;
