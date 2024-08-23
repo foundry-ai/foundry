@@ -13,19 +13,15 @@ class Sample:
 @dataclass
 class TwoDeltasConfig:
     train_data_size: int = 64
-    test_data_size: int = 32
+    test_data_size: int = 64
     dim: int = 2
-    weight: float = 1.0
-    shift: float = 0.0
 
 @dataclass
 class TwoDeltaSequenceConfig:
     train_data_size: int = 64
-    test_data_size: int = 32
+    test_data_size: int = 64
     dim: int = 1
     sequence_length: int = 4
-    weight: float = 1.0
-    shift: float = 0.0
 
 def create(config, rng_key: PRNGKey):
     if isinstance(config, TwoDeltasConfig):
@@ -34,8 +30,8 @@ def create(config, rng_key: PRNGKey):
         b = jnp.ones((config.dim,)) / jnp.sqrt(config.dim)
         deltas = jnp.stack([a, b])
         
-        conds = jnp.array([0, config.shift, 1-config.shift, 1])
-        p = jnp.array([[1,0],[config.weight, 1-config.weight],[1-config.weight, config.weight],[0,1]])
+        conds = jnp.array([-1,1])
+        p = jnp.array([[1,0],[0,1]])
         
         def generate(rng_key, conds, p):
             i_rng, j_rng = jax.random.split(rng_key, 2)
@@ -47,16 +43,20 @@ def create(config, rng_key: PRNGKey):
                 jax.random.split(rng_key, config.train_data_size), conds, p)
         # test.values zero placeholder
         test = Sample(jnp.linspace(0, 1, config.test_data_size), jnp.zeros((config.test_data_size, config.dim)))
+        return Dataset(
+            splits={"train": train, "test": test},
+            normalizers={},
+            transforms={"visualize": lambda x: jnp.dot(x, jnp.ones((config.dim,))/jnp.sqrt(config.dim))[...,None]}
+        )
 
     elif isinstance(config, TwoDeltaSequenceConfig):
 
-        a = -jnp.repeat(jnp.linspace(0, 1, config.sequence_length)[:,None], config.dim, axis=-1) / jnp.sqrt(config.dim)
-        b = jnp.repeat(jnp.linspace(0, 1, config.sequence_length)[:,None], config.dim, axis=-1) / jnp.sqrt(config.dim)
-        print(b)
+        a = -jnp.repeat(jnp.linspace(0.5, 1, config.sequence_length)[:,None], config.dim, axis=-1) / jnp.sqrt(config.dim)
+        b = jnp.repeat(jnp.linspace(0.5, 1, config.sequence_length)[:,None], config.dim, axis=-1) / jnp.sqrt(config.dim)
         deltas = jnp.stack([a, b])
         
-        conds = jnp.array([0, config.shift, 1-config.shift, 1])
-        p = jnp.array([[1,0],[config.weight, 1-config.weight],[1-config.weight, config.weight],[0,1]])
+        conds = jnp.array([-1,1])
+        p = jnp.array([[1,0],[0,1]])
         
         def generate(rng_key, conds, p):
             i_rng, j_rng = jax.random.split(rng_key, 2)
@@ -68,11 +68,12 @@ def create(config, rng_key: PRNGKey):
                 jax.random.split(rng_key, config.train_data_size), conds, p)
         # test.values zero placeholder
         test = Sample(jnp.linspace(0, 1, config.test_data_size), jnp.zeros((config.test_data_size, config.dim)))
+        return Dataset(
+            splits={"train": train, "test": test},
+            normalizers={},
+            transforms={}
+        )
     else:
         raise ValueError(f"Unknown dataset: {config}")
     
-    return Dataset(
-        splits={"train": train, "test": test},
-        normalizers={},
-        transforms={}
-    )
+    

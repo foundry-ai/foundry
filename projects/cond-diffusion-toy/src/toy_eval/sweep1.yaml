@@ -1,0 +1,21 @@
+program: toy_eval
+method: grid
+metric:
+  goal: minimize
+  name: loss
+parameters:
+  denoiser:
+    values: ["learned"]
+  dataset:
+    values: ["two_delta_sequence"]
+  dataset.dim:
+    values: [1,2,4,8,16,32,64,128]
+  denoiser.model:
+    values: ["mlp"]
+  denoiser.model.net_width:
+    values: [2,4,8,16,32,64,128]
+  denoiser.model.net_depth:
+    values: [1,2,3,4,5]
+command:
+  - ${program}
+  - ${args}

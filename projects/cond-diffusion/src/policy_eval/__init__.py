@@ -5,7 +5,6 @@ from stanza import dataclasses
 from stanza.dataclasses import dataclass, replace
 from stanza.runtime import ConfigProvider, command
 from stanza.datasets.env import datasets
-from stanza.datasets.env import datasets
 from stanza.random import PRNGSequence
 from stanza.env import ImageRender
 from stanza.env.core import ObserveConfig, RenderConfig
@@ -54,7 +53,7 @@ class Config:
     obs_length: int = 1
     action_length: int = 32
     policy: PolicyConfig = None
-    action_config: ObserveConfig = ManipulationTaskEEFPose()
+    action_config: ObserveConfig = None
     timesteps: int = 200
     train_data_size: int | None = None
     test_data_size: int | None = 6
@@ -66,18 +65,28 @@ class Config:
 
         from . import diffusion_policy, diffusion_estimator, nearest_neighbor, behavior_cloning
         
+        dataset = config.get("dataset", str, default="pusht/chi")
+        if dataset.startswith("pusht"):
+            defaults = replace(defaults, action_config=PushTAgentPos())
+        elif dataset.startswith("robomimic"):
+            defaults = replace(defaults, action_config=ManipulationTaskEEFPose())
+        else:
+            raise ValueError(f"Unknown dataset: {dataset}")
+        
         # Check for a default policy override
         policy = config.get("policy", str, default=None)
         if policy == "diffusion_policy":
             defaults = replace(defaults, policy=diffusion_policy.DiffusionPolicyConfig())
         elif policy == "diffusion_estimator":
-            defaults = replace(defaults, policy=diffusion_estimator.DiffusionEstimatorConfig())
+            defaults = replace(defaults, policy=diffusion_estimator.DiffusionEstimatorConfig(action_config=defaults.action_config))
         elif policy == "nearest_neighbor":
             defaults = replace(defaults, policy=nearest_neighbor.NNConfig())
         elif policy == "behavior_cloning":
             defaults = replace(defaults, policy=behavior_cloning.BCConfig())
         else:
             defaults = replace(defaults, policy=diffusion_estimator.DiffusionEstimatorConfig())
+
+        
         return config.get_dataclass(defaults)
 
 @dataclasses.dataclass

@@ -22,7 +22,7 @@ let lib = nixpkgs.lib;
         with lib.versions;
         "${major python.pythonVersion}${minor python.pythonVersion}";
     cpuPname = stdenv.hostPlatform.parsed.cpu.name;
-    cpuName = if cpuPname == "x86_64" then "x86" else
+    cpuName = if cpuPname == "x86_64" then "x86_64" else
               if (stdenv.isDarwin && cpuPname == "aarch64") then "arm64" else
               if cpuPname == "powerpc64le" then "ppc64le" else
               cpuPname;

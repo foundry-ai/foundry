@@ -31,14 +31,14 @@ class MLPConfig:
 
 @dataclass
 class UNetConfig:
-    pass
+    base_channels: int = 128
+    num_downsample: int = 4
 
 @dataclass
 class DiffusionLearnedConfig:
     model: str = "mlp"
 
-    seed: int = 42
-    iterations: int = 100
+    iterations: int = 5000
     batch_size: int = 64
 
     diffusion_steps: int = 50
@@ -56,11 +56,11 @@ class DiffusionLearnedConfig:
             self = replace(self, model=MLPConfig())
         return config.get_dataclass(self, flatten={"train"})
 
-    def train_denoiser(self, wandb_run, train_data):
+    def train_denoiser(self, wandb_run, train_data, rng):
         if self.from_checkpoint:
-            return diffusion_policy_from_checkpoint(self, wandb_run, train_data)
+            return diffusion_policy_from_checkpoint(self, wandb_run, train_data, rng)
         else:
-            return train_net_diffusion_policy(self, wandb_run, train_data)
+            return train_net_diffusion_policy(self, wandb_run, train_data, rng)
 
 def diffusion_policy_from_checkpoint( 
         config : DiffusionLearnedConfig, wandb_run, train_data):
@@ -92,16 +92,20 @@ def diffusion_policy_from_checkpoint(
     return denoiser
 
 def train_net_diffusion_policy(
-        config : DiffusionLearnedConfig,  wandb_run, train_data):
+        config : DiffusionLearnedConfig,  wandb_run, train_data, rng):
     
     train_sample = jax.tree_map(lambda x: x[0], train_data)
     train_data = PyTreeData(train_data)
     normalizer = StdNormalizer.from_data(train_data)
 
-    rng = PRNGSequence(config.seed)
+    rng = PRNGSequence(rng)
     
     if isinstance(config.model, UNetConfig):
-        model = DiffusionUNet(dims=1, base_channels=128) # 1D temporal UNet
+        model = DiffusionUNet(
+            dims=1, 
+            base_channels=config.model.base_channels, 
+            channel_mult=tuple([2**i for i in range(config.model.num_downsample)]),
+        ) # 1D temporal UNet
     elif isinstance(config.model, MLPConfig):
         model = DiffusionMLP(
             features=[config.model.net_width]*config.model.net_depth
@@ -257,7 +261,7 @@ class DiffusionUNet(UNet):
 class DiffusionMLP(nn.Module):
     features: Sequence[int]
     activation: str = "relu"
-    time_embed_dim: int = 256
+    time_embed_dim: int = 32
 
     @nn.compact
     def __call__(self, cond, value,

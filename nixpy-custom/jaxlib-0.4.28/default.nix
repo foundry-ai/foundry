@@ -1,7 +1,7 @@
 {buildPythonPackage, build-system, dependencies, nixpkgs, python, fetchurl} : 
 let lib = nixpkgs.lib;
-    cudaPackages = nixpkgs.cudaPackages;
-    symlinkJoin = nixpkgs.symlinkJoin;
+    stdenv = nixpkgs.stdenv;
+    cudaPackages = (import ./cuda.nix {nixpkgs=nixpkgs;});
     binutils = nixpkgs.binutils;
 
     IOKit = nixpkgs.darwin.apple_sdk.frameworks.IOKit;
@@ -19,15 +19,15 @@ let lib = nixpkgs.lib;
 
     cudaVersion = cudaPackages.cudaVersion;
     cudaFlags = cudaPackages.cudaFlags;
-    nccl = cudaPackages.nccl;
+    cudatoolkit = cudaPackages.cudatoolkit;
     cudnn = cudaPackages.cudnn;
+    nccl = cudaPackages.nccl;
     
 
     fetchFromGitHub = nixpkgs.fetchFromGitHub;
     buildBazelPackage = nixpkgs.buildBazelPackage;
 
-    cudaSupport = false;
-    mklSupport = false;
+    cudaSupport = stdenv.isLinux;
 in
 let
   pname = "jaxlib";
@@ -35,70 +35,21 @@ let
   # It's necessary to consistently use backendStdenv when building with CUDA
   # support, otherwise we get libstdc++ errors downstream
   stdenv = throw "Use effectiveStdenv instead";
-  effectiveStdenv = if cudaSupport then cudaPackages.backendStdenv else nixpkgs.stdenv;
+  # effectiveStdenv = if cudaSupport then cudaPackages.backendStdenv else nixpkgs.stdenv;
+  effectiveStdenv = if cudaSupport 
+  then cudaPackages.cudaStdenv 
+  else nixpkgs.stdenv;
+
+  buildBazelPackage = nixpkgs.buildBazelPackage.override {
+    stdenv = effectiveStdenv;
+  };
+
   meta = with lib; {
     description = "Source-built JAX backend. JAX is Autograd and XLA, brought together for high-performance machine learning research";
     homepage = "https://github.com/google/jax";
     license = licenses.asl20;
     maintainers = with maintainers; [ ndl ];
     platforms = platforms.linux;
-  };
-
-  # Bazel wants a merged cudnn at configuration time
-  cudnnMerged = symlinkJoin {
-    name = "cudnn-merged";
-    paths = with cudaPackages; [
-      (lib.getDev cudnn)
-      (lib.getLib cudnn)
-    ];
-  };
-
-  # These are necessary at build time and run time.
-  cuda_libs_joined = symlinkJoin {
-    name = "cuda-joined";
-    paths = with cudaPackages; [
-      (lib.getLib cuda_cudart) # libcudart.so
-      (lib.getLib cuda_cupti) # libcupti.so
-      (lib.getLib libcublas) # libcublas.so
-      (lib.getLib libcufft) # libcufft.so
-      (lib.getLib libcurand) # libcurand.so
-      (lib.getLib libcusolver) # libcusolver.so
-      (lib.getLib libcusparse) # libcusparse.so
-    ];
-  };
-  # These are only necessary at build time.
-  cuda_build_deps_joined = symlinkJoin {
-    name = "cuda-build-deps-joined";
-    paths = with cudaPackages; [
-      cuda_libs_joined
-
-      # Binaries
-      (lib.getBin cuda_nvcc) # nvcc
-
-      # Archives
-      (lib.getOutput "static" cuda_cudart) # libcudart_static.a
-
-      # Headers
-      (lib.getDev cuda_cccl) # block_load.cuh
-      (lib.getDev cuda_cudart) # cuda.h
-      (lib.getDev cuda_cupti) # cupti.h
-      (lib.getDev cuda_nvcc) # See https://github.com/google/jax/issues/19811
-      (lib.getDev cuda_nvml_dev) # nvml.h
-      (lib.getDev cuda_nvtx) # nvToolsExt.h
-      (lib.getDev libcublas) # cublas_api.h
-      (lib.getDev libcufft) # cufft.h
-      (lib.getDev libcurand) # curand.h
-      (lib.getDev libcusolver) # cusolver_common.h
-      (lib.getDev libcusparse) # cusparse.h
-    ];
-  };
-
-  backend_cc_joined = symlinkJoin {
-    name = "cuda-cc-joined";
-    paths = [
-      effectiveStdenv.cc
-      binutils.bintools # for ar, dwp, nm, objcopy, objdump, strip
-    ];
   };
 
   # Copy-paste from TF derivation.
@@ -157,6 +108,14 @@ let
     else
       effectiveStdenv.hostPlatform.linuxArch;
 
+  backend_cc_joined = nixpkgs.symlinkJoin {
+    name = "jaxlib-cc-joined";
+    paths = [
+      effectiveStdenv.cc
+      binutils.bintools # for ar, dwp, nm, objcopy, objdump, strip
+    ];
+  };
+
   xla = effectiveStdenv.mkDerivation {
     pname = "xla-src";
     version = "unstable";
@@ -200,7 +159,6 @@ let
     patches = [
       ./patches/0002-bazelrc-edit.diff
       ./patches/0003-Patched-openxla-for-tf_runtime.patch
-      # ./patches/0004-Remove-bazel-shutdown-call-from-jax-code.patch
       ./patches/0005-Use-ppc64le-compatible-boringssl.patch
     ];
     nativeBuildInputs = [
@@ -211,10 +169,12 @@ let
       wheel
       build
       nixpkgs.which
-    ] ++ lib.optionals effectiveStdenv.isDarwin [ nixpkgs.cctools ];
+    ] ++ lib.optionals effectiveStdenv.isDarwin [ nixpkgs.cctools ]
+      ++ lib.optionals cudaSupport [ cudatoolkit cudnn ];
 
     buildInputs =
       [
+        backend_cc_joined
         nixpkgs.curl
         nixpkgs.double-conversion
         nixpkgs.giflib
@@ -231,7 +191,8 @@ let
         nixpkgs.zlib
       ]
       ++ lib.optionals effectiveStdenv.isDarwin [ IOKit ]
-      ++ lib.optionals (!effectiveStdenv.isDarwin) [ nixpkgs.nsync ];
+      ++ lib.optionals (!effectiveStdenv.isDarwin) [ nixpkgs.nsync ]
+      ++ lib.optionals cudaSupport [ cudatoolkit cudnn ];
 
     # We don't want to be quite so picky regarding bazel version
     postPatch = ''
@@ -246,10 +207,11 @@ let
       "--jaxlib_git_hash='12345678'"
     ];
 
-    removeRulesCC = false;
 
     GCC_HOST_COMPILER_PREFIX = lib.optionalString cudaSupport "${backend_cc_joined}/bin";
     GCC_HOST_COMPILER_PATH = lib.optionalString cudaSupport "${backend_cc_joined}/bin/gcc";
+
+    removeRulesCC = false;
 
     # The version is automatically set to ".dev" if this variable is not set.
     # https://github.com/google/jax/commit/e01f2617b85c5bdffc5ffb60b3d8d8ca9519a1f3
@@ -261,7 +223,8 @@ let
         mkdir dummy-ldconfig
         echo "#!${effectiveStdenv.shell}" > dummy-ldconfig/ldconfig
         chmod +x dummy-ldconfig/ldconfig
-        export PATH="$PWD/dummy-ldconfig:$PATH"
+        export PATH="$PWD/dummy-ldconfig:${python}/bin:$PATH"
+        export PYTHON_BIN_PATH="${python}/bin/python"
       ''
       +
 
@@ -287,15 +250,21 @@ let
           build --distinct_host_configuration=false
           build --define PROTOBUF_INCLUDE_PATH="${nixpkgs.protobuf}/include"
         ''
+      + lib.optionalString effectiveStdenv.hostPlatform.isPower64 ''
+        build --cxxopt="-U__LONG_DOUBLE_IEEE128__"
+        build --host_cxxopt="-U__LONG_DOUBLE_IEEE128__"
+      ''
       + lib.optionalString cudaSupport ''
         build --config=cuda
-        build --action_env CUDA_TOOLKIT_PATH="${cuda_build_deps_joined}"
-        build --action_env CUDNN_INSTALL_PATH="${cudnnMerged}"
-        build --action_env TF_CUDA_PATHS="${cuda_build_deps_joined},${cudnnMerged},${lib.getDev nccl}"
+        build --action_env CUDA_TOOLKIT_PATH="${cudatoolkit}"
+        build --action_env CUDNN_INSTALL_PATH="${cudnn}"
+        build --action_env TF_CUDA_PATHS="${cudatoolkit},${cudnn},${lib.getDev nccl}"
         build --action_env TF_CUDA_VERSION="${lib.versions.majorMinor cudaVersion}"
-        build --action_env TF_CUDNN_VERSION="${lib.versions.major cudaPackages.cudnn.version}"
+        build --action_env TF_CUDNN_VERSION="${lib.versions.major cudnn.version}"
         build:cuda --action_env TF_CUDA_COMPUTE_CAPABILITIES="${builtins.concatStringsSep "," cudaFlags.realArches}"
       ''
+      # build --action_env CUDNN_INSTALL_PATH="${cudnnMerged}"
+      # build --action_env TF_CUDNN_VERSION=""
       +
         # Note that upstream conditions this on `wheel_cpu == "x86_64"`. We just
         # rely on `effectiveStdenv.hostPlatform.avxSupport` instead. So far so
@@ -305,9 +274,6 @@ let
           ''
             build --config=avx_posix
           ''
-      + lib.optionalString mklSupport ''
-        build --config=mkl_open_source_only
-      ''
       + ''
         CFG
       '';
@@ -341,6 +307,7 @@ let
         bazelRunTarget
         "@mkl_dnn_v1//:mkl_dnn"
       ];
+
       bazelFlags =
         bazelFlags
         ++ [
@@ -348,17 +315,16 @@ let
           "--config=mkl_open_source_only"
         ]
         ++ lib.optionals cudaSupport [
-          # ideally we'd add this unconditionally too, but it doesn't work on darwin
-          # we make this conditional on `cudaSupport` instead of the system, so that the hash for both
-          # the cuda and the non-cuda deps can be computed on linux, since a lot of contributors don't
-          # have access to darwin machines
           "--config=cuda"
         ];
 
       sha256 =
         (
           if cudaSupport then
-            { x86_64-linux = lib.fakeSha256; }
+            { 
+              x86_64-linux = "sha256-rY0jDdP/uTM7vI7zxc9okk/Qy2/8LnZ24NrXtLld85A=";
+              powerpc64le-linux = "sha256-bMoXnb3ZZYiXOdm7Q3aTAyF3jUyikY7ABKs+Ha/YZIk=";
+            }
           else
             {
               x86_64-linux = lib.fakeSha256;
@@ -423,16 +389,15 @@ buildPythonPackage {
   # for more info.
   postInstall = lib.optionalString cudaSupport ''
     mkdir -p $out/bin
-    ln -s ${lib.getExe' cudaPackages.cuda_nvcc "ptxas"} $out/bin/ptxas
+    ln -s ${cudatoolkit}/bin/ptxas $out/bin/ptxas
 
     find $out -type f \( -name '*.so' -or -name '*.so.*' \) | while read lib; do
       patchelf --add-rpath "${
         lib.makeLibraryPath [
-          cuda_libs_joined
-          (lib.getLib cudaPackages.cudnn)
-          nccl
+          "${cudatoolkit}/lib64"
+          "${lib.getLib effectiveStdenv.cc.cc}"
         ]
-      }" "$lib"
+      }"  "$lib"
     done
   '';
 
@@ -447,7 +412,7 @@ buildPythonPackage {
     ml-dtypes
     numpy
     scipy
-  ];
+  ] ++ lib.optionals cudaSupport [cudatoolkit];
 
   pythonImportsCheck = [
     "jaxlib"
@@ -463,6 +428,7 @@ buildPythonPackage {
   passthru = {
     # Note "bazel.*.tar.gz" can be accessed as `jaxlib.bazel-build.deps`
     inherit bazel-build;
+    cudaPackages = cudaPackages;
   };
 
   inherit meta;

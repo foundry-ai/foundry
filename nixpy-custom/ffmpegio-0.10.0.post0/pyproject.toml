@@ -1,0 +1,9 @@
+[build-system]
+requires = ["setuptools >= 61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "ffmpegio"
+version = "0.10.0.post0"
+dependencies = ["ffmpegio-core >= 0.10", "numpy >= 1.20"]

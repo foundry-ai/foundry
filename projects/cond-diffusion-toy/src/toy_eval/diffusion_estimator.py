@@ -21,7 +21,7 @@ class DiffusionEstimatorConfig:
     def parse(self, config: ConfigProvider) -> "DiffusionEstimatorConfig":
         return config.get_dataclass(self)
 
-    def train_denoiser(self, wandb_run, train_data):
+    def train_denoiser(self, wandb_run, train_data, rng):
         return diffusion_estimator(self, wandb_run, train_data)
 
 def diffusion_estimator(

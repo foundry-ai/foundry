@@ -31,7 +31,6 @@ logger = logging.getLogger(__name__)
 class DiffusionPolicyConfig:
     model: str = "unet"
 
-    seed: int = 42
     iterations: int = 100
     batch_size: int = 64
 
@@ -41,7 +40,7 @@ class DiffusionPolicyConfig:
     # embed_type: str = "film"
     # has_skip: bool = True
 
-    diffusion_steps: int = 100
+    diffusion_steps: int = 50
     action_horizon: int = 8
     
     from_checkpoint: bool = False
@@ -54,7 +53,7 @@ class DiffusionPolicyConfig:
         if self.from_checkpoint:
             return diffusion_policy_from_checkpoint(self, wandb_run, train_data, env, eval)
         else:
-            return train_net_diffusion_policy(self, wandb_run, train_data, env, eval)
+            return train_net_diffusion_policy(self, wandb_run, train_data, env, eval, rng)
 
 def diffusion_policy_from_checkpoint( 
         config : DiffusionPolicyConfig, wandb_run, train_data, env, eval):
@@ -92,7 +91,7 @@ def diffusion_policy_from_checkpoint(
     return policy
 
 def train_net_diffusion_policy(
-        config : DiffusionPolicyConfig,  wandb_run, train_data, env, eval):
+        config : DiffusionPolicyConfig,  wandb_run, train_data, env, eval, rng):
     
     train_sample = train_data[0]
     normalizer = StdNormalizer.from_data(train_data)
@@ -104,7 +103,7 @@ def train_net_diffusion_policy(
         stanza.util.axis_size(train_data_tree.actions, 1)
     )
 
-    rng = PRNGSequence(config.seed)
+    rng = PRNGSequence(rng)
     #Model = getattr(net, config.model.split("/")[1])
     # model = DiffusionMLP(
     #     features=[config.net_width]*config.net_depth, 

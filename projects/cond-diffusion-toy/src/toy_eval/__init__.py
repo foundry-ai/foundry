@@ -22,6 +22,7 @@ import functools
 import wandb
 import stanza
 import plotly.express as px
+import plotly.graph_objs as go
 import logging
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ class Config:
     seed: int = 42
     dataset: str = "two_deltas"
     denoiser: str = "estimator"
-    num_visualize_values: int = 31
+    num_visualize_values: int = 32
 
     @staticmethod
     def parse(config: ConfigProvider) -> "Config":
@@ -59,9 +60,21 @@ class Config:
         return config.get_dataclass(defaults)
 
 def generate_plots(samples):
-    proj_transform = lambda x: jnp.dot(x, jnp.ones((samples.value.shape[-1],))/jnp.sqrt(samples.value.shape[-1]))
+    fig = go.Figure()
+    for i in range(samples.value.shape[-1]):
+        fig.add_trace(go.Scatter(
+            x=jnp.squeeze(samples.cond),
+            y=samples.value[..., i], 
+            mode='markers',
+            name=f't = {i + 1}',
+            marker=dict(
+                color=f'rgba({i*256//samples.value.shape[-1]},0,255,255)',
+                opacity=0.5
+            )
+        ))
     plots = {
-        "proj": px.scatter(x=jnp.squeeze(samples.cond), y=jax.vmap(proj_transform)(samples.value), opacity=0.5),
+        "samples": fig,
+        #"transformed_samples": px.scatter(x=jnp.squeeze(samples.cond), y=jnp.squeeze(samples.value), opacity=0.5),
         #"norm": data_info.visualizer(samples, value_transform=lambda x: jnp.array([jnp.linalg.norm(x)])),
         #"score": plot_score(*denoised, value_transform=proj_transform),
         #"variances": plot_variance(samples)
@@ -92,7 +105,7 @@ def main(config : Config):
 
     # denoiser: cond, rng_key -> Sample(cond, value)
     denoiser = config.denoiser.train_denoiser(
-        wandb_run, train_data
+        wandb_run, train_data, next(rng)
     )
 
     logger.info(f"Performing final evaluation...")
@@ -100,8 +113,12 @@ def main(config : Config):
     samples = jax.vmap(
         lambda cond, rng_key: jax.vmap(partial(denoiser, cond))(jax.random.split(rng_key, config.num_visualize_values))
     )(test_data.cond, jax.random.split(next(rng), test_data.cond.shape[0]))
-    samples = Sample(samples.cond.reshape(-1, train_sample.cond.shape[-1]), samples.value.reshape(-1, train_sample.value.shape[-1]))
+    samples_cond = samples.cond.reshape(-1, train_sample.cond.shape[-1])
+    samples_value = samples.value.reshape(samples_cond.shape[0], -1)
+    samples = Sample(samples_cond, samples_value)
 
+    if "visualize" in dataset.transforms:
+        samples = replace(samples, value=jax.vmap(dataset.transforms["visualize"])(samples.value))
     output = generate_plots(samples)
 
     # get the metrics and final reportables
