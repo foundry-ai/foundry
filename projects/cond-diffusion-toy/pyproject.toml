@@ -1,0 +1,22 @@
+[project]
+name = "cond-diffusion-toy"
+version = "0.1.0"
+description = "Default template for PDM package"
+authors = [
+    {name = "Daniel Pfrommer", email = "dan.pfrommer@gmail.com"},
+]
+dependencies = [
+    "stanza"
+]
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+[project.scripts]
+toy_eval = "toy_eval:run"
+
+[tool.pdm]
+distribution = true
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
