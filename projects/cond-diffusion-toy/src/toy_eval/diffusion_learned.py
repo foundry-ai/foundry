@@ -29,14 +29,20 @@ class MLPConfig:
     net_width: int = 4096
     net_depth: int = 3
 
+    def parse(self, config: ConfigProvider) -> "MLPConfig":
+        return config.get_dataclass(self)
+
 @dataclass
 class UNetConfig:
     base_channels: int = 128
     num_downsample: int = 4
 
+    def parse(self, config : ConfigProvider) -> "UNetConfig":
+        return config.get_dataclass(self)
+
 @dataclass
 class DiffusionLearnedConfig:
-    model: str = "mlp"
+    model: MLPConfig | None = None
 
     iterations: int = 5000
     batch_size: int = 64
@@ -47,14 +53,13 @@ class DiffusionLearnedConfig:
     checkpoint_filename: str = None
 
     def parse(self, config: ConfigProvider) -> "DiffusionLearnedConfig":
-        model = config.get("model", str, default=None)
+        model = config.get("model", str, default="mlp")
         if model == "mlp":
             self = replace(self, model=MLPConfig())
         elif model == "unet":
             self = replace(self, model=UNetConfig())
-        else:
-            self = replace(self, model=MLPConfig())
-        return config.get_dataclass(self, flatten={"train"})
+        else: raise RuntimeError(f"{model}")
+        return config.get_dataclass(self)
 
     def train_denoiser(self, wandb_run, train_data, rng):
         if self.from_checkpoint:
@@ -261,7 +266,7 @@ class DiffusionUNet(UNet):
 class DiffusionMLP(nn.Module):
     features: Sequence[int]
     activation: str = "relu"
-    time_embed_dim: int = 32
+    time_embed_dim: int = 256
 
     @nn.compact
     def __call__(self, cond, value,

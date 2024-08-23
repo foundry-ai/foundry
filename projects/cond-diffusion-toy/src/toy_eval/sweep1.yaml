@@ -8,7 +8,7 @@ parameters:
     values: ["learned"]
   dataset:
     values: ["two_delta_sequence"]
-  dataset.dim:
+  dataset.sequence_length:
     values: [1,2,4,8,16,32,64,128]
   denoiser.model:
     values: ["mlp"]

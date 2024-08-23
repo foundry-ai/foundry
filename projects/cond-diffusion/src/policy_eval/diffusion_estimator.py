@@ -33,7 +33,7 @@ class DiffusionEstimatorConfig:
     diffusion_steps: int = 50
     relative_actions: bool = False
     action_config: ObserveConfig = None
-    action_horizon: int = 32
+    action_horizon: int = 16
 
     def parse(self, config: ConfigProvider) -> "DiffusionEstimatorConfig":
         return config.get_dataclass(self)

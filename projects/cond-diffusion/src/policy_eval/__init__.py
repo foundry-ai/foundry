@@ -49,7 +49,7 @@ class PolicyConfig:
 @dataclasses.dataclass
 class Config:
     seed: int = 42
-    dataset: str = "pusht/chi"
+    dataset: str = "robomimic/pickplace/can/ph"
     obs_length: int = 1
     action_length: int = 32
     policy: PolicyConfig = None
