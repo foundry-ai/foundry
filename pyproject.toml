@@ -11,6 +11,7 @@ dependencies = [
     "cond_diffusion @ file:///${PROJECT_ROOT}/projects/cond-diffusion",
     "image-classifier @ file:///${PROJECT_ROOT}/projects/image-classifier",
     "language-model @ file:///${PROJECT_ROOT}/projects/language-model",
+    "cond-diffusion-toy @ file:///${PROJECT_ROOT}/projects/cond-diffusion-toy",
     "wandb>=0.17.4",
 ]
 requires-python = "<3.11,>=3.10"
@@ -33,6 +34,7 @@ dev = [
     "-e cond_diffusion @ file:///${PROJECT_ROOT}/projects/cond-diffusion",
     "-e image-classifier @ file:///${PROJECT_ROOT}/projects/image-classifier",
     "-e language-model @ file:///${PROJECT_ROOT}/projects/language-model",
+    "-e cond-diffusion-toy @ file:///${PROJECT_ROOT}/projects/cond-diffusion-toy",
     "pytest>=8.2.2",
 ]
 

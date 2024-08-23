@@ -201,5 +201,5 @@ class ArgumentsProvider(ConfigProvider):
             return type(arg)
     
     def scope(self, name: str, desc: str="") -> "ConfigProvider":
-        prefix = name if not self._prefix else f"{self._prefix}_{name}"
+        prefix = name if not self._prefix else f"{self._prefix}.{name}"
         return ArgumentsProvider(self._args, prefix)

@@ -364,6 +364,14 @@ class ManipulationTaskRelObs:
     grip_qpos: jax.Array = None # (n_robots, 2,) -- gripper qpos
 
 @dataclass
+class ManipulationTaskRelKeypointObs:
+    eef_obj_pos_pos: jax.Array = None
+    eef_obj_end_end: jax.Array = None
+    eef_obj_pos_end: jax.Array = None
+    eef_obj_end_pos: jax.Array = None
+    grip_qpos: jax.Array = None
+
+@dataclass
 class ManipulationTaskPosObs:
     eef_pos: jax.Array = None
     eef_ori: jax.Array = None
@@ -388,6 +396,11 @@ class PositionalObsTransform(EnvTransform):
 class RelPosObsTransform(EnvTransform):
     def apply(self, env):
         return RelPosObsEnv(env)
+
+@dataclass
+class RelKeypointObsTransform(EnvTransform):
+    def apply(self, env):
+        return RelKeypointObsEnv(env)
     
 
 @dataclass
@@ -443,6 +456,15 @@ class PositionalControlEnv(EnvWrapper):
             #jax.debug.print("{s}, {t}, {u}", s=J_pos.T @ lambda_pos @ F_r, t=J_ori.T @ lambda_ori @ Tau_r, u=compensation)
             #jax.debug.print("{s}", s=a)
 
+            # snap gripper qpos to binary open/closed
+            ctrl_range = self.model.actuator_ctrlrange[robot.gripper_actuator_indices]
+            bias = 0.5 * (ctrl_range[:, 1] + ctrl_range[:, 0])
+            weight = 0.5 * (ctrl_range[:, 1] - ctrl_range[:, 0])
+            grip_action_scaled = (grip_action - bias) / weight
+            grip_action_binary = jnp.clip(
+                grip_action_scaled + jnp.array([-1.0, 1.0]) * 0.01 * jnp.sign(grip_action_scaled), -1.0, 1.0
+            )
+            grip_action = grip_action_binary * weight + bias
             a = a.at[jnp.squeeze(robot.gripper_actuator_indices)].set(jnp.squeeze(grip_action))
 
         else: 
@@ -476,12 +498,29 @@ class RelPosObsEnv(EnvWrapper):
         return ManipulationTaskRelObs(
             eef_obj_rel_pos=obs.object_pos - obs.eef_pos,
             object_pos=obs.object_pos,
-            #eef_obj_rel_ori=mat_to_euler(quat_to_mat(obs.object_quat)) - mat_to_euler(obs.eef_ori_mat),
-            eef_ori=mat_to_euler(obs.eef_ori_mat),
+            eef_obj_rel_ori=mat_to_euler(quat_to_mat(obs.object_quat)) - mat_to_euler(obs.eef_ori_mat),
+            #eef_ori=mat_to_euler(obs.eef_ori_mat),
             object_ori=mat_to_euler(quat_to_mat(obs.object_quat)),
             #eef_quat=mat_to_quat(obs.eef_ori_mat),
             #eef_ori_mat=obs.eef_ori_mat,
             #object_quat=obs.object_quat,
+            grip_qpos=obs.grip_qpos
+        )
+
+@dataclass
+class RelKeypointObsEnv(EnvWrapper):
+    def observe(self, state, config=None):
+        if config is None: config = ManipulationTaskRelKeypointObs()
+        if not isinstance(config, ManipulationTaskRelKeypointObs):
+            return self.base.observe(state, config)
+        obs = self.base.observe(state, ManipulationTaskObs())
+        eef_end = obs.eef_ori_mat @ jnp.array([0.0,0.0,0.02], dtype=jnp.float32) + obs.eef_pos
+        object_end = quat_to_mat(obs.object_quat) @ jnp.array([0.0,0.0,0.02], dtype=jnp.float32) + obs.object_pos
+        return ManipulationTaskRelKeypointObs(
+            eef_obj_pos_pos=obs.object_pos - obs.eef_pos,
+            eef_obj_end_end=object_end - eef_end,
+            eef_obj_pos_end=object_end - obs.eef_pos,
+            eef_obj_end_pos=obs.object_pos - eef_end,
             grip_qpos=obs.grip_qpos
         )
 

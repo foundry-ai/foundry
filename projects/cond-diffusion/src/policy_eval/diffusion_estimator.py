@@ -31,8 +31,8 @@ class DiffusionEstimatorConfig:
     estimator: str = "nw"
     kernel_bandwidth: float = 0.01
     diffusion_steps: int = 50
-    relative_actions: bool = True
-    agent_pos_config: ObserveConfig = ManipulationTaskEEFPose()
+    relative_actions: bool = False
+    action_config: ObserveConfig = None
     action_horizon: int = 16
 
     def parse(self, config: ConfigProvider) -> "DiffusionEstimatorConfig":
@@ -63,16 +63,16 @@ def estimator_diffusion_policy(
         obs = input.observation
         if config.relative_actions:
             data_agent_pos = jax.vmap(
-                lambda x: env.observe(x, config.agent_pos_config)
+                lambda x: env.observe(x, config.action_config)
             )(train_data.state)
-            if config.agent_pos_config == PushTAgentPos():
+            if config.action_config == PushTAgentPos():
                 actions = train_data.actions - data_agent_pos[:, None, :]
-            elif config.agent_pos_config == ManipulationTaskEEFPose():
+            elif config.action_config == ManipulationTaskEEFPose():
                 expand_agent_pos = jnp.zeros_like(train_data.actions)
                 expand_agent_pos = expand_agent_pos.at[...,0:3].set(data_agent_pos[:,None,0:3])
                 actions = train_data.actions - expand_agent_pos
             else:
-                raise ValueError(f"Unsupported agent_pos_config {config.agent_pos_config}")
+                raise ValueError(f"Unsupported action_config {config.action_config}")
         else:
             actions = train_data.actions
         data = train_data.observations, actions
@@ -84,15 +84,15 @@ def estimator_diffusion_policy(
         diffuser = estimator(obs)
         action = schedule.sample(input.rng_key, diffuser, action_sample)
         if config.relative_actions:
-            agent_pos = env.observe(input.state, config.agent_pos_config)
-            if config.agent_pos_config == PushTAgentPos():
+            agent_pos = env.observe(input.state, config.action_config)
+            if config.action_config == PushTAgentPos():
                 action = action + agent_pos
-            elif config.agent_pos_config == ManipulationTaskEEFPose():
+            elif config.action_config == ManipulationTaskEEFPose():
                 expand_agent_pos = jnp.zeros_like(action)
                 expand_agent_pos = expand_agent_pos.at[...,0:3].set(agent_pos[0:3])
                 action = action + agent_pos
             else:
-                raise ValueError(f"Unsupported agent_pos_config {config.agent_pos_config}")
+                raise ValueError(f"Unsupported action_config {config.action_config}")
         action = action[:config.action_horizon]
         return PolicyOutput(action=action, info=action)
     policy = ChunkingTransform(
