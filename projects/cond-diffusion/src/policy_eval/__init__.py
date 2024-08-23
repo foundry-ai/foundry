@@ -56,7 +56,7 @@ class Config:
     action_config: ObserveConfig = None
     timesteps: int = 200
     train_data_size: int | None = None
-    test_data_size: int | None = 6
+    test_data_size: int | None = 4
     render_config: RenderConfig = ImageRender(128, 128)
 
     @staticmethod
@@ -65,7 +65,7 @@ class Config:
 
         from . import diffusion_policy, diffusion_estimator, nearest_neighbor, behavior_cloning
         
-        dataset = config.get("dataset", str, default="pusht/chi")
+        dataset = config.get("dataset", str, default=defaults.dataset)
         if dataset.startswith("pusht"):
             defaults = replace(defaults, action_config=PushTAgentPos())
         elif dataset.startswith("robomimic"):
