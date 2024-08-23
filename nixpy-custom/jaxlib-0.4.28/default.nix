@@ -1,7 +1,7 @@
 {buildPythonPackage, build-system, dependencies, nixpkgs, python, fetchurl} : 
 let lib = nixpkgs.lib;
     stdenv = nixpkgs.stdenv;
-    cudaPackages = (import ./cuda.nix {nixpkgs=nixpkgs;});
+    cudaPackages = nixpkgs.cudaPackages;
     binutils = nixpkgs.binutils;
 
     IOKit = nixpkgs.darwin.apple_sdk.frameworks.IOKit;
@@ -385,6 +385,8 @@ buildPythonPackage {
     in
     "${bazel-build}/jaxlib-${version}-${cp}-${cp}-${platformTag}.whl";
 
+  nativeBuildInputs = lib.optionals cudaSupport [ autoAddDriverRunpath ];
+
   # Note that jaxlib looks for "ptxas" in $PATH. See https://github.com/NixOS/nixpkgs/pull/164176#discussion_r828801621
   # for more info.
   postInstall = lib.optionalString cudaSupport ''
@@ -393,10 +395,7 @@ buildPythonPackage {
 
     find $out -type f \( -name '*.so' -or -name '*.so.*' \) | while read lib; do
       patchelf --add-rpath "${
-        lib.makeLibraryPath [
-          "${cudatoolkit}/lib64"
-          "${lib.getLib effectiveStdenv.cc.cc}"
-        ]
+        "${lib.getLib effectiveStdenv.cc.cc}/lib:${cudatoolkit}/lib64:${cudnn}/lib:${nccl}/lib"
       }"  "$lib"
     done
   '';
