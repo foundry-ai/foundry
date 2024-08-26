@@ -7,7 +7,16 @@ let
         "powerpc64le-linux" = {
             "535.86.10" = "sha256-UDieX7LzPTG25Mq3BbQm3tNMkEewiYm5CSVfPgtndaI=";
         };
+        "x86_64-linux" = {
+            "555.42.02" = "sha256-k7cI3ZDlKp4mT46jMkLaIrc2YUx1lh1wj/J4SVSHWyk=";
+        };
     };
+    makeNvidiaUrl = { platform, version }: 
+        if platform == "x86_64-linux" then 
+            "https://us.download.nvidia.com/XFree86/Linux-x86_64/${version}/NVIDIA-Linux-x86_64-${version}.run"
+        else if nixpkgs.system == "powerpc64le-linux" then 
+            "https://us.download.nvidia.com/tesla/${version}/NVIDIA-Linux-ppc64le-${version}.run"
+        else throw "Unsupported platform";
 
     makeNvidiaPackages = { version }: rec {
         nvidiaDrivers = (nixpkgs.linuxPackages.nvidia_x11.override { disable32Bit = true; }).overrideAttrs
@@ -15,10 +24,10 @@ let
             pname = "nvidia";
             name = "nvidia-x11-${version}-drivers";
             inherit version;
-            src = nixpkgs.fetchurl {
-                url = "https://us.download.nvidia.com/tesla/${version}/NVIDIA-Linux-ppc64le-${version}.run";
+            src = let
+                url = makeNvidiaUrl { platform = nixpkgs.system; version = version; };
                 sha256 = nvidiaHashes."${nixpkgs.system}"."${version}";
-            };
+            in nixpkgs.fetchurl { inherit url sha256; };
             useGLVND = true;
             nativeBuildInputs = oldAttrs.nativeBuildInputs or [] ++ [nixpkgs.zstd];
 
