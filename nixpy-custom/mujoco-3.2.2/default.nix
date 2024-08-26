@@ -53,6 +53,13 @@ buildPythonPackage rec {
         ${perl}/bin/perl -0777 -i -pe "s/(FetchContent_Declare\(\n.*lodepng\n.*)(GIT_REPO.*\n.*GIT_TAG.*\n)(.*\))/\1\3/gm" mujoco/simulate/CMakeLists.txt
         substituteInPlace mujoco/simulate/cmake/SimulateDependencies.cmake \
             --replace-fail "if(NOT SIMULATE_STANDALONE)" "if (NO)"
+        # Make use EGL by default, disable the 
+        # warning on import if the display does not initialize.
+        substituteInPlace mujoco/gl_context.py \
+            --replace-fail "elif _SYSTEM == 'Linux' and _MUJOCO_GL == 'egl':" "elif _SYSTEM == 'Linux':"
+        substituteInPlace mujoco/egl/__init__.py \
+            --replace-fail "if EGL_DISPLAY == EGL.EGL_NO_DISPLAY:" "if False:"
+
         build=build/temp.${platform}-cpython-${pythonVersionMajorMinor}/
         echo "Linking into ''${build}"
         mkdir -p $build/_deps

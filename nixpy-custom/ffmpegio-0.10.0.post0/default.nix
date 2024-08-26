@@ -31,7 +31,13 @@ buildPythonPackage rec {
   dependencies = [
     ffmpegio-core numpy
   ];
-  propagatedNativeBuildInputs = [ ffmpeg ];
+  propagatedBuildInputs = [ ffmpeg ];
+
+  postInstall = ''
+    mkdir -p $out/bin
+    ln -s ${ffmpeg}/bin/ffmpeg $out/bin/ffmpeg
+  '';
+
 
   pythonImportsCheck = [ "ffmpegio" ];
 }

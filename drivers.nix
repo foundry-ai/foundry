@@ -1,39 +1,47 @@
 {nixpkgs}:
 let 
+    lib = nixpkgs.lib;
 
-lib = nixpkgs.lib;
-driverConfig = lib.importJSON ./.drivers/config.json;
-cudaPath = ./.drivers/${driverConfig.cuda.path};
-cudaDrivers = lib.optionals (builtins.hasAttr "cuda" driverConfig) [
-    (nixpkgs.runCommand "cuda-drivers" {} (''
-        mkdir -p $out
-        cp -r ${cudaPath} $out/lib
-    ''))
-];
-glDrivers = builtins.map (
-    driver:  let 
-        driverPath = ./.drivers/${driver.path};
-    in
-    nixpkgs.runCommand "${driver.name}-driver" {} (''
-        mkdir -p $out $out/egl
-        cp -r ${driverPath} $out/lib
-        echo "{
-            \"file_format_version\" : \"1.0.0\",
-            \"ICD\" : {
-                \"library_path\" : \"$out/lib/${driver.egl}\"
-            }
-        }" > $out/egl/vendor.json
-    '')
-) driverConfig.drivers;
+    # The hashes for the driver files
+    nvidiaHashes = {
+        "powerpc64le-linux" = {
+            "535.86.10" = "sha256-UDieX7LzPTG25Mq3BbQm3tNMkEewiYm5CSVfPgtndaI=";
+        };
+    };
 
-drivers = cudaDrivers ++ glDrivers;
-driverLibPaths = lib.makeLibraryPath drivers;
+    makeNvidiaPackages = { version }: rec {
+        nvidiaDrivers = (nixpkgs.linuxPackages.nvidia_x11.override { disable32Bit = true; }).overrideAttrs
+        (oldAttrs: rec {
+            pname = "nvidia";
+            name = "nvidia-x11-${version}-drivers";
+            inherit version;
+            src = nixpkgs.fetchurl {
+                url = "https://us.download.nvidia.com/tesla/${version}/NVIDIA-Linux-ppc64le-${version}.run";
+                sha256 = nvidiaHashes."${nixpkgs.system}"."${version}";
+            };
+            useGLVND = true;
+            nativeBuildInputs = oldAttrs.nativeBuildInputs or [] ++ [nixpkgs.zstd];
 
-vendorPaths = lib.strings.concatStringsSep ":" (
-    map (driver: "${driver}/egl/vendor.json") glDrivers
-);
-in
+            meta = with lib; {
+                platforms = [nixpkgs.system];
+            };
+        });
+        nvidiaLibsOnly = nvidiaDrivers.override {
+            libsOnly = true;
+            kernel = null;
+        };
+    };
+    driverConfig = lib.importJSON ./.drivers/config.json;
+in if ((!lib.pathExists ./.drivers/config.json) || (driverConfig.nvidia_version == "none")) then ""
+else let
+    nvidiaPackages = makeNvidiaPackages { version = driverConfig.nvidia_version; };
+    nvidiaLibsOnly = nvidiaPackages.nvidiaLibsOnly;
+    libglvnd = nixpkgs.libglvnd;
+in 
 ''
-    export LD_LIBRARY_PATH=${driverLibPaths}
-    export __EGL_VENDOR_LIBRARY_FILENAMES=${vendorPaths}
+    NVIDIA_JSON=(${nvidiaLibsOnly}/share/glvnd/egl_vendor.d/*nvidia.json)
+    export LD_LIBRARY_PATH=${lib.makeLibraryPath ([ 
+        libglvnd nvidiaLibsOnly 
+    ])}
+    export __EGL_VENDOR_LIBRARY_FILENAMES=''${NVIDIA_JSON[*]}
 ''
