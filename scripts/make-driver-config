@@ -3,32 +3,23 @@
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 cd $SCRIPT_DIR/..
 
-OUTPUT=$(pwd)/.drivers
-mkdir -p $OUTPUT
-rm -rf $OUTPUT/*
+OUTPUT=$(pwd)/.driver_config.json
 
 NVIDIA_VERSION="none"
 
 # Find the nvidia driver version
 NVIDIA_EGL_PATH=$(whereis libEGL_nvidia.so.0 | cut -d " " -f2)
-if [ ! -z $NVIDIA_EGL_PATH ]; then
+if [ -f $NVIDIA_EGL_PATH ]; then
     # find the appropriate libnvidia-glsi.so
     NVIDIA_GLSI_PATH=$(find $(dirname $NVIDIA_EGL_PATH) | grep libnvidia-glsi.so)
     # get the driver verison from the glsi path
     NVIDIA_VERSION="${NVIDIA_GLSI_PATH##*.so.}"
-    echo "Using nvidia driver version: $NVIDIA_VERSION"
 fi
+echo "Using nvidia driver version: $NVIDIA_VERSION"
 
 echo "{
     \"nvidia_version\": \"$NVIDIA_VERSION\"
-}" > $OUTPUT/config.json
-
-# Mask any top-level git ignores
-echo "
-!config.json
-.gitignore
-" > $OUTPUT/.gitignore
+}" > $OUTPUT
 
 # Track for the flake, but do not add
-git add --intent-to-add .drivers/config.json
-git update-index --assume-unchanged .drivers/config.json
+git update-index --skip-worktree $OUTPUT
