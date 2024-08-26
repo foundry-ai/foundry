@@ -27,11 +27,6 @@ done
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 cd $SCRIPT_DIR/..
 
-# Before running anything, save the nix environment variables
-# to .env
-echo "Storing nix environment..."
-nix develop .#job --command bash -c "echo "PATH=\$PATH" > .env"
-
 global_rematch() { 
     local s=$1 regex=$2 
     while [[ $s =~ $regex ]]; do 

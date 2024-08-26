@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
-# This will load the non-wandb environment variables
-export $(cat $SCRIPT_DIR/../.env | xargs)
+if [ ! -z "$STANZA_PATH" ]; then
+    export PATH=$STANZA_PATH
+fi
 
 ENV=$(which env)
 exec $ENV $@

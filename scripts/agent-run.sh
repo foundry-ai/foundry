@@ -38,6 +38,7 @@ do
         DEVICE=$(((i + 1) / AGENTS_PER_DEVICE - 1))
         DEVICE=$(( DEVICE % DEVICES))
         export CUDA_VISIBLE_DEVICES=$DEVICE
+        export XLA_PYTHON_CLIENT_MEM_FRACTION=0.45
         echo "Running agent $NAME"
         echo "  log file: $LOG_FILE"
         echo "  command: $AGENT_COMMAND"

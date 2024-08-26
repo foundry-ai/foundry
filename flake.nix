@@ -48,6 +48,8 @@
                         export PYTHONPATH=$STANZA:$COND_DIFFUSION:$IMAGE_CLASSIFIER:$PYTHONPATH
                         export PATH=$(pwd)/scripts:$PATH
                         ${driversHook}
+
+                        export STANZA_PATH=$PATH
                     '';
                 in {
                 externalPackages = externalPackages;
@@ -60,7 +62,7 @@
                     '';
                 };
                 job = pkgs.mkShell {
-                    packages = with pkgs; [ pythonEnv ];
+                    packages = with pkgs; [ pythonEnv ffmpeg-headless ];
                     # add a PYTHON_PATH to the current directory
                     shellHook = hook;
                 };

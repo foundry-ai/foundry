@@ -8,6 +8,8 @@ metric:
 parameters:
   policy: 
     value: "diffusion_policy"
+  dataset:
+    value: "pusht/chi"
   epochs:
     values: [10, 20, 30]
 command:

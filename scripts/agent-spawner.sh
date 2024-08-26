@@ -32,6 +32,9 @@ exec 3< <($SLURM_COMMAND)
 
 read <&3 JOB_ID
 echo "Job id: $JOB_ID"
+echo "Sweep: $SWEEP_PATH"
+
+sleep 1
 
 while :
 do
