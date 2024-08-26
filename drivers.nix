@@ -31,8 +31,8 @@ let
             kernel = null;
         };
     };
-    driverConfig = lib.importJSON ./.drivers/config.json;
-in if ((!lib.pathExists ./.drivers/config.json) || (driverConfig.nvidia_version == "none")) then ""
+    driverConfig = lib.importJSON ./.driver_config.json;
+in if ((!lib.pathExists ./.driver_config.json) || (driverConfig.nvidia_version == "none")) then ""
 else let
     nvidiaPackages = makeNvidiaPackages { version = driverConfig.nvidia_version; };
     nvidiaLibsOnly = nvidiaPackages.nvidiaLibsOnly;
