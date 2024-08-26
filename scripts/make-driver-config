@@ -14,14 +14,13 @@ LIBCUDA_PATH=$(whereis libcuda.so | cut -d " " -f2)
 
 if [ ! -z $LIBCUDA_PATH ]; then
     echo "Using libcuda.so: $LIBCUDA_PATH"
-
-    LIBCUDA_SHA256=$(sha256sum $LIBCUDA_PATH | head -c 64)
-    cp $LIBCUDA_PATH $OUTPUT/libcuda.so
+    mkdir -p $OUTPUT/cuda
+    cp $LIBCUDA_PATH $OUTPUT/cuda/libcuda.so.1
+    ln -s libcuda.so.1 $OUTPUT/cuda/libcuda.so
     CUDA_CONFIG="
         \"cuda\" : {
-            \"path\" : \"libcuda.so\",
-            \"sha256\" : \"$LIBCUDA_SHA256\"
-        }
+            \"path\" : \"cuda\"
+        },
     "
 fi
 
@@ -31,15 +30,13 @@ NVIDIA_EGL_PATH=$(whereis libEGL_nvidia.so.0 | cut -d " " -f2)
 
 if [ ! -z $NVIDIA_EGL_PATH ]; then
     echo "Using libEGL_nvidia.so: $NVIDIA_EGL_PATH"
-    NVIDIA_SHA256=$(sha256sum $NVIDIA_EGL_PATH | head -c 64)
-
-    cp $NVIDIA_EGL_PATH $OUTPUT/libEGL_nvidia.so.0
-
+    mkdir -p $OUTPUT/nvidia
+    cp $NVIDIA_EGL_PATH $OUTPUT/nvidia/libEGL_nvidia.so.0
     NVIDIA_CONFIG="
         {
             \"name\": \"nvidia\",
-            \"path\": \"libEGL_nvidia.so.0\",
-            \"sha256\" : \"$NVIDIA_SHA256\"
+            \"egl\": \"nvidia/libEGL_nvidia.so.0\",
+            \"path\": \"nvidia\"
         }
     "
 fi
@@ -47,7 +44,7 @@ fi
 echo "
     {
         $CUDA_CONFIG
-        \"drivers\" = [
+        \"drivers\" : [
             $NVIDIA_CONFIG
         ]
     }
@@ -61,5 +58,9 @@ echo "
 " > $OUTPUT/.gitignore
 
 # Track for the flake, but do not add
-git add --intent-to-add .drivers/*
-git update-index --assume-unchanged .drivers/*
+git add --intent-to-add .drivers/config.json
+git add --intent-to-add .drivers/cuda/*
+git add --intent-to-add .drivers/nvidia/*
+git update-index --assume-unchanged .drivers/config.json
+git update-index --assume-unchanged .drivers/cuda/*
+git update-index --assume-unchanged .drivers/nvidia/*
