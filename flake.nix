@@ -38,40 +38,16 @@
                         ps: 
                         with requirements.env; externalPackages
                     );
-                    lib = pkgs.lib;
-                    libglvnd = pkgs.libglvnd;
-                    mesa = pkgs.mesa;
-                    glxindirect = pkgs.runCommand "mesa_glxindirect" { } (''
-                        mkdir -p $out/lib
-                        ln -s ${mesa.drivers}/lib/libGLX_mesa.so.0 $out/lib/libGLX_indirect.so.0
-                    '');
-
-                    driverPath = lib.makeLibraryPath [mesa.drivers];
-                    libvdpauPath = lib.makeSearchPathOutput "lib" "lib/vdpau" [pkgs.libvdpau-va-gl];
-                    libglvndPath = lib.makeLibraryPath [libglvnd];
-
+                    driversHook = (import ./drivers.nix { nixpkgs = pkgs; });
                     hook = ''
                         export TMPDIR=/tmp/$USER-stanza-tmp
                         mkdir -p $TMPDIR
                         STANZA=$(pwd)/packages/stanza/src
                         COND_DIFFUSION=$(pwd)/projects/cond-diffusion/src
                         IMAGE_CLASSIFIER=$(pwd)/projects/image-classifier/src
-
                         export PYTHONPATH=$STANZA:$COND_DIFFUSION:$IMAGE_CLASSIFIER:$PYTHONPATH
                         export PATH=$(pwd)/scripts:$PATH
-
-                        # set up the cuda drivers
-                        mkdir -p .drivers
-                        if [ ! -L .drivers/libcuda.so ]; then
-                            ln -s /usr/lib64/libcuda.so .drivers/libcuda.so
-                        fi
-                        if [ ! -L .drivers/libcuda.so.1 ]; then
-                            ln -s /usr/lib64/libcuda.so.1 .drivers/libcuda.so.1
-                        fi
-                        export LIBGL_DRIVERS_PATH=${lib.makeSearchPathOutput "lib" "lib/dri" [mesa.drivers]}
-                        export LIBVA_DRIVERS_PATH=${lib.makeSearchPathOutput "out" "lib/dri" [mesa.drivers]}
-                        export __EGL_VENDOR_LIBRARY_FILENAMES=${mesa.drivers}/share/glvnd/egl_vendor.d/50_mesa.json
-                        export LD_LIBRARY_PATH=${driverPath}:${libvdpauPath}:${glxindirect}/lib:${libglvndPath}:$(pwd)/.drivers
+                        ${driversHook}
                     '';
                 in {
                 externalPackages = externalPackages;
