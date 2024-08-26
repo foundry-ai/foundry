@@ -29,13 +29,18 @@ unset -v NVIDIA_DRIVER
 NVIDIA_EGL_PATH=$(whereis libEGL_nvidia.so.0 | cut -d " " -f2)
 
 if [ ! -z $NVIDIA_EGL_PATH ]; then
-    echo "Using libEGL_nvidia.so: $NVIDIA_EGL_PATH"
     mkdir -p $OUTPUT/nvidia
+    # find the appropriate libnvidia-glsi.so
+    NVIDIA_GLSI_PATH=$(find $(dirname $NVIDIA_EGL_PATH) | grep libnvidia-glsi.so)
+    echo "Using libEGL_nvidia.so: $NVIDIA_EGL_PATH"
+    echo "Using libnvidia-glsi.so: $NVIDIA_GLSI_PATH"
+
     cp $NVIDIA_EGL_PATH $OUTPUT/nvidia/libEGL_nvidia.so.0
+    cp $NVIDIA_GLSI_PATH $OUTPUT/nvidia
     NVIDIA_CONFIG="
         {
             \"name\": \"nvidia\",
-            \"egl\": \"nvidia/libEGL_nvidia.so.0\",
+            \"egl\": \"libEGL_nvidia.so.0\",
             \"path\": \"nvidia\"
         }
     "

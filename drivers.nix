@@ -15,8 +15,14 @@ glDrivers = builtins.map (
         driverPath = ./.drivers/${driver.path};
     in
     nixpkgs.runCommand "${driver.name}-driver" {} (''
-        mkdir -p $out
+        mkdir -p $out $out/egl
         cp -r ${driverPath} $out/lib
+        echo "{
+            \"file_format_version\" : \"1.0.0\",
+            \"ICD\" : {
+                \"library_path\" : \"$out/lib/${driver.egl}\"
+            }
+        }" > $out/egl/vendor.json
     '')
 ) driverConfig.drivers;
 
