@@ -1,4 +1,6 @@
 result
+log
+foo.py
 
 # wandb files
 wandb

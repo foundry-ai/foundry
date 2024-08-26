@@ -27,23 +27,44 @@
                         python = py;
                         nixpy-custom = nixpy-custom;
                     };
+                    allPackages = (with requirements.env; stanza-meta.dependencies ++ 
+                                (builtins.foldl' (x: y: x ++ y.dependencies) [] stanza-meta.dependencies)
+                    );
+                    externalPackages = builtins.filter (x: !(builtins.elem x (with requirements.env; [
+                        stanza-meta stanza-models stanza cond-diffusion 
+                        image-classifier language-model cond-diffusion-toy
+                    ]))) allPackages;
                     pythonEnv = py.withPackages(
                         ps: 
-                        with requirements.env; [stanza-meta]
+                        with requirements.env; externalPackages
                     );
-                in {
-                default = pkgs.mkShell {
-                    packages = with pkgs; [ pythonEnv fish ];
-                    # add a PYTHON_PATH to the current directory
-                    shellHook = ''
-                    export TMPDIR=/tmp/$USER-stanza-tmp
-                    mkdir -p $TMPDIR
-                    STANZA=$(pwd)/packages/stanza/src
-                    COND_DIFFUSION=$(pwd)/projects/cond-diffusion/src
-                    IMAGE_CLASSIFIER=$(pwd)/projects/image-classifier/src
-                    export PYTHONPATH=$STANZA:$COND_DIFFUSION:$IMAGE_CLASSIFIER:$PYTHONPATH
-                    exec fish
+                    driversHook = (import ./drivers.nix { nixpkgs = pkgs; });
+                    hook = ''
+                        export TMPDIR=/tmp/$USER-stanza-tmp
+                        mkdir -p $TMPDIR
+                        STANZA=$(pwd)/packages/stanza/src
+                        COND_DIFFUSION=$(pwd)/projects/cond-diffusion/src
+                        IMAGE_CLASSIFIER=$(pwd)/projects/image-classifier/src
+                        export PYTHONPATH=$STANZA:$COND_DIFFUSION:$IMAGE_CLASSIFIER:$PYTHONPATH
+                        export PATH=$(pwd)/scripts:$PATH
+                        ${driversHook}
+
+                        export STANZA_PATH=$PATH
                     '';
+                in {
+                externalPackages = externalPackages;
+                default = pkgs.mkShell {
+                    packages = with pkgs; [ pythonEnv fish ffmpeg-headless pkgs.glxinfo ];
+                    # add a PYTHON_PATH to the current directory
+                    shellHook = hook + ''
+                        export SHELL=$(which fish)
+                        exec fish
+                    '';
+                };
+                job = pkgs.mkShell {
+                    packages = with pkgs; [ pythonEnv ffmpeg-headless ];
+                    # add a PYTHON_PATH to the current directory
+                    shellHook = hook;
                 };
             });
             legacyPackages = forEachSupportedSystem ({ pkgs }:

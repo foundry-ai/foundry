@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+cd $SCRIPT_DIR/..
+
+OUTPUT=$(pwd)/.drivers
+mkdir -p $OUTPUT
+rm -rf $OUTPUT/*
+
+unset -v LIBCUDA_PATH
+
+# find libcuda.so
+LIBCUDA_PATH=$(whereis libcuda.so | cut -d " " -f2)
+
+if [ ! -z $LIBCUDA_PATH ]; then
+    echo "Using libcuda.so: $LIBCUDA_PATH"
+    mkdir -p $OUTPUT/cuda
+    cp $LIBCUDA_PATH $OUTPUT/cuda/libcuda.so.1
+    ln -s libcuda.so.1 $OUTPUT/cuda/libcuda.so
+    CUDA_CONFIG="
+        \"cuda\" : {
+            \"path\" : \"cuda\"
+        },
+    "
+fi
+
+unset -v NVIDIA_DRIVER
+
+NVIDIA_EGL_PATH=$(whereis libEGL_nvidia.so.0 | cut -d " " -f2)
+
+if [ ! -z $NVIDIA_EGL_PATH ]; then
+    mkdir -p $OUTPUT/nvidia
+    # find the appropriate libnvidia-glsi.so
+    NVIDIA_GLSI_PATH=$(find $(dirname $NVIDIA_EGL_PATH) | grep libnvidia-glsi.so)
+    echo "Using libEGL_nvidia.so: $NVIDIA_EGL_PATH"
+    echo "Using libnvidia-glsi.so: $NVIDIA_GLSI_PATH"
+
+    cp $NVIDIA_EGL_PATH $OUTPUT/nvidia/libEGL_nvidia.so.0
+    cp $NVIDIA_GLSI_PATH $OUTPUT/nvidia
+    NVIDIA_CONFIG="
+        {
+            \"name\": \"nvidia\",
+            \"egl\": \"libEGL_nvidia.so.0\",
+            \"path\": \"nvidia\"
+        }
+    "
+fi
+
+echo "
+    {
+        $CUDA_CONFIG
+        \"drivers\" : [
+            $NVIDIA_CONFIG
+        ]
+    }
+" > $OUTPUT/config.json
+
+# Mask any top-level git ignores
+echo "
+!*.so
+!config.json
+.gitignore
+" > $OUTPUT/.gitignore
+
+# Track for the flake, but do not add
+git add --intent-to-add .drivers/config.json
+git add --intent-to-add .drivers/cuda/*
+git add --intent-to-add .drivers/nvidia/*
+git update-index --assume-unchanged .drivers/config.json
+git update-index --assume-unchanged .drivers/cuda/*
+git update-index --assume-unchanged .drivers/nvidia/*

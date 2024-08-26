@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+if [ ! -z "$STANZA_PATH" ]; then
+    export PATH=$STANZA_PATH
+fi
+
+ENV=$(which env)
+exec $ENV $@
