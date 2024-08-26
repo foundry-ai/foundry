@@ -51,6 +51,8 @@ buildPythonPackage rec {
             --replace-fail 'def create_initialized_egl_device_display(device_id=0):' \
             'def create_initialized_egl_device_display(device_id=0):
             from mujoco.egl import egl_ext as EGL'
+        # setup the macros...
+        cp robosuite/macros.py robosuite/macros_private.py
     '';
 
     dependencies = [mujoco numba numpy pillow pynput scipy termcolor];

@@ -103,14 +103,6 @@ def train_net_diffusion_policy(
         stanza.util.axis_size(train_data_tree.actions, 1)
     )
 
-    rng = PRNGSequence(rng)
-    #Model = getattr(net, config.model.split("/")[1])
-    # model = DiffusionMLP(
-    #     features=[config.net_width]*config.net_depth, 
-    #     embed_type=config.embed_type, 
-    #     has_skip=config.has_skip
-    # )
-    
     if config.model == "unet":
         model = DiffusionUNet(dims=1, base_channels=128) # 1D temporal UNet
     elif config.model == "mlp":

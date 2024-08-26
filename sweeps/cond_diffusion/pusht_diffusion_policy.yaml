@@ -1,0 +1,16 @@
+program: eval_policy
+name: PushT Diffusion Policy
+method: bayes
+project: cond_diffusion_dp
+metric:
+  goal: maximize
+  name: validation_reward
+parameters:
+  policy: 
+    value: "diffusion_policy"
+  epochs:
+    values: [10, 20, 30]
+command:
+  - stanza-env
+  - ${program}
+  - ${args}

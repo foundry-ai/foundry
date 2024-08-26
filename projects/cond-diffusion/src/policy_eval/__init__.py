@@ -14,8 +14,6 @@ from stanza.policy import PolicyInput, PolicyOutput
 from stanza.env.mujoco.pusht import PushTAgentPos
 from stanza.env.mujoco.robosuite import ManipulationTaskEEFPose
 
-
-
 from jax.experimental import mesh_utils
 from jax.sharding import PositionalSharding
 
@@ -67,9 +65,9 @@ class Config:
         
         dataset = config.get("dataset", str, default=defaults.dataset)
         if dataset.startswith("pusht"):
-            defaults = replace(defaults, action_config=PushTAgentPos())
+            defaults = replace(defaults, action_config=PushTAgentPos(), dataset=dataset)
         elif dataset.startswith("robomimic"):
-            defaults = replace(defaults, action_config=ManipulationTaskEEFPose())
+            defaults = replace(defaults, action_config=ManipulationTaskEEFPose(), dataset=dataset)
         else:
             raise ValueError(f"Unknown dataset: {dataset}")
         
@@ -129,38 +127,15 @@ def eval(config, env, policy, T, x0, rng_key):
         jax.tree.map(lambda x: x[1:], r.states)
     )
     rewards = jax.vmap(env.reward)(pre_states, actions, post_states)
-
     # render predicted action trajectories
     if isinstance(config.render_config, ImageRender):
-        #TODO: move to config for pushT
-        # def draw_action_chunk(action_chunk, img_config):
-        #     T = action_chunk.shape[0]
-        #     colors = jnp.array((jnp.arange(T)/T, jnp.zeros(T), jnp.zeros(T))).T
-        #     circles = canvas.fill(
-        #         canvas.circle(action_chunk, 0.02*jnp.ones(T)),
-        #         color=colors
-        #     )
-        #     circles = canvas.stack_batch(circles)
-        #     circles = canvas.transform(circles,
-        #         translation=(1,-1),
-        #         scale=(img_config.width/2, -img_config.height/2)
-        #     )
-        #     return circles
-
-        # def render_frame(state, action_chunk, img_config):
-        #     image = env.render(state, img_config)
-        #     circles = canvas.stack_batch(jax.vmap(draw_action_chunk, in_axes=(0,None))(action_chunk, img_config))
-        #     image = canvas.paint(image, circles)
-        #     return image
         video = jax.vmap(
             lambda state, action_chunk: env.render(state, replace(config.render_config, trajectory=action_chunk[...,0:3]))        
         )(r.states, r.info)
-
     else:
         video = jax.vmap(
             lambda state: env.render(state, config.render_config)
         )(r.states)
-
     return jnp.max(rewards, axis=-1), (255*video).astype(jnp.uint8)
 
 

@@ -1,5 +1,7 @@
 result
-.driver
+.drivers
+log
+foo.py
 
 # wandb files
 wandb

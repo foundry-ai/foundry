@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+# Check if SCRIPT_DIR is contained in PATH.
+# If it is (and we are in a nix environment)
+# then remove everything after SCRIPT_DIR
+ESCAPED_REPLACE=$(printf '%s\n' "$SCRIPT_DIR" | sed -e 's/[\/&]/\\&/g')
+PATH=${PATH#*$SCRIPT_DIR}
+export PATH=$SCRIPT_DIR:$PATH
+ENV=$(which env)
+exec $ENV $@
