@@ -5,7 +5,7 @@ echo ""
 export NO_FISH=true
 
 unset -v JOBS
-unset -v SWEEP_ID
+unset -v SWEEP_PATH
 unset -v SWEEP_FILE
 
 NUM_AGENTS=1
@@ -16,7 +16,7 @@ SESSION_NAME="session-$(date +%s)"
 while getopts n:i:s: opt; do
 	case $opt in
 		n) NUM_AGENTS=$OPTARG ;;
-		i) SWEEP_ID=$OPTARG ;;
+		i) SWEEP_PATH=$OPTARG ;;
 		s) SWEEP_FILE=$OPTARG ;;
 		*) 
 			echo "Error in command line parsing: $opt" >&2
@@ -26,6 +26,11 @@ done
 
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 cd $SCRIPT_DIR/..
+
+# Before running anything, save the nix environment variables
+# to .env
+echo "Storing nix environment..."
+nix develop .#job --command bash -c "echo "PATH=\$PATH" > .env"
 
 global_rematch() { 
     local s=$1 regex=$2 
@@ -47,17 +52,18 @@ if [ ! -z "$SWEEP_FILE" ]; then
  	SWEEP_START_OUTPUT=$($SWEEP_START_COMMAND 2>&1)
 	echo "$SWEEP_START_OUTPUT"
 	echo ""
-	SWEEP_ID=$(global_rematch "$SWEEP_START_OUTPUT" "Creating sweep with ID: (.*)wandb: View")
 	SWEEP_PATH=$(global_rematch "$SWEEP_START_OUTPUT" "wandb agent (.*)")
 	echo "Started: $SWEEP_ID ($SWEEP_PATH)"
 fi
 
-if [ -z "$SWEEP_ID" ]; then
+if [ -z "$SWEEP_PATH" ]; then
 	echo "No sweep id or sweep file specified."
 	exit 1
 fi
 
-SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+SWEEP_ID=$(basename ${SWEEP_PATH})
+
+
 
 tmux new -d -s "$SESSION_NAME" $SCRIPT_DIR/agent-spawner.sh $SESSION_NAME $SWEEP_ID $SWEEP_PATH $NUM_AGENTS $AGENTS_PER_DEVICE
 
