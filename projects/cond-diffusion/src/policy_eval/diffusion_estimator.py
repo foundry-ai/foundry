@@ -93,8 +93,7 @@ def estimator_diffusion_policy(
                 action = action + agent_pos
             else:
                 raise ValueError(f"Unsupported action_config {config.action_config}")
-        action = action[:config.action_horizon]
-        return PolicyOutput(action=action, info=action)
+        return PolicyOutput(action=action[:config.action_horizon], info=action)
     policy = ChunkingTransform(
         obs_length, config.action_horizon
     ).apply(chunk_policy)

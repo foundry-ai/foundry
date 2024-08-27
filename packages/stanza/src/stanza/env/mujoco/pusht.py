@@ -164,7 +164,7 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
 
     @jax.jit
     def render(self, state : SimulatorState, config : RenderConfig | None = None): 
-        config = config or ImageRender(width=256, height=256)
+        if config is None: config = ImageRender(width=256, height=256)
         if isinstance(config, ImageRender):
             data = self.simulator.system_data(state)
             image = jnp.ones((config.height, config.width, 3))
@@ -180,6 +180,22 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
                 2, 2
             )
             image = canvas.paint(image, target, world)
+            if config.trajectory is not None:
+                def draw_action_chunk(action_chunk):
+                    T = action_chunk.shape[0]
+                    colors = jnp.array((jnp.arange(T)/T, jnp.zeros(T), jnp.ones(T))).T
+                    circles = canvas.fill(
+                        canvas.circle(action_chunk, 0.02*jnp.ones(T)),
+                        color=colors
+                    )
+                    circles = canvas.stack_batch(circles)
+                    circles = canvas.transform(circles,
+                        translation=(1,-1),
+                        scale=(config.width/2, -config.height/2)
+                    )
+                    return circles
+                circles = draw_action_chunk(config.trajectory)
+                image = canvas.paint(image, circles)
             return image
         else:
             raise ValueError("Unsupported render config")

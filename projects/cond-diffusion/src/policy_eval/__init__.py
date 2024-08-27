@@ -1,7 +1,6 @@
 from stanza.runtime import setup
 setup()
 
-from stanza import dataclasses
 from stanza.dataclasses import dataclass, replace
 from stanza.runtime import ConfigProvider, command
 from stanza.datasets.env import datasets
@@ -35,7 +34,7 @@ import stanza
 import logging
 logger = logging.getLogger(__name__)
 
-@dataclasses.dataclass
+@dataclass
 class PolicyConfig:
     pass
 
@@ -46,7 +45,7 @@ class PolicyConfig:
     def train_policy(self, config, env, train_data):
         pass
 
-@dataclasses.dataclass
+@dataclass
 class Config:
     seed: int = 42
     dataset: str = "robomimic/pickplace/can/ph"
@@ -56,8 +55,8 @@ class Config:
     action_config: ObserveConfig = None
     timesteps: int = 200
     train_data_size: int | None = None
-    test_data_size: int | None = 4
-    render_config: RenderConfig = ImageRender(128, 128)
+    test_data_size: int | None = 1
+    render_config: RenderConfig = ImageRender(128,128)
 
     @staticmethod
     def parse(config: ConfigProvider) -> "Config":
@@ -65,9 +64,9 @@ class Config:
 
         from . import diffusion_policy, diffusion_estimator, nearest_neighbor, behavior_cloning
         
-        dataset = config.get("dataset", str, default=defaults.dataset)
+        dataset = config.get("dataset", str, default=None)
         if dataset.startswith("pusht"):
-            defaults = replace(defaults, action_config=PushTAgentPos())
+            defaults = replace(defaults, dataset=dataset, action_config=PushTAgentPos())
         elif dataset.startswith("robomimic"):
             defaults = replace(defaults, action_config=ManipulationTaskEEFPose())
         else:
@@ -84,12 +83,12 @@ class Config:
         elif policy == "behavior_cloning":
             defaults = replace(defaults, policy=behavior_cloning.BCConfig())
         else:
-            defaults = replace(defaults, policy=diffusion_estimator.DiffusionEstimatorConfig())
+            raise ValueError(f"Unknown policy: {policy}")
 
         
         return config.get_dataclass(defaults)
 
-@dataclasses.dataclass
+@dataclass
 class Sample:
     state: Any
     observations: jax.Array
@@ -132,26 +131,6 @@ def eval(config, env, policy, T, x0, rng_key):
 
     # render predicted action trajectories
     if isinstance(config.render_config, ImageRender):
-        #TODO: move to config for pushT
-        # def draw_action_chunk(action_chunk, img_config):
-        #     T = action_chunk.shape[0]
-        #     colors = jnp.array((jnp.arange(T)/T, jnp.zeros(T), jnp.zeros(T))).T
-        #     circles = canvas.fill(
-        #         canvas.circle(action_chunk, 0.02*jnp.ones(T)),
-        #         color=colors
-        #     )
-        #     circles = canvas.stack_batch(circles)
-        #     circles = canvas.transform(circles,
-        #         translation=(1,-1),
-        #         scale=(img_config.width/2, -img_config.height/2)
-        #     )
-        #     return circles
-
-        # def render_frame(state, action_chunk, img_config):
-        #     image = env.render(state, img_config)
-        #     circles = canvas.stack_batch(jax.vmap(draw_action_chunk, in_axes=(0,None))(action_chunk, img_config))
-        #     image = canvas.paint(image, circles)
-        #     return image
         video = jax.vmap(
             lambda state, action_chunk: env.render(state, replace(config.render_config, trajectory=action_chunk[...,0:3]))        
         )(r.states, r.info)
@@ -213,8 +192,6 @@ def main(config : Config):
             jax.tree.map(lambda x: x[0], x.reduced_state)
         )
     ).as_pytree()
-    #test_x0s = jax.tree.map(lambda x: x[:1], test_x0s)
-    #eval = functools.partial(evaluate, env, test_x0s, config.timesteps)
 
     wandb_run = wandb.init(
         project="policy_eval",
@@ -227,8 +204,8 @@ def main(config : Config):
     )
     logger.info(f"Performing final evaluation...")
 
-    #output = jax.jit(partial(eval,policy))(jax.random.key(42))
     output = evaluate(config, env, test_x0s, config.timesteps, policy, jax.random.key(42))
+
     # get the metrics and final reportables
     # from the eval output
     metrics, reportables = stanza.train.reporting.as_log_dict(output)

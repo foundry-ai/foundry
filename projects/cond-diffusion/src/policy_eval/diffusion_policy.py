@@ -247,8 +247,7 @@ def train_net_diffusion_policy(
         )
         action = schedule.sample(input.rng_key, model_fn, train_sample.actions) 
         action = normalizer.map(lambda x: x.actions).unnormalize(action)
-        action = action[:config.action_horizon]
-        return PolicyOutput(action=action, info=action)
+        return PolicyOutput(action=action[:config.action_horizon], info=action)
     
     policy = ChunkingTransform(
         obs_length, config.action_horizon
