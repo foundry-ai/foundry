@@ -57,7 +57,7 @@ class DiffusionPolicyConfig:
     checkpoint_filename: str = None
 
     def parse(self, config: ConfigProvider) -> "DiffusionPolicyConfig":
-        model = config.get("model", str, default="mlp")
+        model = config.get("model", str, default=None)
         if model == "mlp":
             self = replace(self, model=MLPConfig())
         elif model == "unet":
@@ -128,13 +128,13 @@ def train_net_diffusion_policy(
     #     has_skip=config.has_skip
     # )
     
-    if isinstance(config, UNetConfig):
+    if isinstance(config.model, UNetConfig):
         model = DiffusionUNet(
             dims=1, 
             base_channels=config.model.base_channels, 
             channel_mult=tuple([2**i for i in range(config.model.num_downsample)]),
         ) # 1D temporal UNet
-    elif isinstance(config, MLPConfig):
+    elif isinstance(config.model, MLPConfig):
         model = DiffusionMLP(
             features=[config.net_width]*config.net_depth
         )

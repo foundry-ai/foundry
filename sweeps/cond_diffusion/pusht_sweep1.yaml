@@ -10,11 +10,11 @@ parameters:
     value: "diffusion_policy"
   dataset:
     value: "pusht/chi"
-  model:
+  denoiser.model:
     value: "unet"
-  epochs:
-    min: 10
-    max: 100
+  denoiser.iterations:
+    min: 8000
+    max: 80000
   denoiser.batch_size:
     min: 32
     max: 256

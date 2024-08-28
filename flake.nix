@@ -54,7 +54,7 @@
                 in {
                 externalPackages = externalPackages;
                 default = pkgs.mkShell {
-                    packages = with pkgs; [ pythonEnv fish pkgs.glxinfo ];
+                    packages = with pkgs; [ pythonEnv fish pkgs.glxinfo ffmpeg-headless];
                     # add a PYTHON_PATH to the current directory
                     shellHook = hook + ''
                         export SHELL=$(which fish)
@@ -62,7 +62,7 @@
                     '';
                 };
                 job = pkgs.mkShell {
-                    packages = with pkgs; [ pythonEnv ];
+                    packages = with pkgs; [ pythonEnv ffmpeg-headless];
                     # add a PYTHON_PATH to the current directory
                     shellHook = hook;
                 };

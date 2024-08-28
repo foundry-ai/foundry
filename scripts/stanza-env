@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
-if [ ! -z "$foundry_PATH" ]; then
-    export PATH=$foundry_PATH
+if [ ! -z "$STANZA_PATH" ]; then
+    export PATH=$STANZA_PATH
 fi
 
 RED="\e[31m"
