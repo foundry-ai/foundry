@@ -1,0 +1,28 @@
+program: eval_policy
+name: PushT Diffusion Policy
+method: bayes
+project: cond_diffusion_dp
+metric:
+  goal: minimize
+  name: loss
+parameters:
+  policy: 
+    value: "diffusion_policy"
+  dataset:
+    value: "pusht/chi"
+  model:
+    value: "unet"
+  epochs:
+    min: 10
+    max: 100
+  denoiser.batch_size:
+    min: 32
+    max: 256
+  denoiser.learning_rate:
+    min: 0.00001
+    max: 0.001
+
+command:
+  - stanza-env
+  - ${program}
+  - ${args}

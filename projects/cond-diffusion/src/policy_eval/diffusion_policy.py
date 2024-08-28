@@ -46,7 +46,7 @@ class UNetConfig:
 class DiffusionPolicyConfig:
     model: MLPConfig | UNetConfig | None = None
 
-    iterations: int = 100
+    iterations: int = 60000
     batch_size: int = 64
     learning_rate: float = 1e-4
 

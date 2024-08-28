@@ -46,7 +46,7 @@ class BCConfig:
     action_horizon: int = 8
     
     from_checkpoint: bool = False
-    checkpoint_filename: str = "5nupde5h_final.pkl"
+    checkpoint_filename: str = None
 
     def parse(self, config: ConfigProvider) -> "BCConfig":
         return config.get_dataclass(self, flatten={"train"})

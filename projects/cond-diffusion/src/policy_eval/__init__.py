@@ -48,12 +48,12 @@ class Config:
     seed: int = 42
     dataset: str = "robomimic/pickplace/can/ph"
     obs_length: int = 1
-    action_length: int = 32
+    action_length: int = 16
     policy: PolicyConfig = None
     action_config: ObserveConfig = None
     timesteps: int = 200
     train_data_size: int | None = None
-    test_data_size: int | None = 1
+    test_data_size: int | None = 4
     render_config: RenderConfig = ImageRender(128,128)
 
     @staticmethod

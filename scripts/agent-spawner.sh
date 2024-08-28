@@ -28,7 +28,7 @@ if [ -z $SRUN ]; then
     COMMAND="$AGENT_RUN"
 else
     export NIX_STORE=
-    COMMAND="srun -N 1 --gres=gpu:4 --mem=1TB -c64 --time 6:00:00 $AGENT_RUN"
+    COMMAND="srun -N 1 --gres=gpu:4 --mem=1TB -c64 --time 12:00:00 $AGENT_RUN"
 fi
 
 echo "Running: $COMMAND"
