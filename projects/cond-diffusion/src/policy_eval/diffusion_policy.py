@@ -26,19 +26,28 @@ import os
 
 logger = logging.getLogger(__name__)
 
+@dataclass
+class MLPConfig:
+    net_width: int = 64
+    net_depth: int = 3
+
+    def parse(self, config: ConfigProvider) -> "MLPConfig":
+        return config.get_dataclass(self)
+
+@dataclass
+class UNetConfig:
+    base_channels: int = 128
+    num_downsample: int = 4
+
+    def parse(self, config : ConfigProvider) -> "UNetConfig":
+        return config.get_dataclass(self)
 
 @dataclass
 class DiffusionPolicyConfig:
-    model: str = "unet"
+    model: MLPConfig | UNetConfig | None = None
 
     iterations: int = 100
     batch_size: int = 64
-
-    # MLP config
-    # net_width: int = 4096
-    # net_depth: int = 3
-    # embed_type: str = "film"
-    # has_skip: bool = True
 
     diffusion_steps: int = 50
     action_horizon: int = 8
@@ -47,6 +56,13 @@ class DiffusionPolicyConfig:
     checkpoint_filename: str = None
 
     def parse(self, config: ConfigProvider) -> "DiffusionPolicyConfig":
+        model = config.get("model", str, default="mlp")
+        if model == "mlp":
+            self = replace(self, model=MLPConfig())
+        elif model == "unet":
+            self = replace(self, model=UNetConfig())
+        else: 
+            raise ValueError(f"Unknown model: {model}")
         return config.get_dataclass(self, flatten={"train"})
 
     def train_policy(self, wandb_run, train_data, env, eval, rng):
@@ -289,11 +305,8 @@ class DiffusionUNet(UNet):
 
 class DiffusionMLP(nn.Module):
     features: Sequence[int]
-    embed_type: str 
-    has_skip: bool
     activation: str = "relu"
     time_embed_dim: int = 256
-    obs_embed_dim: int = 256
 
     @nn.compact
     def __call__(self, obs, actions,
@@ -312,25 +325,15 @@ class DiffusionMLP(nn.Module):
         ])(time_embed)
         obs_flat, _ = jax.flatten_util.ravel_pytree(obs)
         actions_flat, actions_uf = jax.flatten_util.ravel_pytree(actions)
-        if self.embed_type == "concat":
-            actions = jnp.concatenate((actions_flat, obs_flat), axis=-1)
-            embed = time_embed
-        elif self.embed_type == "film":
-            obs_embed = nn.Sequential([
-                nn.Dense(self.obs_embed_dim),
-                activation,
-                nn.Dense(self.obs_embed_dim),
-            ])(obs_flat)
-            actions = actions_flat
-            embed = time_embed + obs_embed
-        else: 
-            raise ValueError(f"Unknown embedding type: {self.embed_type}")
+
+        # concatenated embedding
+        actions = jnp.concatenate((actions_flat, obs_flat), axis=-1)
+        embed = time_embed
+
         for feat in self.features:
             shift, scale = jnp.split(nn.Dense(2*feat)(embed), 2, -1)
             actions = activation(nn.Dense(feat)(actions))
             actions = actions * (1 + scale) + shift
-            if self.has_skip:
-                actions = jnp.concatenate((actions, actions_flat, obs_flat), axis=-1)
         actions = nn.Dense(actions_flat.shape[-1])(actions)
         # x = jax.nn.tanh(x)
         actions = actions_uf(actions)

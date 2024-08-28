@@ -42,7 +42,7 @@ class UNetConfig:
 
 @dataclass
 class DiffusionLearnedConfig:
-    model: MLPConfig | None = None
+    model: MLPConfig | UNetConfig | None = None
 
     iterations: int = 5000
     batch_size: int = 64
@@ -58,7 +58,8 @@ class DiffusionLearnedConfig:
             self = replace(self, model=MLPConfig())
         elif model == "unet":
             self = replace(self, model=UNetConfig())
-        else: raise RuntimeError(f"{model}")
+        else: 
+            raise ValueError(f"Unknown model: {model}")
         return config.get_dataclass(self)
 
     def train_denoiser(self, wandb_run, train_data, rng):
