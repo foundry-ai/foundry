@@ -200,11 +200,11 @@ def main(config : Config):
     logger.info(f"Logging to [blue]{wandb_run.url}[/blue]")
 
     policy = config.policy.train_policy(
-        wandb_run, train_data, env, eval, rng
+        wandb_run, train_data, env, eval, next(rng)
     )
     logger.info(f"Performing final evaluation...")
 
-    output = evaluate(config, env, test_x0s, config.timesteps, policy, jax.random.key(42))
+    output = evaluate(config, env, test_x0s, config.timesteps, policy, next(rng))
 
     # get the metrics and final reportables
     # from the eval output

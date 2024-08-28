@@ -7,7 +7,7 @@ from stanza.random import PRNGSequence
 from stanza.policy import PolicyInput, PolicyOutput
 from stanza.policy.transforms import ChunkingTransform
 
-from stanza.dataclasses import dataclass
+from stanza.dataclasses import dataclass, replace
 from stanza.data.normalizer import LinearNormalizer, StdNormalizer
 from stanza import train
 import stanza.train.console
@@ -48,6 +48,7 @@ class DiffusionPolicyConfig:
 
     iterations: int = 100
     batch_size: int = 64
+    learning_rate: float = 1e-4
 
     diffusion_steps: int = 50
     action_horizon: int = 8
@@ -127,13 +128,15 @@ def train_net_diffusion_policy(
     #     has_skip=config.has_skip
     # )
     
-    if config.model == "unet":
-        model = DiffusionUNet(dims=1, base_channels=128) # 1D temporal UNet
-    elif config.model == "mlp":
+    if isinstance(config, UNetConfig):
+        model = DiffusionUNet(
+            dims=1, 
+            base_channels=config.model.base_channels, 
+            channel_mult=tuple([2**i for i in range(config.model.num_downsample)]),
+        ) # 1D temporal UNet
+    elif isinstance(config, MLPConfig):
         model = DiffusionMLP(
-            features=[config.net_width]*config.net_depth, 
-            embed_type=config.embed_type, 
-            has_skip=config.has_skip
+            features=[config.net_width]*config.net_depth
         )
     else:
         raise ValueError(f"Unknown model type: {config.model}")
@@ -181,7 +184,7 @@ def train_net_diffusion_policy(
         )
     batched_loss_fn = train.batch_loss(loss_fn)
 
-    opt_sched = optax.cosine_onecycle_schedule(config.iterations, 1e-4)
+    opt_sched = optax.cosine_onecycle_schedule(config.iterations, config.learning_rate)
     optimizer = optax.adamw(opt_sched)
     opt_state = optimizer.init(vars["params"])
 
