@@ -16,7 +16,6 @@ let lib = nixpkgs.lib;
 
     ffmpegio-core = dependencies.ffmpegio-core;
     numpy = dependencies.numpy;
-
 in
 buildPythonPackage rec {
   pname = "ffmpegio";
@@ -28,10 +27,17 @@ buildPythonPackage rec {
     hash = "sha256-1ocuTX4otvN7Uqc55lL5ZQtrm/WgjPmWE+WbFFLgDWU=";
   };
   build-system = [ setuptools wheel ];
-  propagatedBuildInputs = [ ffmpeg ];
+
   dependencies = [
     ffmpegio-core numpy
   ];
+  propagatedBuildInputs = [ ffmpeg ];
+
+  postInstall = ''
+    mkdir -p $out/bin
+    ln -s ${ffmpeg}/bin/ffmpeg $out/bin/ffmpeg
+  '';
+
 
   pythonImportsCheck = [ "ffmpegio" ];
 }

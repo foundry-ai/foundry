@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+cd $SCRIPT_DIR/..
+
+OUTPUT=$(pwd)/.driver_config.json
+
+NVIDIA_VERSION="none"
+
+# Find the nvidia driver version
+NVIDIA_EGL_PATH=$(whereis libEGL_nvidia.so.0 | cut -d " " -f2)
+if [ -f $NVIDIA_EGL_PATH ]; then
+    # find the appropriate libnvidia-glsi.so
+    NVIDIA_GLSI_PATH=$(find $(dirname $NVIDIA_EGL_PATH) | grep libnvidia-glsi.so)
+    # get the driver verison from the glsi path
+    NVIDIA_VERSION="${NVIDIA_GLSI_PATH##*.so.}"
+fi
+echo "Using nvidia driver version: $NVIDIA_VERSION"
+
+echo "{
+    \"nvidia_version\": \"$NVIDIA_VERSION\"
+}" > $OUTPUT
+
+# Track for the flake, but do not add
+git update-index --skip-worktree $OUTPUT

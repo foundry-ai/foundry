@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+echo "Initializing agents..."
+echo ""
+
+export NO_FISH=true
+
+unset -v JOBS
+unset -v SWEEP_PATH
+unset -v SWEEP_FILE
+
+NUM_AGENTS=1
+AGENTS_PER_DEVICE=2
+
+SESSION_NAME="session-$(date +%s)"
+
+while getopts n:i:s: opt; do
+	case $opt in
+		n) NUM_AGENTS=$OPTARG ;;
+		i) SWEEP_PATH=$OPTARG ;;
+		s) SWEEP_FILE=$OPTARG ;;
+		*) 
+			echo "Error in command line parsing: $opt" >&2
+			exit 1
+	esac
+done
+
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+cd $SCRIPT_DIR/..
+
+global_rematch() { 
+    local s=$1 regex=$2 
+    while [[ $s =~ $regex ]]; do 
+        echo "${BASH_REMATCH[1]}"
+        s=${s#*"${BASH_REMATCH[1]}"}
+    done
+}
+
+# Start the sweep manually
+if [ ! -z "$SWEEP_FILE" ]; then
+    echo "Starting sweep..."
+    SWEEP_FILE="$(pwd)/$SWEEP_FILE"
+    # Run the sweep command
+	SWEEP_START_COMMAND="wandb sweep $SWEEP_FILE"
+	if [ -z $NIX_STORE ]; then
+		SWEEP_START_COMMAND="nix develop .#job --command $SWEEP_START_COMMAND"
+	fi
+ 	SWEEP_START_OUTPUT=$($SWEEP_START_COMMAND 2>&1)
+	echo "$SWEEP_START_OUTPUT"
+	echo ""
+	SWEEP_PATH=$(global_rematch "$SWEEP_START_OUTPUT" "wandb agent (.*)")
+	echo "Started: $SWEEP_ID ($SWEEP_PATH)"
+fi
+
+if [ -z "$SWEEP_PATH" ]; then
+	echo "No sweep id or sweep file specified."
+	exit 1
+fi
+
+SWEEP_ID=$(basename ${SWEEP_PATH})
+
+
+
+tmux new -d -s "$SESSION_NAME" $SCRIPT_DIR/agent-spawner.sh $SESSION_NAME $SWEEP_ID $SWEEP_PATH $NUM_AGENTS $AGENTS_PER_DEVICE
+
+echo "Attach with:"
+echo ""
+echo "tmux attach-session -t '${SESSION_NAME}'"
+echo ""
+exec tmux attach-session -t $SESSION_NAME
