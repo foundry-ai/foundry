@@ -112,7 +112,10 @@ class ImageRender(RenderConfig[jax.Array]):
     width: int = 256
     height: int = 256
     camera: int | str | None = None
-    trajectory: jax.Array = None
+
+@dataclass
+class ImageActionsRender(ImageRender):
+    actions: typing.Any = None
 
 class HtmlRender(RenderConfig[str]): ...
 

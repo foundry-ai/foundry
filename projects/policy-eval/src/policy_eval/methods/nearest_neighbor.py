@@ -1,9 +1,7 @@
-from policy_eval import Sample
+from ..common import Sample, Inputs
 from typing import Callable
-
 import foundry.util
 from foundry.data import Data
-from foundry.runtime import ConfigProvider
 from foundry.policy import PolicyInput, PolicyOutput
 from foundry.policy.transforms import ChunkingTransform
 
@@ -15,18 +13,11 @@ import jax
 import foundry.numpy as jnp
 
 @dataclass
-class NNConfig:
+class NearestConfig:
     action_horizon: int = 8
 
-    def parse(self, config: ConfigProvider) -> "NNConfig":
-        default = NNConfig()
-        return config.get_dataclass(default, flatten={"train"})
-
-    def train_policy(self, wandb_run, train_data, env, eval, rng):
-        return nearest_neighbor(self, wandb_run, train_data, env, eval, rng)
-
 def nearest_neighbor(
-            config: NNConfig,
+            config: NearestConfig,
             wandb_run,
             train_data : Data[Sample],
             env : Environment,

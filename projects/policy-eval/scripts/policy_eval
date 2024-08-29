@@ -4,6 +4,27 @@ if __name__=="__main__":
     # setup logging etc.
     from foundry.util.runtime import setup
     setup()
-    import omegaconf
-    from policy_eval import run
-    run()
+
+    import sys
+    args = [a.lstrip("-") for a in sys.argv[1:]]
+    from omegaconf import OmegaConf, MISSING
+    cli_conf = OmegaConf.from_cli(args)
+    configs = [cli_conf]
+
+    yaml_paths = cli_conf.get("yaml", MISSING)
+    if yaml_paths is not MISSING:
+        del cli_conf["yaml"]
+        if isinstance(yaml_paths, str):
+            yaml_paths = list(yaml_paths.split(","))
+    else:
+        yaml_paths = []
+
+    yamls = [OmegaConf.load(path) for path in yaml_paths]
+    configs.extend(yamls)
+
+    from policy_eval.main import Config, run
+    conf = OmegaConf.structured(Config)
+    conf = OmegaConf.unsafe_merge(conf, *configs)
+    # convert to a dataclass, resolving interpolations
+    conf = OmegaConf.to_object(conf)
+    run(conf)

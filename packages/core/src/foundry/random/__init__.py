@@ -1,7 +1,8 @@
 import jax.random
 import jax.numpy
+import jax
 
-from foundry.core import dataclasses
+from jax.random import key, split, fold_in
 
 def key_or_seed(key_or_seed):
     if isinstance(key_or_seed, int):

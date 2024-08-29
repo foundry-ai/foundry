@@ -12,7 +12,9 @@ import numpy as np
 from PIL import Image
 from rich.progress import Progress
 from pathlib import Path
-from foundry import dataclasses
+
+from foundry.core import dataclasses
+
 import zipfile
 import requests
 import tarfile
@@ -21,7 +23,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Downloading and extracting utilities...
-_DATA = Path(os.environ["HOME"]) / ".dataset_cache"
+_DATA = Path(os.environ["HOME"]) / ".foundry_dataset_cache"
 
 def cache_path(key, filename=None):
     path = _DATA / key 

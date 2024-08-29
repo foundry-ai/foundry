@@ -1,8 +1,10 @@
 from foundry.env import (
     EnvWrapper, EnvironmentRegistry,
-    RenderConfig, ImageRender,
+    RenderConfig, ImageRender, ImageActionsRender,
     ObserveConfig
 )
+from foundry.core.typing import Array
+
 from foundry.env.transforms import (
     EnvTransform, ChainedTransform,
     MultiStepTransform
@@ -23,26 +25,27 @@ from foundry.env.mujoco.core import (
 import shapely.geometry as sg
 import foundry.numpy as jnp
 import numpy as np
-import jax.random
 import mujoco
+
+import jax.lax
 
 import importlib.resources as resources
 
 @dataclass
 class PushTObs:
-    agent_pos: jax.Array = None
-    agent_vel: jax.Array = None
+    agent_pos: Array = None
+    agent_vel: Array = None
 
-    block_pos: jax.Array = None
-    block_vel: jax.Array = None
+    block_pos: Array = None
+    block_vel: Array = None
 
-    block_rot: jax.Array = None
-    block_rot_vel: jax.Array = None
+    block_rot: Array = None
+    block_rot_vel: Array = None
 
 @dataclass
 class PushTEnv(MujocoEnvironment[SimulatorState]):
-    goal_pos: jax.Array = field(default_factory=lambda: jnp.zeros((2,), jnp.float32))
-    goal_rot: jax.Array = field(default_factory=lambda: jnp.array(-jnp.pi/4, jnp.float32))
+    goal_pos: Array = field(default_factory=lambda: jnp.zeros((2,), jnp.float32))
+    goal_rot: Array = field(default_factory=lambda: jnp.array(-jnp.pi/4, jnp.float32))
     # use the mjx backend by default
     physics_backend: str = "mjx"
 
@@ -75,17 +78,17 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
         return mujoco.MjModel.from_xml_string(self.xml)
 
     @jax.jit
-    def reset(self, rng_key : jax.Array) -> SimulatorState:
-        a_pos, b_pos, b_rot, c = jax.random.split(rng_key, 4)
-        agent_pos = jax.random.uniform(a_pos, (2,), minval=-0.8, maxval=0.8)
-        block_rot = jax.random.uniform(b_pos, (), minval=-jnp.pi, maxval=jnp.pi)
-        block_pos = jax.random.uniform(b_rot, (2,), minval=-0.4, maxval=0.4)
+    def reset(self, rng_key : Array) -> SimulatorState:
+        a_pos, b_pos, b_rot, c = foundry.random.split(rng_key, 4)
+        agent_pos = foundry.random.uniform(a_pos, (2,), minval=-0.8, maxval=0.8)
+        block_rot = foundry.random.uniform(b_pos, (), minval=-jnp.pi, maxval=jnp.pi)
+        block_pos = foundry.random.uniform(b_rot, (2,), minval=-0.4, maxval=0.4)
         # re-generate block positions while the block is too close to the agent
         min_radius = self.block_scale*2*jnp.sqrt(2) + self.agent_radius
         def gen_pos(carry):
             rng_key, _ = carry
-            rng_key, sk = jax.random.split(rng_key)
-            return (rng_key, jax.random.uniform(sk, (2,), minval=-0.4, maxval=0.4))
+            rng_key, sk = foundry.random.split(rng_key)
+            return (rng_key, foundry.random.uniform(sk, (2,), minval=-0.4, maxval=0.4))
         _, block_pos = jax.lax.while_loop(
             lambda s: jnp.linalg.norm(s[1] - agent_pos) < min_radius,
             gen_pos, (c, block_pos)
@@ -180,7 +183,7 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
                 2, 2
             )
             image = canvas.paint(image, target, world)
-            if config.trajectory is not None:
+            if isinstance(config, ImageActionsRender) and config.actions is not None:
                 def draw_action_chunk(action_chunk):
                     T = action_chunk.shape[0]
                     colors = jnp.array((jnp.arange(T)/T, jnp.zeros(T), jnp.ones(T))).T
@@ -194,7 +197,7 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
                         scale=(config.width/2, -config.height/2)
                     )
                     return circles
-                circles = draw_action_chunk(config.trajectory)
+                circles = draw_action_chunk(config.actions)
                 image = canvas.paint(image, circles)
             return image
         else:

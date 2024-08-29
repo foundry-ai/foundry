@@ -1,26 +1,28 @@
-
-from policy_eval import Sample
+from ..common import Sample
 from typing import Callable
 
-from foundry.runtime import ConfigProvider
-from foundry.core.random import PRNGSequence
+from foundry.random import PRNGSequence
 from foundry.policy import PolicyInput, PolicyOutput
 from foundry.policy.transforms import ChunkingTransform
 
 from foundry.core.dataclasses import dataclass
-import dataclasses
+
 from foundry.data import Data, PyTreeData
 from foundry.data.normalizer import LinearNormalizer, StdNormalizer
+
 from foundry import train
 from foundry.env import Environment
+
 import foundry.train.console
+
 import wandb
 import optax
 import flax.linen as nn
 import flax.linen.activation as activations
+
 from typing import Sequence
-from projects.models.src.foundry.model.embed import SinusoidalPosEmbed
-from projects.models.src.foundry.model.unet import UNet
+from foundry.models.embed import SinusoidalPosEmbed
+from foundry.models.unet import UNet
 
 import jax
 import foundry.numpy as jnp
@@ -46,45 +48,7 @@ class BCConfig:
     action_horizon: int = 8
     
     from_checkpoint: bool = False
-    checkpoint_filename: str = None
-
-    def parse(self, config: ConfigProvider) -> "BCConfig":
-        return config.get_dataclass(self, flatten={"train"})
-
-    def train_policy(self, wandb_run, train_data, env, eval, rng):
-        if self.from_checkpoint:
-            return BC_from_checkpoint(self, wandb_run, train_data, env, eval)
-        else:
-            return train_net_BC(self, wandb_run, train_data, env, eval)
-
-def BC_from_checkpoint( 
-        config: BCConfig, wandb_run, train_data, env, eval):
-    current_dir = os.path.dirname(os.path.realpath(__file__))
-    ckpts_dir = os.path.join(current_dir, "checkpoints")
-    file_path = os.path.join(ckpts_dir, config.checkpoint_filename)
-    with open(file_path, "rb") as file:
-        ckpt = pickle.load(file)
-
-    model = ckpt["model"]
-    vars = ckpt["vars"]
-    normalizer = ckpt["normalizer"]
-
-    train_sample = train_data[0]
-    action_sample = train_sample.actions
-
-    def chunk_policy(input: PolicyInput) -> PolicyOutput:
-        obs = input.observation
-        obs = normalizer.map(lambda x: x.observations).normalize(obs)
-        action = model.apply(vars, obs, action_sample)
-        action = normalizer.map(lambda x: x.actions).unnormalize(action)
-        action = action[:config.action_horizon]
-        return PolicyOutput(action=action, info=action)
-    
-    obs_length = foundry.util.axis_size(train_data.as_pytree().observations, 1)
-    policy = ChunkingTransform(
-        obs_length, config.action_horizon
-    ).apply(chunk_policy)
-    return policy
+    checkpoint_filename: str | None = None
 
 def train_net_BC(
         config : BCConfig,  wandb_run, train_data, env, eval):

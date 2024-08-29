@@ -1,6 +1,6 @@
 from foundry.data import DataStream, StreamBuilder
 from foundry.core.dataclasses import dataclass
-from foundry.core.random import PRNGSequence
+from foundry.random import PRNGSequence
 # import all reporting datatypes
 from .reporting import *
 

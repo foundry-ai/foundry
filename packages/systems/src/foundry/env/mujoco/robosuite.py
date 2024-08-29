@@ -97,11 +97,14 @@ class RobosuiteEnv(MujocoEnvironment[SimulatorState]):
         # which disables the collision geometry visualization
         if isinstance(config, ImageRender):
             state = self.simulator.reduce_state(state)
+
             camera = config.camera if config.camera is not None else "frontview"
+            actions = config.actions if isinstance(config, ImageActionsRender) else None
+
             # render only the visual geometries
             # do not include the collision geometries
             return self.native_simulator.render(
-                state, config.width, config.height, (False, True), camera, config.trajectory
+                state, config.width, config.height, (False, True), camera, actions
             )
         return super().render(config, state)
 

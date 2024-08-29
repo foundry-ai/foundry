@@ -1,11 +1,11 @@
-
-from policy_eval import Sample
+from ..common import Sample, Inputs
 
 from foundry.diffusion import DDPMSchedule
-from foundry.runtime import ConfigProvider
-from foundry.core.random import PRNGSequence
+from foundry.random import PRNGSequence
 from foundry.policy import PolicyInput, PolicyOutput
 from foundry.policy.transforms import ChunkingTransform
+
+from omegaconf import MISSING
 
 from foundry.core.dataclasses import dataclass
 from foundry.data.normalizer import LinearNormalizer, StdNormalizer
@@ -15,8 +15,8 @@ import optax
 import flax.linen as nn
 import flax.linen.activation as activations
 from typing import Sequence
-from projects.models.src.foundry.model.embed import SinusoidalPosEmbed
-from projects.models.src.foundry.model.unet import UNet
+from foundry.models.embed import SinusoidalPosEmbed
+from foundry.models.unet import UNet
 
 import jax
 import foundry.numpy as jnp
@@ -31,20 +31,17 @@ class MLPConfig:
     net_width: int = 64
     net_depth: int = 3
 
-    def parse(self, config: ConfigProvider) -> "MLPConfig":
-        return config.get_dataclass(self)
-
 @dataclass
 class UNetConfig:
     base_channels: int = 128
     num_downsample: int = 4
 
-    def parse(self, config : ConfigProvider) -> "UNetConfig":
-        return config.get_dataclass(self)
-
 @dataclass
-class DiffusionPolicyConfig:
-    model: MLPConfig | UNetConfig | None = None
+class DPConfig:
+    model: str = "unet"
+
+    mlp : MLPConfig = MLPConfig()
+    unet : UNetConfig = UNetConfig()
 
     epochs: int = 10
     batch_size: int = 64
@@ -53,28 +50,21 @@ class DiffusionPolicyConfig:
     diffusion_steps: int = 50
     action_horizon: int = 8
     
-    save_dir: str = "/nobackup/users/chryu"
+    save_dir: str | None = None
     from_checkpoint: bool = False
-    checkpoint_filename: str = None
+    checkpoint_filename: str | None = None
 
-    def parse(self, config: ConfigProvider) -> "DiffusionPolicyConfig":
-        model = config.get("model", str, default=None)
-        if model == "mlp":
-            self = replace(self, model=MLPConfig())
-        elif model == "unet":
-            self = replace(self, model=UNetConfig())
-        else: 
-            raise ValueError(f"Unknown model: {model}")
-        return config.get_dataclass(self, flatten={"train"})
-
-    def train_policy(self, wandb_run, train_data, env, eval, rng):
-        if self.from_checkpoint:
-            return diffusion_policy_from_checkpoint(self, wandb_run, train_data, env, eval)
+    @property
+    def model_config(self) -> MLPConfig | UNetConfig:
+        if self.model == "mlp":
+            return self.mlp
+        elif self.model == "unet":
+            return self.unet
         else:
-            return train_net_diffusion_policy(self, wandb_run, train_data, env, eval, rng)
+            raise ValueError(f"Unknown model type: {self.model}")
 
 def diffusion_policy_from_checkpoint( 
-        config : DiffusionPolicyConfig, wandb_run, train_data, env, eval):
+        config : DPConfig, wandb_run, train_data, env, eval):
     current_dir = os.path.dirname(os.path.realpath(__file__))
     ckpts_dir = os.path.join(current_dir, "checkpoints")
     file_path = os.path.join(ckpts_dir, config.checkpoint_filename)
@@ -109,7 +99,7 @@ def diffusion_policy_from_checkpoint(
     return policy
 
 def train_net_diffusion_policy(
-        config : DiffusionPolicyConfig,  wandb_run, train_data, env, eval, rng):
+        config : DPConfig,  wandb_run, train_data, env, eval, rng):
     
     train_sample = train_data[0]
     normalizer = StdNormalizer.from_data(train_data)

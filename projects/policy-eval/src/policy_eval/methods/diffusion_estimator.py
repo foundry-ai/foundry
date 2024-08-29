@@ -1,10 +1,8 @@
-
-from policy_eval import Sample
+from ..common import Sample
 
 from foundry.data import Data
 from foundry.diffusion import DDPMSchedule
-from foundry.runtime import ConfigProvider
-from foundry.core.random import PRNGSequence
+from foundry.random import PRNGSequence
 from foundry.policy import PolicyInput, PolicyOutput
 from foundry.policy.transforms import ChunkingTransform
 
@@ -27,22 +25,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 @dataclass
-class DiffusionEstimatorConfig:
-    estimator: str = "nw"
+class EstimatorConfig:
+    type: str = "nw"
     kernel_bandwidth: float = 0.01
     diffusion_steps: int = 50
     relative_actions: bool = False
-    action_config: ObserveConfig = None
     action_horizon: int = 16
 
-    def parse(self, config: ConfigProvider) -> "DiffusionEstimatorConfig":
-        return config.get_dataclass(self)
-
-    def train_policy(self, wandb_run, train_data, env, eval, rng):
-        return estimator_diffusion_policy(self, wandb_run, train_data, env, eval, rng)
-
 def estimator_diffusion_policy(
-            config: DiffusionEstimatorConfig,
+            config: EstimatorConfig,
             wandb_run,
             train_data : Data[Sample],
             env : Environment,

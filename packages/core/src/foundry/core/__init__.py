@@ -1,1 +1,1 @@
-from .transforms import jit
+from .transforms import jit, vmap
