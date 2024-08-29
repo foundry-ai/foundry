@@ -1,6 +1,6 @@
-![Docs](https://github.com/pfrommerd/stanza/actions/workflows/docs.yml/badge.svg)
+![Docs](https://github.com/pfrommerd/foundry/actions/workflows/docs.yml/badge.svg)
 
-# [Documentation](https://dan.pfrommer.us/stanza/)
+# [Documentation](https://dan.pfrommer.us/foundry/)
 
 # Installation Instructions
 
@@ -9,7 +9,7 @@
     ```bash
     curl -sSL https://pdm-project.org/install-pdm.py | python3 -
     ```
- 3. To set up the stanza environment, run
+ 3. To set up the foundry environment, run
     ```bash
     pdm install -d
     ```

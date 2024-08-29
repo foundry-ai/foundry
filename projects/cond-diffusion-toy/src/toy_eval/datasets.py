@@ -1,10 +1,10 @@
 import jax
-import jax.numpy as jnp
+import foundry.numpy as jnp
 from jax.random import PRNGKey
 from typing import Any
-from stanza.dataclasses import dataclass, replace
-from stanza.runtime import ConfigProvider
-from stanza.datasets import Dataset
+from foundry.core.dataclasses import dataclass, replace
+from foundry.runtime import ConfigProvider
+from foundry.datasets import Dataset
 
 @dataclass
 class Sample:

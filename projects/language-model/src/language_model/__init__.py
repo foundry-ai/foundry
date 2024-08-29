@@ -1,8 +1,8 @@
-from stanza.runtime import ConfigProvider, command, setup
+from foundry.runtime import ConfigProvider, command, setup
 from .core import Config, train
 
 import logging
-import stanza.util
+import foundry.util
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +14,6 @@ def run(config: ConfigProvider):
     config = Config.parse(config)
     wandb_run = wandb.init(
         project="language_model",
-        config=stanza.util.flatten_to_dict(config)[0]
+        config=foundry.util.flatten_to_dict(config)[0]
     )
     train(wandb_run, config)

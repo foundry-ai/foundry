@@ -6,7 +6,7 @@ authors = [
     {name = "Daniel Pfrommer", email = "dan.pfrommer@gmail.com"},
 ]
 dependencies = [
-    "stanza"
+    "foundry"
 ]
 requires-python = ">=3.10"
 license = {text = "MIT"}

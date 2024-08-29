@@ -1,18 +1,18 @@
-from stanza.runtime import setup
+from foundry.runtime import setup
 setup()
 
-from stanza import dataclasses
-from stanza.dataclasses import dataclass, replace
-from stanza.runtime import ConfigProvider, command
-from stanza.datasets.env import datasets
-from stanza.random import PRNGSequence
-from stanza.env import ImageRender
-from stanza.env.core import ObserveConfig, RenderConfig
-from stanza.train.reporting import Video
-from stanza import canvas
-from stanza.policy import PolicyInput, PolicyOutput
-from stanza.env.mujoco.pusht import PushTAgentPos
-from stanza.env.mujoco.robosuite import ManipulationTaskEEFPose
+from foundry import dataclasses
+from foundry.core.dataclasses import dataclass, replace
+from foundry.runtime import ConfigProvider, command
+from foundry.datasets.env import datasets
+from foundry.core.random import PRNGSequence
+from foundry.env import ImageRender
+from foundry.env.core import ObserveConfig, RenderConfig
+from foundry.train.reporting import Video
+from foundry import canvas
+from foundry.policy import PolicyInput, PolicyOutput
+from foundry.env.mujoco.pusht import PushTAgentPos
+from foundry.env.mujoco.robosuite import ManipulationTaskEEFPose
 
 from jax.experimental import mesh_utils
 from jax.sharding import PositionalSharding
@@ -20,16 +20,16 @@ from jax.sharding import PositionalSharding
 from functools import partial
 from typing import Any
 
-import stanza.policy
-import stanza.util
-import stanza.util
-import stanza.train.reporting
-import stanza.train.wandb
+import foundry.policy
+import foundry.util
+import foundry.util
+import foundry.train.reporting
+import foundry.train.wandb
 import jax
-import jax.numpy as jnp
+import foundry.numpy as jnp
 import functools
 import wandb
-import stanza
+import foundry
 import logging
 logger = logging.getLogger(__name__)
 
@@ -114,7 +114,7 @@ def process_data(config, env, data):
     return data.map(process_chunk)
 
 def eval(config, env, policy, T, x0, rng_key):
-    r = stanza.policy.rollout(
+    r = foundry.policy.rollout(
         env.step, x0, 
         policy, observe=env.observe,
         policy_rng_key=rng_key,
@@ -140,7 +140,7 @@ def eval(config, env, policy, T, x0, rng_key):
 
 
 def evaluate(config, env, x0s, T, policy, rng_key):
-    N = stanza.util.axis_size(x0s, 0)
+    N = foundry.util.axis_size(x0s, 0)
 
     # shard the x0s
     # sharding = PositionalSharding(
@@ -156,7 +156,7 @@ def evaluate(config, env, x0s, T, policy, rng_key):
     )
     # reshape all the videos into a single video
     video = jax.vmap(
-        lambda x: stanza.canvas.image_grid(x), 
+        lambda x: foundry.canvas.image_grid(x), 
         in_axes=1, out_axes=0
     )(videos)
     return {
@@ -193,7 +193,7 @@ def main(config : Config):
 
     wandb_run = wandb.init(
         project="policy_eval",
-        config=stanza.util.flatten_to_dict(config)[0]
+        config=foundry.util.flatten_to_dict(config)[0]
     )
     logger.info(f"Logging to [blue]{wandb_run.url}[/blue]")
 
@@ -206,12 +206,12 @@ def main(config : Config):
     output = evaluate(config, env, test_x0s, config.timesteps, policy, jax.random.key(42))
     # get the metrics and final reportables
     # from the eval output
-    metrics, reportables = stanza.train.reporting.as_log_dict(output)
+    metrics, reportables = foundry.train.reporting.as_log_dict(output)
     for k, v in metrics.items():
         logger.info(f"{k}: {v}")
     wandb_run.summary.update(metrics)
     wandb_run.log({
-        k: stanza.train.wandb.map_reportable(v)
+        k: foundry.train.wandb.map_reportable(v)
         for (k,v) in reportables.items()
     })
     wandb_run.finish()

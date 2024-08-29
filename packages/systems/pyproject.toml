@@ -1,0 +1,19 @@
+[project]
+name = "foundry-systems"
+version = "0.1.0"
+description = "Systems"
+authors = [
+    {name = "Daniel Pfrommer", email = "dan.pfrommer@gmail.com"},
+]
+dependencies = [
+    "foundry-core",
+]
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+[tool.pdm]
+distribution = true
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"

@@ -1,25 +1,25 @@
 
 from policy_eval import Sample
 
-from stanza.diffusion import DDPMSchedule
-from stanza.runtime import ConfigProvider
-from stanza.random import PRNGSequence
-from stanza.policy import PolicyInput, PolicyOutput
-from stanza.policy.transforms import ChunkingTransform
+from foundry.diffusion import DDPMSchedule
+from foundry.runtime import ConfigProvider
+from foundry.core.random import PRNGSequence
+from foundry.policy import PolicyInput, PolicyOutput
+from foundry.policy.transforms import ChunkingTransform
 
-from stanza.dataclasses import dataclass
-from stanza.data.normalizer import LinearNormalizer, StdNormalizer
-from stanza import train
-import stanza.train.console
+from foundry.core.dataclasses import dataclass
+from foundry.data.normalizer import LinearNormalizer, StdNormalizer
+from foundry import train
+import foundry.train.console
 import optax
 import flax.linen as nn
 import flax.linen.activation as activations
 from typing import Sequence
-from projects.models.src.stanza.model.embed import SinusoidalPosEmbed
-from projects.models.src.stanza.model.unet import UNet
+from projects.models.src.foundry.model.embed import SinusoidalPosEmbed
+from projects.models.src.foundry.model.unet import UNet
 
 import jax
-import jax.numpy as jnp
+import foundry.numpy as jnp
 import logging
 import pickle
 import os
@@ -84,7 +84,7 @@ def diffusion_policy_from_checkpoint(
         action = action[:config.action_horizon]
         return PolicyOutput(action=action, info=action)
     
-    obs_length = stanza.util.axis_size(train_data.as_pytree().observations, 1)
+    obs_length = foundry.util.axis_size(train_data.as_pytree().observations, 1)
     policy = ChunkingTransform(
         obs_length, config.action_horizon
     ).apply(chunk_policy)
@@ -99,8 +99,8 @@ def train_net_diffusion_policy(
     # sample = jax.tree_map(lambda x: x[0], train_data_tree)
     # Get chunk lengths
     obs_length, action_length = (
-        stanza.util.axis_size(train_data_tree.observations, 1),
-        stanza.util.axis_size(train_data_tree.actions, 1)
+        foundry.util.axis_size(train_data_tree.observations, 1),
+        foundry.util.axis_size(train_data_tree.actions, 1)
     )
 
     if config.model == "unet":
@@ -178,7 +178,7 @@ def train_net_diffusion_policy(
     ema = optax.ema(0.9)
     ema_state = ema.init(vars)
 
-    with stanza.train.loop(train_data_batched, 
+    with foundry.train.loop(train_data_batched, 
                 rng_key=next(rng),
                 iterations=config.iterations,
                 progress=True

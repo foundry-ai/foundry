@@ -1,49 +1,49 @@
 {buildPythonPackage, fetchurl, nixpkgs, python, nixpy-custom ? {}}: rec {
   packages = rec {
-    stanza-meta = {
+    foundry-meta = {
       aarch64-darwin = buildPythonPackage {
-        pname = "stanza-meta";
+        pname = "foundry-meta";
         version = "0.1.0";
         format="pyproject";
         src = ./.;
         build-system = with packages;
         [pdm-backend];
         dependencies = with packages;
-        [stanza.with_docs_ipython stanza-models.d4cef6b5f cond-diffusion image-classifier language-model cond-diffusion-toy wandb];
+        [foundry.with_docs_ipython foundry-models.d4cef6b5f cond-diffusion image-classifier language-model cond-diffusion-toy wandb];
         doCheck=false;
       } ;
       powerpc64le-linux = buildPythonPackage {
-        pname = "stanza-meta";
+        pname = "foundry-meta";
         version = "0.1.0";
         format="pyproject";
         src = ./.;
         build-system = with packages;
         [pdm-backend];
         dependencies = with packages;
-        [stanza.with_docs_ipython stanza-models.d3969dd42 cond-diffusion image-classifier language-model cond-diffusion-toy wandb];
+        [foundry.with_docs_ipython foundry-models.d3969dd42 cond-diffusion image-classifier language-model cond-diffusion-toy wandb];
         doCheck=false;
       } ;
       x86_64-linux = buildPythonPackage {
-        pname = "stanza-meta";
+        pname = "foundry-meta";
         version = "0.1.0";
         format="pyproject";
         src = ./.;
         build-system = with packages;
         [pdm-backend];
         dependencies = with packages;
-        [stanza.with_docs_ipython stanza-models.d5327fea0 cond-diffusion image-classifier language-model cond-diffusion-toy wandb];
+        [foundry.with_docs_ipython foundry-models.d5327fea0 cond-diffusion image-classifier language-model cond-diffusion-toy wandb];
         doCheck=false;
       } ;
     }.${
       nixpkgs.system
     };
-    stanza = {
+    foundry = {
       with_docs_ipython = {
         aarch64-darwin = buildPythonPackage {
-          pname = "stanza";
+          pname = "foundry";
           version = "0.1.0";
           format="pyproject";
-          src = ./packages/stanza;
+          src = ./packages/foundry;
           build-system = with packages;
           [pdm-backend];
           dependencies = with packages;
@@ -51,10 +51,10 @@
           doCheck=false;
         } ;
         x86_64-linux = buildPythonPackage {
-          pname = "stanza";
+          pname = "foundry";
           version = "0.1.0";
           format="pyproject";
-          src = ./packages/stanza;
+          src = ./packages/foundry;
           build-system = with packages;
           [pdm-backend];
           dependencies = with packages;
@@ -62,10 +62,10 @@
           doCheck=false;
         } ;
         powerpc64le-linux = buildPythonPackage {
-          pname = "stanza";
+          pname = "foundry";
           version = "0.1.0";
           format="pyproject";
-          src = ./packages/stanza;
+          src = ./packages/foundry;
           build-system = with packages;
           [pdm-backend];
           dependencies = with packages;
@@ -77,10 +77,10 @@
       };
       default = {
         powerpc64le-linux = buildPythonPackage {
-          pname = "stanza";
+          pname = "foundry";
           version = "0.1.0";
           format="pyproject";
-          src = ./packages/stanza;
+          src = ./packages/foundry;
           build-system = with packages;
           [pdm-backend];
           dependencies = with packages;
@@ -88,10 +88,10 @@
           doCheck=false;
         } ;
         x86_64-linux = buildPythonPackage {
-          pname = "stanza";
+          pname = "foundry";
           version = "0.1.0";
           format="pyproject";
-          src = ./packages/stanza;
+          src = ./packages/foundry;
           build-system = with packages;
           [pdm-backend];
           dependencies = with packages;
@@ -99,10 +99,10 @@
           doCheck=false;
         } ;
         aarch64-darwin = buildPythonPackage {
-          pname = "stanza";
+          pname = "foundry";
           version = "0.1.0";
           format="pyproject";
-          src = ./packages/stanza;
+          src = ./packages/foundry;
           build-system = with packages;
           [pdm-backend];
           dependencies = with packages;
@@ -113,76 +113,76 @@
         nixpkgs.system
       };
     };
-    stanza-models = {
+    foundry-models = {
       aarch64-darwin = {
         d7d18d8bd = buildPythonPackage {
-          pname = "stanza-models";
+          pname = "foundry-models";
           version = "0.1.0";
           format="pyproject";
           src = ./projects/models;
           build-system = with packages;
           [pdm-backend];
           dependencies = with packages;
-          [stanza.default];
+          [foundry.default];
           doCheck=false;
         } ;
         d4cef6b5f = buildPythonPackage {
-          pname = "stanza-models";
+          pname = "foundry-models";
           version = "0.1.0";
           format="pyproject";
           src = ./projects/models;
           build-system = with packages;
           [pdm-backend];
           dependencies = with packages;
-          [stanza.with_docs_ipython];
+          [foundry.with_docs_ipython];
           doCheck=false;
         } ;
       };
       x86_64-linux = {
         dac497285 = buildPythonPackage {
-          pname = "stanza-models";
+          pname = "foundry-models";
           version = "0.1.0";
           format="pyproject";
           src = ./projects/models;
           build-system = with packages;
           [pdm-backend];
           dependencies = with packages;
-          [stanza.default];
+          [foundry.default];
           doCheck=false;
         } ;
         d5327fea0 = buildPythonPackage {
-          pname = "stanza-models";
+          pname = "foundry-models";
           version = "0.1.0";
           format="pyproject";
           src = ./projects/models;
           build-system = with packages;
           [pdm-backend];
           dependencies = with packages;
-          [stanza.with_docs_ipython];
+          [foundry.with_docs_ipython];
           doCheck=false;
         } ;
       };
       powerpc64le-linux = {
         d61863dc2 = buildPythonPackage {
-          pname = "stanza-models";
+          pname = "foundry-models";
           version = "0.1.0";
           format="pyproject";
           src = ./projects/models;
           build-system = with packages;
           [pdm-backend];
           dependencies = with packages;
-          [stanza.default];
+          [foundry.default];
           doCheck=false;
         } ;
         d3969dd42 = buildPythonPackage {
-          pname = "stanza-models";
+          pname = "foundry-models";
           version = "0.1.0";
           format="pyproject";
           src = ./projects/models;
           build-system = with packages;
           [pdm-backend];
           dependencies = with packages;
-          [stanza.with_docs_ipython];
+          [foundry.with_docs_ipython];
           doCheck=false;
         } ;
       };
@@ -197,7 +197,7 @@
       build-system = with packages;
       [pdm-backend];
       dependencies = with packages;
-      [stanza.with_docs_ipython];
+      [foundry.with_docs_ipython];
       doCheck=false;
     } ;
     image-classifier = {
@@ -209,7 +209,7 @@
         build-system = with packages;
         [pdm-backend];
         dependencies = with packages;
-        [stanza.with_docs_ipython stanza-models.d4cef6b5f];
+        [foundry.with_docs_ipython foundry-models.d4cef6b5f];
         doCheck=false;
       } ;
       powerpc64le-linux = buildPythonPackage {
@@ -220,7 +220,7 @@
         build-system = with packages;
         [pdm-backend];
         dependencies = with packages;
-        [stanza.with_docs_ipython stanza-models.d3969dd42];
+        [foundry.with_docs_ipython foundry-models.d3969dd42];
         doCheck=false;
       } ;
       x86_64-linux = buildPythonPackage {
@@ -231,7 +231,7 @@
         build-system = with packages;
         [pdm-backend];
         dependencies = with packages;
-        [stanza.with_docs_ipython stanza-models.d5327fea0];
+        [foundry.with_docs_ipython foundry-models.d5327fea0];
         doCheck=false;
       } ;
     }.${
@@ -246,7 +246,7 @@
         build-system = with packages;
         [pdm-backend];
         dependencies = with packages;
-        [stanza.with_docs_ipython stanza-models.d5327fea0];
+        [foundry.with_docs_ipython foundry-models.d5327fea0];
         doCheck=false;
       } ;
       aarch64-darwin = buildPythonPackage {
@@ -257,7 +257,7 @@
         build-system = with packages;
         [pdm-backend];
         dependencies = with packages;
-        [stanza.with_docs_ipython stanza-models.d4cef6b5f];
+        [foundry.with_docs_ipython foundry-models.d4cef6b5f];
         doCheck=false;
       } ;
       powerpc64le-linux = buildPythonPackage {
@@ -268,7 +268,7 @@
         build-system = with packages;
         [pdm-backend];
         dependencies = with packages;
-        [stanza.with_docs_ipython stanza-models.d3969dd42];
+        [foundry.with_docs_ipython foundry-models.d3969dd42];
         doCheck=false;
       } ;
     }.${
@@ -282,7 +282,7 @@
       build-system = with packages;
       [pdm-backend];
       dependencies = with packages;
-      [stanza.with_docs_ipython];
+      [foundry.with_docs_ipython];
       doCheck=false;
     } ;
     jax = {
@@ -2422,7 +2422,7 @@
       markdown-it-py = markdown-it-py;
       humanize = humanize;
       fasteners = fasteners;
-      stanza-models = stanza-models.d5327fea0;
+      foundry-models = foundry-models.d5327fea0;
       docker-pycreds = docker-pycreds;
       zipp = zipp;
       referencing = referencing;
@@ -2430,7 +2430,7 @@
       rich = rich;
       pygments = pygments;
       pynput = pynput;
-      stanza-meta = stanza-meta;
+      foundry-meta = foundry-meta;
       flax = flax;
       plotly = plotly;
       pytz = pytz;
@@ -2455,7 +2455,7 @@
       trimesh = trimesh;
       numba = numba;
       psutil = psutil;
-      stanza = stanza.with_docs_ipython;
+      foundry = foundry.with_docs_ipython;
       numpy = numpy.v1_26_4;
       soupsieve = soupsieve;
       trajax = trajax;
@@ -2522,7 +2522,7 @@
     };
     powerpc64le-linux = with packages;
     {
-      stanza-meta = stanza-meta;
+      foundry-meta = foundry-meta;
       jupyter-core = jupyter-core;
       cycler = cycler;
       numcodecs = numcodecs;
@@ -2600,7 +2600,7 @@
       pyyaml = pyyaml;
       pandas = pandas;
       mdurl = mdurl;
-      stanza-models = stanza-models.d3969dd42;
+      foundry-models = foundry-models.d3969dd42;
       platformdirs = platformdirs;
       mujoco-mjx = mujoco-mjx;
       gitpython = gitpython;
@@ -2608,7 +2608,7 @@
       orbax-checkpoint = orbax-checkpoint.d52b721b8;
       pygments = pygments;
       ffmpegio-core = ffmpegio-core;
-      stanza = stanza.with_docs_ipython;
+      foundry = foundry.with_docs_ipython;
       matplotlib = matplotlib;
       setuptools = setuptools.v73_0_1;
       pyparsing = pyparsing;
@@ -2683,7 +2683,7 @@
       numba = numba;
       setproctitle = setproctitle;
       glfw = glfw;
-      stanza-meta = stanza-meta;
+      foundry-meta = foundry-meta;
       image-classifier = image-classifier;
       ffmpegio-core = ffmpegio-core;
       click = click;
@@ -2708,7 +2708,7 @@
       pytz = pytz;
       jsonschema-specifications = jsonschema-specifications;
       charset-normalizer = charset-normalizer;
-      stanza = stanza.with_docs_ipython;
+      foundry = foundry.with_docs_ipython;
       trimesh = trimesh;
       urllib3 = urllib3;
       sentry-sdk = sentry-sdk;
@@ -2721,7 +2721,7 @@
       pyobjc-framework-quartz = pyobjc-framework-quartz;
       absl-py = absl-py;
       jax = jax;
-      stanza-models = stanza-models.d4cef6b5f;
+      foundry-models = foundry-models.d4cef6b5f;
       shapely = shapely;
       mujoco = mujoco;
       pandas = pandas;

@@ -1,28 +1,28 @@
 
 from policy_eval import Sample
 
-from stanza.data import Data
-from stanza.diffusion import DDPMSchedule
-from stanza.runtime import ConfigProvider
-from stanza.random import PRNGSequence
-from stanza.policy import PolicyInput, PolicyOutput
-from stanza.policy.transforms import ChunkingTransform
+from foundry.data import Data
+from foundry.diffusion import DDPMSchedule
+from foundry.runtime import ConfigProvider
+from foundry.core.random import PRNGSequence
+from foundry.policy import PolicyInput, PolicyOutput
+from foundry.policy.transforms import ChunkingTransform
 
-from stanza.env import Environment
+from foundry.env import Environment
 
-from stanza.dataclasses import dataclass
-from stanza.diffusion import nonparametric
+from foundry.core.dataclasses import dataclass
+from foundry.diffusion import nonparametric
 
-from stanza.env.core import ObserveConfig
-from stanza.env.mujoco.pusht import PushTAgentPos
-from stanza.env.mujoco.robosuite import ManipulationTaskEEFPose
+from foundry.env.core import ObserveConfig
+from foundry.env.mujoco.pusht import PushTAgentPos
+from foundry.env.mujoco.robosuite import ManipulationTaskEEFPose
 
 from typing import Callable
 
-import stanza.util
+import foundry.util
 
 import jax
-import jax.numpy as jnp
+import foundry.numpy as jnp
 import logging
 logger = logging.getLogger(__name__)
 
@@ -51,8 +51,8 @@ def estimator_diffusion_policy(
         ):
     train_data : Sample = train_data.as_pytree()
     obs_length, action_length = (
-        stanza.util.axis_size(train_data.observations, 1),
-        stanza.util.axis_size(train_data.actions, 1)
+        foundry.util.axis_size(train_data.observations, 1),
+        foundry.util.axis_size(train_data.actions, 1)
     )
     action_sample = jax.tree_map(lambda x: x[0], train_data.actions)
     schedule = DDPMSchedule.make_squaredcos_cap_v2(

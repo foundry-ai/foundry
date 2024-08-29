@@ -2,28 +2,28 @@
 from policy_eval import Sample
 from typing import Callable
 
-from stanza.runtime import ConfigProvider
-from stanza.random import PRNGSequence
-from stanza.policy import PolicyInput, PolicyOutput
-from stanza.policy.transforms import ChunkingTransform
+from foundry.runtime import ConfigProvider
+from foundry.core.random import PRNGSequence
+from foundry.policy import PolicyInput, PolicyOutput
+from foundry.policy.transforms import ChunkingTransform
 
-from stanza.dataclasses import dataclass
+from foundry.core.dataclasses import dataclass
 import dataclasses
-from stanza.data import Data, PyTreeData
-from stanza.data.normalizer import LinearNormalizer, StdNormalizer
-from stanza import train
-from stanza.env import Environment
-import stanza.train.console
+from foundry.data import Data, PyTreeData
+from foundry.data.normalizer import LinearNormalizer, StdNormalizer
+from foundry import train
+from foundry.env import Environment
+import foundry.train.console
 import wandb
 import optax
 import flax.linen as nn
 import flax.linen.activation as activations
 from typing import Sequence
-from projects.models.src.stanza.model.embed import SinusoidalPosEmbed
-from projects.models.src.stanza.model.unet import UNet
+from projects.models.src.foundry.model.embed import SinusoidalPosEmbed
+from projects.models.src.foundry.model.unet import UNet
 
 import jax
-import jax.numpy as jnp
+import foundry.numpy as jnp
 import logging
 import pickle
 import os
@@ -80,7 +80,7 @@ def BC_from_checkpoint(
         action = action[:config.action_horizon]
         return PolicyOutput(action=action, info=action)
     
-    obs_length = stanza.util.axis_size(train_data.as_pytree().observations, 1)
+    obs_length = foundry.util.axis_size(train_data.as_pytree().observations, 1)
     policy = ChunkingTransform(
         obs_length, config.action_horizon
     ).apply(chunk_policy)
@@ -96,8 +96,8 @@ def train_net_BC(
 
     # Get chunk lengths
     obs_length, action_length = (
-        stanza.util.axis_size(train_data_tree.observations, 1),
-        stanza.util.axis_size(train_data_tree.actions, 1)
+        foundry.util.axis_size(train_data_tree.observations, 1),
+        foundry.util.axis_size(train_data_tree.actions, 1)
     )
 
     rng = PRNGSequence(config.seed)
@@ -142,7 +142,7 @@ def train_net_BC(
 
     train_data_batched = train_data.stream().batch(config.batch_size)
 
-    with stanza.train.loop(train_data_batched, 
+    with foundry.train.loop(train_data_batched, 
                 rng_key=next(rng),
                 iterations=config.iterations,
                 progress=True

@@ -1,18 +1,18 @@
 from policy_eval import Sample
 from typing import Callable
 
-import stanza.util
-from stanza.data import Data
-from stanza.runtime import ConfigProvider
-from stanza.policy import PolicyInput, PolicyOutput
-from stanza.policy.transforms import ChunkingTransform
+import foundry.util
+from foundry.data import Data
+from foundry.runtime import ConfigProvider
+from foundry.policy import PolicyInput, PolicyOutput
+from foundry.policy.transforms import ChunkingTransform
 
-from stanza.env import Environment
+from foundry.env import Environment
 
-from stanza.dataclasses import dataclass
+from foundry.core.dataclasses import dataclass
 
 import jax
-import jax.numpy as jnp
+import foundry.numpy as jnp
 
 @dataclass
 class NNConfig:
@@ -35,8 +35,8 @@ def nearest_neighbor(
         ):
     train_data : Sample = train_data.as_pytree()
     obs_length, action_length = (
-        stanza.util.axis_size(train_data.observations, 1),
-        stanza.util.axis_size(train_data.actions, 1)
+        foundry.util.axis_size(train_data.observations, 1),
+        foundry.util.axis_size(train_data.actions, 1)
     )
 
     def chunk_policy(input: PolicyInput) -> PolicyOutput:

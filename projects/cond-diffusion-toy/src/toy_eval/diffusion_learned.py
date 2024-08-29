@@ -1,23 +1,23 @@
 from .datasets import Sample
 
-from stanza.diffusion import DDPMSchedule
-from stanza.runtime import ConfigProvider
-from stanza.random import PRNGSequence
+from foundry.diffusion import DDPMSchedule
+from foundry.runtime import ConfigProvider
+from foundry.core.random import PRNGSequence
 
-from stanza.dataclasses import dataclass, replace
-from stanza.data import PyTreeData
-from stanza.data.normalizer import LinearNormalizer, StdNormalizer
-from stanza import train
-import stanza.train.console
+from foundry.core.dataclasses import dataclass, replace
+from foundry.data import PyTreeData
+from foundry.data.normalizer import LinearNormalizer, StdNormalizer
+from foundry import train
+import foundry.train.console
 import optax
 import flax.linen as nn
 import flax.linen.activation as activations
 from typing import Sequence
-from projects.models.src.stanza.model.embed import SinusoidalPosEmbed
-from projects.models.src.stanza.model.unet import UNet
+from projects.models.src.foundry.model.embed import SinusoidalPosEmbed
+from projects.models.src.foundry.model.unet import UNet
 
 import jax
-import jax.numpy as jnp
+import foundry.numpy as jnp
 import logging
 import pickle
 import os
@@ -161,7 +161,7 @@ def train_net_diffusion_policy(
     ema = optax.ema(0.9)
     ema_state = ema.init(vars)
 
-    with stanza.train.loop(train_data_batched, 
+    with foundry.train.loop(train_data_batched, 
                 rng_key=next(rng),
                 iterations=config.iterations,
                 progress=True

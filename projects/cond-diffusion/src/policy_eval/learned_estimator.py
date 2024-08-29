@@ -1,31 +1,31 @@
 import jax
-import jax.numpy as jnp
+import foundry.numpy as jnp
 import jax.flatten_util
 
 from policy_eval import Sample
 
-from stanza.data import Data
-from stanza.diffusion import DDPMSchedule
-from stanza.runtime import ConfigProvider
-from stanza.random import PRNGSequence
-from stanza.policy import PolicyInput, PolicyOutput
-from stanza.policy.transforms import ChunkingTransform
+from foundry.data import Data
+from foundry.diffusion import DDPMSchedule
+from foundry.runtime import ConfigProvider
+from foundry.core.random import PRNGSequence
+from foundry.policy import PolicyInput, PolicyOutput
+from foundry.policy.transforms import ChunkingTransform
 
-from stanza.env import Environment
+from foundry.env import Environment
 
-from stanza.dataclasses import dataclass
-from stanza.diffusion import nonparametric
+from foundry.core.dataclasses import dataclass
+from foundry.diffusion import nonparametric
 
-from stanza.env.core import ObserveConfig
-from stanza.env.mujoco.pusht import PushTAgentPos
-from stanza.env.mujoco.robosuite import ManipulationTaskEEFPose
+from foundry.env.core import ObserveConfig
+from foundry.env.mujoco.pusht import PushTAgentPos
+from foundry.env.mujoco.robosuite import ManipulationTaskEEFPose
 
 from typing import Callable
 
 import optax
-import stanza.train
-import stanza.train.wandb
-import stanza.util
+import foundry.train
+import foundry.train.wandb
+import foundry.util
 import pickle
 import os
 
@@ -68,8 +68,8 @@ def trained_diffusion_estimator_policy(
     transformation = LinearTransform()
     train_samples = train_data.as_pytree()
     obs_length, action_length = (
-        stanza.util.axis_size(train_data.observations, 1),
-        stanza.util.axis_size(train_data.actions, 1)
+        foundry.util.axis_size(train_data.observations, 1),
+        foundry.util.axis_size(train_data.actions, 1)
     )
 
     def denoiser_model(params, obs, rng_key, actions, t):
@@ -99,21 +99,21 @@ def match_denoiser(target_denoiser,
         ref_flat, _ = jax.flatten_util.ravel_pytree(reference)
         pred_flat, _ = jax.flatten_util.ravel_pytree(prediction)
         loss = jnp.mean((ref_flat - pred_flat) ** 2)
-        return stanza.train.LossOutput(loss=loss, metrics={"loss": loss})
-    loss_fn = stanza.train.batch_loss(loss_fn)
+        return foundry.train.LossOutput(loss=loss, metrics={"loss": loss})
+    loss_fn = foundry.train.batch_loss(loss_fn)
 
     optimizer = optax.adam(1e-4)
     opt_state = optimizer.init(init_params)
     vars = init_params
-    with stanza.train.loop(train_data, rng_key=rng_key, 
+    with foundry.train.loop(train_data, rng_key=rng_key, 
                       iterations=iterations) as loop:
         for epoch in loop.epochs():
             for step in epoch.steps():
-                opt_state, vars, metrics = stanza.train.step(
+                opt_state, vars, metrics = foundry.train.step(
                     loss_fn, optimizer, opt_state, 
                     vars, step.rng_key, step.batch
                 )
-                stanza.train.wandb.log(step.iteration, metrics)
+                foundry.train.wandb.log(step.iteration, metrics)
 
 def load_checkpoint(checkpoint_path):
     current_dir = os.path.dirname(os.path.realpath(__file__))

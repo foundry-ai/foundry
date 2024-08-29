@@ -1,26 +1,26 @@
-from stanza.runtime import ConfigProvider
-from stanza.dataclasses import dataclass
-from stanza.train import LossOutput
-from stanza.random import PRNGSequence
-from stanza.datasets.nlp import datasets
-from stanza.model import models
+from foundry.runtime import ConfigProvider
+from foundry.core.dataclasses import dataclass
+from foundry.train import LossOutput
+from foundry.core.random import PRNGSequence
+from foundry.datasets.nlp import datasets
+from foundry.model import models
 
 from functools import partial
 
-import stanza.train
-import stanza.train.ray
-import stanza.train.wandb
-import stanza.train.console
-import stanza.train.sharpness
+import foundry.train
+import foundry.train.ray
+import foundry.train.wandb
+import foundry.train.console
+import foundry.train.sharpness
 
 import flax
 import rich
 
 import optax
 import jax
-import jax.numpy as jnp
+import foundry.numpy as jnp
 
-import stanza.util
+import foundry.util
 import logging
 logger = logging.getLogger(__name__)
 
@@ -140,8 +140,8 @@ def train(wandb_run, config: Config):
         return LossOutput(loss=loss, metrics=stats)
 
     val_loss_fn = partial(loss_fn, train=False)
-    batch_loss = stanza.train.batch_loss(loss_fn)
-    val_batch_loss = stanza.train.batch_loss(val_loss_fn)
+    batch_loss = foundry.train.batch_loss(loss_fn)
+    val_batch_loss = foundry.train.batch_loss(val_loss_fn)
     opt_state = jax.jit(optimizer.init)(vars["params"])
     logger.info("Initialized optimizer.")
 
@@ -155,41 +155,41 @@ def train(wandb_run, config: Config):
     )
     test_data = dataset.splits["test"].stream().batch(config.batch_size)
 
-    with stanza.train.loop(train_data, rng_key=next(rng), iterations=iterations, 
+    with foundry.train.loop(train_data, rng_key=next(rng), iterations=iterations, 
                 log_compiles=config.log_compiles, trace=config.trace) as loop, \
             test_data.build() as test_stream, \
             sharpness_data.build() as sharpness_stream:
         for epoch in loop.epochs():
             for step in epoch.steps():
-                opt_state, vars, metrics = stanza.train.step(
+                opt_state, vars, metrics = foundry.train.step(
                     batch_loss, optimizer,
                     opt_state, vars,
                     step.rng_key, step.batch 
                 )
-                stanza.train.wandb.log(
+                foundry.train.wandb.log(
                     step.iteration, metrics,
                     run=wandb_run, prefix="train/"
                 )
                 # print to the console every 100 iterations
                 if step.iteration % 100 == 0:
-                    stanza.train.console.log(
+                    foundry.train.console.log(
                         step.iteration, metrics
                     )
-                    test_stream, test_metrics = stanza.train.eval_stream(
+                    test_stream, test_metrics = foundry.train.eval_stream(
                         val_batch_loss, vars, next(rng),
                         test_stream, batches=16
                     )
                     sharpness_stream, sharpness_batch = sharpness_stream.next()
-                    sharpness_metrics = stanza.train.sharpness.sharpness_stats(
+                    sharpness_metrics = foundry.train.sharpness.sharpness_stats(
                         val_loss_fn, vars, next(rng), sharpness_batch,
                         batch_size=max(64, config.batch_size)
                     )
-                    stanza.train.console.log(
+                    foundry.train.console.log(
                         step.iteration, 
                         sharpness_metrics, test_metrics, prefix="test."
                     )
-                    stanza.train.ray.report(step.iteration, test_metrics)
-                    stanza.train.wandb.log(
+                    foundry.train.ray.report(step.iteration, test_metrics)
+                    foundry.train.wandb.log(
                         step.iteration,
                         sharpness_metrics, test_metrics,
                         prefix="test/", run=wandb_run

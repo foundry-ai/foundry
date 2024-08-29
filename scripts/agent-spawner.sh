@@ -21,17 +21,22 @@ fi
 
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
-AGENT_RUN=$SCRIPT_DIR/agent-run.sh
+AGENT_RUN="$SCRIPT_DIR/agent-run.sh $SWEEP_ID $SWEEP_PATH $SWEEP_ID $NUM_AGENTS $AGENTS_PER_DEVICE"
 # Make the agents think they are not in nix
-# since are srunning the agent-run
-export NIX_STORE=
+SRUN=$(which srun)
+if [ -z $SRUN ]; then
+    COMMAND="$AGENT_RUN"
+else
+    export NIX_STORE=
+    COMMAND="srun -N 1 --gres=gpu:4 --mem=1TB -c64 --time 6:00:00 $AGENT_RUN"
+fi
 
-SLURM_COMMAND="srun -N 1 --gres=gpu:4 --mem=1TB -c64 --time 6:00:00 $AGENT_RUN $SWEEP_ID $SWEEP_PATH $SWEEP_ID $NUM_AGENTS $AGENTS_PER_DEVICE"
-echo "Running: $SLURM_COMMAND"
-exec 3< <($SLURM_COMMAND)
+echo "Running: $COMMAND"
+exec 3< <($COMMAND < /dev/null)
 
 read <&3 JOB_ID
-echo "Job id: $JOB_ID"
+read <&3 JOB_PID
+echo "Job id: $JOB_ID ($JOB_PID)"
 echo "Sweep: $SWEEP_PATH"
 
 sleep 1
@@ -52,9 +57,14 @@ echo "Done starting agents for sweep: $SWEEP_ID"
 # Close all of the windows in the session when
 # the spawner dies, and cancel the job
 inter() {
-    scancel $JOB_ID
+    if [ ! $JOB_ID == "local" ]; then
+        scancel $JOB_ID
+    fi
     tmux kill-session -t $SESSION_NAME
 }
 
 trap 'inter' SIGINT
-sleep infinity
+while :
+do
+	sleep infinity
+done

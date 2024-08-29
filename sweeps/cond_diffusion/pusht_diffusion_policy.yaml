@@ -13,6 +13,6 @@ parameters:
   epochs:
     values: [10, 20, 30]
 command:
-  - stanza-env
+  - foundry-env
   - ${program}
   - ${args}

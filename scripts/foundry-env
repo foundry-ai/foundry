@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+if [ ! -z "$FOUNDRY_PATH" ]; then
+    export PATH=$FOUNDRY_PATH
+fi
+
+RED="\e[31m"
+GREEN="\e[32m"
+ENDCOLOR="\e[0m"
+
+HOSTNAME=$(cat /etc/hostname)
+echo 
+echo -e "      running: ${GREEN}$@${ENDCOLOR}"
+echo -e "      agent:   ${GREEN}$AGENT_NAME${ENDCOLOR}"
+echo -e "      host:    ${GREEN}$HOSTNAME${ENDCOLOR}"
+if [ ! -z $SWEEP_PATH ]; then
+echo -e "      sweep:   ${GREEN}$SWEEP_PATH${ENDCOLOR}"
+fi
+echo -e "      visible devices: ${GREEN}${CUDA_VISIBLE_DEVICES:-all}${ENDCOLOR}"
+
+ENV=$(which env)
+exec $ENV $@

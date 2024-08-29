@@ -1,4 +1,4 @@
-from stanza.runtime import ConfigProvider, command, setup
+from foundry.runtime import ConfigProvider, command, setup
 from functools import partial
 from ray import tune
 from ray.air.integrations.wandb import setup_wandb

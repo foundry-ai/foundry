@@ -1,26 +1,26 @@
-from stanza.runtime import setup
+from foundry.runtime import setup
 setup()
 
-from stanza.dataclasses import dataclass, replace
-from stanza.runtime import ConfigProvider, command
-from stanza.random import PRNGSequence
-from stanza import canvas
+from foundry.core.dataclasses import dataclass, replace
+from foundry.runtime import ConfigProvider, command
+from foundry.core.random import PRNGSequence
+from foundry import canvas
 from . import datasets
 from .datasets import Sample
 
 from functools import partial
 from typing import Any
 
-import stanza.policy
-import stanza.util
-import stanza.util
-import stanza.train.reporting
-import stanza.train.wandb
+import foundry.policy
+import foundry.util
+import foundry.util
+import foundry.train.reporting
+import foundry.train.wandb
 import jax
-import jax.numpy as jnp
+import foundry.numpy as jnp
 import functools
 import wandb
-import stanza
+import foundry
 import plotly.express as px
 import plotly.graph_objs as go
 import logging
@@ -99,7 +99,7 @@ def main(config : Config):
 
     wandb_run = wandb.init(
         project="cond_diffusion_toy",
-        config=stanza.util.flatten_to_dict(config)[0]
+        config=foundry.util.flatten_to_dict(config)[0]
     )
     logger.info(f"Logging to [blue]{wandb_run.url}[/blue]")
 
@@ -123,7 +123,7 @@ def main(config : Config):
 
     # get the metrics and final reportables
     # from the eval output
-    # metrics, reportables = stanza.train.reporting.as_log_dict(output)
+    # metrics, reportables = foundry.train.reporting.as_log_dict(output)
     # for k, v in metrics.items():
     #     logger.info(f"{k}: {v}")
     # wandb_run.summary.update(metrics)

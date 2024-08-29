@@ -6,8 +6,8 @@ authors = [
     {name = "Daniel Pfrommer", email = "dan.pfrommer@gmail.com"},
 ]
 dependencies = [
-    "stanza",
-    "stanza-models"
+    "foundry",
+    "foundry-models"
 ]
 requires-python = ">=3.10"
 license = {text = "MIT"}

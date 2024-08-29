@@ -1,14 +1,14 @@
 
-from stanza.data import Data
-from stanza.diffusion import DDPMSchedule
-from stanza.runtime import ConfigProvider
+from foundry.data import Data
+from foundry.diffusion import DDPMSchedule
+from foundry.runtime import ConfigProvider
 
-from stanza.dataclasses import dataclass
-from stanza.diffusion import nonparametric
+from foundry.core.dataclasses import dataclass
+from foundry.diffusion import nonparametric
 from .datasets import Sample
 
 import jax
-import jax.numpy as jnp
+import foundry.numpy as jnp
 import logging
 logger = logging.getLogger(__name__)
 

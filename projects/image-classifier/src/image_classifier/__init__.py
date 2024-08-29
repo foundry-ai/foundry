@@ -1,19 +1,19 @@
-from stanza.runtime import ConfigProvider, command, setup
+from foundry.runtime import ConfigProvider, command, setup
 setup()
 
-from stanza.dataclasses import dataclass
+from foundry.core.dataclasses import dataclass
 
-from stanza.train import LossOutput
-from stanza.random import PRNGSequence
-from stanza.datasets.vision import image_class_datasets
-from stanza.model import models
+from foundry.train import LossOutput
+from foundry.core.random import PRNGSequence
+from foundry.datasets.vision import image_class_datasets
+from foundry.model import models
 
 from functools import partial
 
-import stanza.train
-import stanza.train.wandb
-import stanza.train.console
-import stanza.train.sharpness
+import foundry.train
+import foundry.train.wandb
+import foundry.train.console
+import foundry.train.sharpness
 
 import flax
 import rich
@@ -21,9 +21,9 @@ import wandb
 
 import optax
 import jax
-import jax.numpy as jnp
+import foundry.numpy as jnp
 
-import stanza.util
+import foundry.util
 import logging
 logger = logging.getLogger(__name__)
 
@@ -135,7 +135,7 @@ def train(config: Config):
                                config.weight_decay, config.sam_rho)
     wandb_run = wandb.init(
         project="image_classifier",
-        config=stanza.util.flatten_to_dict(config)[0]
+        config=foundry.util.flatten_to_dict(config)[0]
     )
     num_classes = len(dataset.classes)
     logger.info(f"Logging to [blue]{wandb_run.url}[/blue]")
@@ -164,8 +164,8 @@ def train(config: Config):
             var_updates=mutated
         )
     val_loss = partial(loss_fn, train=False)
-    batch_loss = stanza.train.batch_loss(loss_fn)
-    val_batch_loss = stanza.train.batch_loss(val_loss)
+    batch_loss = foundry.train.batch_loss(loss_fn)
+    val_batch_loss = foundry.train.batch_loss(val_loss)
     
     vars = model.init(next(rng), jnp.zeros_like(normalizer.structure[0]))
     opt_state = optimizer.init(vars["params"])
@@ -180,51 +180,51 @@ def train(config: Config):
     )
     test_data = dataset.splits["test"].stream().batch(2*config.batch_size)
 
-    with stanza.train.loop(train_data, rng_key=next(rng), iterations=iterations,
+    with foundry.train.loop(train_data, rng_key=next(rng), iterations=iterations,
                 log_compiles=config.log_compiles, trace=config.trace) as loop, \
             test_data.build() as test_stream, \
             sharpness_data.build() as sharpness_stream:
 
         for epoch in loop.epochs():
             for step in epoch.steps():
-                opt_state, vars, metrics = stanza.train.step(
+                opt_state, vars, metrics = foundry.train.step(
                     batch_loss, optimizer,
                     opt_state, vars,
                     step.rng_key, step.batch 
                 )
-                stanza.train.wandb.log(
+                foundry.train.wandb.log(
                     step.iteration, metrics,
                     run=wandb_run, prefix="train/"
                 )
                 # print to the console every 100 iterations
                 if step.iteration % 100 == 0:
-                    stanza.train.console.log(
+                    foundry.train.console.log(
                         step.iteration, metrics, prefix="train."
                     )
                 # validate + log every 500 steps
                 if step.iteration % 100 == 0:
-                    test_stream, test_metrics = stanza.train.eval_stream(
+                    test_stream, test_metrics = foundry.train.eval_stream(
                         val_batch_loss, vars, next(rng), test_stream
                     )
-                    stanza.train.console.log(
+                    foundry.train.console.log(
                         step.iteration, test_metrics,
                         prefix="test."
                     )
-                    stanza.train.wandb.log(
+                    foundry.train.wandb.log(
                         step.iteration, test_metrics,
                         prefix="test/", run=wandb_run
                     )
                 if step.iteration % 200 == 0:
                     sharpness_stream, sharpness_batch = sharpness_stream.next()
-                    sharpness_metrics = stanza.train.sharpness.sharpness_stats(
+                    sharpness_metrics = foundry.train.sharpness.sharpness_stats(
                         val_loss, vars, next(rng), sharpness_batch,
                         batch_size=max(64, config.batch_size)
                     )
-                    stanza.train.console.log(
+                    foundry.train.console.log(
                         step.iteration, sharpness_metrics,
                         prefix="test."
                     )
-                    stanza.train.wandb.log(
+                    foundry.train.wandb.log(
                         step.iteration, sharpness_metrics,
                         prefix="test/", run=wandb_run
                     )
