@@ -46,13 +46,14 @@ class UNetConfig:
 class DiffusionPolicyConfig:
     model: MLPConfig | UNetConfig | None = None
 
-    iterations: int = 60000
+    epochs: int = 10
     batch_size: int = 64
     learning_rate: float = 1e-4
 
     diffusion_steps: int = 50
     action_horizon: int = 8
     
+    save_dir: str = "/nobackup/users/chryu"
     from_checkpoint: bool = False
     checkpoint_filename: str = None
 
@@ -184,7 +185,11 @@ def train_net_diffusion_policy(
         )
     batched_loss_fn = train.batch_loss(loss_fn)
 
-    opt_sched = optax.cosine_onecycle_schedule(config.iterations, config.learning_rate)
+    train_data_batched = train_data.stream().batch(config.batch_size)
+    epoch_iterations = len(train_data) // config.batch_size
+    total_iterations = config.epochs * epoch_iterations
+
+    opt_sched = optax.cosine_onecycle_schedule(total_iterations, config.learning_rate)
     optimizer = optax.adamw(opt_sched)
     opt_state = optimizer.init(vars["params"])
 
@@ -194,12 +199,11 @@ def train_net_diffusion_policy(
     #     '/tmp/flax_ckpt/orbax/managed', orbax_checkpointer, options)
 
     # Create a directory to save checkpoints
-    current_dir = os.path.dirname(os.path.realpath(__file__))
-    ckpts_dir = os.path.join(current_dir, "checkpoints")
+    ckpts_dir = os.path.join(config.save_dir, "checkpoints")
     if not os.path.exists(ckpts_dir):
         os.makedirs(ckpts_dir)
 
-    train_data_batched = train_data.stream().batch(config.batch_size)
+    
 
     # Keep track of the exponential moving average of the model parameters
     ema = optax.ema(0.9)
@@ -207,7 +211,7 @@ def train_net_diffusion_policy(
 
     with stanza.train.loop(train_data_batched, 
                 rng_key=next(rng),
-                iterations=config.iterations,
+                iterations=total_iterations,
                 progress=True
             ) as loop:
         for epoch in loop.epochs():

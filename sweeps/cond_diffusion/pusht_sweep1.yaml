@@ -12,9 +12,9 @@ parameters:
     value: "pusht/chi"
   policy.model:
     value: "unet"
-  policy.iterations:
-    min: 8000
-    max: 80000
+  policy.epochs:
+    min: 10
+    max: 200
   policy.batch_size:
     min: 32
     max: 256
