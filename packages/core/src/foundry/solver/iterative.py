@@ -13,7 +13,7 @@ import foundry.numpy as jnp
 class IterativeSolver(Solver):
     # This is static so we can output the optimization history
     # if requested
-    max_iterations: int = field(default=1000, pytree_node=False)
+    max_iterations: int = 1000
     
     def init(self, objective, **kwargs):
         raise NotImplementedError("init() must be implemented")

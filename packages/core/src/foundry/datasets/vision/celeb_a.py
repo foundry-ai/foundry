@@ -11,7 +11,7 @@ from .. import util as du
 
 @dataclass
 class CelebAData(Data):
-    path: str = field(pytree_node=False)
+    path: str 
 
     def __getitem__(self, idx) -> Image:
         return Image(io.read_image(

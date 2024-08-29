@@ -153,7 +153,7 @@ class ChunkData(Data, Generic[T,I]):
     # contains the timepoints, infos offsets
     # offset by points_offset, infos_offset
     chunk_offsets: Data[tuple[int, int]]
-    chunk_length: int = field(pytree_node=False)
+    chunk_length: int 
 
     def __len__(self) -> int:
         return len(self.chunk_offsets)

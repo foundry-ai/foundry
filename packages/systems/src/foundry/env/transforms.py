@@ -1,6 +1,8 @@
 import abc
 import jax
 
+import foundry.core as F
+
 from foundry.core.dataclasses import dataclass, field
 from foundry.env import EnvWrapper
 
@@ -19,16 +21,16 @@ class ChainedTransform(EnvTransform):
 
 @dataclass
 class MultiStepTransform(EnvTransform):
-    steps: int = field(default=1, pytree_node=False)
+    steps: int = 1
 
     def apply(self, env):
         return MultiStepEnv(env, self.steps)
 
 @dataclass
 class MultiStepEnv(EnvWrapper):
-    steps: int = field(default=1, pytree_node=False)
+    steps: int = 1
 
-    @jax.jit
+    @F.jit
     def step(self, state, action, rng_key=None):
         keys = jax.random.split(rng_key, self.steps) \
             if rng_key is not None else None

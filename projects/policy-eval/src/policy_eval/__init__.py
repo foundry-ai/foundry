@@ -1,14 +1,10 @@
-from foundry.runtime import setup
-setup()
-
 from foundry.core.dataclasses import dataclass, replace
-from foundry.runtime import ConfigProvider, command
 from foundry.datasets.env import datasets
 from foundry.core.random import PRNGSequence
 from foundry.env import ImageRender
 from foundry.env.core import ObserveConfig, RenderConfig
 from foundry.train.reporting import Video
-from foundry import canvas
+from foundry.graphics import canvas
 from foundry.policy import PolicyInput, PolicyOutput
 from foundry.env.mujoco.pusht import PushTAgentPos
 from foundry.env.mujoco.robosuite import ManipulationTaskEEFPose
@@ -36,10 +32,6 @@ logger = logging.getLogger(__name__)
 class PolicyConfig:
     pass
 
-    @staticmethod
-    def parse(config: ConfigProvider) -> "PolicyConfig":
-        raise NotImplementedError()
-    
     def train_policy(self, config, env, train_data):
         pass
 
@@ -55,35 +47,6 @@ class Config:
     train_data_size: int | None = None
     test_data_size: int | None = 4
     render_config: RenderConfig = ImageRender(128,128)
-
-    @staticmethod
-    def parse(config: ConfigProvider) -> "Config":
-        defaults = Config()
-
-        from . import diffusion_policy, diffusion_estimator, nearest_neighbor, behavior_cloning
-        
-        dataset = config.get("dataset", str, default=None)
-        if dataset.startswith("pusht"):
-            defaults = replace(defaults, action_config=PushTAgentPos(), dataset=dataset)
-        elif dataset.startswith("robomimic"):
-            defaults = replace(defaults, action_config=ManipulationTaskEEFPose(), dataset=dataset)
-        else:
-            raise ValueError(f"Unknown dataset: {dataset}")
-        
-        # Check for a default policy override
-        policy = config.get("policy", str, default=None)
-        if policy == "diffusion_policy":
-            defaults = replace(defaults, policy=diffusion_policy.DiffusionPolicyConfig())
-        elif policy == "diffusion_estimator":
-            defaults = replace(defaults, policy=diffusion_estimator.DiffusionEstimatorConfig(action_config=defaults.action_config))
-        elif policy == "nearest_neighbor":
-            defaults = replace(defaults, policy=nearest_neighbor.NNConfig())
-        elif policy == "behavior_cloning":
-            defaults = replace(defaults, policy=behavior_cloning.BCConfig())
-        else:
-            raise ValueError(f"Unknown policy: {policy}")
-
-        return config.get_dataclass(defaults)
 
 @dataclass
 class Sample:
@@ -212,7 +175,6 @@ def main(config : Config):
     })
     wandb_run.finish()
 
-@command
 def run(config: ConfigProvider):
     logger.setLevel(logging.DEBUG)
     main(Config.parse(config))

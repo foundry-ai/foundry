@@ -1,0 +1,9 @@
+#!/usr/bin/env python
+
+if __name__=="__main__":
+    # setup logging etc.
+    from foundry.util.runtime import setup
+    setup()
+    import omegaconf
+    from policy_eval import run
+    run()

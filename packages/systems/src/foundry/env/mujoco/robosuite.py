@@ -4,8 +4,10 @@ import mujoco
 import numpy as np
 import collections.abc
 
+import foundry.core as F
+
 from foundry.core.dataclasses import dataclass, field, replace
-from foundry.util import jax_static_property
+from foundry.core.tree import static_property
 from foundry.env import (
     EnvWrapper, RenderConfig, ObserveConfig,
     ImageRender, 
@@ -35,13 +37,13 @@ ObjectInitializer = Any
 
 @dataclass(kw_only=True)
 class RobosuiteEnv(MujocoEnvironment[SimulatorState]):
-    robots: Sequence[str] = field(pytree_node=False)
+    robots: Sequence[str]
 
     @property
     def _env_args(self):
         return {}
 
-    @jax_static_property
+    @static_property
     def _model_initializers(self) -> tuple[mujoco.MjModel, Sequence[RobotInitializer], ObjectInitializer]:
         _setup_macros()
         import robosuite as suite
@@ -64,7 +66,7 @@ class RobosuiteEnv(MujocoEnvironment[SimulatorState]):
     def model(self):
         return self._model_initializers[0]
 
-    @jax.jit
+    @F.jit
     def _reset_internal(self, rng_key : jax.Array) -> SystemState:
         state = SystemState(
             time=jnp.zeros((), jnp.float32),
@@ -82,7 +84,7 @@ class RobosuiteEnv(MujocoEnvironment[SimulatorState]):
         state = ObjectInitializer.update_state(model, state, placements.values())
         return state
     
-    @jax.jit
+    @F.jit
     def reset(self, rng_key: jax.Array) -> SimulatorState:
         state = self._reset_internal(rng_key)
         return self.full_state(state)
@@ -118,11 +120,8 @@ _TARGET_BIN_ID = {
 
 @dataclass(kw_only=True)
 class PickAndPlace(RobosuiteEnv[SimulatorState]):
-    num_objects: int = field(default=4, pytree_node=False)
-    objects: Sequence[str] = field(
-        default=("can","milk","bread","cereal"), 
-        pytree_node=False
-    )
+    num_objects: int = 4
+    objects: Sequence[str] = ("can","milk","bread","cereal")
 
     @property
     def env_name(self):
@@ -175,7 +174,7 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
         bin_high = bin_low + bin_size[:2]
         return jnp.logical_and(jnp.all(pos[:2] >= bin_low), jnp.all(pos[:2] <= bin_high))
         
-    @jax.jit
+    @F.jit
     def reward(self, state, action, next_state):
         obs = self.observe(next_state, ManipulationTaskObs())
         objects_over_bins = jnp.array([self._over_bin(obj_pos, _TARGET_BIN_ID[obj]) \
@@ -191,11 +190,11 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
     def is_finished(self, state: SimulatorState) -> jax.Array:
         return super().is_finished(state)
 
-    @jax.jit
+    @F.jit
     def render(self, state, config = None):
         return super().render(state, config)
     
-    @jax.jit
+    @F.jit
     def observe(self, state, config : ObserveConfig | None = None):
         if config is None: config = ManipulationTaskObs()
         data = self.simulator.system_data(state)
@@ -236,12 +235,9 @@ _PEG_ID_NUT_MAP = {
 
 @dataclass(kw_only=True)
 class NutAssembly(RobosuiteEnv[SimulatorState]):
-    num_objects: int = field(default=2, pytree_node=False)
+    num_objects: int = 2
     # the type of the nut
-    objects: Sequence[str] = field(
-        default=("round","square"),
-        pytree_node=False
-    )
+    objects: Sequence[str] = ("round","square")
 
     @property
     def env_name(self):
@@ -284,7 +280,7 @@ class NutAssembly(RobosuiteEnv[SimulatorState]):
             state = super()._reset_internal(rng_key)
         return state
 
-    @jax.jit
+    @F.jit
     def observe(self, state, config : ObserveConfig | None = None):
         if config is None: config = ManipulationTaskObs()
         data = self.simulator.system_data(state)
@@ -313,7 +309,7 @@ class NutAssembly(RobosuiteEnv[SimulatorState]):
         else:
             raise ValueError("Unsupported observation type")
 
-    @jax.jit
+    @F.jit
     def reward(self, state, action, next_state):
         peg_ids = [self.model.body("peg1").id, self.model.body("peg2").id]
         data = self.simulator.system_data(next_state)
@@ -575,19 +571,19 @@ environments.register("nutassembly/round", partial(NutAssembly,
 class ObjectPlacement:
     pos: jax.Array
     quat: jax.Array
-    joint_names: Sequence[str] = field(pytree_node=False)
+    joint_names: Sequence[str] 
     # the extents of the object (for exclusion purposes)
-    object_horiz_radius : float = field(pytree_node=False)
-    object_top_offset : float = field(pytree_node=False)
-    object_bottom_offset : float = field(pytree_node=False)
+    object_horiz_radius : float 
+    object_top_offset : float 
+    object_bottom_offset : float 
 
 @dataclass
 class RobotInitializer:
     init_qpos: jax.Array
-    joint_indices: np.ndarray = field(pytree_node=False)
-    qpos_indices: np.ndarray = field(pytree_node=False)
-    qvel_indices: np.ndarray = field(pytree_node=False)
-    gripper_actuator_indices: np.ndarray = field(pytree_node=False)
+    joint_indices: np.ndarray 
+    qpos_indices: np.ndarray 
+    qvel_indices: np.ndarray 
+    gripper_actuator_indices: np.ndarray 
     noiser: Callable[[jax.Array, jax.Array], jax.Array] | None = None
 
     def reset(self, rng_key : jax.Array | None, state: SystemState) -> SystemState:

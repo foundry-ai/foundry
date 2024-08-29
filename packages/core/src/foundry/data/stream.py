@@ -28,8 +28,8 @@ class DataStream(Generic[T]):
 @dataclass
 class MappedStream(DataStream[T]):
     stream: DataStream[V]
-    fn: Callable[[V], T] = field(pytree_node=False)
-    
+    fn: Callable[[V], T]
+
     def __len__(self):
         return len(self.stream)
 
@@ -63,7 +63,7 @@ class StreamBuilder(Generic[T]):
 @dataclass
 class MappedStreamBuilder(StreamBuilder[T]):
     builder: StreamBuilder[V]
-    fn: Callable[[V], T] = field(pytree_node=False)
+    fn: Callable[[V], T]
 
     def batch(self, batch_size: int) -> "MappedStreamBuilder[T]":
         return MappedStreamBuilder(self.builder.batch(batch_size), self.fn)

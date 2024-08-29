@@ -32,14 +32,14 @@ class MinimizeMPC(Objective):
     initial_actions: Any
     state0: Any
 
-    cost_fn: Callable = field(pytree_node=False)
-    model_fn: Callable = field(pytree_node=False)
+    cost_fn: Callable 
+    model_fn: Callable 
 
     initial_params: Any = None
     initial_cost_state : Any = None
-    has_params: bool = field(default=False, pytree_node=False)
-    has_state: bool = field(default=False, pytree_node=False)
-    has_aux: bool = field(default=False, pytree_node=False)
+    has_params: bool = False
+    has_state: bool = False
+    has_aux: bool = False
 
     def cost(self, cost_state, params, states, actions):
         args = tuple()
@@ -87,7 +87,7 @@ class MPC:
     action_sample: Any
     cost_fn : Any
     model_fn : Callable = None
-    horizon_length : int = field(pytree_node=False)
+    horizon_length : int 
 
     solver : Solver = iLQRSolver()
 
@@ -96,10 +96,10 @@ class MPC:
     # If the cost horizon should receed or stay static
     # if receed=False, you can only rollout horizon_length
     # length trajectories with this MPC
-    receed : bool = field(default=True, pytree_node=False)
-    history : bool = field(default=False, pytree_node=False)
+    receed : bool = True
+    history : bool = False
     # todo: implement replanning without receeding
-    replan : bool = field(default=True, pytree_node=False)
+    replan : bool = True
     
     def _solve(self, state0, init_actions):
         # Try to provide a MinimizeMPC

@@ -20,10 +20,10 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TinyStoriesData(Data):
-    mmap : np.array = field(pytree_node=False)
-    offset : int = field(pytree_node=False)
-    length : int = field(pytree_node=False)
-    sample_size : int = field(pytree_node=False)
+    mmap : np.array 
+    offset : int 
+    length : int 
+    sample_size : int 
 
     def _get(self, i):
         if i.shape == ():

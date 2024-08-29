@@ -333,8 +333,6 @@ class PositionalObsEnv(EnvWrapper):
             body1_rot=obs.body1_rot
         )
 
-
-
 environments = EnvironmentRegistry[ReacherEnv]()
 environments.register("", ReacherEnv)
 def _make_positional(**kwargs):

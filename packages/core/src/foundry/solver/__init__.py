@@ -58,9 +58,9 @@ class MinimizeState(SolverState):
 # Minimize the passed-in function
 @dataclass(kw_only=True)
 class Minimize(Objective):
-    fun: Callable[[Any, Any], float] = field(pytree_node=False)
-    has_state: bool = field(default=False, pytree_node=False)
-    has_aux: bool = field(default=False, pytree_node=False)
+    fun: Callable[[Any, Any], float] 
+    has_state: bool = False
+    has_aux: bool = False
     initial_state: Any = None # Note that has_state needs to be true in order for this
                            # to be passed into the function!
     initial_params: Any = None

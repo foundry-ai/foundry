@@ -11,8 +11,8 @@ from foundry.env.transforms import (
 from . import assets
 
 from foundry.core.dataclasses import dataclass, field, replace
-from foundry.util import jax_static_property
-from foundry import canvas
+from foundry.core.tree import static_property
+from foundry.graphics import canvas
 
 from foundry.env.mujoco.core import (
     MujocoEnvironment, SystemState, 
@@ -44,15 +44,15 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
     goal_pos: jax.Array = field(default_factory=lambda: jnp.zeros((2,), jnp.float32))
     goal_rot: jax.Array = field(default_factory=lambda: jnp.array(-jnp.pi/4, jnp.float32))
     # use the mjx backend by default
-    physics_backend: str = field(default="mjx", pytree_node=False)
+    physics_backend: str = "mjx"
 
-    success_threshold: float = field(default=0.9, pytree_node=False)
+    success_threshold: float = 0.9
 
-    agent_radius : float = field(default=15/252, pytree_node=False)
-    block_scale : float = field(default=30/252, pytree_node=False)
-    world_scale : float = field(default=2, pytree_node=False)
+    agent_radius : float = 15 / 252
+    block_scale : float = 30 /252
+    world_scale : float = 2
 
-    @jax_static_property
+    @static_property
     def xml(self):
         with (resources.files(assets) / "pusht.xml").open("r") as f:
             xml = f.read()
@@ -70,7 +70,7 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
             com_offset=com
         )
     
-    @jax_static_property
+    @static_property
     def model(self):
         return mujoco.MjModel.from_xml_string(self.xml)
 

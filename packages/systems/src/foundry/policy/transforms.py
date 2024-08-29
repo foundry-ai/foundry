@@ -68,8 +68,8 @@ class ChunkingPolicyState:
 @dataclass
 class ChunkingTransform(PolicyTransform):
     # If None, no input/output batch dimension
-    obs_chunk_size: int = field(default=None, pytree_node=False)
-    action_chunk_size: int = field(default=None, pytree_node=False)
+    obs_chunk_size: int | None = None
+    action_chunk_size: int | None = None
 
     def apply(self, policy):
         return ChunkingPolicy(policy, self.obs_chunk_size, self.action_chunk_size)
@@ -78,8 +78,8 @@ class ChunkingTransform(PolicyTransform):
 class ChunkingPolicy(Policy):
     policy: Policy
     # If None, no input/output batch dimension
-    obs_chunk_size: int = field(default=None, pytree_node=False)
-    action_chunk_size: int = field(default=None, pytree_node=False)
+    obs_chunk_size: int | None = None
+    action_chunk_size: int | None = None
 
     @property
     def rollout_length(self):

@@ -18,7 +18,7 @@ class OptaxState(MinimizeState):
 @dataclass(kw_only=True)
 class OptaxSolver(IterativeSolver):
     tol: float = 1e-3
-    optimizer: Any = field(default=None, pytree_node=False)
+    optimizer: Any = None
 
     @jax.jit
     def init(self, objective):

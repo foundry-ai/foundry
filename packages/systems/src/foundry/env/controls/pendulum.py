@@ -17,7 +17,7 @@ class State(NamedTuple):
 
 @dataclass
 class PendulumEnv(Environment):
-    sub_steps : int = field(default=1, pytree_node=False)
+    sub_steps : int = 1
     dt : float = 0.2
     target_goal : State = State(angle=jnp.array([math.pi]), vel=jnp.array([0]))
 

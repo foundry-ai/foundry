@@ -1,1 +1,1 @@
-ArrayLike
+from jax.typing import ArrayLike

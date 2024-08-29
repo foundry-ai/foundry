@@ -33,7 +33,7 @@ class DDPMSchedule:
         alphas_cumprod[1] = alphabar_1 = alpha_1 = (1 - beta_1)
 
     """
-    prediction_type: str = field(default="epsilon", pytree_node=False)
+    prediction_type: str = "epsilon"
     """ The type of prediction to make. If "epsilon", the model will predict the noise.
     If "sample", the model will predict the sample.
     """

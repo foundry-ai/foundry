@@ -1,6 +1,8 @@
 import jax.tree_util
 import jax
 
+from typing import GenericAlias
+
 from jax.tree_util import (
     tree_map as map, 
     tree_flatten as flatten, 

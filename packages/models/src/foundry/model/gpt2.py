@@ -14,12 +14,13 @@ from foundry.util.registry import Registry
 
 @dataclass
 class GPTConfig:
-    block_size: int = field(default=1024, pytree_node=False)
-    vocab_size: int = field(default=50304, pytree_node=False)
-    num_layers: int = field(default=12, pytree_node=False)
-    num_heads: int = field(default=12, pytree_node=False)
-    num_embeds: int = field(default=768, pytree_node=False)
-    dropout_rate: float = field(default=0.1, pytree_node=False)
+    block_size: int = 1024
+    vocab_size: int = 50304
+    num_layers: int = 12
+    num_heads: int = 12
+    num_embeds: int = 768
+    dropout_rate: float = 0.1
+
     use_bias: bool = True
     dtype: Optional[str] = None
 

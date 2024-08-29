@@ -8,7 +8,7 @@ from foundry.core.dataclasses import dataclass, field
 
 
 class TokenizationConfig:
-    vocab_size: int = field(pytree_node=False)
+    vocab_size: int 
 
 class Tokenizer:
     def __init__(self, model=None):

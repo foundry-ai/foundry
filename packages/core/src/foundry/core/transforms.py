@@ -34,7 +34,7 @@ def jit(func=None, *,
     if allow_static: 
         func = _make_filtering(func)
     else: 
-        func = _ensure_array_args(func)
+        func = _assert_array_args(func)
     # if allow_arraylike is true
     if allow_arraylike: 
         func = _convert_arraylike_args(func)

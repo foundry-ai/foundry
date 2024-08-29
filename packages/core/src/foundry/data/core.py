@@ -1,18 +1,21 @@
-import foundry.core.transforms as T
+import foundry.core.transforms as F
 import foundry.core.tree as tree
-import foundry.numpy as fnp
+import foundry.numpy as jnp
 
 from foundry.core.dataclasses import (
     dataclass, field, replace
 )
+from foundry.core.typing import ArrayLike
+
 from functools import partial
 from contextlib import contextmanager
 from typing import (
     TypeVar, Generic, Callable, Sequence,
     Generator
 )
-from jax.typing import ArrayLike
 from .stream import StreamBuilder, DataStream
+
+import jax.tree_util
 
 import math
 import numpy as np
@@ -42,7 +45,7 @@ class Data(Generic[T]):
     # Get the structure of one instance of the data.
     @property
     def structure(self):
-        return jax.tree.map(
+        return tree.map(
             lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype), self[0]
         )
 
@@ -86,7 +89,7 @@ class Data(Generic[T]):
 @dataclass
 class MappedData(Data[T]):
     data : Data[V]
-    fn: Callable[[V], T] = field(pytree_node=False)
+    fn: Callable[[V], T]
 
     def __len__(self) -> int:
         return len(self.data)
@@ -100,9 +103,9 @@ class MappedData(Data[T]):
     # A utility which uses tracing
     # to compute the mapped structure under the given function.
     @staticmethod
-    @partial(jax.jit, static_argnums=(0,1))
+    @F.jit
     def _compute_structure(fn, data_structure):
-        sample = jax.tree.map(lambda x: jnp.zeros(x.shape, x.type), data_structure)
+        sample = tree.map(lambda x: jnp.zeros(x.shape, x.type), data_structure)
         mapped = fn(sample)
         return jax.tree.map(
             lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype), mapped
@@ -183,12 +186,12 @@ jax.tree_util.register_pytree_node(
 class IndexedDataStream(DataStream[T]):
     data: Data[T]
     offset: jax.Array
-    max_offset: int = field(pytree_node=False)
-    batch_shape: Sequence[int] = field(pytree_node=False)
+    max_offset: int
+    batch_shape: Sequence[int]
 
     shuffle_key: jax.Array | None
     indices: jax.Array | None
-    resample : bool = field(pytree_node=False)
+    resample : bool
 
     @staticmethod
     def create(data, max_offset, batch_shape,
@@ -210,16 +213,16 @@ class IndexedDataStream(DataStream[T]):
             resample=resample,
         )
 
-    @T.jit
+    @F.jit
     def __len__(self):
         batch_size = math.prod(self.batch_shape)
         return (self.max_offset - self.offset) // batch_size
 
-    @T.jit
+    @F.jit
     def has_next(self):
         return self.offset < self.max_offset
 
-    @T.jit
+    @F.jit
     def _next(self):
         shuffle_key = self.shuffle_key
         batch_shape = self.batch_shape
@@ -243,7 +246,7 @@ class IndexedDataStream(DataStream[T]):
             shuffle_key=shuffle_key
         ), batch
     
-    @jax.jit
+    @F.jit
     def _reset(self):
         shuffle_key = self.shuffle_key
         if not self.resample and self.shuffle_key is not None:
@@ -263,10 +266,10 @@ class IndexedDataStream(DataStream[T]):
 @dataclass
 class IndexedStreamBuilder(StreamBuilder[T]):
     data: Data[T]
-    max_offset: int = field(pytree_node=False)
-    batch_shape: Sequence[int] | None = field(default=None, pytree_node=False)
+    max_offset: int
+    batch_shape: Sequence[int] | None = None
     shuffle_key: jax.Array | None = None
-    resample : bool = field(default=False, pytree_node=False)
+    resample : bool = False
 
     def batch(self, batch_size: int) -> "IndexedStreamBuilder[T]":
         return replace(self, 

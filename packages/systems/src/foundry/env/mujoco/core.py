@@ -1,11 +1,12 @@
+import foundry.core.transforms as F
+
 from foundry.env import (
     Environment, RenderConfig,
     HtmlRender, ImageRender
 )
 from foundry.core.dataclasses import dataclass, field
-from foundry.util import jax_static_property
-
-from foundry import canvas
+from foundry.core.tree import static_property
+from foundry.graphics import canvas
 
 from typing import TypeVar, Generic
 
@@ -68,20 +69,20 @@ class Simulator(abc.ABC, Generic[SimulatorState]):
 
 @dataclass(kw_only=True)
 class MujocoEnvironment(Environment[SimulatorState, SystemState, Action], Generic[SimulatorState]):
-    physics_backend : str = field(default="mujoco", pytree_node=False)
+    physics_backend : str = "mujoco"
 
-    @jax_static_property
+    @static_property
     def model(self) -> mujoco.MjModel:
         raise NotImplementedError()
     
-    @jax_static_property
+    @static_property
     def simulator(self) -> Simulator:
         return self.make_simulator(self.physics_backend, self.model)
 
     # Always guaranteed to be a MujocoSimulator,
     # even if the physics backend is not "mujoco."
     # This is used as a fallback for rendering.
-    @jax_static_property
+    @static_property
     def native_simulator(self) -> Simulator:
         if self.physics_backend == "mujoco":
             return self.simulator
@@ -94,11 +95,11 @@ class MujocoEnvironment(Environment[SimulatorState, SystemState, Action], Generi
     def reduce_state(self, full_state: SimulatorState) -> SystemState:
         return self.simulator.reduce_state(full_state)
 
-    @jax.jit
+    @F.jit
     def sample_action(self, rng_key):
         return jnp.zeros((self.simulator.model.nu,), jnp.float32)
 
-    @jax.jit
+    @F.jit
     def sample_state(self, rng_key):
         return self.full_state(SystemState(
             time=jnp.zeros((), jnp.float32),
@@ -107,16 +108,16 @@ class MujocoEnvironment(Environment[SimulatorState, SystemState, Action], Generi
             act=self.simulator.act0
         ))
 
-    @jax.jit
+    @F.jit
     def reset(self, rng_key: jax.Array) -> SimulatorState:
         raise NotImplementedError()
 
-    @jax.jit
+    @F.jit
     def step(self, state: SimulatorState, action: Action, 
                     rng_key: jax.Array) -> SimulatorState:
         return self.simulator.step(state, action, rng_key)
 
-    @jax.jit
+    @F.jit
     def render(self, state: SimulatorState, config: RenderConfig | None = None) -> jax.Array:
         config = config or ImageRender(width=256, height=256)
         if isinstance(config, ImageRender):

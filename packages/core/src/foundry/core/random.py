@@ -1,7 +1,7 @@
 import jax.random
 import jax.numpy
 
-from foundry import dataclasses
+from foundry.core import dataclasses
 
 def key_or_seed(key_or_seed):
     if isinstance(key_or_seed, int):

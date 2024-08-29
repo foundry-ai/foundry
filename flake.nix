@@ -44,11 +44,18 @@
                     hook = ''
                         export TMPDIR=/tmp/$USER-foundry-tmp
                         mkdir -p $TMPDIR
-                        FOUNDRY=$(pwd)/packages/foundry/src
-                        COND_DIFFUSION=$(pwd)/projects/cond-diffusion/src
-                        IMAGE_CLASSIFIER=$(pwd)/projects/image-classifier/src
-                        export PYTHONPATH=$FOUNDRY:$COND_DIFFUSION:$IMAGE_CLASSIFIER:$PYTHONPATH
-                        export PATH=$(pwd)/scripts:$PATH
+                        FOUNDRY_CORE=$(pwd)/packages/core
+                        FOUNDRY_SYSTEMS=$(pwd)/packages/systems
+                        FOUNDRY_MODELS=$(pwd)/packages/models
+
+                        POLICY_EVAL=$(pwd)/projects/policy-eval
+                        IMAGE_CLASSIFIER=$(pwd)/projects/image-classifier
+
+                        export PYTHONPATH=$FOUNDRY_CORE/src:$FOUNDRY_SYSTEMS/src:$FOUNDRY_MODELS/src
+                        export PYTHONPATH=:$POLICY_EVAL/src:$IMAGE_CLASSIFIER/src:$PYTHONPATH
+
+                        export PATH=$(pwd)/scripts:$POLICY_EVAL/scripts:$PATH
+
                         ${driversHook}
 
                         export FOUNDRY_PATH=$PATH
