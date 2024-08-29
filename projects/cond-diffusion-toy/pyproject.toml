@@ -6,7 +6,7 @@ authors = [
     {name = "Daniel Pfrommer", email = "dan.pfrommer@gmail.com"},
 ]
 dependencies = [
-    "foundry"
+    "foundry-core"
 ]
 requires-python = ">=3.10"
 license = {text = "MIT"}

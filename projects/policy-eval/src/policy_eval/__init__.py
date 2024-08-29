@@ -83,7 +83,6 @@ class Config:
         else:
             raise ValueError(f"Unknown policy: {policy}")
 
-        
         return config.get_dataclass(defaults)
 
 @dataclass

@@ -31,8 +31,10 @@
                                 (builtins.foldl' (x: y: x ++ y.dependencies) [] foundry-meta.dependencies)
                     );
                     externalPackages = builtins.filter (x: !(builtins.elem x (with requirements.env; [
-                        foundry-meta foundry-models foundry cond-diffusion 
-                        image-classifier language-model cond-diffusion-toy
+                        foundry-meta foundry-models
+                        foundry-core foundry-systems
+                        policy-eval image-classifier 
+                        language-model cond-diffusion-toy
                     ]))) allPackages;
                     pythonEnv = py.withPackages(
                         ps: 

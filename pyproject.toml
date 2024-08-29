@@ -6,13 +6,13 @@ authors = [
     {name = "Daniel Pfrommer", email = "dan.pfrommer@gmail.com"},
 ]
 dependencies = [
-    "foundry[ipython,docs] @ file:///${PROJECT_ROOT}/packages/foundry",
-    "foundry-models @ file:///${PROJECT_ROOT}/projects/models",
-    "cond_diffusion @ file:///${PROJECT_ROOT}/projects/cond-diffusion",
+    "foundry-core @ file:///${PROJECT_ROOT}/packages/core",
+    "foundry-systems @ file:///${PROJECT_ROOT}/packages/systems",
+    "foundry-models @ file:///${PROJECT_ROOT}/packages/models",
+    "policy-eval @ file:///${PROJECT_ROOT}/projects/policy-eval",
     "image-classifier @ file:///${PROJECT_ROOT}/projects/image-classifier",
     "language-model @ file:///${PROJECT_ROOT}/projects/language-model",
     "cond-diffusion-toy @ file:///${PROJECT_ROOT}/projects/cond-diffusion-toy",
-    "wandb>=0.17.4",
 ]
 requires-python = "<3.11,>=3.10"
 readme = "README.md"
@@ -29,9 +29,10 @@ build-backend = "pdm.backend"
 
 [tool.pdm.dev-dependencies]
 dev = [
-    "-e foundry[ipython,docs] @ file:///${PROJECT_ROOT}/packages/foundry",
-    "-e foundry-model @ file:///${PROJECT_ROOT}/projects/models",
-    "-e cond_diffusion @ file:///${PROJECT_ROOT}/projects/cond-diffusion",
+    "-e foundry-core @ file:///${PROJECT_ROOT}/packages/core",
+    "-e foundry-systems @ file:///${PROJECT_ROOT}/packages/systems",
+    "-e foundry-models @ file:///${PROJECT_ROOT}/packages/models",
+    "-e policy-eval @ file:///${PROJECT_ROOT}/projects/policy-eval",
     "-e image-classifier @ file:///${PROJECT_ROOT}/projects/image-classifier",
     "-e language-model @ file:///${PROJECT_ROOT}/projects/language-model",
     "-e cond-diffusion-toy @ file:///${PROJECT_ROOT}/projects/cond-diffusion-toy",

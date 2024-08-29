@@ -27,10 +27,10 @@ def _register_dataclass(nodetype, fields):
     )
     return nodetype
 
-def dataclass(cls=None, **kwargs):
+def dataclass(cls=None, frozen=True, **kwargs):
     if cls is None:
-        return functools.partial(dataclass, **kwargs)
-    cls = dcls.dataclass(frozen=True, unsafe_hash=True, **kwargs)(cls)
+        return functools.partial(dataclass, frozen=frozen, **kwargs)
+    cls = dcls.dataclass(frozen=frozen, unsafe_hash=True, **kwargs)(cls)
     fields = dcls.fields(cls)
     cls = _register_dataclass(cls, fields)
     return cls
