@@ -1,6 +1,6 @@
 ![Docs](https://github.com/pfrommerd/foundry/actions/workflows/docs.yml/badge.svg)
 
-# [Documentation](https://dan.pfrommer.us/foundry/)
+# [Documentation](https://foundry.pfrommer.dev/)
 
 # Installation Instructions
 
