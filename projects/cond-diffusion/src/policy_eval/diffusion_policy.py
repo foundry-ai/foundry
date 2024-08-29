@@ -26,27 +26,45 @@ import os
 
 logger = logging.getLogger(__name__)
 
+@dataclass
+class MLPConfig:
+    net_width: int = 64
+    net_depth: int = 3
+
+    def parse(self, config: ConfigProvider) -> "MLPConfig":
+        return config.get_dataclass(self)
+
+@dataclass
+class UNetConfig:
+    base_channels: int = 128
+    num_downsample: int = 4
+
+    def parse(self, config : ConfigProvider) -> "UNetConfig":
+        return config.get_dataclass(self)
 
 @dataclass
 class DiffusionPolicyConfig:
-    model: str = "unet"
+    model: MLPConfig | UNetConfig | None = None
 
-    iterations: int = 100
+    epochs: int = 10
     batch_size: int = 64
-
-    # MLP config
-    # net_width: int = 4096
-    # net_depth: int = 3
-    # embed_type: str = "film"
-    # has_skip: bool = True
+    learning_rate: float = 1e-4
 
     diffusion_steps: int = 50
     action_horizon: int = 8
     
+    save_dir: str = "/nobackup/users/chryu"
     from_checkpoint: bool = False
     checkpoint_filename: str = None
 
     def parse(self, config: ConfigProvider) -> "DiffusionPolicyConfig":
+        model = config.get("model", str, default=None)
+        if model == "mlp":
+            self = replace(self, model=MLPConfig())
+        elif model == "unet":
+            self = replace(self, model=UNetConfig())
+        else: 
+            raise ValueError(f"Unknown model: {model}")
         return config.get_dataclass(self, flatten={"train"})
 
     def train_policy(self, wandb_run, train_data, env, eval, rng):
@@ -103,13 +121,23 @@ def train_net_diffusion_policy(
         foundry.util.axis_size(train_data_tree.actions, 1)
     )
 
-    if config.model == "unet":
-        model = DiffusionUNet(dims=1, base_channels=128) # 1D temporal UNet
-    elif config.model == "mlp":
+    rng = PRNGSequence(rng)
+    #Model = getattr(net, config.model.split("/")[1])
+    # model = DiffusionMLP(
+    #     features=[config.net_width]*config.net_depth, 
+    #     embed_type=config.embed_type, 
+    #     has_skip=config.has_skip
+    # )
+    
+    if isinstance(config.model, UNetConfig):
+        model = DiffusionUNet(
+            dims=1, 
+            base_channels=config.model.base_channels, 
+            channel_mult=tuple([2**i for i in range(config.model.num_downsample)]),
+        ) # 1D temporal UNet
+    elif isinstance(config.model, MLPConfig):
         model = DiffusionMLP(
-            features=[config.net_width]*config.net_depth, 
-            embed_type=config.embed_type, 
-            has_skip=config.has_skip
+            features=[config.net_width]*config.net_depth
         )
     else:
         raise ValueError(f"Unknown model type: {config.model}")
@@ -157,7 +185,11 @@ def train_net_diffusion_policy(
         )
     batched_loss_fn = train.batch_loss(loss_fn)
 
-    opt_sched = optax.cosine_onecycle_schedule(config.iterations, 1e-4)
+    train_data_batched = train_data.stream().batch(config.batch_size)
+    epoch_iterations = len(train_data) // config.batch_size
+    total_iterations = config.epochs * epoch_iterations
+
+    opt_sched = optax.cosine_onecycle_schedule(total_iterations, config.learning_rate)
     optimizer = optax.adamw(opt_sched)
     opt_state = optimizer.init(vars["params"])
 
@@ -167,12 +199,11 @@ def train_net_diffusion_policy(
     #     '/tmp/flax_ckpt/orbax/managed', orbax_checkpointer, options)
 
     # Create a directory to save checkpoints
-    current_dir = os.path.dirname(os.path.realpath(__file__))
-    ckpts_dir = os.path.join(current_dir, "checkpoints")
+    ckpts_dir = os.path.join(config.save_dir, "checkpoints")
     if not os.path.exists(ckpts_dir):
         os.makedirs(ckpts_dir)
 
-    train_data_batched = train_data.stream().batch(config.batch_size)
+    
 
     # Keep track of the exponential moving average of the model parameters
     ema = optax.ema(0.9)
@@ -180,7 +211,7 @@ def train_net_diffusion_policy(
 
     with foundry.train.loop(train_data_batched, 
                 rng_key=next(rng),
-                iterations=config.iterations,
+                iterations=total_iterations,
                 progress=True
             ) as loop:
         for epoch in loop.epochs():
@@ -239,8 +270,7 @@ def train_net_diffusion_policy(
         )
         action = schedule.sample(input.rng_key, model_fn, train_sample.actions) 
         action = normalizer.map(lambda x: x.actions).unnormalize(action)
-        action = action[:config.action_horizon]
-        return PolicyOutput(action=action, info=action)
+        return PolicyOutput(action=action[:config.action_horizon], info=action)
     
     policy = ChunkingTransform(
         obs_length, config.action_horizon
@@ -282,11 +312,8 @@ class DiffusionUNet(UNet):
 
 class DiffusionMLP(nn.Module):
     features: Sequence[int]
-    embed_type: str 
-    has_skip: bool
     activation: str = "relu"
     time_embed_dim: int = 256
-    obs_embed_dim: int = 256
 
     @nn.compact
     def __call__(self, obs, actions,
@@ -305,25 +332,15 @@ class DiffusionMLP(nn.Module):
         ])(time_embed)
         obs_flat, _ = jax.flatten_util.ravel_pytree(obs)
         actions_flat, actions_uf = jax.flatten_util.ravel_pytree(actions)
-        if self.embed_type == "concat":
-            actions = jnp.concatenate((actions_flat, obs_flat), axis=-1)
-            embed = time_embed
-        elif self.embed_type == "film":
-            obs_embed = nn.Sequential([
-                nn.Dense(self.obs_embed_dim),
-                activation,
-                nn.Dense(self.obs_embed_dim),
-            ])(obs_flat)
-            actions = actions_flat
-            embed = time_embed + obs_embed
-        else: 
-            raise ValueError(f"Unknown embedding type: {self.embed_type}")
+
+        # concatenated embedding
+        actions = jnp.concatenate((actions_flat, obs_flat), axis=-1)
+        embed = time_embed
+
         for feat in self.features:
             shift, scale = jnp.split(nn.Dense(2*feat)(embed), 2, -1)
             actions = activation(nn.Dense(feat)(actions))
             actions = actions * (1 + scale) + shift
-            if self.has_skip:
-                actions = jnp.concatenate((actions, actions_flat, obs_flat), axis=-1)
         actions = nn.Dense(actions_flat.shape[-1])(actions)
         # x = jax.nn.tanh(x)
         actions = actions_uf(actions)

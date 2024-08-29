@@ -38,8 +38,8 @@ class RobomimicDataset(EnvDataset[Step]):
             PositionalControlTransform(),
             MultiStepTransform(20),
             #PositionalObsTransform()
-            #RelPosObsTransform()
-            RelKeypointObsTransform()
+            RelPosObsTransform()
+            #RelKeypointObsTransform()
         ]).apply(env)
         return env
 

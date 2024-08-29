@@ -1,7 +1,6 @@
 from foundry.runtime import setup
 setup()
 
-from foundry import dataclasses
 from foundry.core.dataclasses import dataclass, replace
 from foundry.runtime import ConfigProvider, command
 from foundry.datasets.env import datasets
@@ -33,7 +32,7 @@ import foundry
 import logging
 logger = logging.getLogger(__name__)
 
-@dataclasses.dataclass
+@dataclass
 class PolicyConfig:
     pass
 
@@ -44,18 +43,18 @@ class PolicyConfig:
     def train_policy(self, config, env, train_data):
         pass
 
-@dataclasses.dataclass
+@dataclass
 class Config:
     seed: int = 42
     dataset: str = "robomimic/pickplace/can/ph"
     obs_length: int = 1
-    action_length: int = 32
+    action_length: int = 16
     policy: PolicyConfig = None
     action_config: ObserveConfig = None
     timesteps: int = 200
     train_data_size: int | None = None
     test_data_size: int | None = 4
-    render_config: RenderConfig = ImageRender(128, 128)
+    render_config: RenderConfig = ImageRender(128,128)
 
     @staticmethod
     def parse(config: ConfigProvider) -> "Config":
@@ -63,7 +62,7 @@ class Config:
 
         from . import diffusion_policy, diffusion_estimator, nearest_neighbor, behavior_cloning
         
-        dataset = config.get("dataset", str, default=defaults.dataset)
+        dataset = config.get("dataset", str, default=None)
         if dataset.startswith("pusht"):
             defaults = replace(defaults, action_config=PushTAgentPos(), dataset=dataset)
         elif dataset.startswith("robomimic"):
@@ -82,12 +81,12 @@ class Config:
         elif policy == "behavior_cloning":
             defaults = replace(defaults, policy=behavior_cloning.BCConfig())
         else:
-            defaults = replace(defaults, policy=diffusion_estimator.DiffusionEstimatorConfig())
+            raise ValueError(f"Unknown policy: {policy}")
 
         
         return config.get_dataclass(defaults)
 
-@dataclasses.dataclass
+@dataclass
 class Sample:
     state: Any
     observations: jax.Array
@@ -188,8 +187,6 @@ def main(config : Config):
             jax.tree.map(lambda x: x[0], x.reduced_state)
         )
     ).as_pytree()
-    #test_x0s = jax.tree.map(lambda x: x[:1], test_x0s)
-    #eval = functools.partial(evaluate, env, test_x0s, config.timesteps)
 
     wandb_run = wandb.init(
         project="policy_eval",
@@ -198,12 +195,12 @@ def main(config : Config):
     logger.info(f"Logging to [blue]{wandb_run.url}[/blue]")
 
     policy = config.policy.train_policy(
-        wandb_run, train_data, env, eval, rng
+        wandb_run, train_data, env, eval, next(rng)
     )
     logger.info(f"Performing final evaluation...")
 
-    #output = jax.jit(partial(eval,policy))(jax.random.key(42))
-    output = evaluate(config, env, test_x0s, config.timesteps, policy, jax.random.key(42))
+    output = evaluate(config, env, test_x0s, config.timesteps, policy, next(rng))
+
     # get the metrics and final reportables
     # from the eval output
     metrics, reportables = foundry.train.reporting.as_log_dict(output)

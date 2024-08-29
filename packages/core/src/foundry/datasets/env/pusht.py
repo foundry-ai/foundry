@@ -104,10 +104,11 @@ def load_chi_pusht_data(max_trajectories=None, quiet=False):
 
 def load_chi_pusht(quiet=False, train_trajs=None, test_trajs=10):
     data = load_chi_pusht_data()
-    train = data.slice(0, len(data) - 16)
+    train = data.slice(0, len(data) - 32)
+    validation = data.slice(len(data) - 32, 16)
     test = data.slice(len(data) - 16, 16)
     return PushTDataset(
-        splits={"train": train, "test": test},
+        splits={"train": train, "validation": validation, "test": test},
         normalizers={},
         transforms={}
     )

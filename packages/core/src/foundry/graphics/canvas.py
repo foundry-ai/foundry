@@ -289,17 +289,20 @@ class Stack(Renderable):
         s_colors = []
         grads = []
         for g in self.renderables:
-            (s_dist, s_color), grad = jax.value_and_grad(g.color_distance, 
-                                            has_aux=True, argnums=0)(x, pixel_metric_hessian)
+            #(s_dist, s_color), grad = jax.value_and_grad(g.color_distance, 
+            #                                has_aux=True, argnums=0)(x, pixel_metric_hessian)
+            s_dist, s_color = g.color_distance(x, pixel_metric_hessian)
             dists.append(s_dist)
             s_colors.append(s_color)
-            grads.append(grad)
+            #grads.append(grad)
         dists, s_colors, grads = (
             jnp.array(dists, dtype=jnp.float32),
             jnp.array(s_colors, dtype=jnp.float32),
             jnp.array(grads, dtype=jnp.float32)
         )
-        scalings = jax.vmap(lambda grad: jnp.sqrt(jnp.dot(grad, pixel_metric_hessian @ grad)))(grads)
+        grad = jnp.array([0., 1.], dtype=jnp.float32)
+        scalings = jnp.sqrt(jnp.dot(grad, pixel_metric_hessian @ grad))
+        #scalings = jax.vmap(lambda grad: jnp.sqrt(jnp.dot(grad, pixel_metric_hessian @ grad)))(grads)
         aa_dist = dists * scalings
         colors = jax.vmap(_aa_color)(aa_dist, s_colors)
         color = _composite(colors)
@@ -322,10 +325,14 @@ class BatchStack(Renderable):
             bottom_right=jnp.max(aabs.bottom_right, axis=0)
         )
 
+    @jax.jit
     def color_distance(self, x, pixel_metric_hessian):
-        func = lambda g: jax.value_and_grad(g.color_distance, has_aux=True, argnums=0)(x, pixel_metric_hessian)
-        (dists, colors), grads = jax.vmap(func)(self.renderables)
-        scalings = jax.vmap(lambda grad: jnp.sqrt(jnp.dot(grad, pixel_metric_hessian @ grad)))(grads)
+        #func = lambda g: jax.value_and_grad(g.color_distance, has_aux=True, argnums=0)(x, pixel_metric_hessian)
+        #(dists, colors), grads = jax.vmap(func)(self.renderables)
+        dists, colors = jax.vmap(lambda g: g.color_distance(x, pixel_metric_hessian))(self.renderables)
+        grad = jnp.array([0., 1.], dtype=jnp.float32)
+        #scalings = jax.vmap(lambda grad: jnp.sqrt(jnp.dot(grad, pixel_metric_hessian @ grad)))(grads)
+        scalings = jnp.sqrt(jnp.dot(grad, pixel_metric_hessian @ grad))
         aa_dist = dists * scalings
         colors = jax.vmap(_aa_color)(aa_dist, colors)
         color = _composite(colors)
@@ -365,9 +372,10 @@ class TransformedRenderable(Renderable):
             return self.renderable.color_distance(x, pixel_metric_hessian)
         # renormalize the distance
         # so that the gradient is norm 1
-        (dist, color), grad = jax.value_and_grad(_transform,
-                                    argnums=0, has_aux=True)(x, pixel_metric_hessian)
-        dist = dist / jnp.linalg.norm(grad)
+        #(dist, color), grad = jax.value_and_grad(_transform,
+        #                            argnums=0, has_aux=True)(x, pixel_metric_hessian)
+        #dist = dist / jnp.linalg.norm(grad)
+        dist, color = _transform(x, pixel_metric_hessian)
         return dist, color
 
 def transform(r, translation=None, rotation=None, scale=None):

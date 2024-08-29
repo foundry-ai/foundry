@@ -46,7 +46,7 @@ class Config:
         elif denoiser == "learned":
             defaults = replace(defaults, denoiser=diffusion_learned.DiffusionLearnedConfig())
         else:
-            defaults = replace(defaults, denoiser=diffusion_estimator.DiffusionEstimatorConfig())
+            raise ValueError(f"Unknown denoiser: {denoiser}")
         
         # Check for dataset override
         dataset = config.get("dataset", str, default=None)
@@ -55,7 +55,7 @@ class Config:
         elif dataset == "two_delta_sequence":
             defaults = replace(defaults, dataset=datasets.TwoDeltaSequenceConfig())
         else:
-            defaults = replace(defaults, dataset=datasets.TwoDeltasConfig())
+            raise ValueError(f"Unknown dataset: {dataset}")
 
         return config.get_dataclass(defaults)
 
