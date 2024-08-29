@@ -1,7 +1,7 @@
-Welcome to foundry's documentation!
+Welcome to Foundry's documentation!
 ==================================
 
-**foundry** is a Python library for rapid jax development, providing
+**Foundry** is a Python library for rapid jax development, providing
 a high-level interface for training neural networks, as well as tools for
 diffusion models, reinforcement learning, and optimization.
 

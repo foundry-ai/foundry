@@ -4,7 +4,7 @@
 # You can set these variables from the command line, and also
 # from the environment for the first two.
 SPHINXOPTS    ?=
-SPHINXBUILD   ?= pdm run -p ../../.. sphinx-build
+SPHINXBUILD   ?= pdm run -p ../ sphinx-build
 SOURCEDIR     = .
 BUILDDIR      = _build
 

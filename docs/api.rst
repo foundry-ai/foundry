@@ -2,14 +2,10 @@ Public API
 ==========
 
 .. autosummary::
-    :toctree: _autosummary
-
-    foundry
-
-.. autosummary::
    :toctree: _autosummary
    :recursive:
 
+   foundry.core
    foundry.data
    foundry.datasets
    foundry.diffusion
@@ -18,7 +14,5 @@ Public API
    foundry.policy
    foundry.runtime
    foundry.solver
-   foundry.struct
    foundry.train
-   foundry.transform
    foundry.util

@@ -36,6 +36,17 @@ dev = [
     "-e image-classifier @ file:///${PROJECT_ROOT}/projects/image-classifier",
     "-e language-model @ file:///${PROJECT_ROOT}/projects/language-model",
     "-e cond-diffusion-toy @ file:///${PROJECT_ROOT}/projects/cond-diffusion-toy",
+	
+    # Docmentation utilities
+    "sphinx>=7.2.6",
+    "sphinx-design>=0.5.0",
+    "sphinx-remove-toctrees>=0.0.3",
+    "sphinx-copybutton>=0.5.2",
+    "sphinx-book-theme>=1.1.2",
+    "sphinx-autodoc-typehints>=2.0.0",
+    "furo>=2024.1.29",
+    "sphinx-toolbox>=3.5.0",
+
     "pytest>=8.2.2",
 ]
 
