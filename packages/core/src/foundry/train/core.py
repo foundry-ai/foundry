@@ -1,4 +1,5 @@
 from foundry.data import DataStream, StreamBuilder
+from foundry.core import tree
 from foundry.core.dataclasses import dataclass
 from foundry.random import PRNGSequence
 # import all reporting datatypes
@@ -207,7 +208,7 @@ def batched_loss(loss_fn, vars, rng_key, batch, **kwargs):
             metrics=0),
         axis_name="batch"
     )
-    batch_size = foundry.util.axis_size(batch, 0)
+    batch_size = tree.axis_size(batch, 0)
     rng_keys = jax.random.split(rng_key, batch_size)
 
     output = vmap_loss(rng_keys, batch)

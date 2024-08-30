@@ -18,7 +18,7 @@ from foundry.diffusion import nonparametric
 
 from foundry.env.core import ObserveConfig
 from foundry.env.mujoco.pusht import PushTAgentPos
-from foundry.env.mujoco.robosuite import ManipulationTaskEEFPose
+from foundry.env.mujoco.robosuite import EEfPose
 
 from typing import Callable
 
@@ -38,7 +38,7 @@ class TrainedEstimatorConfig:
     kernel_bandwidth: float = 0.01
     diffusion_steps: int = 50
     relative_actions: bool = True
-    agent_pos_config: ObserveConfig = ManipulationTaskEEFPose()
+    agent_pos_config: ObserveConfig = EEfPose()
     action_horizon: int = 8
     checkpoint_path = ""
     iterations: int = 1000

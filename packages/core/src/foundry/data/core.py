@@ -68,7 +68,7 @@ class Data(Generic[T]):
     # depending on the backing Data storage.
 
     def as_pytree(self) -> T:
-        idxs = fnp.arange(len(self), dtype=idx_dtype)
+        idxs = jnp.arange(len(self), dtype=idx_dtype)
         return jax.vmap(lambda i: self[i])(idxs)
 
     def slice(self, off : ArrayLike, length : ArrayLike) -> "Data[T]":

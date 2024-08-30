@@ -1,6 +1,6 @@
 from foundry.core.dataclasses import dataclass
 
-import foundry.util
+from foundry.core import tree
 import jax
 
 class Reportable:
@@ -49,11 +49,11 @@ def as_log_dict(*trees, join=".", prefix=None, suffix=None):
         )
         # flatten data_entries, reportable_entries
         # to dictionaries
-        data_entries, _ = foundry.util.flatten_to_dict(data_entries,
+        data_entries, _ = tree.flatten_to_dict(data_entries,
             join=join, prefix=prefix, suffix=suffix,
             is_leaf=lambda x: isinstance(x, Reportable)
         )
-        reportable_entries, _ = foundry.util.flatten_to_dict(reportable_entries,
+        reportable_entries, _ = tree.flatten_to_dict(reportable_entries,
             join=join, prefix=prefix, suffix=suffix,
             is_leaf=lambda x: isinstance(x, Reportable)
         )

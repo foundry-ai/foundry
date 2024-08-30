@@ -1,19 +1,29 @@
-from ..common import Sample, Inputs
+from ..common import Sample, Inputs, MethodConfig, Result
 
+import foundry.core as F
+import foundry.random
+
+from foundry.core import tree
 from foundry.diffusion import DDPMSchedule
 from foundry.random import PRNGSequence
-from foundry.policy import PolicyInput, PolicyOutput
+from foundry.policy import Policy, PolicyInput, PolicyOutput
 from foundry.policy.transforms import ChunkingTransform
 
 from omegaconf import MISSING
 
 from foundry.core.dataclasses import dataclass
-from foundry.data.normalizer import LinearNormalizer, StdNormalizer
+from foundry.data.normalizer import Normalizer, LinearNormalizer, StdNormalizer
+from foundry.train import Vars
+
 from foundry import train
+
 import foundry.train.console
+import foundry.train.wandb
 import optax
+
 import flax.linen as nn
 import flax.linen.activation as activations
+
 from typing import Sequence
 from foundry.models.embed import SinusoidalPosEmbed
 from foundry.models.unet import UNet
@@ -31,10 +41,63 @@ class MLPConfig:
     net_width: int = 64
     net_depth: int = 3
 
+    def create_model(self, rng_key, observations, actions):
+        model = DiffusionMLP(
+            features=[self.net_width]*self.net_depth
+        )
+        vars = F.jit(model.init)(rng_key, observations, actions, jnp.zeros((), dtype=jnp.uint32))
+        def model_fn(vars, rng_key, observations, noised_actions, t):
+            return model.apply(vars, observations, noised_actions, t - 1)
+        return model_fn, vars
+
 @dataclass
 class UNetConfig:
     base_channels: int = 128
     num_downsample: int = 4
+
+    def create_model(self, rng_key, observations_structure, actions_structure):
+        model = DiffusionUNet(
+            dims=1,
+            base_channels=self.base_channels,
+            channel_mult=tuple([2**i for i in range(self.num_downsample)]),
+        )
+        observations = tree.map(lambda x: jnp.zeros_like(x), observations_structure)
+        actions = tree.map(lambda x: jnp.zeros_like(x), actions_structure)
+        vars = F.jit(model.init)(rng_key, observations, actions, jnp.zeros((), dtype=jnp.uint32))
+        def model_fn(vars, rng_key, observations, noised_actions, t):
+            return model.apply(vars, observations, noised_actions, t - 1)
+        return model_fn, vars
+
+@dataclass
+class Checkpoint(Result):
+    observations_structure: tuple[int]
+    actions_structure: tuple[int]
+    action_horizon: int
+
+    model_config: MLPConfig | UNetConfig
+    schedule: DDPMSchedule
+    normalizer: Normalizer
+    vars: Vars
+
+    def create_policy(self) -> Policy:
+        model, sample_vars = self.model_config.create_model(foundry.random.key(42), 
+            self.observations_structure,
+            self.actions_structure
+        )
+        # TODO: assert that the vars are the same type/shape
+        def chunk_policy(input: PolicyInput) -> PolicyOutput:
+            obs = input.observation
+            obs = self.normalizer.map(lambda x: x.observations).normalize(obs)
+            model_fn = lambda rng_key, noised_actions, t: model(
+                self.vars, rng_key, obs, noised_actions, t - 1
+            )
+            action = self.schedule.sample(input.rng_key, model_fn, self.actions_structure) 
+            action = self.normalizer.map(lambda x: x.actions).unnormalize(action)
+            return PolicyOutput(action=action[:self.action_horizon], info=action)
+        obs_horizon = tree.axis_size(self.observations_structure, 0)
+        return ChunkingTransform(
+            obs_horizon, self.action_horizon
+        ).apply(chunk_policy)
 
 @dataclass
 class DPConfig:
@@ -46,6 +109,7 @@ class DPConfig:
     epochs: int = 10
     batch_size: int = 64
     learning_rate: float = 1e-4
+    weight_decay: float = 1e-5
 
     diffusion_steps: int = 50
     action_horizon: int = 8
@@ -62,212 +126,88 @@ class DPConfig:
             return self.unet
         else:
             raise ValueError(f"Unknown model type: {self.model}")
-
-def diffusion_policy_from_checkpoint( 
-        config : DPConfig, wandb_run, train_data, env, eval):
-    current_dir = os.path.dirname(os.path.realpath(__file__))
-    ckpts_dir = os.path.join(current_dir, "checkpoints")
-    file_path = os.path.join(ckpts_dir, config.checkpoint_filename)
-    with open(file_path, "rb") as file:
-        ckpt = pickle.load(file)
-
-    model = ckpt["model"]
-    ema_vars = ckpt["ema_state"].ema
-    normalizer = ckpt["normalizer"]
-
-    schedule = DDPMSchedule.make_squaredcos_cap_v2(
-        config.diffusion_steps,
-        prediction_type="sample"
-    )
-    train_sample = train_data[0]
-
-    def chunk_policy(input: PolicyInput) -> PolicyOutput:
-        obs = input.observation
-        obs = normalizer.map(lambda x: x.observations).normalize(obs)
-        model_fn = lambda rng_key, noised_actions, t: model.apply(
-            ema_vars, obs, noised_actions, t - 1
+    
+    def run(self, inputs: Inputs):
+        schedule = DDPMSchedule.make_squaredcos_cap_v2(
+            self.diffusion_steps,
+            prediction_type="sample"
         )
-        action = schedule.sample(input.rng_key, model_fn, train_sample.actions) 
-        action = normalizer.map(lambda x: x.actions).unnormalize(action)
-        action = action[:config.action_horizon]
-        return PolicyOutput(action=action, info=action)
-    
-    obs_length = foundry.util.axis_size(train_data.as_pytree().observations, 1)
-    policy = ChunkingTransform(
-        obs_length, config.action_horizon
-    ).apply(chunk_policy)
-    return policy
+        train_sample = inputs.train_data[0]
+        observations_structure = tree.map(lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype), 
+                                          train_sample.observations)
+        actions_structure = tree.map(lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype), 
+                                          train_sample.actions)
 
-def train_net_diffusion_policy(
-        config : DPConfig,  wandb_run, train_data, env, eval, rng):
-    
-    train_sample = train_data[0]
-    normalizer = StdNormalizer.from_data(train_data)
-    train_data_tree = train_data.as_pytree()
-    # sample = jax.tree_map(lambda x: x[0], train_data_tree)
-    # Get chunk lengths
-    obs_length, action_length = (
-        foundry.util.axis_size(train_data_tree.observations, 1),
-        foundry.util.axis_size(train_data_tree.actions, 1)
-    )
-
-    rng = PRNGSequence(rng)
-    #Model = getattr(net, config.model.split("/")[1])
-    # model = DiffusionMLP(
-    #     features=[config.net_width]*config.net_depth, 
-    #     embed_type=config.embed_type, 
-    #     has_skip=config.has_skip
-    # )
-    
-    if isinstance(config.model, UNetConfig):
-        model = DiffusionUNet(
-            dims=1, 
-            base_channels=config.model.base_channels, 
-            channel_mult=tuple([2**i for i in range(config.model.num_downsample)]),
-        ) # 1D temporal UNet
-    elif isinstance(config.model, MLPConfig):
-        model = DiffusionMLP(
-            features=[config.net_width]*config.net_depth
+        model, vars = self.model_config.create_model(
+            next(inputs.rng),
+            observations_structure,
+            actions_structure
         )
-    else:
-        raise ValueError(f"Unknown model type: {config.model}")
-    
-    vars = jax.jit(model.init)(next(rng), train_sample.observations, train_sample.actions, 0)
-    
+        total_params = sum(v.size for v in tree.leaves(vars))
 
-    total_params = jax.tree_util.tree_reduce(lambda x, y: x + y.size, vars, 0)
-    logger.info(f"Total parameters: [blue]{total_params}[/blue]")
+        logger.info(f"Total parameters: {total_params}")
 
-    schedule = DDPMSchedule.make_squaredcos_cap_v2(
-        config.diffusion_steps,
-        prediction_type="sample"
-    )
+        normalizer = StdNormalizer.from_data(inputs.train_data)
 
-    def loss_fn(vars, rng_key, sample: Sample, iteration):
-        noise_rng, t_rng = jax.random.split(rng_key)
-        sample_norm = normalizer.normalize(sample)
-        obs = sample_norm.observations
-        actions = sample_norm.actions
-        # obs = sample.observations
-        # actions = sample.actions
-        model_fn = lambda rng_key, noised_actions, t: model.apply(
-            vars, obs, noised_actions, t - 1
-        )
+        epoch_iterations = len(inputs.train_data) // self.batch_size
+        total_iterations = self.epochs * epoch_iterations
 
-        # fit to estimator
-        # estimator = nonparametric.nw_cond_diffuser(
-        #     obs, (train_data_tree.observations, train_data_tree.actions), schedule, nonparametric.log_gaussian_kernel, 0.01
-        # )
-        # t = jax.random.randint(t_rng, (), 0, schedule.num_steps) + 1
-        # noised_actions_norm, _, _ = schedule.add_noise(noise_rng, actions, t)
-        # noised_actions = normalizer.map(lambda x: x.actions).unnormalize(noised_actions_norm)
-        # estimator_pred = estimator(None, noised_actions, t)
-        # model_pred_norm = model_fn(None, noised_actions_norm, t)
-        # model_pred = normalizer.map(lambda x: x.actions).unnormalize(model_pred_norm)
-        # loss = jnp.mean((estimator_pred - model_pred)**2)
-        loss = schedule.loss(rng_key, model_fn, actions)
+        # initialize optimizer, EMA
+        optimizer = optax.adamw(self.learning_rate, weight_decay=self.weight_decay)
+        opt_state = optimizer.init(vars["params"])
+        ema = optax.ema(0.9)
+        ema_state = ema.init(vars)
+        ema_update = F.jit(ema.update)
+
+        def loss_fn(vars, rng_key, sample: Sample):
+            sample_norm = normalizer.normalize(sample)
+            obs = sample_norm.observations
+            actions = sample_norm.actions
+            denoiser = lambda rng_key, noised_actions, t: model(vars, rng_key, obs, noised_actions, t)
+            loss = schedule.loss(rng_key, denoiser, actions)
+            return train.LossOutput(
+                loss=loss, metrics={"loss": loss}
+            )
         
-        return train.LossOutput(
-            loss=loss,
-            metrics={
-                "loss": loss
-            }
-        )
-    batched_loss_fn = train.batch_loss(loss_fn)
+        def make_checkpoint() -> Checkpoint:
+            return Checkpoint(
+                observations_structure=observations_structure,
+                actions_structure=actions_structure,
+                action_horizon=self.action_horizon,
+                model_config=self.model_config,
+                schedule=schedule,
+                normalizer=normalizer,
+                vars=vars
+            )
 
-    train_data_batched = train_data.stream().batch(config.batch_size)
-    epoch_iterations = len(train_data) // config.batch_size
-    total_iterations = config.epochs * epoch_iterations
+        batched_loss_fn = train.batch_loss(loss_fn)
 
-    opt_sched = optax.cosine_onecycle_schedule(total_iterations, config.learning_rate)
-    optimizer = optax.adamw(opt_sched)
-    opt_state = optimizer.init(vars["params"])
-
-    # orbax_checkpointer = orbax.checkpoint.PyTreeCheckpointer()
-    # options = orbax.checkpoint.CheckpointManagerOptions(save_interval_steps=1000, max_to_keep=2, create=True)
-    # checkpoint_manager = orbax.checkpoint.CheckpointManager(
-    #     '/tmp/flax_ckpt/orbax/managed', orbax_checkpointer, options)
-
-    # Create a directory to save checkpoints
-    ckpts_dir = os.path.join(config.save_dir, "checkpoints")
-    if not os.path.exists(ckpts_dir):
-        os.makedirs(ckpts_dir)
-
-    
-
-    # Keep track of the exponential moving average of the model parameters
-    ema = optax.ema(0.9)
-    ema_state = ema.init(vars)
-
-    with foundry.train.loop(train_data_batched, 
-                rng_key=next(rng),
+        with train.loop(
+                data=inputs.train_data.stream().batch(self.batch_size),
+                rng_key=next(inputs.rng),
                 iterations=total_iterations,
                 progress=True
             ) as loop:
-        for epoch in loop.epochs():
-            for step in epoch.steps():
-                # print(step.batch.observations)
-                # print(step.batch.actions)
-                # *note*: consumes opt_state, vars
-                opt_state, vars, metrics = train.step(
-                    batched_loss_fn, optimizer, opt_state, vars, 
-                    step.rng_key, step.batch,
-                    # extra arguments for the loss function
-                    iteration=step.iteration
-                )
-                _, ema_state = ema.update(vars, ema_state)
-                if step.iteration % 100 == 0:
-                    train.console.log(step.iteration, metrics)
-                    train.wandb.log(step.iteration, metrics, run=wandb_run)
-                if step.iteration > 0 and step.iteration % 20000 == 0:
-                    ckpt = {
-                        "config": config,
-                        "model": model,
-                        "vars": vars,
-                        "opt_state": opt_state,
-                        "ema_state": ema_state,
-                        "normalizer": normalizer
-                    }
-                    file_path = os.path.join(ckpts_dir, f"{wandb_run.id}_{step.iteration}.pkl")
-                    with open(file_path, 'wb') as file:
-                        pickle.dump(ckpt, file)
-                    wandb_run.log_model(path=file_path, name=f"{wandb_run.id}_{step.iteration}")
-                    # save_args = orbax_utils.save_args_from_target(ckpt)
-                    # checkpoint_manager.save(step, ckpt, save_kwargs={'save_args': save_args})
-        train.console.log(step.iteration, metrics)
-        train.wandb.log(step.iteration, metrics, run=wandb_run)
+            for epoch in loop.epochs():
+                for step in epoch.steps():
+                    # print(step.batch.observations)
+                    # print(step.batch.actions)
+                    # *note*: consumes opt_state, vars
+                    opt_state, vars, metrics = train.step(
+                        batched_loss_fn, optimizer, opt_state, vars, 
+                        step.rng_key, step.batch,
+                    )
+                    _, ema_state = ema_update(vars, ema_state)
+                    if step.iteration % 100 == 0:
+                        train.console.log(step.iteration, metrics)
+                        train.wandb.log(step.iteration, metrics, run=inputs.wandb_run)
+            # log the last iteration
+            if step.iteration % 100 != 0:
+                train.console.log(step.iteration, metrics)
+                train.wandb.log(step.iteration, metrics, run=inputs.wandb_run)
 
-    # save model
-    ckpt = {
-        "config": config,
-        "model": model,
-        "vars": vars,
-        "opt_state": opt_state,
-        "ema_state": ema_state,
-        "normalizer": normalizer
-    }
-    file_path = os.path.join(ckpts_dir, f"{wandb_run.id}_final.pkl")
-    with open(file_path, 'wb') as file:
-        pickle.dump(ckpt, file)
-    
-    # Rollout policy with EMA of network parameters
-    ema_vars = ema_state.ema
-    def chunk_policy(input: PolicyInput) -> PolicyOutput:
-        obs = input.observation
-        obs = normalizer.map(lambda x: x.observations).normalize(obs)
-        model_fn = lambda rng_key, noised_actions, t: model.apply(
-            ema_vars, obs, noised_actions, t - 1
-        )
-        action = schedule.sample(input.rng_key, model_fn, train_sample.actions) 
-        action = normalizer.map(lambda x: x.actions).unnormalize(action)
-        return PolicyOutput(action=action[:config.action_horizon], info=action)
-    
-    policy = ChunkingTransform(
-        obs_length, config.action_horizon
-    ).apply(chunk_policy)
-
-    return policy
-    
+        # Return the final checkpoint
+        return make_checkpoint()
 
 class DiffusionUNet(UNet):
     activation: str = "relu"

@@ -10,9 +10,8 @@ from foundry.core.dataclasses import dataclass, field, replace
 from foundry.core.tree import static_property
 from foundry.env import (
     EnvWrapper, RenderConfig, ObserveConfig,
-    ImageRender, 
-    Environment,
-    EnvironmentRegistry
+    ImageRender, ImageActionsRender,
+    Environment, EnvironmentRegistry
 )
 from foundry.env.transforms import (
     EnvTransform, ChainedTransform,
@@ -179,7 +178,7 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
         
     @F.jit
     def reward(self, state, action, next_state):
-        obs = self.observe(next_state, ManipulationTaskObs())
+        obs = self.observe(next_state, TaskObservation())
         objects_over_bins = jnp.array([self._over_bin(obj_pos, _TARGET_BIN_ID[obj]) \
                                        for obj, obj_pos in zip(self.objects, obs.object_pos)])
 
@@ -199,16 +198,16 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
     
     @F.jit
     def observe(self, state, config : ObserveConfig | None = None):
-        if config is None: config = ManipulationTaskObs()
+        if config is None: config = TaskObservation()
         data = self.simulator.system_data(state)
         eef_id = self.model.site("gripper0_grip_site").id
         system_state = self.simulator.reduce_state(state)
-        jacp, jacr = self.native_simulator.get_jacs(system_state, eef_id)
 
         robot = self._model_initializers[1][0]
         grip_qpos = self.reduce_state(state).qpos[robot.gripper_actuator_indices]
-        if isinstance(config, ManipulationTaskObs):
-            return ManipulationTaskObs(
+        if isinstance(config, TaskObservation):
+            jacp, jacr = self.native_simulator.get_jacs(system_state, eef_id)
+            return TaskObservation(
                 eef_pos=data.site_xpos[eef_id, :],
                 eef_vel=jnp.dot(jacp, system_state.qvel),
                 eef_ori_mat=data.site_xmat[eef_id, :].reshape([3, 3]),
@@ -221,10 +220,10 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
                     data.xquat[self.model.body(f"{obj.capitalize()}_main").id, :] for obj in self.objects
                 ])
             )
-        elif isinstance(config, ManipulationTaskEEFPose):
+        elif isinstance(config, EEfPose):
             return jnp.concatenate([data.site_xpos[eef_id, :], data.site_xmat[eef_id, :], grip_qpos])
         else:
-            raise ValueError("Unsupported observation type")
+            raise ValueError(f"Unsupported observation type {config}")
 
 _NUT_JOINT_MAP = {
     "round": "RoundNut_joint0",
@@ -285,7 +284,7 @@ class NutAssembly(RobosuiteEnv[SimulatorState]):
 
     @F.jit
     def observe(self, state, config : ObserveConfig | None = None):
-        if config is None: config = ManipulationTaskObs()
+        if config is None: config = TaskObservation()
         data = self.simulator.system_data(state)
         eef_id = self.model.site("gripper0_grip_site").id
         system_state = self.simulator.reduce_state(state)
@@ -293,8 +292,8 @@ class NutAssembly(RobosuiteEnv[SimulatorState]):
 
         robot = self._model_initializers[1][0]
         grip_qpos = self.reduce_state(state).qpos[robot.gripper_actuator_indices]
-        if isinstance(config, ManipulationTaskObs):
-            return ManipulationTaskObs(
+        if isinstance(config, TaskObservation):
+            return TaskObservation(
                 eef_pos=data.site_xpos[eef_id, :],
                 eef_vel=jnp.dot(jacp, system_state.qvel),
                 eef_ori_mat=data.site_xmat[eef_id, :].reshape([3, 3]),
@@ -307,7 +306,7 @@ class NutAssembly(RobosuiteEnv[SimulatorState]):
                     data.xquat[self.model.body(f"{obj.capitalize()}Nut_main").id, :] for obj in self.objects
                 ])
             )
-        elif isinstance(config, ManipulationTaskEEFPose):
+        elif isinstance(config, EEfPose):
             return jnp.concatenate([data.site_xpos[eef_id, :], data.site_xmat[eef_id, :], grip_qpos])
         else:
             raise ValueError("Unsupported observation type")
@@ -317,7 +316,7 @@ class NutAssembly(RobosuiteEnv[SimulatorState]):
         peg_ids = [self.model.body("peg1").id, self.model.body("peg2").id]
         data = self.simulator.system_data(next_state)
         peg_pos = jnp.stack([data.xpos[peg_ids[_PEG_ID_NUT_MAP[obj]], :] for obj in self.objects])
-        obs = self.observe(next_state, ManipulationTaskObs())
+        obs = self.observe(next_state, TaskObservation())
         over_peg = jnp.linalg.norm(peg_pos[:2] - obs.object_pos[:2], axis=-1) < 0.12
         z_pos = obs.object_pos[:,2]
         peg_z_range = jnp.logical_and(z_pos >= peg_pos[:,2] - 0.12, z_pos <= peg_pos[:,2] + 0.08)
@@ -331,11 +330,11 @@ class DoorOpen(RobosuiteEnv[SimulatorState]):
         return "DoorOpen"
 
 @dataclass
-class ManipulationTaskEEFPose:
+class EEfPose:
     pass
 
 @dataclass
-class ManipulationTaskObs:
+class TaskObservation:
     eef_pos: jax.Array = None # (n_robots, 3,) -- end-effector position
     eef_vel: jax.Array = None # (n_robots, 3,) -- end-effector velocity
     eef_ori_mat: jax.Array = None # (n_robots, 3, 3) -- end-effector orientation matrix
@@ -477,7 +476,7 @@ class PositionalObsEnv(EnvWrapper):
         if config is None: config = ManipulationTaskPosObs()
         if not isinstance(config, ManipulationTaskPosObs):
             return self.base.observe(state, config)
-        obs = self.base.observe(state, ManipulationTaskObs())
+        obs = self.base.observe(state, TaskObservation())
         return ManipulationTaskPosObs(
             eef_pos=obs.eef_pos,
             eef_ori=mat_to_euler(obs.eef_ori_mat),
@@ -492,7 +491,7 @@ class RelPosObsEnv(EnvWrapper):
         if config is None: config = ManipulationTaskRelObs()
         if not isinstance(config, ManipulationTaskRelObs):
             return self.base.observe(state, config)
-        obs = self.base.observe(state, ManipulationTaskObs())
+        obs = self.base.observe(state, TaskObservation())
         #jax.debug.print("{s}, {t}", s=quat_to_mat(obs.object_quat), t=mat_to_euler(obs.eef_ori_mat))
         return ManipulationTaskRelObs(
             eef_obj_rel_pos=obs.object_pos - obs.eef_pos,
@@ -512,7 +511,7 @@ class RelKeypointObsEnv(EnvWrapper):
         if config is None: config = ManipulationTaskRelKeypointObs()
         if not isinstance(config, ManipulationTaskRelKeypointObs):
             return self.base.observe(state, config)
-        obs = self.base.observe(state, ManipulationTaskObs())
+        obs = self.base.observe(state, TaskObservation())
         eef_end = obs.eef_ori_mat @ jnp.array([0.0,0.0,0.02], dtype=jnp.float32) + obs.eef_pos
         object_end = quat_to_mat(obs.object_quat) @ jnp.array([0.0,0.0,0.02], dtype=jnp.float32) + obs.object_pos
         return ManipulationTaskRelKeypointObs(

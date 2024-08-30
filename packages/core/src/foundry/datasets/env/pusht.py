@@ -79,6 +79,7 @@ def load_pytorch_pusht_data(zarr_path, max_trajectories=None):
             return action / 256 - 1
 
         steps = Step(
+            state=None,
             reduced_state=convert_states(jnp.array(zf["data/state"][:last_end], dtype=jnp.float32)),
             observation=None,
             action=convert_actions(jnp.array(zf["data/action"][:last_end], dtype=jnp.float32))

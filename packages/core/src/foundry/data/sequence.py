@@ -3,7 +3,6 @@ from foundry.core.dataclasses import dataclass, field, replace
 
 from typing import Any, Generic, TypeVar
 
-import pickle
 import jax.tree_util
 import foundry.numpy as jnp
 import numpy as np
@@ -15,9 +14,11 @@ I = TypeVar('I')
 # use this as the element type
 @dataclass
 class Step:
-    reduced_state: jax.Array
-    observation: jax.Array
-    action: jax.Array
+    # either state or reduced_state must be set
+    state: Any | None
+    reduced_state: Any | None
+    observation: Any
+    action: Any
 
 @dataclass
 class SequenceInfo(Generic[I]):

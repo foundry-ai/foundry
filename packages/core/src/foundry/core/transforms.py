@@ -1,7 +1,11 @@
 import jax
+import jax.numpy as jnp
 import jax.tree_util
 import functools
 import weakref
+
+import jax._src.traceback_util
+jax._src.traceback_util.register_exclusion(__file__)
 
 def vmap(func, /, in_axes=0, out_axes=0, *, axis_name=None):
     func = _make_filtered(func)
@@ -54,7 +58,7 @@ class _Static:
     def __repr__(self):
         return self.value.__repr__()
     def __str__(self):
-        return self.value.__str__()
+        return str(self.value)
     def __hash__(self):
         return hash(self.value)
     def __eq__(self, other):
@@ -82,7 +86,7 @@ def _unwrap(x):
     return x
 
 def _unwrap_tree(x):
-    return jax.tree_util.tree_map(_unwrap, x)
+    return jax.tree_util.tree_map(_unwrap, x, is_leaf=lambda x: isinstance(x, _Static))
 
 jax.tree_util.register_static(_Static)
 

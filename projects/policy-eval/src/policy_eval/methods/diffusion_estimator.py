@@ -13,7 +13,7 @@ from foundry.diffusion import nonparametric
 
 from foundry.env.core import ObserveConfig
 from foundry.env.mujoco.pusht import PushTAgentPos
-from foundry.env.mujoco.robosuite import ManipulationTaskEEFPose
+from foundry.env.mujoco.robosuite import EEfPose
 
 from typing import Callable
 
@@ -24,7 +24,7 @@ import foundry.numpy as jnp
 import logging
 logger = logging.getLogger(__name__)
 
-@dataclass
+@dataclass(frozen=False)
 class EstimatorConfig:
     type: str = "nw"
     kernel_bandwidth: float = 0.01
@@ -58,7 +58,7 @@ def estimator_diffusion_policy(
             )(train_data.state)
             if config.action_config == PushTAgentPos():
                 actions = train_data.actions - data_agent_pos[:, None, :]
-            elif config.action_config == ManipulationTaskEEFPose():
+            elif config.action_config == EEfPose():
                 expand_agent_pos = jnp.zeros_like(train_data.actions)
                 expand_agent_pos = expand_agent_pos.at[...,0:3].set(data_agent_pos[:,None,0:3])
                 actions = train_data.actions - expand_agent_pos
@@ -78,7 +78,7 @@ def estimator_diffusion_policy(
             agent_pos = env.observe(input.state, config.action_config)
             if config.action_config == PushTAgentPos():
                 action = action + agent_pos
-            elif config.action_config == ManipulationTaskEEFPose():
+            elif config.action_config == EEfPose():
                 expand_agent_pos = jnp.zeros_like(action)
                 expand_agent_pos = expand_agent_pos.at[...,0:3].set(agent_pos[0:3])
                 action = action + agent_pos

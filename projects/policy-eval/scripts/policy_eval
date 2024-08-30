@@ -7,7 +7,10 @@ if __name__=="__main__":
 
     import sys
     args = [a.lstrip("-") for a in sys.argv[1:]]
+
+    import omegaconf
     from omegaconf import OmegaConf, MISSING
+
     cli_conf = OmegaConf.from_cli(args)
     configs = [cli_conf]
 
@@ -23,7 +26,21 @@ if __name__=="__main__":
     configs.extend(yamls)
 
     from policy_eval.main import Config, run
+
     conf = OmegaConf.structured(Config)
+    def recursive_read_write(conf):
+        OmegaConf.set_readonly(conf, False)
+        if isinstance(conf, omegaconf.DictConfig):
+            for key in conf.keys():
+                child = conf._get_child(key)
+                if child is not None:
+                    recursive_read_write(child)
+        elif isinstance(conf, omegaconf.ListConfig):
+            for index in range(len(conf)):
+                child = conf._get_child(index)
+                if child is not None:
+                    recursive_read_write(child)
+    recursive_read_write(conf)
     conf = OmegaConf.unsafe_merge(conf, *configs)
     # convert to a dataclass, resolving interpolations
     conf = OmegaConf.to_object(conf)

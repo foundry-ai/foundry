@@ -1,5 +1,8 @@
 from foundry.core.dataclasses import dataclass, field
 
+import foundry.core as F
+import foundry.core.tree as tree
+
 import foundry.util
 import foundry.numpy as jnp
 import jax.flatten_util
@@ -146,7 +149,7 @@ class DDPMSchedule:
         """ The number of steps T in the schedule. Note that betas has T+1 elements since beta_0 = 0."""
         return self.betas.shape[0] - 1
 
-    @jax.jit
+    @F.jit
     def forward_trajectory(self, rng_key : jax.Array, sample : Sample) -> Sample:
         """ Given an x_0, returns a trajectory of samples x_0, x_1, x_2, ..., x_T.
             Args:
@@ -175,7 +178,7 @@ class DDPMSchedule:
     # This will do the noising
     # forward process
     # will return noisy_sample, noise_eps, model_output 
-    @jax.jit
+    @F.jit
     def add_noise(self, rng_key : jax.Array, sample : Sample,
                   timestep : jax.Array) -> tuple[Sample, Sample, Sample]:
         """ Samples q(x_t | x_0). Returns a tuple containing (noisy_sample, noise, model_output).
@@ -205,7 +208,7 @@ class DDPMSchedule:
         else:
             raise ValueError("Not supported prediction type")
 
-    @jax.jit
+    @F.jit
     def add_sub_noise(self, rng_key : jax.Array,
                       sub_sample : Sample, sub_timestep : jax.Array,
                       timestep : jax.Array) -> tuple[Sample, Sample, Sample]:
@@ -234,7 +237,7 @@ class DDPMSchedule:
             raise ValueError("Not supported prediction type")
     
     # returns E[x_0 | model_output, current sample]
-    @jax.jit
+    @F.jit
     def denoised_from_output(self, noised_sample : Sample, t : jax.Array, model_output : Sample) -> Sample:
         """ Returns E[x_0 | x_t] as computed by the model_output
         based on the value of ``prediction_type``
@@ -254,7 +257,7 @@ class DDPMSchedule:
             pred_sample = jnp.clip(pred_sample, -self.clip_sample_range, self.clip_sample_range)
         return unflatten(pred_sample)
 
-    @jax.jit
+    @F.jit
     def output_from_denoised(self, noised_sample : Sample, t : jax.Array, denoised_sample : Sample) -> Sample:
         """Returns the output a model should give given an x_t to denoise to x_0."""
         if self.prediction_type == "sample":
@@ -269,7 +272,7 @@ class DDPMSchedule:
             noise = (nosied_sample_flat - sqrt_alphas_prod * denoised_sample_flat) / sqrt_one_minus_alphas_prod
             return unflatten(noise)
     
-    @jax.jit
+    @F.jit
     def compute_denoised(self, noised_sample : Sample, t : jax.Array, data_batch : Sample, data_mask : jax.Array = None) -> Sample:
         """Computes the true E[x_0 | x_t] given a batch of x_0's."""
         noised_sample_flat, unflatten = foundry.util.ravel_pytree(noised_sample)
@@ -299,7 +302,7 @@ class DDPMSchedule:
         return unflatten(denoised)
 
     # This does a reverse process step
-    @jax.jit
+    @F.jit
     def reverse_step(self, rng_key : jax.Array, sample : Sample,
                      timestep : jax.Array, delta_steps: jax.Array, model_output : Sample) -> Sample:
         """ Does a reverse step of the DDPM given a particular model output. Given x_t returns x_{t-delta_steps}. """
@@ -331,7 +334,7 @@ class DDPMSchedule:
         noise = sigma*jax.random.normal(rng_key, pred_prev_sample.shape, pred_prev_sample.dtype)
         return unflatten(pred_prev_sample + noise)
 
-    @partial(jax.jit, static_argnums=(2,))
+    @F.jit
     def sample(self, rng_key : jax.Array, 
                     model : Callable[[jax.Array, Sample, jax.Array], Sample], 
                     sample_structure: Sample, 
@@ -344,7 +347,7 @@ class DDPMSchedule:
             num_steps = self.num_steps - final_time
         step_ratio = (self.num_steps - final_time) / num_steps
         # sample initial noise
-        flat_structure, unflatten = foundry.util.ravel_pytree_structure(sample_structure)
+        flat_structure, unflatten = tree.ravel_pytree_structure(sample_structure)
         random_sample = unflatten(jax.random.normal(rng_key, flat_structure.shape, flat_structure.dtype))
 
         if trajectory:

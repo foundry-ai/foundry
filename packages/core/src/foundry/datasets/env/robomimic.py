@@ -11,7 +11,7 @@ from foundry.data.sequence import (
     SequenceInfo, SequenceData, Step
 )
 from foundry.env.mujoco import SystemState
-from foundry.core.dataclasses import dataclass
+from foundry.core.dataclasses import dataclass, replace
 
 import foundry.util.serialize
 
@@ -60,7 +60,7 @@ def make_url(name, dataset_type):
     else:
         raise ValueError(f"Unknown dataset type: {dataset_type}")
 
-def load_robomimic_dataset(name, dataset_type, max_trajectories=None, quiet=False):
+def load_robomimic_dataset(name, dataset_type, max_trajectories=None, quiet=False, full_state=True):
     """
     Load a RoboMimic dataset for a given task and dataset type.
 
@@ -75,9 +75,11 @@ def load_robomimic_dataset(name, dataset_type, max_trajectories=None, quiet=Fals
         data (SequenceData): sequence data containing states and actions for all trajectories
     """
 
-    zarr_name = f"robomimic_{name}_{dataset_type}.zarr.zip"
-    zarr_path = cache_path("robomimic", zarr_name)
-    if not zarr_path.exists():
+    reduced_zarr_name = f"robomimic_{name}_{dataset_type}_reduced.zarr.zip"
+    full_zarr_name = f"robomimic_{name}_{dataset_type}_full.zarr.zip"
+    reduced_zarr_path = cache_path("robomimic", reduced_zarr_name)
+    full_zarr_path = cache_path("robomimic", full_zarr_name)
+    if not reduced_zarr_path.exists():
         job_name = f"robomimic_{name}_{dataset_type}.hdf5"
         hdf5_path = cache_path("robomimic", job_name)
         url = make_url(name, dataset_type)
@@ -88,11 +90,21 @@ def load_robomimic_dataset(name, dataset_type, max_trajectories=None, quiet=Fals
             quiet=quiet
         )
         env_name, data = _load_robomimic_hdf5(hdf5_path, max_trajectories)
-        foundry.util.serialize.save_zarr(zarr_path, 
+        foundry.util.serialize.save_zarr(reduced_zarr_path, 
             tree=data, meta=env_name
         )
         hdf5_path.unlink()
-    data, env_name = foundry.util.serialize.load_zarr(zarr_path)
+    if full_state and not full_zarr_path.exists():
+        data, env_name = foundry.util.serialize.load_zarr(reduced_zarr_path)
+        from foundry.env.mujoco.robosuite import environments
+        env = environments.create(env_name)
+        data = data.map_elements(lambda x: replace(x, 
+            state=env.full_state(x.reduced_state)
+        )).cache()
+        foundry.util.serialize.save_zarr(full_zarr_path, 
+            tree=data, meta=env_name
+        )
+    data, env_name = foundry.util.serialize.load_zarr(full_zarr_path if full_state else reduced_zarr_path)
     return env_name, data
 
 ENV_MAP = {
@@ -159,22 +171,27 @@ def _load_robomimic_hdf5(hdf5_path, max_trajectories=None):
             info=None
         )
         steps = Step(
+            state=None,
             reduced_state=states,
             observation=None,
             action=actions
         )
         return ENV_MAP[env_meta["env_name"]], SequenceData(PyTreeData(steps), PyTreeData(infos))
-    
+
 def load_robomimic(*, name=None, dataset_type=None, quiet=False, **kwargs):
     if name is None or dataset_type is None:
         raise ValueError("Must specify a task, dataset_type to load robomimic dataset.")
     env_name, data = load_robomimic_dataset(
         name=name, dataset_type=dataset_type, quiet=quiet
     )
-    train = data.slice(0, len(data) - 16)
+    train = data.slice(0, len(data) - 32)
     test = data.slice(len(data) - 16, 16)
+    validation = data.slice(len(data) - 32, 16)
     return RobomimicDataset(
-        splits={"train": train, "test": test},
+        splits={
+            "train": train, "test": test, 
+            "validation": validation
+        },
         env_name=env_name
     )
 
