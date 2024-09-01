@@ -62,13 +62,17 @@ def _load_cifar10(quiet=False):
         splits=data,
         normalizers={
             "hypercube": lambda: nu.Compose(
-                (nu.ImageNormalizer(jax.ShapeDtypeStruct((32, 32, 3), jnp.uint8)),
-                    nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))
+                LabeledImage(
+                    nu.ImageNormalizer(jax.ShapeDtypeStruct((32, 32, 3), jnp.uint8)),
+                    nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8))
+                )
             ),
             "standard_dev": lambda: nu.Compose(
-                (nu.Chain([nu.ImageNormalizer(jax.ShapeDtypeStruct((32, 32, 3), jnp.uint8)),
-                    nu.StdNormalizer.from_data(train_normalized, component_wise=False)]),
-                 nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))
+                LabeledImage(
+                    nu.Chain([nu.ImageNormalizer(jax.ShapeDtypeStruct((32, 32, 3), jnp.uint8)),
+                        nu.StdNormalizer.from_data(train_normalized, component_wise=False)]),
+                    nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8))
+                )
             )
         },
         transforms={

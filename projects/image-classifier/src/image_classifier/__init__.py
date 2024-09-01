@@ -1,12 +1,10 @@
-from foundry.runtime import ConfigProvider, command, setup
-setup()
-
 from foundry.core.dataclasses import dataclass
 
+from foundry.core import tree
 from foundry.train import LossOutput
-from foundry.core.random import PRNGSequence
+from foundry.random import PRNGSequence
 from foundry.datasets.vision import image_class_datasets
-from foundry.model import models
+from foundry.models import models
 
 from functools import partial
 
@@ -15,10 +13,7 @@ import foundry.train.wandb
 import foundry.train.console
 import foundry.train.sharpness
 
-import flax
-import rich
 import wandb
-
 import optax
 import jax
 import foundry.numpy as jnp
@@ -51,14 +46,6 @@ class Config:
 
     log_compiles: bool = False
     trace: bool = False
-
-    @staticmethod
-    def parse(config: ConfigProvider) -> "Config":
-        defaults = Config()
-        res = config.get_dataclass(defaults)
-        return res
-
-    # if we should also quantize the model
 
 def switch_optim(
     opt_a: optax.GradientTransformation,
@@ -105,6 +92,15 @@ def make_optimizer(name, lr, iterations, warmup_percent, weight_decay, sam_rho):
     elif name == "adam_sgd_0.9":
         optimizer = switch_optim(adam_optimizer, 
             sgd_optimizer, int(0.9*iterations))
+    elif name == "sgd_adam_0.2":
+        optimizer = switch_optim(sgd_optimizer, 
+            adam_optimizer, int(0.2*iterations))
+    elif name == "sgd_adam_0.5":
+        optimizer = switch_optim(sgd_optimizer, 
+            adam_optimizer, int(0.2*iterations))
+    elif name == "sgd_adam_0.9":
+        optimizer = switch_optim(sgd_optimizer, 
+            adam_optimizer, int(0.9*iterations))
     if sam_rho is not None and sam_rho > 0:
         optimizer = optax.contrib.sam(
             optimizer,
@@ -114,7 +110,7 @@ def make_optimizer(name, lr, iterations, warmup_percent, weight_decay, sam_rho):
         )
     return optimizer
 
-def train(config: Config):
+def run(config: Config):
     logger.info(f"Training {config}")
     rng = PRNGSequence(config.seed)
 
@@ -135,18 +131,19 @@ def train(config: Config):
                                config.weight_decay, config.sam_rho)
     wandb_run = wandb.init(
         project="image_classifier",
-        config=foundry.util.flatten_to_dict(config)[0]
+        config=tree.flatten_to_dict(config)[0]
     )
     num_classes = len(dataset.classes)
     logger.info(f"Logging to [blue]{wandb_run.url}[/blue]")
 
     model = models.create(config.model, n_classes=num_classes)
-    vars = model.init(next(rng), jnp.zeros_like(dataset.splits["train"].structure[0]))
+    vars = model.init(next(rng), jnp.zeros_like(dataset.splits["train"].structure.pixels))
     total_params = jax.tree_util.tree_reduce(lambda x, y: x + y.size, vars, 0)
     logger.info(f"Total parameters: [blue]{total_params}[/blue]")
 
     def loss_fn(params, rng_key, sample, train=True):
-        x, label = normalizer.normalize(sample)
+        normalzied = normalizer.normalize(sample)
+        x, label = normalzied.pixels, normalzied.label
         if train:
             x = augment(rng_key, x)
             logits_output, mutated = model.apply(params, x, 
@@ -167,7 +164,7 @@ def train(config: Config):
     batch_loss = foundry.train.batch_loss(loss_fn)
     val_batch_loss = foundry.train.batch_loss(val_loss)
     
-    vars = model.init(next(rng), jnp.zeros_like(normalizer.structure[0]))
+    vars = model.init(next(rng), jnp.zeros_like(normalizer.structure.pixels))
     opt_state = optimizer.init(vars["params"])
 
     train_data = (
@@ -179,7 +176,6 @@ def train(config: Config):
             .shuffle(next(rng), resample=True).batch(config.batch_size)
     )
     test_data = dataset.splits["test"].stream().batch(2*config.batch_size)
-
     with foundry.train.loop(train_data, rng_key=next(rng), iterations=iterations,
                 log_compiles=config.log_compiles, trace=config.trace) as loop, \
             test_data.build() as test_stream, \
@@ -228,8 +224,3 @@ def train(config: Config):
                         step.iteration, sharpness_metrics,
                         prefix="test/", run=wandb_run
                     )
-
-@command
-def run(config: ConfigProvider):
-    logger.setLevel(logging.DEBUG)
-    train(Config.parse(config))

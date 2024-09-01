@@ -1,7 +1,8 @@
 from . import LossOutput
 from functools import partial
 
-from foundry.util import axis_size, lanczos
+from foundry.util import lanczos
+from foundry.core import tree
 
 import flax
 import jax
@@ -10,7 +11,7 @@ import jax
 def sharpness_stats(loss_fn, vars, rng_key, data, batch_size):
     # only compute the sharpenss wrt trainable params
     other_vars, params = flax.core.pop(vars, "params")
-    N = axis_size(data, 0)
+    N = tree.axis_size(data, 0)
     rng_keys = jax.random.split(rng_key, N)
     def loss(params, sample):
         rng_key, sample = sample

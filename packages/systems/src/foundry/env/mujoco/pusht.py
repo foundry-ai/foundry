@@ -1,3 +1,6 @@
+import foundry.core as F
+import foundry.random
+
 from foundry.env import (
     EnvWrapper, EnvironmentRegistry,
     RenderConfig, ImageRender, ImageActionsRender,
@@ -77,7 +80,7 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
     def model(self):
         return mujoco.MjModel.from_xml_string(self.xml)
 
-    @jax.jit
+    @F.jit
     def reset(self, rng_key : Array) -> SimulatorState:
         a_pos, b_pos, b_rot, c = foundry.random.split(rng_key, 4)
         agent_pos = foundry.random.uniform(a_pos, (2,), minval=-0.8, maxval=0.8)
@@ -101,7 +104,7 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
             jnp.zeros((0,), dtype=jnp.float32)
         ))
     
-    @jax.jit
+    @F.jit
     def observe(self, state, config : ObserveConfig | None = None):
         if config is None: config = PushTObs()
         data = self.simulator.system_data(state)
@@ -151,7 +154,7 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
         polyB = sg.Polygon(pointsB)
         return jnp.array(polyA.intersection(polyB).area / polyA.area, dtype=jnp.float32)
 
-    @jax.jit
+    @F.jit
     def reward(self, state : SimulatorState, 
                 action : Action, 
                 next_state : SimulatorState):
@@ -165,7 +168,7 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
         )
         return jnp.minimum(overlap, self.success_threshold) / self.success_threshold
 
-    @jax.jit
+    @F.jit
     def render(self, state : SimulatorState, config : RenderConfig | None = None): 
         if config is None: config = ImageRender(width=256, height=256)
         if isinstance(config, ImageRender):

@@ -1,6 +1,8 @@
 from typing import Any, Generic, Callable, TypeVar
 
 import jax.flatten_util
+
+from foundry.core import tree
 from foundry.core.dataclasses import dataclass, field
 from foundry.data import PyTreeData
 
@@ -45,7 +47,7 @@ class Compose(Generic[T], Normalizer[T]):
 
     @property
     def structure(self) -> T:
-        return jax.tree_map(lambda x: x.structure,
+        return tree.map(lambda x: x.structure,
             self.normalizers, is_leaf=lambda x: isinstance(x, Normalizer))
     
     def map(self, fun : Callable[[T], V]) -> "Compose[V]":
@@ -56,11 +58,11 @@ class Compose(Generic[T], Normalizer[T]):
         return Compose(fun(self.normalizers))
     
     def normalize(self, data : T) -> T:
-        return jax.tree_map(lambda n, x: n.normalize(x),
+        return tree.map(lambda n, x: n.normalize(x),
             self.normalizers, data, is_leaf=lambda x: isinstance(x, Normalizer))
     
     def unnormalize(self, data : T) -> T:
-        return jax.tree_map(lambda n, x: n.unnormalize(x),
+        return tree.map(lambda n, x: n.unnormalize(x),
             self.normalizers, data, is_leaf=lambda x: isinstance(x, Normalizer))
 
 @dataclass
@@ -162,24 +164,24 @@ class StdNormalizer:
 
     def normalize(self, data):
         if self.mean is not None:
-            return jax.tree_map(
+            return tree.map(
                 lambda d, m, s: (d - m) / (s + 1e-6),
                 data, self.mean, self.std 
             )
         else:
-            return jax.tree_map(
+            return tree.map(
                 lambda d, s: d / (s + 1e-6),
                 data, self.std 
             )
 
     def unnormalize(self, data):
         if self.mean is not None:
-            return jax.tree_map(
+            return tree.map(
                 lambda d, m, s: d * (s + 1e-6) + m,
                 data, self.mean, self.std 
             )
         else:
-            return jax.tree_map(
+            return tree.map(
                 lambda d, s: d * (s + 1e-6),
                 data, self.std 
             )
@@ -187,32 +189,32 @@ class StdNormalizer:
     def update(self, batch):
         # get the batch dimension size
         n = jax.tree_util.tree_flatten(batch)[0][0].shape[0]
-        batch_mean = jax.tree_map(lambda x: jnp.mean(x, axis=0), batch)
-        batch_var = jax.tree_map(lambda x: jnp.var(x, axis=0), batch)
+        batch_mean = tree.map(lambda x: jnp.mean(x, axis=0), batch)
+        batch_var = tree.map(lambda x: jnp.var(x, axis=0), batch)
 
         if self.var is None:
             return StdNormalizer(batch_mean, batch_var, n)
         total = self.count + n
-        mean_delta = jax.tree_map(lambda x, y: x - y,
+        mean_delta = tree.map(lambda x, y: x - y,
                                   batch_mean, self.mean)
-        new_mean = jax.tree_map(lambda x, y: x + n/total * y,
+        new_mean = tree.map(lambda x, y: x + n/total * y,
                                 self.mean, mean_delta)
 
-        m_a = jax.tree_map(lambda v: v*self.total, self.var)
-        m_b = jax.tree_map(lambda v: v*n, batch_var)
-        m2 = jax.tree_map(
+        m_a = tree.map(lambda v: v*self.total, self.var)
+        m_b = tree.map(lambda v: v*n, batch_var)
+        m2 = tree.map(
             lambda a, b, d: a + b + d * n * self.count / total,
             m_a, m_b, mean_delta
         )
-        new_var = jax.tree_map(lambda x: x/total, m2)
-        new_std = jax.tree_map(lambda x: jnp.sqrt(new_var), new_var)
+        new_var = tree.map(lambda x: x/total, m2)
+        new_std = tree.map(lambda x: jnp.sqrt(new_var), new_var)
         return StdNormalizer(new_mean, new_var, new_std, total)
 
     @staticmethod
     def from_data(data, component_wise=True):
         data = data.as_pytree()
         data_flat = jax.vmap(lambda x: jax.flatten_util.ravel_pytree(x)[0])(data)
-        unflatten = jax.flatten_util.ravel_pytree(jax.tree_map(lambda x: x[0], data))[1]
+        unflatten = jax.flatten_util.ravel_pytree(tree.map(lambda x: x[0], data))[1]
         if component_wise:
             mean = jnp.mean(data_flat, axis=0)
             var = jnp.var(data_flat, axis=0)
@@ -233,8 +235,8 @@ class StdNormalizer:
 
     @staticmethod
     def empty_for(sample):
-        zeros = jax.tree_map(lambda x: jnp.zeros_like(x), sample)
-        ones = jax.tree_map(lambda x: jnp.ones_like(x), sample)
+        zeros = tree.map(lambda x: jnp.zeros_like(x), sample)
+        ones = tree.map(lambda x: jnp.ones_like(x), sample)
         return StdNormalizer(zeros, ones, ones, jnp.zeros(()))
 
 @dataclass
@@ -248,7 +250,7 @@ class PCANormalizer:
         return jax.ShapeDtypeStruct((self.S.shape[0],), jnp.float32)
 
     def normalize(self, x):
-        centered = jax.tree_map(lambda x, m: x - m, x, self.mean)
+        centered = tree.map(lambda x, m: x - m, x, self.mean)
         centered_flat, _ = jax.flatten_util.ravel_pytree(centered)
         whitened = (self.U.T @ centered_flat) / self.S
         return whitened
@@ -262,7 +264,7 @@ class PCANormalizer:
     @staticmethod
     def from_data(data, dims=None):
         data = PyTreeData.from_data(data).tree
-        mean = jax.tree_map(lambda x: jnp.mean(x, axis=0), data)
+        mean = tree.map(lambda x: jnp.mean(x, axis=0), data)
         data_flat = jax.vmap(lambda x: jax.flatten_util.ravel_pytree(x)[0])(data)
         C = jnp.cov(data_flat, rowvar=False)
         U, S, _ = jnp.linalg.svd(C)

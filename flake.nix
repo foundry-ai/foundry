@@ -54,7 +54,7 @@
                         export PYTHONPATH=$FOUNDRY_CORE/src:$FOUNDRY_SYSTEMS/src:$FOUNDRY_MODELS/src
                         export PYTHONPATH=:$POLICY_EVAL/src:$IMAGE_CLASSIFIER/src:$PYTHONPATH
 
-                        export PATH=$(pwd)/scripts:$POLICY_EVAL/scripts:$PATH
+                        export PATH=$(pwd)/scripts:$POLICY_EVAL/scripts:$PATH:$IMAGE_CLASSIFIER/scripts
 
                         ${driversHook}
 

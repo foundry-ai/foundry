@@ -3,6 +3,7 @@ setup()
 
 from foundry.core.dataclasses import dataclass, replace
 from foundry.runtime import ConfigProvider, command
+from foundry.core import tree
 from foundry.core.random import PRNGSequence
 from foundry import canvas
 from . import datasets
@@ -99,7 +100,7 @@ def main(config : Config):
 
     wandb_run = wandb.init(
         project="cond_diffusion_toy",
-        config=foundry.util.flatten_to_dict(config)[0]
+        config=tree.flatten_to_dict(config)[0]
     )
     logger.info(f"Logging to [blue]{wandb_run.url}[/blue]")
 
