@@ -37,12 +37,11 @@ class Config:
     batch_size: int = 128
     optimizer: str = "adam"
     lr: float | None = None
-    weight_decay: float = 1e-4
+    weight_decay: float = 1e-5
 
     # sam-related parameters
     sam_rho: float = 0. # None if SAM is disabled
     sam_start: float = 0. # percentage of training through which to start sam
-    sam_percent: float = 1. # percentage of training to use sam, if enabled
 
     log_compiles: bool = False
     trace: bool = False
@@ -54,21 +53,26 @@ def switch_optim(
 ) -> optax.GradientTransformation:
     def init_fn(params):
         new_params = {"opt_a": opt_a.init(params), "opt_b": opt_b.init(params),
-                "iteration": jnp.zeros((), dtype=jnp.int32)}
+                      "iteration": jnp.zeros((), dtype=jnp.int32)}
         return new_params
+
     def update_fn(updates, state, params=None, **extra_args):
         iteration = state["iteration"]
-        a_updates, a_state = opt_a.update(updates, state["opt_a"], params)
-        b_updates, b_state = opt_b.update(updates, state["opt_a"], params)
-        updates = jax.lax.cond(switch_iteration < iteration, lambda: a_updates, lambda: b_updates)
+        def do_a():
+            a_updates, a_state = opt_a.update(updates, state["opt_a"], params, **extra_args)
+            return a_updates, a_state, state["opt_b"]
+        def do_b():
+            b_updates, b_state = opt_b.update(updates, state["opt_b"], params, **extra_args)
+            return b_updates, state["opt_a"], b_state
+        updates, a_state, b_state = jax.lax.cond(iteration < switch_iteration, do_a, do_b)
         state = {"opt_a": a_state, "opt_b": b_state, "iteration": iteration + 1}
         return updates, state
     return optax.GradientTransformationExtraArgs(init_fn, update_fn)
 
-    # if we should also quantize the model
-def make_optimizer(name, lr, iterations, warmup_percent, weight_decay, sam_rho):
+def make_optimizer(name, lr, iterations, warmup_percent, 
+                    weight_decay, sam_rho, sam_start):
     schedule = optax.cosine_onecycle_schedule(
-        iterations, lr or 5e-3, warmup_percent
+        iterations, lr or 5e-4, warmup_percent
     )
     adam_optimizer = optax.adamw(
         schedule, weight_decay=weight_decay
@@ -101,12 +105,16 @@ def make_optimizer(name, lr, iterations, warmup_percent, weight_decay, sam_rho):
         optimizer = switch_optim(sgd_optimizer, 
             adam_optimizer, int(0.9*iterations))
     if sam_rho is not None and sam_rho > 0:
-        optimizer = optax.contrib.sam(
+        sam_optimizer = optax.contrib.sam(
             optimizer,
             optax.sgd(sam_rho),
             opaque_mode=True,
-            reset_state=False
+            reset_state=True
         )
+        if sam_start > 0: # switch sam on later
+            optimizer = switch_optim(optimizer, sam_optimizer, int(sam_start*iterations))
+        else:
+            optimizer = sam_optimizer
     return optimizer
 
 def run(config: Config):
@@ -128,7 +136,7 @@ def run(config: Config):
     iterations = config.epochs * epoch_iterations
     optimizer = make_optimizer(config.optimizer, config.lr, 
                                iterations, config.warmup_ratio,
-                               config.weight_decay, config.sam_rho)
+                               config.weight_decay, config.sam_rho, config.sam_start)
     wandb_run = wandb.init(
         project="image_classifier",
         config=tree.flatten_to_dict(config)[0]

@@ -22,4 +22,4 @@ echo "{
 }" > $OUTPUT
 
 # Track for the flake, but do not add
-git update-index --skip-worktree $OUTPUT
+git update-index --no-skip-worktree $OUTPUT
