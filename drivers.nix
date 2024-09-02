@@ -52,5 +52,6 @@ in
     export LD_LIBRARY_PATH=${lib.makeLibraryPath ([ 
         libglvnd nvidiaLibsOnly 
     ])}
+    export DRIVER="nvidia"
     export __EGL_VENDOR_LIBRARY_FILENAMES=''${NVIDIA_JSON[*]}
 ''

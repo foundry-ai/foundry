@@ -53,23 +53,22 @@ def switch_optim(
     switch_iteration: int
 ) -> optax.GradientTransformation:
     def init_fn(params):
-        del params
-        return {"opt_a": opt_a.init(params), "opt_b": opt_b.init(params),
+        new_params = {"opt_a": opt_a.init(params), "opt_b": opt_b.init(params),
                 "iteration": jnp.zeros((), dtype=jnp.int32)}
-    def update_fn(updates, state, params=None):
-        del params
+        return new_params
+    def update_fn(updates, state, params=None, **extra_args):
         iteration = state["iteration"]
-        a_updates, a_state = opt_a.update(updates, state["opt_a"])
-        b_updates, b_state = opt_b.update(updates, state["opt_a"])
+        a_updates, a_state = opt_a.update(updates, state["opt_a"], params)
+        b_updates, b_state = opt_b.update(updates, state["opt_a"], params)
         updates = jax.lax.cond(switch_iteration < iteration, lambda: a_updates, lambda: b_updates)
         state = {"opt_a": a_state, "opt_b": b_state, "iteration": iteration + 1}
         return updates, state
-    return optax.GradientTransformation(init_fn, update_fn)
+    return optax.GradientTransformationExtraArgs(init_fn, update_fn)
 
     # if we should also quantize the model
 def make_optimizer(name, lr, iterations, warmup_percent, weight_decay, sam_rho):
     schedule = optax.cosine_onecycle_schedule(
-        iterations, lr or 8e-3, warmup_percent
+        iterations, lr or 5e-3, warmup_percent
     )
     adam_optimizer = optax.adamw(
         schedule, weight_decay=weight_decay
@@ -111,6 +110,7 @@ def make_optimizer(name, lr, iterations, warmup_percent, weight_decay, sam_rho):
     return optimizer
 
 def run(config: Config):
+    logger.setLevel(logging.DEBUG)
     logger.info(f"Training {config}")
     rng = PRNGSequence(config.seed)
 
@@ -198,7 +198,7 @@ def run(config: Config):
                         step.iteration, metrics, prefix="train."
                     )
                 # validate + log every 500 steps
-                if step.iteration % 100 == 0:
+                if step.iteration % int(128*200 / config.batch_size) == 0:
                     test_stream, test_metrics = foundry.train.eval_stream(
                         val_batch_loss, vars, next(rng), test_stream
                     )
@@ -210,7 +210,7 @@ def run(config: Config):
                         step.iteration, test_metrics,
                         prefix="test/", run=wandb_run
                     )
-                if step.iteration % 200 == 0:
+                if step.iteration % int(128*500 / config.batch_size) == 0:
                     sharpness_stream, sharpness_batch = sharpness_stream.next()
                     sharpness_metrics = foundry.train.sharpness.sharpness_stats(
                         val_loss, vars, next(rng), sharpness_batch,
