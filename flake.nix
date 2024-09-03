@@ -62,12 +62,30 @@
                     '';
                 in {
                 externalPackages = externalPackages;
-                default = pkgs.mkShell {
+                default = 
+                let
+                    fishPrompt = pkgs.writeText "prompt.fish" "
+                    # Copy the current `fish_prompt` function as `_old_fish_prompt`.
+                    functions -c fish_prompt _old_fish_prompt
+
+                    function fish_prompt
+                        # Run the user's prompt first; it might depend on (pipe)status.
+                        set -l prompt (_old_fish_prompt)
+
+                        set_color blue;
+                        printf '[%s] ' 'foundry'
+                        set_color normal;
+
+                        string join -- \\n $prompt # handle multi-line prompts
+                    end
+                    ";
+                in
+                pkgs.mkShell {
                     packages = with pkgs; [ pythonEnv fish pkgs.glxinfo ffmpeg-headless];
                     # add a PYTHON_PATH to the current directory
                     shellHook = hook + ''
                         export SHELL=$(which fish)
-                        exec fish
+                        exec fish -C "source ${fishPrompt}"
                     '';
                 };
                 job = pkgs.mkShell {

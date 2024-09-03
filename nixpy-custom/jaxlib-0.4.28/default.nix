@@ -396,7 +396,7 @@ let
         (
           if cudaSupport then
             { 
-		x86_64-linux = "sha256-Uf0VMRE0jgaWEYiuphWkWloZ5jMeqaWBl3lSvk2y1HI=";
+		x86_64-linux = "sha256-6eWmY6cZMcXVk2HBF03vpT120b/W/ylDzthl0Drd+g8=";
 		powerpc64le-linux = "sha256-vVVi3zZLp1K7yn3q+fvQNCmxWjGidvtP8HpV5DTRWGw=";
 	    }
           else
