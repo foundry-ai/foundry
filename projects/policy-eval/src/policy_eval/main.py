@@ -13,8 +13,14 @@ from foundry.datasets.env import datasets
 from foundry.core.typing import Array
 from foundry.core import tree
 from foundry.random import PRNGSequence
-from foundry.env import Environment, ImageActionsRender
+from foundry.env import (
+    Environment, ObserveConfig,
+    ImageActionsRender
+)
 from foundry.train.reporting import Video
+
+from foundry.env.mujoco.robosuite import EEfPose
+from foundry.env.mujoco.pusht import PushTAgentPos
 
 from .methods.behavior_cloning import BCConfig
 from .methods.diffusion_estimator import EstimatorConfig
@@ -126,7 +132,25 @@ def validate(env, T, render_width, render_height,
     videos = F.vmap(graphics.image_grid, in_axes=1, out_axes=0)(videos)
     return rewards, Video(videos, fps=10)
 
-def process_data(config : Config, env : Environment, data):
+def relative_action(obs_config : ObserveConfig,
+                    state, action):
+    if isinstance(obs_config, EEfPose):
+        pass
+    elif isinstance(obs_config, PushTAgentPos):
+        pass
+    else:
+        raise ValueError(f"Unsupported obs_config {obs_config}")
+
+def absolute_action(obs_config : ObserveConfig,
+                    state, relative_action):
+    if isinstance(obs_config, EEfPose):
+        pass
+    elif isinstance(obs_config, PushTAgentPos):
+        pass
+    else:
+        raise ValueError(f"Unsupported obs_config {obs_config}")
+
+def process_data(config : Config, env : Environment, action_obs, data):
     logger.info("Computing full state from data...")
 
     def process_element(element):
@@ -140,12 +164,6 @@ def process_data(config : Config, env : Environment, data):
     )
     def process_chunk(chunk : Chunk):
         states = chunk.elements
-        if config.dataset.startswith("robomimic"):
-            from foundry.env.mujoco.robosuite import EEfPose
-            action_obs = EEfPose()
-        elif config.dataset.startswith("pusht"):
-            from foundry.env.mujoco.pusht import PushTAgentPos
-            action_obs = PushTAgentPos()
         actions = F.vmap(lambda s: env.observe(s, action_obs))(states)
         actions = tree.map(lambda x: x[-config.action_length:], actions)
         obs_states = tree.map(lambda x: x[:config.obs_length], states)
@@ -174,6 +192,12 @@ def run(config: Config):
 
     # ---- set up the training data -----
 
+    if config.dataset.startswith("robomimic"):
+        action_obs = EEfPose()
+    elif config.dataset.startswith("pusht"):
+        from foundry.env.mujoco.pusht import PushTAgentPos
+        action_obs = PushTAgentPos()
+
     logger.info(f"Loading dataset [blue]{config.dataset}[/blue]")
     dataset = datasets.create(config.dataset)
     env = dataset.create_env()
@@ -182,13 +206,13 @@ def run(config: Config):
     train_data = dataset.splits["train"]
     if config.train_trajectories is not None:
         train_data = train_data.slice(0, config.train_trajectories)
-    train_data = process_data(config, env, train_data)
+    train_data = process_data(config, env, action_obs, train_data)
 
     logger.info("Processing test data...")
     test_data = dataset.splits["test"]
     if config.test_trajectories is not None:
         test_data = test_data.slice(0, config.test_trajectories)
-    test_data = process_data(config, env, test_data)
+    test_data = process_data(config, env, action_obs, test_data)
 
     validation_data = dataset.splits["validation"]
     if config.validation_trajectories is not None:

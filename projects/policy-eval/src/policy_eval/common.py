@@ -6,7 +6,7 @@ from foundry.random import PRNGSequence
 from foundry.core.dataclasses import dataclass
 from foundry.core.typing import Array
 from foundry.data import Data
-from foundry.env import Environment
+from foundry.env import Environment, ObserveConfig
 from foundry.policy import Policy
 from foundry.train.reporting import Video
 
@@ -34,6 +34,7 @@ class Inputs:
     validate : Callable[[Array, Policy], Array]
     validate_render: Callable[[Array, Policy], tuple[Array, Video]]
 
+    action_observation : ObserveConfig
     train_data : Data[Sample]
     test_data : Data[Sample]
 

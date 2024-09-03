@@ -1,26 +1,26 @@
-import jax
-import foundry.numpy as jnp
-import jax.flatten_util
+import functools
 
-from policy_eval import Sample
+import foundry.core.tree as tree
+import foundry.core as F
+import foundry.numpy as jnp
+
+from ..common import MethodConfig, Sample, Inputs
+
 
 from foundry.data import Data
 from foundry.diffusion import DDPMSchedule
-from foundry.runtime import ConfigProvider
-from foundry.core.random import PRNGSequence
 from foundry.policy import PolicyInput, PolicyOutput
 from foundry.policy.transforms import ChunkingTransform
 
+
 from foundry.env import Environment
 
-from foundry.core.dataclasses import dataclass
+from foundry.core.dataclasses import dataclass, replace
 from foundry.diffusion import nonparametric
 
 from foundry.env.core import ObserveConfig
 from foundry.env.mujoco.pusht import PushTAgentPos
 from foundry.env.mujoco.robosuite import EEfPose
-
-from typing import Callable
 
 import optax
 import foundry.train
@@ -32,110 +32,96 @@ import os
 import logging
 logger = logging.getLogger(__name__)
 
+class Transform:
+    def transform(self, x):
+        pass
+
+    def inv_transform(self, x):
+        pass
+
 @dataclass
-class TrainedEstimatorConfig:
+class LearnedEstimatorConfig(MethodConfig):
     estimator: str = "nw"
-    kernel_bandwidth: float = 0.01
+    bandwidth: float = 0.01
+    relative_actions: bool = False
+
+    epochs: int = 10
+    batch_size: int = 64
+    learning_rate: float = 1e-4
+    weight_decay: float = 1e-5
+
     diffusion_steps: int = 50
-    relative_actions: bool = True
-    agent_pos_config: ObserveConfig = EEfPose()
     action_horizon: int = 8
-    checkpoint_path = ""
-    iterations: int = 1000
 
-    def parse(self, config: ConfigProvider) -> "TrainedEstimatorConfig":
-        return config.get_dataclass(self)
+    def run(self, inputs: Inputs):
+        schedule = DDPMSchedule.make_squaredcos_cap_v2(
+            self.diffusion_steps,
+            prediction_type="sample"
+        )
+        train_data = inputs.train_data.as_pytree()
+        # make the actions relative to the agent position
+        if self.relative_actions:
+            pass
 
-    def train_policy(self, wandb_run, train_data, env, eval, rng):
-        return trained_diffusion_estimator_policy(self, wandb_run, train_data, env, eval, rng)
+        N = tree.axis_size(train_data, 0)
+        # split the data into two halves
+        sub_data = tree.map(lambda x: x[:N//2], train_data)
 
-def trained_diffusion_estimator_policy(
-            config: TrainedEstimatorConfig,
-            wandb_run,
-            train_data : Data[Sample],
-            env : Environment,
-            eval : Callable,
-            rng: jax.Array
-        ):
+        def target_denoiser(rng_key, obs, noisy_actions, t):
+            return nonparametric.nw_cond_diffuser(
+                obs, train_data, schedule,
+                nonparametric.log_gaussian_kernel, self.bandwidth
+            )(rng_key, noisy_actions, t)
+        
+        def denoiser_model(transform : Transform, rng_key, 
+                        obs, noisy_actions, t):
+            transform.transform(x, y)
+            return nonparametric.nw_cond_diffuser(
+                obs, sub_data, schedule,
+                nonparametric.log_gaussian_kernel, self.bandwidth
+            )(rng_key, noisy_actions, t)
+        
+        def loss_fn(transform, rng_key, sample):
+            denoiser = functools.partial(denoiser_model, transform)
+            schedule.add_noise(n_key, )
 
-    schedule = DDPMSchedule.make_squaredcos_cap_v2(
-        config.diffusion_steps,
-        prediction_type="sample"
-    )
-
-    reference_denoiser = load_checkpoint(config.checkpoint_path)
-
-    transformation = LinearTransform()
-    train_samples = train_data.as_pytree()
-    obs_length, action_length = (
-        foundry.util.axis_size(train_data.observations, 1),
-        foundry.util.axis_size(train_data.actions, 1)
-    )
-
-    def denoiser_model(params, obs, rng_key, actions, t):
-        transformation.apply(params, (obs))
-
-        kernel = nonparametric.log_gaussian_kernel
-        estimator = lambda obs: nonparametric.nw_cond_diffuser(
-            obs, train_samples, schedule, kernel, config.kernel_bandwidth
+        transformation = LinearTransform()
+        train_samples = train_data.as_pytree()
+        obs_length, action_length = (
+            foundry.util.axis_size(train_data.observations, 1),
+            foundry.util.axis_size(train_data.actions, 1)
         )
 
-    match_denoiser(
-        reference_denoiser, denoiser_model, 
-        None, schedule, 
-        rng, train_data, None, config.iterations
-    )
+import flax.nnx as nnx
+import jax.scipy.linalg
 
-def match_denoiser(target_denoiser, 
-                   denoiser_model, init_params,
-                   schedule, rng_key, train_data, test_data, iterations):
-    def loss_fn(params, rng_key, sample):
-        t_rng, s_rng, m1_rng, m2_rng = jax.random.split(rng_key, 4)
-        t = jax.random.randint(t_rng, (), 0, schedule.num_steps) + 1
-        noised_sample, _, _ = schedule.add_noise(s_rng, sample, t)
+class LinearTransform(Transform, nnx.Model):
+    def __init__(self, dim: int, *, rngs: nnx.Rngs):
+        key = rngs.params()
+        W = jax.random.orthogonal(key, (dim, dim))
+        P, L, U = jax.scipy.linalg.lu(W)
+        S = jnp.diag(L)
+        U = jnp.triu(U, 1)
+        self.dim = dim
+        self.P = nnx.Variable(P)
+        self.L, self.U, self.S = nnx.Param(L), nnx.Param(U), nnx.Param(S)
 
-        reference = target_denoiser(m1_rng, noised_sample, t)
-        prediction = denoiser_model.apply(params, m2_rng, noised_sample, t - 1)
-        ref_flat, _ = jax.flatten_util.ravel_pytree(reference)
-        pred_flat, _ = jax.flatten_util.ravel_pytree(prediction)
-        loss = jnp.mean((ref_flat - pred_flat) ** 2)
-        return foundry.train.LossOutput(loss=loss, metrics={"loss": loss})
-    loss_fn = foundry.train.batch_loss(loss_fn)
+    def transform(self, x):
+        P, L, U, S = self.P, self.L, self.U, self.S
+        identity = jnp.eye(self.dim)
+        L = jnp.tril(L, -1) + identity
+        U = jnp.triu(U, 1)
+        W = P @ L @ (U + jnp.diag(S))
+        output = jnp.dot(x, W)
+        log_det_jacobian = jnp.log(jnp.abs(S)).sum()
+        return output, log_det_jacobian
 
-    optimizer = optax.adam(1e-4)
-    opt_state = optimizer.init(init_params)
-    vars = init_params
-    with foundry.train.loop(train_data, rng_key=rng_key, 
-                      iterations=iterations) as loop:
-        for epoch in loop.epochs():
-            for step in epoch.steps():
-                opt_state, vars, metrics = foundry.train.step(
-                    loss_fn, optimizer, opt_state, 
-                    vars, step.rng_key, step.batch
-                )
-                foundry.train.wandb.log(step.iteration, metrics)
-
-def load_checkpoint(checkpoint_path):
-    current_dir = os.path.dirname(os.path.realpath(__file__))
-    ckpts_dir = os.path.join(current_dir, "checkpoints")
-    file_path = os.path.join(ckpts_dir, checkpoint_path)
-    with open(file_path, "rb") as file:
-        ckpt = pickle.load(file)
-
-    model = ckpt["model"]
-    ema_vars = ckpt["ema_state"].ema
-    normalizer = ckpt["normalizer"]
-
-    def denoiser(rng_key, obs, noised_actions, t):
-        obs = normalizer.map(lambda x: x.observations).normalize(obs)
-        return model.apply(ema_vars, obs, noised_actions, t - 1)
-    return denoiser
-
-import flax.linen as nn
-
-class LinearTransform(nn.Model):
-    def __call__(self, x):
-        x_flat, uf = jax.flatten_util.ravel_pytree(x)
-        y_flat = nn.Linear(x.shape[-1])(x_flat)
-        y = uf(y_flat)
-        return y
+    def inv_transform(self, x):
+        P, L, U, S = self.P, self.L, self.U, self.S
+        identity = jnp.eye(self.dim)
+        L = jnp.tril(L, -1) + identity
+        U = jnp.triu(U, 1)
+        W = P @ L @ (U + jnp.diag(S))
+        outputs = x @ jnp.linalg.inv(W)
+        log_det_jacobian = -jnp.log(jnp.abs(S)).sum()
+        return outputs, log_det_jacobian
