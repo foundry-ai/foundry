@@ -8,6 +8,7 @@ let
             "535.86.10" = "sha256-UDieX7LzPTG25Mq3BbQm3tNMkEewiYm5CSVfPgtndaI=";
         };
         "x86_64-linux" = {
+            "535.183.01" = "sha256-9nB6+92pQH48vC5RKOYLy82/AvrimVjHL6+11AXouIM=";
             "555.42.02" = "sha256-k7cI3ZDlKp4mT46jMkLaIrc2YUx1lh1wj/J4SVSHWyk=";
         };
     };
