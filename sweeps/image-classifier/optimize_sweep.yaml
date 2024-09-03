@@ -11,11 +11,11 @@ parameters:
              "adam_sgd_0.2", "adam_sgd_0.5", "adam_sgd_0.9",
              "sgd_adam_0.2", "sgd_adam_0.5", "sgd_adam_0.9"]
   iterations:
-    values: [100_000, 200_000]
+    values: [150_000]
   batch_size:
-    values: [16]
+    values: [32]
   sam_rho:
-    values: [0, 0.05, 0.1, 0.3, 0.5]
+    values: [0, 0.05, 0.1, 0.3]
 command:
   - foundry-env
   - ${program}

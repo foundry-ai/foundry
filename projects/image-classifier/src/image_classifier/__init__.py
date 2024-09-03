@@ -72,39 +72,57 @@ def switch_optim(
 
 def make_optimizer(name, lr, iterations, warmup_percent, 
                     weight_decay, sam_rho, sam_start):
-    schedule = optax.cosine_onecycle_schedule(
-        iterations, lr or 5e-4, warmup_percent
+    adam_lr = lr or 5e-4
+    sgd_lr = lr or 1e-2
+    warmup_steps = int(warmup_percent * iterations)
+
+    adam_schedule = optax.warmup_cosine_decay_schedule(
+        adam_lr*0.01, adam_lr, warmup_steps, iterations,
+        adam_lr*0.05
     )
+    sgd_schedule = optax.warmup_cosine_decay_schedule(
+        sgd_lr*0.01, sgd_lr, warmup_steps, iterations,
+        sgd_lr*0.05
+    )
+
     adam_optimizer = optax.adamw(
-        schedule, weight_decay=weight_decay
-    )
-    schedule = optax.cosine_onecycle_schedule(
-        iterations, lr or 1e-2, warmup_percent
+        adam_schedule, weight_decay=weight_decay
     )
     sgd_optimizer = optax.chain(
         optax.add_decayed_weights(weight_decay),
-        optax.sgd(schedule)
+        optax.sgd(sgd_schedule)
     )
-    if name == "adam": optimizer = adam_optimizer
-    if name == "sgd": optimizer = sgd_optimizer
+    if name == "adam": 
+        optimizer = adam_optimizer
+        schedule = adam_schedule
+    if name == "sgd": 
+        optimizer = sgd_optimizer
+        schedule = sgd_schedule
     elif name == "adam_sgd_0.2":
         optimizer = switch_optim(adam_optimizer, 
             sgd_optimizer, int(0.2*iterations))
+        schedule = adam_schedule
     elif name == "adam_sgd_0.5":
         optimizer = switch_optim(adam_optimizer, 
             sgd_optimizer, int(0.5*iterations))
+        schedule = adam_schedule
     elif name == "adam_sgd_0.9":
         optimizer = switch_optim(adam_optimizer, 
             sgd_optimizer, int(0.9*iterations))
+        schedule = adam_schedule
     elif name == "sgd_adam_0.2":
         optimizer = switch_optim(sgd_optimizer, 
             adam_optimizer, int(0.2*iterations))
+        schedule = adam_schedule
     elif name == "sgd_adam_0.5":
         optimizer = switch_optim(sgd_optimizer, 
             adam_optimizer, int(0.2*iterations))
+        schedule = adam_schedule
     elif name == "sgd_adam_0.9":
         optimizer = switch_optim(sgd_optimizer, 
             adam_optimizer, int(0.9*iterations))
+        schedule = adam_schedule
+
     if sam_rho is not None and sam_rho > 0:
         sam_optimizer = optax.contrib.sam(
             optimizer,
@@ -116,7 +134,8 @@ def make_optimizer(name, lr, iterations, warmup_percent,
             optimizer = switch_optim(optimizer, sam_optimizer, int(sam_start*iterations))
         else:
             optimizer = sam_optimizer
-    return optimizer
+
+    return optimizer, schedule
 
 def run(config: Config):
     logger.setLevel(logging.DEBUG)
@@ -140,7 +159,7 @@ def run(config: Config):
         epoch_iterations = len(dataset.splits["train"]) // config.batch_size
         iterations = epochs * epoch_iterations
 
-    optimizer = make_optimizer(config.optimizer, config.lr, 
+    optimizer, schedule = make_optimizer(config.optimizer, config.lr, 
                                iterations, config.warmup_ratio,
                                config.weight_decay, config.sam_rho, config.sam_start)
     wandb_run = wandb.init(
@@ -195,7 +214,6 @@ def run(config: Config):
             test_data.build() as test_stream, \
             sharpness_data.build() as sharpness_stream:
         
-        metric_history = None
         for epoch in loop.epochs():
             for step in epoch.steps():
                 opt_state, vars, metrics = foundry.train.step(
@@ -204,12 +222,13 @@ def run(config: Config):
                     step.rng_key, step.batch 
                 )
                 foundry.train.wandb.log(
-                    step.iteration, metrics,
+                    step.iteration, metrics, {"lr": schedule(step.iteration)},
                     run=wandb_run, prefix="train/"
                 )
                 if step.iteration % 100 == 0:
                     foundry.train.console.log(
-                        step.iteration, metrics, prefix="train."
+                        step.iteration, metrics, {"lr": schedule(step.iteration)},
+                        prefix="train."
                     )
                 # validate + log every 500 steps
                 if step.iteration % 300 == 0:
@@ -232,9 +251,9 @@ def run(config: Config):
                     )
                     foundry.train.console.log(
                         step.iteration, sharpness_metrics,
-                        prefix="test."
+                        prefix="sharpness."
                     )
                     foundry.train.wandb.log(
                         step.iteration, sharpness_metrics,
-                        prefix="test/", run=wandb_run
+                        prefix="sharpness/", run=wandb_run
                     )
