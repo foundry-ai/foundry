@@ -32,7 +32,8 @@ class Config:
     normalizer: str = "standard_dev"
     model: str = "resnet/SmallResNet18"
 
-    epochs: int = 50
+    epochs: int | None = None
+    iterations: int | None = None
     warmup_ratio: float = 0.01
     batch_size: int = 128
     optimizer: str = "adam"
@@ -132,8 +133,13 @@ def run(config: Config):
         lambda _r, x: x
     )
 
-    epoch_iterations = len(dataset.splits["train"]) // config.batch_size
-    iterations = config.epochs * epoch_iterations
+    if config.iterations is not None:
+        iterations = config.iterations
+    else:
+        epochs = config.epochs or 50
+        epoch_iterations = len(dataset.splits["train"]) // config.batch_size
+        iterations = epochs * epoch_iterations
+
     optimizer = make_optimizer(config.optimizer, config.lr, 
                                iterations, config.warmup_ratio,
                                config.weight_decay, config.sam_rho, config.sam_start)
@@ -188,7 +194,8 @@ def run(config: Config):
                 log_compiles=config.log_compiles, trace=config.trace) as loop, \
             test_data.build() as test_stream, \
             sharpness_data.build() as sharpness_stream:
-
+        
+        metric_history = None
         for epoch in loop.epochs():
             for step in epoch.steps():
                 opt_state, vars, metrics = foundry.train.step(
@@ -200,13 +207,12 @@ def run(config: Config):
                     step.iteration, metrics,
                     run=wandb_run, prefix="train/"
                 )
-                # print to the console every 100 iterations
                 if step.iteration % 100 == 0:
                     foundry.train.console.log(
                         step.iteration, metrics, prefix="train."
                     )
                 # validate + log every 500 steps
-                if step.iteration % int(128*200 / config.batch_size) == 0:
+                if step.iteration % 300 == 0:
                     test_stream, test_metrics = foundry.train.eval_stream(
                         val_batch_loss, vars, next(rng), test_stream
                     )
@@ -218,7 +224,7 @@ def run(config: Config):
                         step.iteration, test_metrics,
                         prefix="test/", run=wandb_run
                     )
-                if step.iteration % int(128*500 / config.batch_size) == 0:
+                if step.iteration % 600 == 0:
                     sharpness_stream, sharpness_batch = sharpness_stream.next()
                     sharpness_metrics = foundry.train.sharpness.sharpness_stats(
                         val_loss, vars, next(rng), sharpness_batch,
