@@ -1,0 +1,30 @@
+program: image_classifier
+name: SGD Optimization
+method: bayes
+project: image_classifier
+metric:
+  goal: maximize
+  name: test/accuracy
+parameters:
+  optimizer:
+    value: "sgd"
+  iterations:
+    min: 50_000
+    max: 200_000
+  batch_size:
+    values: [16, 32, 64, 128]
+  warmup_ratio:
+    min: 0.01
+    max: 0.1
+  lr:
+    min: 0.00001
+    max: 0.05
+  weight_decay:
+    min: 0.00001
+    max: 0.05
+  sam_rho:
+    values: [0, 0.05, 0.1, 0.3, 0.5]
+command:
+  - foundry-env
+  - ${program}
+  - ${args}
