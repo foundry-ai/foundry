@@ -175,6 +175,7 @@ def slice_variables(variables: Mapping[str, Any],
 
 
 STAGE_SIZES = {
+    10: [1, 1, 1, 1],
     18: [2, 2, 2, 2],
     34: [3, 4, 6, 3],
     50: [3, 4, 6, 3],
@@ -385,15 +386,27 @@ SmallResNet = partial(ResNet,
     stem_cls=partial(ResNetStem, # smol stem boy
         strides=(1, 1), kernel_size=(3, 3),
         padding=((1, 1), (1, 1))
-    )
+    ),
 )
 
-SmallResNet18 = partial(SmallResNet, stage_sizes=STAGE_SIZES[18],
-                        block_cls=ResNetBlock)
+SmallResNet10 = partial(SmallResNet, 
+    stage_sizes=STAGE_SIZES[10],
+    block_cls=ResNetBlock)
 
-SmallResNet50 = partial(SmallResNet, stage_sizes=STAGE_SIZES[50],
-                        block_cls=ResNetBlock)
+SmallResNet18 = partial(SmallResNet, 
+    stage_sizes=STAGE_SIZES[18],
+    block_cls=ResNetBlock)
 
+SmallResNet34 = partial(SmallResNet, 
+    stage_sizes=STAGE_SIZES[34],
+    block_cls=ResNetBlock)
+
+SmallResNet50 = partial(SmallResNet,
+    stage_sizes=STAGE_SIZES[50],
+    block_cls=ResNetBlock)
+
+ResNet10 = partial(ResNet, stage_sizes=STAGE_SIZES[10],
+                   stem_cls=ResNetStem, block_cls=ResNetBlock)
 ResNet18 = partial(ResNet, stage_sizes=STAGE_SIZES[18],
                    stem_cls=ResNetStem, block_cls=ResNetBlock)
 ResNet34 = partial(ResNet, stage_sizes=STAGE_SIZES[34],
@@ -452,8 +465,10 @@ ResNeSt269 = partial(ResNet, stage_sizes=STAGE_SIZES[269],
                      block_cls=ResNeStBottleneckBlock)
 
 models = Registry()
+models.register("SmallResNet10", SmallResNet10)
 models.register("SmallResNet18", SmallResNet18)
 models.register("SmallResNet50", SmallResNet50)
+models.register("ResNet10", ResNet10)
 models.register("ResNet18", ResNet18)
 models.register("ResNet34", ResNet34)
 models.register("ResNet50", ResNet50)
