@@ -3,6 +3,8 @@ import jax.flatten_util
 import foundry.numpy as jnp
 import foundry.util
 
+from foundry.core import tree
+
 from scipy.special import binom
 from jax.scipy.special import factorial
 
@@ -56,7 +58,9 @@ def nw_cond_diffuser(cond, data, schedule, kernel, h):
         y_hat = jax.tree_map(lambda x: x*sqrt_alphas_prod, y)
         estimator_data = (x, y_hat), y
         estimator = nadaraya_watson(estimator_data, comb_kernel, h)
-        return estimator((cond, noised_value))
+        est = estimator((cond, noised_value))
+        output = schedule.output_from_denoised(noised_value, t, est)
+        return output
     return diffuser
 
 def expand_poly_features(degree, samples):

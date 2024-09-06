@@ -6,7 +6,7 @@ authors = [
     {name = "Daniel Pfrommer", email = "dan.pfrommer@gmail.com"},
 ]
 dependencies = [
-    "foundry-core @ file:///${PROJECT_ROOT}/packages/core",
+    "foundry-core[ipython] @ file:///${PROJECT_ROOT}/packages/core",
     "foundry-systems @ file:///${PROJECT_ROOT}/packages/systems",
     "foundry-models @ file:///${PROJECT_ROOT}/packages/models",
     "policy-eval @ file:///${PROJECT_ROOT}/projects/policy-eval",

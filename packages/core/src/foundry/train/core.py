@@ -6,7 +6,7 @@ from foundry.random import PRNGSequence
 from .reporting import *
 
 from typing import (
-    Any, TypeVar, Callable, Generic, Generator
+    Any, TypeVar, Callable, Generic, Iterator
 )
 from jax.typing import ArrayLike
 from functools import partial
@@ -66,7 +66,7 @@ class Loop(Generic[Sample]):
             self.epoch_task = None
             self.epoch_iteration_task = None
 
-    def epochs(self) -> "Generator[Epoch[Sample]]":
+    def epochs(self) -> "Iterator[Epoch[Sample]]":
         if self.progress:
             self.progress.reset(self.iteration_task, total=self.max_iterations)
             if self.show_epochs:
@@ -74,13 +74,14 @@ class Loop(Generic[Sample]):
                 self.progress.reset(self.epoch_iteration_task, total=self.epoch_iterations)
 
         iterations = 0
-        rng = PRNGSequence(self.rng_key)
+        rng = PRNGSequence(self.rng_key) if self.rng_key is not None else None
         try:
             for e in itertools.count():
                 epoch_iterations = self.max_iterations - iterations
                 if self.epoch_iterations is not None:
                     epoch_iterations = min(epoch_iterations, self.epoch_iterations)
-                yield Epoch(self, next(rng), e, iterations, epoch_iterations)
+                sk = next(rng) if rng is not None else None
+                yield Epoch(self, sk, e, iterations, epoch_iterations)
                 iterations = iterations + epoch_iterations
                 if self.progress and self.show_epochs:
                     self.progress.advance(self.epoch_task)
@@ -105,13 +106,13 @@ class Epoch(Generic[Sample]):
     def data(self):
         return self.loop.data
     
-    def steps(self) -> "Generator[Step[Sample]]":
+    def steps(self) -> "Iterator[Step[Sample]]":
         prev_iterations = self.prev_iterations
         if self.loop.progress and self.loop.show_epochs:
             self.loop.progress.reset(
                 self.loop.epoch_iteration_task, total=self.epoch_iterations
             )
-        rng = PRNGSequence(self.rng_key)
+        rng = PRNGSequence(self.rng_key) if self.rng_key is not None else None
         for i in range(self.epoch_iterations):
             total_iter = prev_iterations + i
             with jax.profiler.StepTraceAnnotation("step", step_num=total_iter):
@@ -121,8 +122,9 @@ class Epoch(Generic[Sample]):
                     if not data.has_next(): raise ValueError("Unable to reset stream!")
                     data, batch = data.next()
                     self.loop.data = data
+                    sk = next(rng) if rng is not None else None
                 with jax.profiler.TraceAnnotation("run_step"):
-                    yield Step(batch, next(rng), self.num, 
+                    yield Step(batch, sk, self.num, 
                         i, total_iter)
 
             if self.loop.progress:
@@ -160,9 +162,8 @@ class MofNColumn(ProgressColumn):
         )
 
 @contextmanager
-def loop(data : StreamBuilder[Sample], *, rng_key, iterations=None, progress=True,
-         log_compiles=False, trace=False) -> Generator[Loop[Sample], None, None]:
-
+def loop(data : StreamBuilder[Sample], *, iterations, rng_key=None, progress=True,
+         log_compiles=False, trace=False) -> Iterator[Loop[Sample]]:
     with data.build() as stream:
         if progress:
             progress = Progress(
@@ -171,9 +172,13 @@ def loop(data : StreamBuilder[Sample], *, rng_key, iterations=None, progress=Tru
                 MofNColumn(),
                 TaskProgressColumn(),
                 TimeRemainingColumn(),
-                TimeElapsedColumn()
+                TimeElapsedColumn(),
+                refresh_per_second=1
             )
-        else: progress = nullcontext()
+            progress_ctx = progress
+        else: 
+            progress = None
+            progress_ctx = nullcontext()
         if log_compiles: compile_logger = jax.log_compiles()
         else: compile_logger = nullcontext()
         if trace:
@@ -188,7 +193,7 @@ def loop(data : StreamBuilder[Sample], *, rng_key, iterations=None, progress=Tru
             progress=progress,
             trace_dir=trace_dir
         )
-        with progress, compile_logger:
+        with progress_ctx, compile_logger:
             yield loop
 
 @dataclass
