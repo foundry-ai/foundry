@@ -76,7 +76,10 @@ class Checkpoint(Result):
 
     model_config: MLPConfig | UNetConfig
     schedule: DDPMSchedule
-    normalizer: Normalizer
+
+    obs_normalizer: Normalizer
+    action_normalizer: Normalizer
+
     vars: Vars
 
     def create_policy(self) -> Policy:
@@ -87,12 +90,12 @@ class Checkpoint(Result):
         # TODO: assert that the vars are the same type/shape
         def chunk_policy(input: PolicyInput) -> PolicyOutput:
             obs = input.observation
-            obs = self.normalizer.map(lambda x: x.observations).normalize(obs)
+            obs = self.obs_normalizer.normalize(obs)
             model_fn = lambda rng_key, noised_actions, t: model(
                 self.vars, rng_key, obs, noised_actions, t - 1
             )
             action = self.schedule.sample(input.rng_key, model_fn, self.actions_structure) 
-            action = self.normalizer.map(lambda x: x.actions).unnormalize(action)
+            action = self.action_normalizer.unnormalize(action)
             return PolicyOutput(action=action[:self.action_horizon], info=action)
         obs_horizon = tree.axis_size(self.observations_structure, 0)
         return ChunkingTransform(
@@ -128,11 +131,15 @@ class DPConfig:
             raise ValueError(f"Unknown model type: {self.model}")
     
     def run(self, inputs: Inputs):
+        _, data = inputs.data.load({"train", "test"})
+        train_data = data["train"]
+        test_data = data["test"]
+
         schedule = DDPMSchedule.make_squaredcos_cap_v2(
             self.diffusion_steps,
             prediction_type="sample"
         )
-        train_sample = inputs.train_data[0]
+        train_sample = train_data[0]
         observations_structure = tree.map(lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype), 
                                           train_sample.observations)
         actions_structure = tree.map(lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype), 
@@ -147,16 +154,16 @@ class DPConfig:
 
         logger.info(f"Total parameters: {total_params}")
 
-        normalizer = StdNormalizer.from_data(inputs.train_data)
+        normalizer = StdNormalizer.from_data(train_data)
 
-        epoch_iterations = len(inputs.train_data) // self.batch_size
+        epoch_iterations = len(train_data) // self.batch_size
         total_iterations = self.epochs * epoch_iterations
 
         # initialize optimizer, EMA
         optimizer = optax.adamw(self.learning_rate, weight_decay=self.weight_decay)
-        opt_state = optimizer.init(vars["params"])
+        opt_state = F.jit(optimizer.init)(vars["params"])
         ema = optax.ema(0.9)
-        ema_state = ema.init(vars)
+        ema_state = F.jit(ema.init)(vars)
         ema_update = F.jit(ema.update)
 
         def loss_fn(vars, rng_key, sample: Sample):
@@ -176,31 +183,46 @@ class DPConfig:
                 action_horizon=self.action_horizon,
                 model_config=self.model_config,
                 schedule=schedule,
-                normalizer=normalizer,
+                obs_normalizer=normalizer.map(lambda x: x.observations),
+                action_normalizer=normalizer.map(lambda x: x.actions),
                 vars=vars
             )
 
         batched_loss_fn = train.batch_loss(loss_fn)
 
+        train_stream = train_data.stream().batch(self.batch_size)
+        test_stream = test_data.stream().batch(self.batch_size)
         with train.loop(
-                data=inputs.train_data.stream().batch(self.batch_size),
+                data=train_stream,
                 rng_key=next(inputs.rng),
                 iterations=total_iterations,
                 progress=True
-            ) as loop:
+            ) as loop, test_stream.build() as test_stream:
             for epoch in loop.epochs():
                 for step in epoch.steps():
                     # print(step.batch.observations)
                     # print(step.batch.actions)
                     # *note*: consumes opt_state, vars
+                    train_rng, test_rng = jax.random.split(step.rng_key)
                     opt_state, vars, metrics = train.step(
                         batched_loss_fn, optimizer, opt_state, vars, 
-                        step.rng_key, step.batch,
+                        train_rng, step.batch,
                     )
                     _, ema_state = ema_update(vars, ema_state)
                     if step.iteration % 100 == 0:
-                        train.console.log(step.iteration, metrics)
-                        train.wandb.log(step.iteration, metrics, run=inputs.wandb_run)
+                        train.console.log(step.iteration, metrics, 
+                                          prefix="train.")
+                        train.wandb.log(step.iteration, metrics, run=inputs.wandb_run, 
+                                        prefix="train/")
+
+                    if step.iteration % 1000 == 0:
+                        test_stream, test_metrics = train.eval_stream(
+                            batched_loss_fn, vars, 
+                            test_rng, test_stream
+                        )
+                        train.console.log(step.iteration, test_metrics, prefix="test.")
+                        train.wandb.log(step.iteration, test_metrics, 
+                                        run=inputs.wandb_run, prefix="test/")
             # log the last iteration
             if step.iteration % 100 != 0:
                 train.console.log(step.iteration, metrics)
@@ -238,7 +260,11 @@ class DiffusionUNet(UNet):
             nn.Dense(self.embed_dim),
         ])(obs_flat)
         cond_embed = time_embed + obs_embed
-        return super().__call__(actions, cond_embed=cond_embed, train=train)
+        return super().__call__(
+            actions, 
+            cond_embed=cond_embed,
+            train=train
+        )
 
 class DiffusionMLP(nn.Module):
     features: Sequence[int]

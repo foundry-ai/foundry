@@ -40,7 +40,7 @@ class MappedStream(DataStream[T]):
         stream, batch = self.stream.next()
         stream = MappedStream(stream, self.fn)
         batch = jax.vmap(self.fn)(batch)
-        return batch
+        return stream, batch
 
     def reset(self):
         return MappedStream(self.stream.reset(), self.fn)

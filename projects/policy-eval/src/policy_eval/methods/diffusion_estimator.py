@@ -1,6 +1,6 @@
-from ..common import Sample
+from ..common import Result, Inputs, DataConfig
 
-from foundry.data import Data
+from foundry.core import tree
 from foundry.diffusion import DDPMSchedule
 from foundry.random import PRNGSequence
 from foundry.policy import PolicyInput, PolicyOutput
@@ -11,6 +11,7 @@ from foundry.env import Environment
 from foundry.core.dataclasses import dataclass
 from foundry.diffusion import nonparametric
 
+from foundry.policy import Policy
 from foundry.env.core import ObserveConfig
 from foundry.env.mujoco.pusht import PushTAgentPos
 from foundry.env.mujoco.robosuite import EEfPose
@@ -24,7 +25,50 @@ import foundry.numpy as jnp
 import logging
 logger = logging.getLogger(__name__)
 
-@dataclass(frozen=False)
+@dataclass
+class Estimator(Result):
+    type: str
+    kernel_bandwidth: float
+    action_horizon : int
+
+    schedule: DDPMSchedule
+    data: DataConfig
+
+    def create_policy(self) -> Policy:
+        env, splits = self.data.load({"train"})
+        # convert to a pytree...
+        logger.info("Materializing all chunks...")
+        train_data = splits["train"].as_pytree()
+        logger.info("Chunks materialized...")
+        obs_length, action_length = (
+            tree.axis_size(train_data.observations, 1),
+            tree.axis_size(train_data.actions, 1)
+        )
+        actions_structure = tree.map(
+            lambda x: jax.ShapeDtypeStruct(x.shape[1:], x.dtype),
+            train_data.actions
+        )
+        train_data = train_data.observations, train_data.actions
+        def chunk_policy(input: PolicyInput) -> PolicyOutput:
+            if self.type == "nw":
+                estimator = lambda obs: nonparametric.nw_cond_diffuser(
+                    obs, train_data, self.schedule, nonparametric.log_gaussian_kernel,
+                    self.kernel_bandwidth
+                )
+            obs = input.observation
+            diffuser = estimator(obs)
+            actions = self.schedule.sample(input.rng_key, 
+                                    diffuser, actions_structure)
+            return PolicyOutput(
+                action=actions,
+                info=actions
+            )
+        policy = ChunkingTransform(
+            obs_length, self.action_horizon
+        ).apply(chunk_policy)
+        return policy
+
+@dataclass
 class EstimatorConfig:
     type: str = "nw"
     kernel_bandwidth: float = 0.01
@@ -32,60 +76,15 @@ class EstimatorConfig:
     relative_actions: bool = False
     action_horizon: int = 16
 
-def estimator_diffusion_policy(
-            config: EstimatorConfig,
-            wandb_run,
-            train_data : Data[Sample],
-            env : Environment,
-            eval : Callable,
-            rng: jax.Array
-        ):
-    train_data : Sample = train_data.as_pytree()
-    obs_length, action_length = (
-        foundry.util.axis_size(train_data.observations, 1),
-        foundry.util.axis_size(train_data.actions, 1)
-    )
-    action_sample = jax.tree_map(lambda x: x[0], train_data.actions)
-    schedule = DDPMSchedule.make_squaredcos_cap_v2(
-        config.diffusion_steps,
-        prediction_type="sample"
-    )
-    def chunk_policy(input: PolicyInput) -> PolicyOutput:
-        obs = input.observation
-        if config.relative_actions:
-            data_agent_pos = jax.vmap(
-                lambda x: env.observe(x, config.action_config)
-            )(train_data.state)
-            if config.action_config == PushTAgentPos():
-                actions = train_data.actions - data_agent_pos[:, None, :]
-            elif config.action_config == EEfPose():
-                expand_agent_pos = jnp.zeros_like(train_data.actions)
-                expand_agent_pos = expand_agent_pos.at[...,0:3].set(data_agent_pos[:,None,0:3])
-                actions = train_data.actions - expand_agent_pos
-            else:
-                raise ValueError(f"Unsupported action_config {config.action_config}")
-        else:
-            actions = train_data.actions
-        data = train_data.observations, actions
-        if config.estimator == "nw":
-            kernel = nonparametric.log_gaussian_kernel
-            estimator = lambda obs: nonparametric.nw_cond_diffuser(
-                obs, data, schedule, kernel, config.kernel_bandwidth
-            )
-        diffuser = estimator(obs)
-        action = schedule.sample(input.rng_key, diffuser, action_sample)
-        if config.relative_actions:
-            agent_pos = env.observe(input.state, config.action_config)
-            if config.action_config == PushTAgentPos():
-                action = action + agent_pos
-            elif config.action_config == EEfPose():
-                expand_agent_pos = jnp.zeros_like(action)
-                expand_agent_pos = expand_agent_pos.at[...,0:3].set(agent_pos[0:3])
-                action = action + agent_pos
-            else:
-                raise ValueError(f"Unsupported action_config {config.action_config}")
-        return PolicyOutput(action=action[:config.action_horizon], info=action)
-    policy = ChunkingTransform(
-        obs_length, config.action_horizon
-    ).apply(chunk_policy)
-    return policy
+    def run(self, inputs: Inputs) -> Estimator:
+        schedule = DDPMSchedule.make_squaredcos_cap_v2(
+            self.diffusion_steps,
+            prediction_type="sample"
+        )
+        return Estimator(
+            type=self.type,
+            kernel_bandwidth=self.kernel_bandwidth,
+            action_horizon=self.action_horizon,
+            schedule=schedule,
+            data=inputs.data
+        )

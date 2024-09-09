@@ -33,7 +33,7 @@
                     externalPackages = builtins.filter (x: !(builtins.elem x (with requirements.env; [
                         foundry-meta foundry-models
                         foundry-core foundry-systems
-                        policy-eval image-classifier 
+                        policy-eval image-classifier  image-diffusion
                         language-model cond-diffusion-toy
                     ]))) allPackages;
                     pythonEnv = py.withPackages(

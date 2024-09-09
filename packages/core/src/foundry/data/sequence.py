@@ -110,7 +110,7 @@ class SequenceData(Generic[T,I]):
         chunks = jnp.maximum(0, chunks)
         start_chunks = jnp.cumsum(chunks) - chunks
         total_chunks = jnp.sum(chunks)
-        t_off, i_off = np.zeros((2, total_chunks), dtype=jnp.int32)
+        t_off, i_off = np.zeros((2, total_chunks), dtype=idx_dtype)
 
         for i in range(len(self.sequences)):
             idx = start_chunks[i]
