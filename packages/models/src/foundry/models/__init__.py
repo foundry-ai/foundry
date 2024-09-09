@@ -4,6 +4,7 @@ models = Registry()
 models.extend("resnet", from_module(".resnet", "models"))
 models.extend("mlp", from_module(".mlp", "models"))
 models.extend("gpt2", from_module(".gpt2", "models"))
+models.extend("unet", from_module(".unet", "models"))
 
 def create(name, /,  **kwargs):
     return models.create(name, **kwargs)

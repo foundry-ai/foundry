@@ -27,6 +27,7 @@ image_class_datasets : DatasetRegistry[ImageClassDataset] = DatasetRegistry[Data
 where label is one-hot encoded."""
 image_class_datasets.extend("mnist", from_module(".mnist", "datasets"))
 image_class_datasets.extend("cifar", from_module(".cifar", "datasets"))
+image_class_datasets.extend("imagenette", from_module(".imagenette", "datasets"))
 
 image_datasets : DatasetRegistry[ImageDataset] = DatasetRegistry[Dataset]()
 image_datasets.extend("mnist", from_module(".mnist", "datasets"))

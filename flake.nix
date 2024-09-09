@@ -50,11 +50,12 @@
 
                         POLICY_EVAL=$(pwd)/projects/policy-eval
                         IMAGE_CLASSIFIER=$(pwd)/projects/image-classifier
+                        IMAGE_DIFFUSION=$(pwd)/projects/image-diffusion
 
                         export PYTHONPATH=$FOUNDRY_CORE/src:$FOUNDRY_SYSTEMS/src:$FOUNDRY_MODELS/src
-                        export PYTHONPATH=:$POLICY_EVAL/src:$IMAGE_CLASSIFIER/src:$PYTHONPATH
+                        export PYTHONPATH=:$POLICY_EVAL/src:$IMAGE_CLASSIFIER/src:$IMAGE_DIFFUSION/src:$PYTHONPATH
 
-                        export PATH=$(pwd)/scripts:$POLICY_EVAL/scripts:$PATH:$IMAGE_CLASSIFIER/scripts
+                        export PATH=$(pwd)/scripts:$POLICY_EVAL/scripts:$PATH:$IMAGE_CLASSIFIER/scripts:$IMAGE_DIFFUSION/scripts
 
                         ${driversHook}
 

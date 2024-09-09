@@ -170,6 +170,8 @@ class UNet(nn.Module):
     dtype: Any = jnp.float32
     num_classes: int = None # if cond is not one-hot encoded,
                             # can be used to specify the number of classes
+    embed_dim: int = 32 # embedding dimension for classes
+
     def _setup(self, x):
         ch = self.base_channels
         input_blocks = [IgnoreExtra(nn.Conv(ch, self.dims*self.kernel_size))]
@@ -286,12 +288,13 @@ class UNet(nn.Module):
     def __call__(self, x, *, cond=None, cond_embed=None, train=False):
         embed = cond_embed
         if cond is not None:
-            assert cond_embed is None
             assert self.num_classes is not None
             assert cond.shape == x.shape[:-1-self.dims]
             cond_embed = nn.Embed(self.num_classes, self.embed_dim)(cond)
             if embed is not None:
                 embed = jnp.concatenate([embed, cond_embed], axis=-1)
+            else:
+                embed = cond_embed
 
         input_blocks, middle_block, output_blocks, out = self._setup(x)
         h = x.astype(self.dtype)
@@ -338,3 +341,8 @@ class DiffusionUNet(UNet):
             cond_embed = time_embed
         return super().__call__(x, cond=cond,
                 cond_embed=cond_embed, train=train)
+
+from foundry.util.registry import Registry
+models = Registry()
+models.register("unet", UNet)
+models.register("diffusion_small", DiffusionUNet)
