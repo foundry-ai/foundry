@@ -22,6 +22,8 @@ def structure(tree):
         tree
     )
 
+def total_size(tree):
+    return sum(x.size for x in leaves(tree))
 
 def flatten_to_dict(pytree, *, join='.', prefix=None,
                     suffix=None, is_leaf=None):

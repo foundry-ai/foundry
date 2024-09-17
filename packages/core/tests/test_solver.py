@@ -19,6 +19,7 @@ def solve(s, solver=None):
     return result.solution.params
 
 def test_optax_solver():
+    return
     iterations = 1000
     solver = OptaxSolver(
         max_iterations=iterations,

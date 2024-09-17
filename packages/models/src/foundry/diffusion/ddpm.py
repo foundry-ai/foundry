@@ -275,8 +275,8 @@ class DDPMSchedule:
     @F.jit
     def compute_denoised(self, noised_sample : Sample, t : jax.Array, data_batch : Sample, data_mask : jax.Array = None) -> Sample:
         """Computes the true E[x_0 | x_t] given a batch of x_0's."""
-        noised_sample_flat, unflatten = foundry.util.ravel_pytree(noised_sample)
-        data_batch_flat = jax.vmap(lambda x: foundry.util.ravel_pytree(x)[0])(data_batch)
+        noised_sample_flat, unflatten = jax.flatten_util.ravel_pytree(noised_sample)
+        data_batch_flat = jax.vmap(lambda x: jax.flatten_util.ravel_pytree(x)[0])(data_batch)
         # compute the mean
         sqrt_alphas_prod = jnp.sqrt(self.alphas_cumprod[t])
         one_minus_alphas_prod = 1 - self.alphas_cumprod[t]
@@ -398,18 +398,21 @@ class DDPMSchedule:
     def loss(self, rng_key : jax.Array, 
              model : Callable[[jax.Array, Sample, jax.Array], Sample],
              sample : Sample, t : Optional[jax.Array] = None, *,
+             target_model : Callable[[jax.Array, Sample, jax.Array], Sample] | None = None,
              model_has_state_updates=False):
         """
         Computes the loss for the DDPM model.
         If t is None, a random t in [1, T] is chosen.
         """
-        s_rng, t_rng, m_rng = jax.random.split(rng_key, 3)
+        s_rng, t_rng, m_rng, tar_rng = jax.random.split(rng_key, 4)
         if t is None:
             t = jax.random.randint(t_rng, (), 0, self.num_steps) + 1
         noised_sample, _, target = self.add_noise(s_rng, sample, t)
         pred = model(m_rng, noised_sample, t)
         if model_has_state_updates:
             pred, state = pred
+        if target_model is not None:
+            target = target_model(tar_rng, noised_sample, t)
         chex.assert_trees_all_equal_shapes_and_dtypes(pred, target)
 
         pred_flat = jax.flatten_util.ravel_pytree(pred)[0]

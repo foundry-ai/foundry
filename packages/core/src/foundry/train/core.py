@@ -219,7 +219,7 @@ def batched_loss(loss_fn, vars, rng_key, batch, **kwargs):
     output = vmap_loss(rng_keys, batch)
 
     stats = jax.tree_map(lambda x: jnp.mean(x, 0), output.metrics)
-    loss = jnp.mean(output.loss)
+    loss = jnp.mean(output.loss) if output.loss is not None else None
     var_updates = output.var_updates
     return LossOutput(
         loss=loss,
@@ -230,14 +230,17 @@ def batched_loss(loss_fn, vars, rng_key, batch, **kwargs):
 def batch_loss(loss_fn):
     return partial(batched_loss, loss_fn)
 
-@partial(jax.profiler.annotate_function, name="update")
-@partial(jax.jit, static_argnums=(0,1), donate_argnums=(2,3))
+@partial(jax.profiler.annotate_function, name="step")
+@partial(jax.jit, static_argnums=(0,1), static_argnames=("return_grad", "return_grad_norm"), donate_argnums=(2,3))
 def step(batch_loss_fn : Callable[[Vars, jax.Array, Sample], LossOutput], 
         optimizer : optax.GradientTransformationExtraArgs, 
         opt_state : OptState, 
         vars : Vars, 
         rng_key : jax.Array,
         batch : Sample,
+        *,
+        return_grad=False,
+        return_grad_norm=False,
         **kwargs : dict[str,Any]):
     def batch_loss(params, state):
         vars = {"params": params, **state}
@@ -252,7 +255,13 @@ def step(batch_loss_fn : Callable[[Vars, jax.Array, Sample], LossOutput],
     params = optax.apply_updates(params, updates)
     var_updates = output.var_updates if output.var_updates is not None else {}
     vars = {"params": params, **var_updates}
-    return opt_state, vars, output.metrics
+    if return_grad:
+        return opt_state, vars, grads, output.metrics
+    elif return_grad_norm:
+        grad_norm = optax.tree_utils.tree_l2_norm(grads)
+        return opt_state, vars, grad_norm, output.metrics
+    else:
+        return opt_state, vars, output.metrics
 
 @partial(jax.profiler.annotate_function, name="eval")
 @partial(jax.jit, static_argnums=(0,))

@@ -7,7 +7,7 @@ def test_lanczos():
     H = jnp.array([[2, 1], [1, 2]])
     hvp = lambda v: jnp.dot(H, v)
     tridiag, vecs = lanczos.lanczos_alg(
-        jax.random.key(1), hvp, 2, 2
+        jax.random.key(1), hvp, 2, 2, jnp.float32
     )
 
 def test_lanczos_denisty():

@@ -16,7 +16,10 @@ def random_subcrop(rng_key, x, size, padding, padding_mode="constant", padding_c
     if isinstance(padding, int):
         padding = ((padding,padding),)*(len(x.shape) - 1)
     padding = padding + ((0,0),)
-    x = jnp.pad(x, padding, mode=padding_mode, constant_values=padding_constant)
+    args = {
+        "constant_values": padding_constant
+    } if padding_mode == "constant" else {}
+    x = jnp.pad(x, padding, mode=padding_mode, **args)
     max_y = x.shape[-3] - size[0]
     max_x = x.shape[-2] - size[1]
     rand_offset = jax.random.randint(rng_key, (2,), 0,
