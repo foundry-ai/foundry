@@ -27,7 +27,8 @@ dependencies = [
     "robosuite>=1.4",
     "sentencepiece>=0.2.0",
     "h5py>=3.11.0",
-    "wandb>=0.17"
+    "wandb>=0.17",
+    "boto3>=1.35.11"
 ]
 requires-python = "<3.11,>=3.10"
 license = {text = "MIT"}

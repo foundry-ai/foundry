@@ -1,0 +1,23 @@
+[project]
+name = "image-diffusion"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Daniel Pfrommer", email = "dan.pfrommer@gmail.com"},
+]
+dependencies = [
+    "foundry-core",
+    "foundry-systems",
+    "foundry-models",
+    "omegaconf >= 2.3",
+    "wandb >= 0.17"
+]
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+[tool.pdm]
+distribution = true
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"

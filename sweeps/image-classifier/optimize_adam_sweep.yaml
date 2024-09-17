@@ -1,29 +1,39 @@
 program: image_classifier
-name: Adam Optimization
+name: SGD Optimization
 method: bayes
 project: image_classifier
 metric:
   goal: maximize
   name: test/accuracy
 parameters:
+  model:
+    value: "resnet/SmallResNet18"
+  iterations:
+    values: [50_000]
+
+  # optimizer parameters:
   optimizer:
     value: "adam"
-  iterations:
-    min: 50_000
-    max: 200_000
-  batch_size:
-    values: [16, 32, 64, 128]
+  weight_decay:
+    min: 0.0
+    max: 0.05
+  sam_rho:
+    values: [0, 0.05, 0.1, 0.3, 0.5]
+
+  # schedule related parameters
   warmup_ratio:
-    min: 0.01
+    min: 0.0
     max: 0.1
   lr:
     min: 0.00001
     max: 0.05
-  weight_decay:
-    min: 0.00001
-    max: 0.05
-  sam_rho:
-    values: [0, 0.05, 0.1, 0.3, 0.5]
+  schedule:
+    values: ["cosine", "constant", "linear", "exponential"]
+  batch_size:
+    values: [16, 32, 64, 128]
+  schedule_decay:
+    min: 0.0001
+    max: 0.1
 command:
   - foundry-env
   - ${program}

@@ -10,6 +10,7 @@ let
         "x86_64-linux" = {
             "535.183.01" = "sha256-9nB6+92pQH48vC5RKOYLy82/AvrimVjHL6+11AXouIM=";
             "555.42.02" = "sha256-k7cI3ZDlKp4mT46jMkLaIrc2YUx1lh1wj/J4SVSHWyk=";
+	    "560.35.03" = "sha256-8pMskvrdQ8WyNBvkU/xPc/CtcYXCa7ekP73oGuKfH+M=";
         };
     };
     makeNvidiaUrl = { platform, version }: 

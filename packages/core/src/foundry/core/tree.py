@@ -13,6 +13,16 @@ from jax.tree_util import (
 
 import functools
 
+def shape(tree):
+    return map(jnp.shape, tree)
+
+def structure(tree):
+    return map(
+        lambda x: jax.ShapeDtypeStruct(jnp.shape(x), jnp.array(x).dtype),
+        tree
+    )
+
+
 def flatten_to_dict(pytree, *, join='.', prefix=None,
                     suffix=None, is_leaf=None):
     def make_path_str(path):

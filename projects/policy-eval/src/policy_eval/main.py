@@ -2,6 +2,7 @@ from foundry import core as F
 from foundry import numpy as jnp
 from foundry import graphics
 
+import foundry.util.serialize
 import foundry.random
 import foundry.train.reporting
 import foundry.train.wandb
@@ -27,12 +28,13 @@ from .methods.diffusion_estimator import EstimatorConfig
 from .methods.diffusion_policy import DPConfig
 from .methods.nearest_neighbor import NearestConfig
 
-from .common import Sample, Inputs, MethodConfig
+from .common import DataConfig, Inputs, MethodConfig
 
 from omegaconf import MISSING
 from functools import partial
 
 import functools
+import boto3
 import logging
 
 logger = logging.getLogger(__name__)
@@ -44,18 +46,23 @@ class Config:
     train_seed: int = 42
     eval_seed: int = 42
 
-    method : str = "diffusion_policy"
+    # Dataset configuration
     dataset : str = "robomimic/pickplace/can/ph"
-
-    # total trajectories to load
     train_trajectories : int | None = None
     test_trajectories : int | None = None
     validation_trajectories : int | None = None
+    obs_length: int = 1
+    action_length: int = 16
+
+    # if evluate is set, contains a url
+    # to the policy to evaluate
+    method : str = "diffusion_policy"
+    evaluate: str | None = None
+
+    bucket_url : str | None = "s3://wandb-data"
 
     render_trajectories : int = 4
 
-    obs_length: int = 1
-    action_length: int = 16
 
     timesteps: int = 200
 
@@ -75,6 +82,17 @@ class Config:
             case "diffusion_policy": return self.dp
             case "nearest": return self.nearest
             case _: raise ValueError(f"Unknown method: {self.method}")
+    
+    @property
+    def data_config(self) -> DataConfig:
+        return DataConfig(
+            dataset=self.dataset,
+            train_trajectories=self.train_trajectories,
+            test_trajectories=self.test_trajectories,
+            validation_trajectories=self.validation_trajectories,
+            obs_length=self.obs_length,
+            action_length=self.action_length
+        )
 
 @F.jit
 def policy_rollout(env, T, x0, rng_key, policy):
@@ -150,37 +168,11 @@ def absolute_action(obs_config : ObserveConfig,
     else:
         raise ValueError(f"Unsupported obs_config {obs_config}")
 
-def process_data(config : Config, env : Environment, action_obs, data):
-    logger.info("Computing full state from data...")
 
-    def process_element(element):
-        if element.state is None: return env.full_state(element.reduced_state)
-        else: return element.state
-    data = data.map_elements(process_element).cache()
-
-    logger.info("Chunking data...")
-    data = data.chunk(
-        config.action_length + config.obs_length
-    )
-    def process_chunk(chunk : Chunk):
-        states = chunk.elements
-        actions = F.vmap(lambda s: env.observe(s, action_obs))(states)
-        actions = tree.map(lambda x: x[-config.action_length:], actions)
-        obs_states = tree.map(lambda x: x[:config.obs_length], states)
-        curr_state = tree.map(lambda x: x[-1], obs_states)
-        obs = F.vmap(env.observe)(obs_states)
-        return Sample(
-            curr_state, obs, actions
-        )
-    data = data.map(process_chunk).cache()
-    return data
 
 def run(config: Config):
-    logger.setLevel(logging.DEBUG)
+    logging.getLogger("policy_eval").setLevel(logging.DEBUG)
     logger.info(f"Running {config}")
-
-    wandb_run = wandb.init(project="policy-eval", config=config)
-    logger.info(f"Logging to {wandb_run.url}")
     # ---- set up the random number generators ----
 
     # split the master RNG into train, eval
@@ -191,36 +183,8 @@ def run(config: Config):
     eval_key = foundry.random.fold_in(eval_key, config.eval_seed)
 
     # ---- set up the training data -----
-
-    if config.dataset.startswith("robomimic"):
-        action_obs = EEfPose()
-    elif config.dataset.startswith("pusht"):
-        from foundry.env.mujoco.pusht import PushTAgentPos
-        action_obs = PushTAgentPos()
-
-    logger.info(f"Loading dataset [blue]{config.dataset}[/blue]")
-    dataset = datasets.create(config.dataset)
-    env = dataset.create_env()
-
-    logger.info("Processing training data...")
-    train_data = dataset.splits["train"]
-    if config.train_trajectories is not None:
-        train_data = train_data.slice(0, config.train_trajectories)
-    train_data = process_data(config, env, action_obs, train_data)
-
-    logger.info("Processing test data...")
-    test_data = dataset.splits["test"]
-    if config.test_trajectories is not None:
-        test_data = test_data.slice(0, config.test_trajectories)
-    test_data = process_data(config, env, action_obs, test_data)
-
-    validation_data = dataset.splits["validation"]
-    if config.validation_trajectories is not None:
-        validation_data = validation_data.slice(0, config.validation_trajectories)
-    # get the first state of the trajectory
-    validation_data = validation_data.truncate(1).map(
-        lambda x: env.full_state(tree.map(lambda y: y[0], x.reduced_state))
-    ).as_pytree()
+    env, splits = config.data_config.load({"validation"})
+    validation_data = splits["validation"].as_pytree()
     N_validation = tree.axis_size(validation_data, 0)
 
     # validation trajectories
@@ -238,37 +202,51 @@ def run(config: Config):
         config.render_width, config.render_height,
         num_render_trajectories, validation_data
     )
-
     method : MethodConfig = config.method_config
 
-    inputs = Inputs(
-        wandb_run=wandb_run,
-        timesteps=config.timesteps,
-        rng=PRNGSequence(train_key),
-        env=env,
-        validate=validate_fn,
-        validate_render=validate_render_fn,
-        train_data=train_data,
-        test_data=test_data
-    )
-    final_result = method.run(inputs)
-    final_policy = final_result.create_policy()
+    s3_client = boto3.client("s3")
 
-    logger.info("Running validation for final policy...")
-    rewards, video = validate_render_fn(eval_key, final_policy)
-    mean_reward = jnp.mean(rewards)
-    std_reward = jnp.std(rewards)
-    outputs = {
-        "mean_reward": mean_reward,
-        "std_reward": std_reward,
-        "final_validation_demonstrations": video
-    }
-    metrics, reportables = foundry.train.reporting.as_log_dict(outputs)
-    for k, v in metrics.items():
-        logger.info(f"{k}: {v}")
-    wandb_run.summary.update(metrics)
-    wandb_run.log({
-        k: foundry.train.wandb.map_reportable(v)
-        for (k,v) in reportables.items()
-    })
-    wandb_run.finish()
+    if config.evaluate:
+        pass
+    else:
+        wandb_run = wandb.init(project="policy-eval", config=config)
+        logger.info(f"Logging to {wandb_run.url}")
+        inputs = Inputs(
+            wandb_run=wandb_run,
+            timesteps=config.timesteps,
+            rng=PRNGSequence(train_key),
+            env=env,
+            bucket_url=f"{config.bucket_url}/{wandb_run.id}",
+            data=config.data_config,
+            validate=validate_fn,
+            validate_render=validate_render_fn,
+        )
+        final_result = method.run(inputs)
+        final_policy = final_result.create_policy()
+
+        logger.info("Running validation for final policy...")
+        rewards, video = validate_render_fn(eval_key, final_policy)
+        mean_reward = jnp.mean(rewards)
+        std_reward = jnp.std(rewards)
+        outputs = {
+            "mean_reward": mean_reward,
+            "std_reward": std_reward,
+            "final_validation_demonstrations": video
+        }
+
+        metrics, reportables = foundry.train.reporting.as_log_dict(outputs)
+        for k, v in metrics.items():
+            logger.info(f"{k}: {v}")
+        wandb_run.summary.update(metrics)
+        wandb_run.log({
+            k: foundry.train.wandb.map_reportable(v)
+            for (k,v) in reportables.items()
+        })
+        if inputs.bucket_url is not None:
+            final_result_url = f"{inputs.bucket_url}/final_result.zarr"
+            final_result.save_s3(s3_client, final_result_url)
+            artifact = wandb.Artifact(f"final_result-{wandb_run.id}", type="policy")
+            artifact.add_reference(final_result_url)
+            wandb_run.log_artifact(artifact)
+
+        wandb_run.finish()

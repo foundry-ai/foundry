@@ -2,7 +2,11 @@ import jax.random
 import jax.numpy
 import jax
 
-from jax.random import key, split, fold_in
+from jax.random import (
+    key, split, fold_in,
+    uniform, normal, bernoulli, randint,
+    permutation, choice
+)
 
 def key_or_seed(key_or_seed):
     if isinstance(key_or_seed, int):

@@ -128,6 +128,8 @@ stdenv.mkDerivation (finalAttrs: {
     (lib.cmakeBool "CMAKE_USE_OPENSSL" useOpenSSL)
     (lib.cmakeBool "BUILD_CursesDialog" false)
   ];
+  dontUseCmakeConfigure = true;
+  enableParallelBuilding = true;
 
   # `pkgsCross.musl64.cmake.override { stdenv = pkgsCross.musl64.llvmPackages_16.libcxxStdenv; }`
   # fails with `The C++ compiler does not support C++11 (e.g.  std::unique_ptr).`
