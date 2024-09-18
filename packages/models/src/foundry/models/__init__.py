@@ -1,10 +1,11 @@
-from foundry.util.registry import Registry, from_module
+from foundry.util.registry import Registry
 
-models = Registry()
-models.extend("resnet", from_module(".resnet", "models"))
-models.extend("mlp", from_module(".mlp", "models"))
-models.extend("gpt2", from_module(".gpt2", "models"))
-models.extend("unet", from_module(".unet", "models"))
-
-def create(name, /,  **kwargs):
-    return models.create(name, **kwargs)
+def register_all(registry: Registry, prefix=None):
+    from . import resnet
+    from . import mlp
+    from . import gpt2
+    from . import unet
+    resnet.register(registry, prefix=prefix)
+    mlp.register(registry, prefix=prefix)
+    gpt2.register(registry, prefix=prefix)
+    unet.register(registry, prefix=prefix)

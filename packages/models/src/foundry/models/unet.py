@@ -343,6 +343,7 @@ class DiffusionUNet(UNet):
                 cond_embed=cond_embed, train=train)
 
 from foundry.util.registry import Registry
-models = Registry()
-models.register("unet", UNet)
-models.register("diffusion_small", DiffusionUNet)
+
+def register(registry: Registry, prefix=None):
+    registry.register("classifier/unet/small", UNet, prefix=prefix)
+    registry.register("diffusion/unet/small", DiffusionUNet, prefix=prefix)

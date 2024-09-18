@@ -1,35 +1,34 @@
-from foundry.datasets import DatasetRegistry, Dataset
-from foundry.core.dataclasses import dataclass, field
-from foundry.util.registry import from_module
+from foundry.datasets.core import DatasetRegistry, Dataset
 
-from typing import Tuple, Sequence
+from foundry.core.dataclasses import dataclass
+from foundry.core.typing import Array
 
-import jax
+from typing import Sequence
 
 @dataclass
 class Image:
-    pixels: jax.Array
+    pixels: Array
 
 @dataclass
 class LabeledImage(Image):
-    label: jax.Array
+    label: Array
 
-@dataclass
 class ImageDataset(Dataset[Image]):
     pass
 
-@dataclass
 class ImageClassDataset(Dataset[LabeledImage]):
-    classes: Sequence[str] = field(default_factory=tuple)
+    @property
+    def classes(self) -> Sequence[str]:
+        raise NotImplementedError()
 
-image_class_datasets : DatasetRegistry[ImageClassDataset] = DatasetRegistry[Dataset]()
-"""Datasets containing (image, label) pairs,
-where label is one-hot encoded."""
-image_class_datasets.extend("mnist", from_module(".mnist", "datasets"))
-image_class_datasets.extend("cifar", from_module(".cifar", "datasets"))
-image_class_datasets.extend("imagenette", from_module(".imagenette", "datasets"))
-
-image_datasets : DatasetRegistry[ImageDataset] = DatasetRegistry[Dataset]()
-image_datasets.extend("mnist", from_module(".mnist", "datasets"))
-image_datasets.extend("cifar", from_module(".cifar", "datasets"))
-image_datasets.extend("celeb_a", from_module(".celeb_a", "datasets"))
+def register_all(registry: DatasetRegistry, prefix=None):
+    from . import cifar
+    # from . import celeb_a
+    from . import ffhq
+    # from . import imagenette
+    # from . import mnist
+    cifar.register(registry, prefix=prefix)
+    ffhq.register(registry, prefix=prefix)
+    # celeb_a.register(registry, prefix=prefix)
+    # imagenette.register(registry, prefix=prefix)
+    # mnist.register(registry, prefix=prefix)

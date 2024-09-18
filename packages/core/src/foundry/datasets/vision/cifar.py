@@ -1,13 +1,18 @@
-import jax
+import foundry.random
 import foundry.numpy as jnp
 
 import pickle
-from foundry.data import PyTreeData
+
+from foundry.data import PyTreeData, Data
 from foundry.data import normalizer as nu
-from foundry.datasets import DatasetRegistry
+from foundry.core.dataclasses import dataclass
+from foundry.core import ShapeDtypeStruct
+
 from . import ImageClassDataset, LabeledImage
 from ..util import download, extract, cache_path
+
 from foundry.data.transform import (
+    Transform,
     random_horizontal_flip, random_subcrop, random_cutout
 )
 
@@ -19,12 +24,70 @@ def _read_batch(file):
     data = data.transpose((0, 2, 3, 1))
     return data, labels
 
-def _standard_augmentations(rng_key, x):
-    a, b, c = jax.random.split(rng_key, 3)
-    x = random_horizontal_flip(a, x)
-    #x = random_subcrop(b, x, (32, 32), 4, padding_mode="edge")
-    # x = random_cutout(c, x, 8, 0.1)
-    return x
+@dataclass
+class CIFARDataset(ImageClassDataset):
+    _splits : dict[str, PyTreeData[LabeledImage]]
+    _classes : list[str]
+    _mean : jnp.ndarray
+    _std : jnp.ndarray
+
+    @property
+    def classes(self) -> list[str]:
+        return self._classes
+
+    def split(self, name) -> Data[LabeledImage]:
+        return self._splits[name]
+    
+    def augmentations(self, name) -> Transform[LabeledImage, LabeledImage]:
+        if name == "classifier":
+            def classifier_augmentation(rng_key, sample : LabeledImage) -> LabeledImage:
+                pixels = sample.pixels
+                pixels = random_horizontal_flip(rng_key, pixels)
+                pixels = random_subcrop(rng_key, pixels, (32, 32))
+                pixels = random_cutout(rng_key, pixels, (8, 8))
+                return LabeledImage(pixels, sample.label)
+            return classifier_augmentation
+        elif name == "generator":
+            def generator_augmentation(rng_key, sample : LabeledImage) -> LabeledImage:
+                pixels = sample.pixels
+                pixels = random_horizontal_flip(rng_key, pixels)
+                return LabeledImage(pixels, sample.label)
+            return generator_augmentation
+        return None
+    
+    def normalizer(self, name) -> nu.Normalizer[LabeledImage]:
+        if name == "hypercube":
+            return nu.Compose(
+                LabeledImage(
+                    pixels=nu.ImageNormalizer(ShapeDtypeStruct((32,32,3), jnp.uint8)),
+                    label=nu.DummyNormalizer(ShapeDtypeStruct((), jnp.uint8))
+                )
+            )
+        elif name == "standard_dev":
+            return nu.Compose(LabeledImage(
+                    pixels=nu.Chain([
+                        nu.ImageNormalizer(ShapeDtypeStruct((32,32,3), jnp.uint8)),
+                        nu.StdNormalizer(
+                            mean=self._mean,
+                            std=self._std,
+                            var=jnp.square(self._std)
+                        )
+                    ]),
+                    label=nu.DummyNormalizer(ShapeDtypeStruct((), jnp.uint8))
+                ))
+        elif name == "pixel_standard_dev":
+            return nu.Compose(LabeledImage(
+                    pixels=nu.Chain([
+                        nu.ImageNormalizer(ShapeDtypeStruct((32,32,3), jnp.uint8)),
+                        nu.StdNormalizer(
+                            mean=jnp.mean(self._mean),
+                            std=jnp.sqrt(jnp.sum(jnp.square(self._std))),
+                            var=jnp.sum(jnp.square(self._std))
+                        )
+                    ]),
+                    label=nu.DummyNormalizer(ShapeDtypeStruct((), jnp.uint8))
+                ))
+        return None
 
 def _load_cifar10(quiet=False):
     tar_path = cache_path("cifar10", "cifar10.tar.gz")
@@ -57,29 +120,12 @@ def _load_cifar10(quiet=False):
         "train": train,
         "test": test
     }
-    train_normalized = PyTreeData((train_data.astype(jnp.float32) / 128.0) - 1)
-    return ImageClassDataset(
-        splits=data,
-        normalizers={
-            "hypercube": lambda: nu.Compose(
-                LabeledImage(
-                    nu.ImageNormalizer(jax.ShapeDtypeStruct((32, 32, 3), jnp.uint8)),
-                    nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8))
-                )
-            ),
-            "standard_dev": lambda: nu.Compose(
-                LabeledImage(
-                    nu.Chain([nu.ImageNormalizer(jax.ShapeDtypeStruct((32, 32, 3), jnp.uint8)),
-                        nu.StdNormalizer.from_data(train_normalized, component_wise=False)]),
-                    nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8))
-                )
-            )
-        },
-        transforms={
-            "standard_augmentations": lambda: _standard_augmentations
-        },
-        classes=["airplane", "automobile", "bird", "cat", "deer",
-                 "dog", "frog", "horse", "ship", "truck"]
+    return CIFARDataset(
+        _splits=data,
+        _classes=["airplane", "automobile", "bird", "cat", "deer",
+                 "dog", "frog", "horse", "ship", "truck"],
+        _mean=jnp.array([0.4914, 0.4822, 0.4465], dtype=jnp.float32),
+        _std=jnp.array([0.2023, 0.1994, 0.2010], dtype=jnp.float32)
     )
 
 def _load_cifar100(quiet=False):
@@ -117,20 +163,15 @@ def _load_cifar100(quiet=False):
         "train": train,
         "test": test
     }
-    return ImageClassDataset(
-        splits=data,
-        normalizers={
-            "hypercube": lambda: nu.Compose(
-                (nu.ImageNormalizer(LabeledImage(jax.ShapeDtypeStruct((32, 32, 3), jnp.uint8), None)), 
-                    nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))
-            )
-        },
-        transforms={
-            "standard_augmentations": lambda: _standard_augmentations
-        },
-        classes=classes
+    return CIFARDataset(
+        _splits=data,
+        _classes=classes,
+        _mean=jnp.array([0.5071, 0.4867, 0.4408], dtype=jnp.float32),
+        _std=jnp.array([0.2675, 0.2565, 0.2761], dtype=jnp.float32),
     )
 
-datasets = DatasetRegistry[ImageClassDataset]()
-datasets.register("cifar10", _load_cifar10)
-datasets.register("cifar100", _load_cifar100)
+from foundry.datasets.core import DatasetRegistry
+
+def register(registry : DatasetRegistry, prefix=None):
+    registry.register("cifar10", _load_cifar10, prefix=prefix)
+    registry.register("cifar100", _load_cifar100, prefix=prefix)

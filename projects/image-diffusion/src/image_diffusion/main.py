@@ -2,8 +2,9 @@ from foundry.core.dataclasses import dataclass
 from foundry.core import tree
 from foundry.random import PRNGSequence
 from foundry.diffusion.ddpm import DDPMSchedule
-from foundry.datasets.vision import LabeledImage
 from foundry.train.reporting import Image
+from foundry.datasets.vision import LabeledImage
+from foundry.util.registry import Registry
 
 from pathlib import Path
 
@@ -13,12 +14,18 @@ import foundry.train.wandb
 import foundry.train.console
 import foundry.random
 import foundry.util.serialize
+import foundry.datasets.vision
+import foundry.models
 
 import foundry.numpy as jnp
 import foundry.core as F
 import optax
 import wandb
 import functools
+
+import boto3
+import urllib
+import tempfile
 
 import logging
 logger = logging.getLogger("image_diffusion")
@@ -27,10 +34,12 @@ logger = logging.getLogger("image_diffusion")
 class Config:
     seed: int = 42
     batch_size: int = 128
-    model: str = "unet/diffusion_small"
+    model: str = "diffusion/unet/small"
 
-    dataset: str = "cifar/cifar10"
+    dataset: str = "cifar10"
     normalizer: str = "hypercube"
+
+    bucket_url: str = "s3://wandb-data"
 
     epochs: int | None = None
     iterations: int | None = None
@@ -55,16 +64,6 @@ class Checkpoint:
     vars: dict
     opt_state: dict
 
-    def save(self, path: Path | str):
-        path = Path(path)
-        foundry.util.serialize.save_zarr(path, self, None)
-
-    @staticmethod
-    def load(path: Path | str) -> 'Result':
-        path = Path(path)
-        result, _ = foundry.util.serialize.load_zarr(path)
-        return result
-
 def run(config: Config):
     logger.setLevel(logging.DEBUG)
     logger.info(f"Running with config: {config}")
@@ -76,15 +75,15 @@ def run(config: Config):
     )
     logger.info(f"Logging to {wandb_run.url}")
 
-    from foundry.datasets.vision import image_class_datasets
-    dataset = image_class_datasets.create(config.dataset)
-    train_data, test_data = dataset.splits["train"], dataset.splits["test"]
-    normalizer = dataset.normalizers[config.normalizer]()
-    augment = (
-        dataset.transforms["standard_augmentations"]()
-        if "standard_augmentations" in dataset.transforms else
-        lambda _r, x: x
-    )
+    datasets = Registry()
+    models = Registry()
+    foundry.datasets.vision.register_all(datasets)
+    foundry.models.register_all(models)
+
+    dataset = datasets.create(config.dataset)
+    train_data, test_data = dataset.split("train"), dataset.split("test")
+    normalizer = dataset.normalizer(config.normalizer)
+    augment = dataset.augmentation("generator") or (lambda _r, x: x)
     sample = normalizer.normalize(train_data[0])
 
     if config.iterations is not None:
@@ -94,11 +93,10 @@ def run(config: Config):
         iterations_per_epoch = len(train_data) // config.batch_size
         iterations = iterations_per_epoch * epochs
 
-
     logger.info("Creating model...")
-    from foundry.models import models
     model = models.create(
-        config.model, num_classes=len(dataset.classes)
+        config.model, 
+        num_classes=len(dataset.classes)
     )
     vars = F.jit(model.init)(next(rng), sample.pixels, 0, cond=None)
     logger.info(f"Parameters: {tree.total_size(vars)}")
@@ -209,4 +207,9 @@ def run(config: Config):
         vars=vars,
         opt_state=opt_state
     )
-    checkpoint.save(f"checkpoints/{wandb_run.id}.zarr.zip")
+    if config.bucket_url is not None:
+        final_result_url = f"{config.bucket_url}/{wandb_run.id}/checkpoint.zarr.zip"
+        foundry.util.serialize.save(final_result_url, checkpoint)
+        artifact = wandb.Artifact(f"{config.dataset.replace('/', '-')}-ddpm", type="model")
+        artifact.add_reference(final_result_url)
+        wandb_run.log_artifact(artifact)

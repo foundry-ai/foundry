@@ -1,78 +1,42 @@
 import typing
-from typing import Iterator, Callable, Any, Generic, Optional
+from typing import Any, Generic, Iterable
 
 T = typing.TypeVar('T')
 
 class Builder(typing.Protocol[T]):
     def __call__(self, **kwargs: dict[str, Any]) -> T: ...
 
-class BuilderSet(typing.Protocol[T]):
-    def __call__(self, path: str, **kwargs: dict[str, Any]) -> T: ...
-    def keys() -> Iterator[str]: ...
-
-class SingleBuilder(BuilderSet[T], Generic[T]):
-    def __init__(self, builder : Builder[T]):
-        self.builder = builder
-
-    def __call__(self, path: str, **kwargs: dict[str, Any]) -> T:
-        assert path == ""
-        return self.builder(**kwargs)
-
-class Registry(Generic[T], BuilderSet[T]):
+class Registry(Generic[T]):
     def __init__(self):
         self._registry : dict[str, Builder[T]] = {}
+    
+    def extend(self, registry, prefix=None):
+        for path, builder in registry.items():
+            if prefix is not None:
+                path = f"{prefix}/{path}"
+            self.register(path, builder)
 
-    def extend(self, path: str, builders: BuilderSet[T]):
-        parts = path.split("/")
-        if parts[-1] != "":
-            parts.append("")
-        registry = self._registry
-        for p in parts[:-1]:
-            if len(p) == 0:
-                raise ValueError("Part cannot have zero length!")
-            registry = registry.setdefault(p, {})
-            if not isinstance(registry, dict):
-                raise ValueError("Cannot override registry")
-        registry[""] = builders
-
-    def register(self, path: str, builder: Builder = None, /):
-        if builder is None:
-            builder = path
-            path = None
-        if path is None: path = ""
-        self.extend(path, SingleBuilder(builder))
+    def register(self, path: str, builder: Builder[T], prefix=None):
+        if prefix:
+            path = f"{prefix}{path}"
+        if path in self._registry:
+            raise ValueError(f"Path {path} already registered")
+        self._registry[path] = builder
 
     def create(self, path: str, /, **kwargs) -> T:
-        parts = path.split("/")
-        if parts[-1] != "":
-            parts.append("")
-        if len(parts) == 0:
-            raise ValueError("Must have non-zero length path")
-        registry = self._registry
-
-        remainder = ""
-        for i, p in enumerate(parts[:-1]):
-            if p in registry:
-                registry = registry[p]
-            else:
-                remainder = "/".join(parts[i:])
-                break
-        if not "" in registry:
-            raise ValueError(f"{path} not found in {self._registry}!")
-        return registry[""](remainder, **kwargs)
+        if path not in self._registry:
+            raise ValueError(f"{path} not found!")
+        return self._registry[path](**kwargs)
 
     def __call__(self, path: str, /, **kwargs) -> T:
         return self.create(path, **kwargs)
     
-def from_module(module_name, variable_name):
-    import inspect
-    import importlib
-    frm = inspect.stack()[1]
-    pkg = inspect.getmodule(frm[0]).__name__
-    def cb(*args, **kwargs):
-        mod = importlib.import_module(module_name, package=pkg)
-        if not hasattr(mod, variable_name):
-            raise RuntimeError(f"Not such variable: {variable_name} in {module_name}")
-        value = getattr(mod, variable_name)
-        return value(*args, **kwargs)
-    return cb
+    def keys(self) -> Iterable[str]:
+        return self._registry.keys()
+
+    def values(self) -> Iterable[Builder[T]]:
+        return self._registry.values()
+    
+    def items(self) -> Iterable[tuple[str, Builder[T]]]:
+        return self._registry.items()
+    

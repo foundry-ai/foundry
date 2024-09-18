@@ -5,6 +5,8 @@ from foundry.data import Data
 from foundry.data.transform import Transform
 from foundry.data.normalizer import Normalizer
 
+from foundry.util.registry import Registry
+
 import logging
 logger = logging.getLogger("foundry.datasets")
 
@@ -12,9 +14,16 @@ T = TypeVar('T')
 
 @dataclass
 class Dataset(Generic[T]):
-    splits: Mapping[str, Data[T]]
-    normalizers: Mapping[str, Callable[[], Normalizer[T]]] = field(default_factory=dict)
-    transforms: Mapping[str, Callable[[], Transform[T]]] = field(default_factory=dict)
+    def split(self, name : str) -> Data[T]:
+        return None
+
+    def augmentation(self, name : str, **kwargs) -> Transform:
+        return None
+
+    def normalizer(self, name : str, **kwargs) -> Normalizer:
+        return None
+
+DatasetRegistry = Registry
 
 __all__ = [
     "Dataset",

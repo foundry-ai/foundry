@@ -145,7 +145,7 @@ class DummyNormalizer(Generic[T], Normalizer[T]):
     def unnormalize(self, data : T) -> T:
         return data
 
-@dataclass
+@dataclass(kw_only=True)
 class StdNormalizer:
     mean: Any = None
     var: Any = None

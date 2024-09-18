@@ -6,9 +6,12 @@ import zarr
 import warnings
 import numpy as np
 import importlib
+import urllib.parse
+import tempfile
+import boto3
 
 from typing import Any, Type
-from pathlib import Path
+from pathlib import Path, PurePath
 
 def _fq_import(module, name):
     module = importlib.import_module(module)
@@ -126,8 +129,10 @@ def _keystr(k):
 def _zarr_keystr(path):
     return "/".join(_keystr(k) for k in path)
 
+NO_META = "__empty__"
+
 # Utilities for saving/loading from a zarr file
-def save_zarr(zarr_path, tree, meta):
+def save_zarr(zarr_path, tree, meta=NO_META):
     if isinstance(zarr_path, (str, Path)):
         zarr_file = zarr.open(zarr_path, 'w')
     else:
@@ -151,7 +156,7 @@ def save_zarr(zarr_path, tree, meta):
                     static_nodes[key] = _encode_json(node)
             zf.attrs['static'] = static_nodes
 
-def load_zarr(zarr_path) -> tuple[Any, Any]:
+def load_zarr(zarr_path) -> tuple[Any, Any] | Any:
     if isinstance(zarr_path, (str, Path)):
         zarr_file = zarr.open(zarr_path, 'r')
     else:
@@ -170,4 +175,44 @@ def load_zarr(zarr_path) -> tuple[Any, Any]:
             else:
                 nodes.append(jnp.array(zf[p]))
         tree = jax.tree.unflatten(treedef, nodes)
-        return tree, meta
+        if meta == NO_META:
+            return tree
+        else:
+            return tree, meta
+    
+
+def save(url, tree, meta=NO_META):
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme == "file":
+        path = Path(parsed.path)
+        if path.suffix == ".zarr" or path.suffix == ".zip":
+            save_zarr(path, tree, meta)
+        else:
+            raise ValueError(f"Unknown file extension: {path.suffix}")
+    elif parsed.scheme == "s3":
+        bucket = parsed.netloc
+        key = parsed.path.lstrip("/")
+        filename = PurePath(parsed.path).name
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            path = Path(tmpdirname) / filename
+            save(f"file://{path.absolute()}", tree, meta)
+            s3_client = boto3.client("s3")
+            s3_client.upload_file(path, bucket, key)
+
+def load(url):
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme == "file":
+        path = Path(parsed.path)
+        if path.suffix == ".zarr" or path.suffix == ".zip":
+            return load_zarr(path)
+        else:
+            raise ValueError(f"Unknown file extension: {path.suffix}")
+    elif parsed.scheme == "s3":
+        bucket = parsed.netloc
+        key = parsed.path.lstrip("/")
+        filename = PurePath(parsed.path).name
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            path = Path(tmpdirname) / filename
+            s3_client = boto3.client("s3")
+            s3_client.download_file(bucket, key, path)
+            return load(f"file://{path.absolute()}")

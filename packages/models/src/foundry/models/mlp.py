@@ -25,7 +25,7 @@ MLPLargeClassifier = partial(MLPClassifier, features=[512, 512, 128])
 MLPMediumClassifier = partial(MLPClassifier, features=[128, 128, 64])
 MLPSmallClassifier = partial(MLPClassifier, features=[64, 32, 32])
 
-models = Registry()
-models.register("LargeClassifier", MLPLargeClassifier)
-models.register("MediumClassifier", MLPMediumClassifier)
-models.register("SmallClassifier", MLPSmallClassifier)
+def register(registry: Registry, prefix=None):
+    registry.register("classifier/mlp/large", MLPLargeClassifier, prefix=prefix)
+    registry.register("classifier/mlp/medium", MLPMediumClassifier, prefix=prefix)
+    registry.register("classifier/mlp/small", MLPSmallClassifier, prefix=prefix)

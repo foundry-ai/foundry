@@ -4,9 +4,10 @@ import foundry.numpy as jnp
 from typing import Protocol, Generic, TypeVar
 
 T = TypeVar("T")
+V = TypeVar("V")
 
-class Transform(Protocol, Generic[T]):
-    def __call__(self, rng_key: jax.Array, x: T) -> T: ...
+class Transform(Protocol, Generic[T, V]):
+    def __call__(self, rng_key: jax.Array, x: T) -> V: ...
 
 def random_horizontal_flip(rng_key, x, p=0.5):
     flip = jax.random.bernoulli(rng_key, p, ()) == 1

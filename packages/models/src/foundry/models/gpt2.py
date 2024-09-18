@@ -143,36 +143,15 @@ def convert_hf_params(hf_params: FrozenDict, num_heads, num_embeds) -> FrozenDic
     return freeze(params)
 
 
-
-def get_pretrained_params(model_type: str) -> Tuple[GPT, FrozenDict]:
-    """
-    returns config and pretrained parameters from huggingface gpt models 
-    """
-    assert model_type in ('gpt2', 'gpt2-medium', 'gpt2-large', 'gpt2-xl')
-    # only dropout can be overridden see more notes below
-    from transformers import FlaxGPT2LMHeadModel
-    print("loading weights from pretrained gpt: %s" % model_type)
-
-    config = {
-        'gpt2':         GPTConfig(num_layers=12, num_heads=12, num_embeds=768),  # 124M params
-        'gpt2-medium':  GPTConfig(num_layers=24, num_heads=16, num_embeds=1024), # 350M params
-        'gpt2-large':   GPTConfig(num_layers=36, num_heads=20, num_embeds=1280), # 774M params
-        'gpt2-xl':      GPTConfig(num_layers=48, num_heads=25, num_embeds=1600), # 1558M params
-    }[model_type]
-
-    model_hf = FlaxGPT2LMHeadModel.from_pretrained(model_type)
-    hf_params = model_hf.params['transformer']
-    params = convert_hf_params(hf_params, config.num_heads, config.num_embeds)
-    return GPT(config), params
-
 GPT2Nano = partial(GPT, GPTConfig(num_layers=8, num_heads=4, num_embeds=64))  # tiny # params
 GPT2Small = partial(GPT, GPTConfig(num_layers=12, num_heads=12, num_embeds=768))  # 124M params
 GPT2Medium = partial(GPT, GPTConfig(num_layers=24, num_heads=16, num_embeds=1024)) # 350M params
 GPT2Large = partial(GPT, GPTConfig(num_layers=36, num_heads=20, num_embeds=1280)) # 774M params
 GPT2ExtraLarge = partial(GPT, GPTConfig(num_layers=48, num_heads=25, num_embeds=1600)) # 1558M params
 
-models = Registry[GPT]()
-models.register("nano", GPT2Nano)
-models.register("small", GPT2Small)
-models.register("medium", GPT2Medium)
-models.register("large", GPT2Large)
+def register(registry: Registry, prefix=None):
+    registry.register("llm/gpt2/nano", GPT2Nano, prefix=prefix)
+    registry.register("llm/gpt2/small", GPT2Small, prefix=prefix)
+    registry.register("llm/gpt2/medium", GPT2Medium, prefix=prefix)
+    registry.register("llm/gpt2/large", GPT2Large, prefix=prefix)
+    registry.register("llm/gpt2/extra_large", GPT2ExtraLarge, prefix=prefix)
