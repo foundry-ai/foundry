@@ -22,7 +22,7 @@ def _read_batch(file):
 def _standard_augmentations(rng_key, x):
     a, b, c = jax.random.split(rng_key, 3)
     x = random_horizontal_flip(a, x)
-    x = random_subcrop(b, x, (32, 32), 4, padding_mode="edge")
+    #x = random_subcrop(b, x, (32, 32), 4, padding_mode="edge")
     # x = random_cutout(c, x, 8, 0.1)
     return x
 

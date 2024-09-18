@@ -37,7 +37,7 @@ class Config:
 
     use_estimator: bool = False
 
-    lr: float = 1e-3
+    lr: float = 3e-4
     weight_decay: float = 1e-4
 
     num_visualize: int = 8
@@ -113,7 +113,9 @@ def run(config: Config):
         clip_sample_range=2.
     )
 
-    lr_schedule = optax.cosine_onecycle_schedule(iterations, config.lr)
+    lr_schedule = optax.cosine_onecycle_schedule(
+        iterations, config.lr, pct_start=0.05
+    )
     optimizer = optax.adamw(lr_schedule, weight_decay=config.weight_decay)
     # opt_state = optimizer.init(vars["params"])
     # lr_schedule = optax.cosine_onecycle_schedule(iterations, 1e-2, pct_start=0.05)
@@ -207,4 +209,4 @@ def run(config: Config):
         vars=vars,
         opt_state=opt_state
     )
-    checkpoint.save(f"checkpoints/{wandb_run.id}.zarr")
+    checkpoint.save(f"checkpoints/{wandb_run.id}.zarr.zip")
