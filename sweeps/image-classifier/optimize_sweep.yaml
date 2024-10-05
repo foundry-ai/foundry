@@ -17,6 +17,5 @@ parameters:
   sam_rho:
     values: [0, 0.05, 0.1, 0.3]
 command:
-  - foundry-env
   - ${program}
   - ${args}

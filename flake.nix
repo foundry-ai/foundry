@@ -12,7 +12,6 @@
             "aarch64-darwin" # 64-bit ARM macOS
             "powerpc64le-linux"
         ];
-
         forEachSupportedSystem = f: nixpkgs.lib.genAttrs supportedSystems (system: f {
             pkgs = import nixpkgs { inherit system; config.allowUnfree = true; };
         });
@@ -56,10 +55,7 @@
                         export PYTHONPATH=:$POLICY_EVAL/src:$IMAGE_CLASSIFIER/src:$IMAGE_DIFFUSION/src:$PYTHONPATH
 
                         export PATH=$(pwd)/scripts:$POLICY_EVAL/scripts:$PATH:$IMAGE_CLASSIFIER/scripts:$IMAGE_DIFFUSION/scripts
-
                         ${driversHook}
-
-                        export FOUNDRY_PATH=$PATH
                     '';
                 in {
                 externalPackages = externalPackages;

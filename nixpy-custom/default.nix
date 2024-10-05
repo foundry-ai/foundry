@@ -42,6 +42,6 @@
     ffmpegio_0_10_0_post0 = import ./ffmpegio-0.10.0.post0;
     wandb_0_17_9 = import ./wandb-0.17.9;
 
-    jax_0_4_28 = import ./jax-0.4.28;
-    jaxlib_0_4_28 = import ./jaxlib-0.4.28;
+    jax_0_4_33 = import ./jax-0.4.33;
+    jaxlib_0_4_33 = import ./jaxlib-0.4.33;
 }

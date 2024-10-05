@@ -13,6 +13,5 @@ parameters:
   epochs:
     values: [10, 20, 30]
 command:
-  - foundry-env
   - ${program}
   - ${args}

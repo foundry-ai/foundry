@@ -1,6 +1,6 @@
 [project]
 name = "jaxlib"
-version = "0.4.28"
+version = "0.4.33"
 
 dependencies = [
 	"scipy>=1.9",

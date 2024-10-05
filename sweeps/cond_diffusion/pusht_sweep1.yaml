@@ -23,6 +23,5 @@ parameters:
     max: 0.001
 
 command:
-  - stanza-env
   - ${program}
   - ${args}

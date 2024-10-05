@@ -35,6 +35,5 @@ parameters:
     min: 0.0001
     max: 0.1
 command:
-  - foundry-env
   - ${program}
   - ${args}

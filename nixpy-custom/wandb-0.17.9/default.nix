@@ -69,6 +69,8 @@ buildPythonPackage {
         setproctitle platformdirs
     ];
     pythonImportsCheck = [ "wandb" ];
+    # wandb needs to access shell PATH
+    dontWrapPythonPrograms = true;
 
     # For the go build.
     preConfigure = (''

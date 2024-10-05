@@ -46,6 +46,25 @@ class MappedStream(DataStream[T]):
         return MappedStream(self.stream.reset(), self.fn)
 
 
+@dataclass
+class PrefetchedStream(DataStream[T]):
+    stream: DataStream[T]
+    prefetch: int
+
+    def __len__(self):
+        return len(self.stream)
+
+    def has_next(self):
+        return self.stream.has_next()
+
+    def next(self):
+        stream, batch = self.stream.next()
+        return stream, batch
+
+    def reset(self):
+        return PrefetchedStream(self.stream.reset(), self.prefetch)
+
+
 class StreamBuilder(Generic[T]):
     def batch(self, batch_size: int) -> "StreamBuilder[T]":
         raise NotImplementedError()

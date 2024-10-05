@@ -94,17 +94,20 @@ def run(config: Config):
         iterations = iterations_per_epoch * epochs
 
     logger.info("Creating model...")
+    classes = len(dataset.classes) if hasattr(dataset, "classes") else None
     model = models.create(
         config.model, 
-        num_classes=len(dataset.classes)
+        num_classes=classes
     )
-    vars = F.jit(model.init)(next(rng), sample.pixels, 0, cond=None)
+    vars = F.jit(model.init)(next(rng), sample.pixels, 0, 
+            cond=sample.label if hasattr(sample, "label") else None
+        )
     logger.info(f"Parameters: {tree.total_size(vars)}")
 
     @F.jit
     def diffuser(vars, cond, rng_key, noised_x, t):
         # return schedule.output_from_denoised(noised_x, t, noised_x)
-        return model.apply(vars, noised_x, t - 1, cond=None)
+        return model.apply(vars, noised_x, t - 1, cond=cond)
 
     schedule = DDPMSchedule.make_squaredcos_cap_v2(
         config.timesteps, prediction_type=config.prediction_type,
@@ -124,7 +127,7 @@ def run(config: Config):
     def loss(vars, rng_key, sample):
         s_rng, a_rng = foundry.random.split(rng_key)
         sample = normalizer.normalize(sample)
-        label = sample.label
+        label = sample.label if hasattr(sample, "label") else None
         pixels = augment(a_rng, sample.pixels)
         cond_diffuser = functools.partial(diffuser, vars, label)
         loss = schedule.loss(s_rng, cond_diffuser, pixels)
@@ -135,7 +138,7 @@ def run(config: Config):
     @F.jit
     def test_loss(vars, rng_key, sample):
         sample = normalizer.normalize(sample)
-        label = sample.label
+        label = sample.label if hasattr(sample, "label") else None
         cond_diffuser = functools.partial(diffuser, vars, label)
         Ts = range(1, config.timesteps + 1, config.timesteps // 10)
         rngs = foundry.random.split(rng_key, len(Ts))
@@ -150,13 +153,17 @@ def run(config: Config):
     def generate_samples(vars, rng_key) -> LabeledImage:
         def do_sample(rng_key):
             l_rng, s_rng = foundry.random.split(rng_key)
-            label = foundry.random.randint(l_rng, (), 0, len(dataset.classes))
+            if hasattr(dataset, "classes"):
+                label = foundry.random.randint(l_rng, (), 0, len(dataset.classes))
+            else:
+                label = None
             denoiser = functools.partial(diffuser, vars, label)
             pixels = schedule.sample(s_rng, denoiser, sample.pixels)
-            return normalizer.unnormalize(LabeledImage(pixels, label))
+            pixels = normalizer.map(lambda x: x.pixels).unnormalize(pixels)
+            return pixels
         rngs = foundry.random.split(rng_key, config.num_visualize)
         samples = F.vmap(do_sample)(rngs)
-        return foundry.graphics.image_grid(samples.pixels)
+        return foundry.graphics.image_grid(samples)
 
     batch_loss = foundry.train.batch_loss(loss)
     batch_test_loss = foundry.train.batch_loss(test_loss)

@@ -2,11 +2,11 @@
 let lib = nixpkgs.lib;
     stdenv = nixpkgs.stdenv;
     cudaPackages = nixpkgs.cudaPackages;
-    bazel_6 = nixpkgs.bazel_6;
-    addDriverRunPath = nixpkgs.addDriverRunPath;
+    bazel_6 = nixpkgs.bazel_6; addDriverRunPath = nixpkgs.addDriverRunPath;
     autoAddDriverRunpath = nixpkgs.autoAddDriverRunpath;
     curl = nixpkgs.curl;
 
+    coreutils = nixpkgs.coreutils;
     double-conversion = nixpkgs.double-conversion;
     giflib = nixpkgs.giflib;
     jsoncpp = nixpkgs.jsoncpp;
@@ -36,7 +36,6 @@ let lib = nixpkgs.lib;
     wheel = build-system.wheel;
 
     fetchFromGitHub = nixpkgs.fetchFromGitHub;
-    buildBazelPackage = nixpkgs.buildBazelPackage;
     fetchurl = nixpkgs.fetchurl;
 
     cudaSupport = stdenv.isLinux;
@@ -50,12 +49,24 @@ let
     ;
 
   pname = "jaxlib";
-  version = "0.4.28";
+  version = "0.4.33";
 
   # It's necessary to consistently use backendStdenv when building with CUDA
   # support, otherwise we get libstdc++ errors downstream
   stdenv = throw "Use effectiveStdenv instead";
-  effectiveStdenv = if cudaSupport then cudaPackages.backendStdenv else nixpkgs.stdenv;
+
+  #baseStdenv = if cudaSupport then cudaPackages.backendStdenv
+  #             else nixpkgs.gcc12Stdenv;
+  baseStdenv = nixpkgs.gcc12Stdenv;
+
+  # Use the raw, unwrapped clang.
+  # We will handle all flags ourselves
+  effectiveStdenv = nixpkgs.overrideCC 
+    baseStdenv nixpkgs.llvmPackages_18.clang;
+
+  buildBazelPackage = nixpkgs.buildBazelPackage.override { 
+    stdenv = effectiveStdenv; 
+  };
 
   meta = with lib; {
     description = "Source-built JAX backend. JAX is Autograd and XLA, brought together for high-performance machine learning research";
@@ -120,13 +131,6 @@ let
     ];
   };
 
-  backend_cc_joined = symlinkJoin {
-    name = "cuda-cc-joined";
-    paths = [
-      effectiveStdenv.cc
-      binutils.bintools # for ar, dwp, nm, objcopy, objdump, strip
-    ];
-  };
 
   # Copy-paste from TF derivation.
   # Most of these are not really used in jaxlib compilation but it's simpler to keep it
@@ -197,6 +201,52 @@ let
     '';
   };
 
+  python-version = with lib.versions; "${major python.pythonVersion}.${minor python.pythonVersion}";
+
+  python-toolchain = ./python_init_toolchains.bzl;
+  python-wrapper = ./python-wrapper;
+  python-hermetic = effectiveStdenv.mkDerivation {
+    pname = "bazel-python-hermetic";
+    version = "unstable";
+    nativeBuildInputs = [ python ];
+    src = python-wrapper;
+    dontBuild = true;
+    postPatch = ''
+        substituteInPlace bin/python \
+            --subst-var-by PYTHON_ROOT "${python}"
+        substituteInPlace bin/python3 \
+            --subst-var-by PYTHON_ROOT "${python}"
+        patchShebangs .
+        cp -r ${python}/lib lib
+        cp -r ${python}/include include
+    '';
+    installPhase = ''
+        mkdir $out
+        tar -czf $out/distribution.tar.gz .
+        SHA256=($(sha256sum $out/distribution.tar.gz))
+        echo $SHA256 > $out/sha256.txt
+    '';
+  };
+
+  rules_python = effectiveStdenv.mkDerivation {
+    pname = "python_urles";
+    version = "unstable";
+    src = fetchurl { 
+        url = "https://github.com/bazelbuild/rules_python/releases/download/0.34.0/rules_python-0.34.0.tar.gz";
+        hash = "sha256-d4quqz5s/VbWgcifXBDXrWv40vGnLeneVbIwgbLTFhg=";
+    };
+    dontBukld = true;
+    nativeBuildInputs = [ coreutils python ];
+    postPatch = ''
+        patchShebangs .
+        substituteInPlace python/private/common/providers.bzl \
+            --replace-fail "#!/usr/bin/env" "#!${coreutils}/bin/env"
+    '';
+    installPhase = ''
+      cp -r . $out
+    '';
+  };
+
   xla = effectiveStdenv.mkDerivation {
     pname = "xla-src";
     version = "unstable";
@@ -205,8 +255,8 @@ let
       owner = "openxla";
       repo = "xla";
       # Update this according to https://github.com/google/jax/blob/jaxlib-v${version}/third_party/xla/workspace.bzl.
-      rev = "e8247c3ea1d4d7f31cf27def4c7ac6f2ce64ecd4";
-      hash = "sha256-ZhgMIVs3Z4dTrkRWDqaPC/i7yJz2dsYXrZbjzqvPX3E=";
+      rev = "720b2c53346660e95abbed7cf3309a8b85e979f9";
+      hash = "sha256-9+YmFAYbOLDw5K3J14CqnwNxMoiU1/iIKC2gs2PlBBA=";
     };
 
     dontBuild = true;
@@ -217,28 +267,127 @@ let
     # Main culprits we're targeting are third_party/tsl/third_party/gpus/crosstool/clang/bin/*.tpl
     postPatch = ''
       patchShebangs .
+      cp ${python-toolchain} third_party/py/python_init_toolchains.bzl
+      PYTHON_SHA256=$(cat ${python-hermetic}/sha256.txt)
+      substituteInPlace third_party/py/python_init_toolchains.bzl \
+        --subst-var-by PYTHON_VERSION ${python.version} \
+        --subst-var-by PYTHON_TAR_PATH ${python-hermetic}/distribution.tar.gz \
+        --subst-var-by PYTHON_SHA256 $PYTHON_SHA256
     '';
-
     installPhase = ''
       cp -r . $out
     '';
+
+  };
+  cc-toolchain = ./toolchain;
+
+  backend_cc_joined = symlinkJoin {
+    name = "cuda-cc-joined";
+    paths = [
+      nixpkgs.llvmPackages_18.clang
+      # for ar, dwp, nm, objcopy, objdump, strip
+      binutils.bintools 
+    ];
+  };
+  jaxlib-sources = effectiveStdenv.mkDerivation {
+    name = "jaxlib-sources";
+    version = version;
+    src = fetchFromGitHub {
+        owner = "google";
+        repo = "jax";
+        # use the jax instead of jaxlib tag because it is more reliable
+        rev = "refs/tags/jax-v${version}";
+        hash = "sha256-A1EWILuR5/dZdGoUe5lQBb96lkgtmquOxmkde46WS60=";
+    };
+    postPatch = ''
+      rm -f .bazelversion
+      substituteInPlace .bazelrc \
+        --replace-fail 'build:cuda_clang --action_env=CLANG_CUDA_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"' \
+                       ' '
+                      #  'build:cuda_clang --action_env=CLANG_CUDA_COMPILER_PATH="${effectiveStdenv.cc}/bin/cc"' 
+      cp -r ${cc-toolchain} toolchain
+      substituteInPlace toolchain/nix_toolchain_config.bzl \
+        --subst-var-by CC_PATH ${backend_cc_joined}/bin/cc \
+        --subst-var-by AR_PATH ${backend_cc_joined}/bin/ar \
+        --subst-var-by LD_PATH ${backend_cc_joined}/bin/ld \
+        --subst-var-by ARCH ${arch}
+    '';
+    preConfigure =
+      # Dummy ldconfig to work around "Can't open cache file /nix/store/<hash>-glibc-2.38-44/etc/ld.so.cache" error
+      ''
+        mkdir dummy-ldconfig
+        echo "#!${effectiveStdenv.shell}" > dummy-ldconfig/ldconfig
+        chmod +x dummy-ldconfig/ldconfig
+        export PATH="$PWD/dummy-ldconfig:$PATH"
+
+      '' + ''
+          cat <<CFG > ./.jax_configure.bazelrc
+          # use our custom-toolchain
+          build --extra_toolchains=//toolchain:cc_nix_toolchain
+
+          build --strategy=Genrule=standalone
+          build --override_repository=rules_python=${rules_python}
+          build --override_repository=xla=${xla}
+          # build --override_repository=boringssl=${boringssl}
+          build -c opt
+
+          build --repo_env PYTHON_BIN_PATH="${python}/bin/python"
+          build --python_path="${python}/bin/python"
+
+          build --action_env=PYENV_ROOT
+          build --distinct_host_configuration=false
+          build --define PROTOBUF_INCLUDE_PATH="${nixpkgs.protobuf}/include"
+        '' + lib.optionalString effectiveStdenv.cc.isClang ''
+          # bazel depends on the compiler frontend automatically selecting these flags based on file
+          # extension but our clang doesn't.
+          # https://github.com/NixOS/nixpkgs/issues/150655
+          build --cxxopt=-x 
+          build --cxxopt=c++
+          build --host_cxxopt=-x 
+          build --host_cxxopt=c++
+        '' + lib.optionalString (!effectiveStdenv.cc.isClang) ''
+
+        '' + lib.optionalString effectiveStdenv.hostPlatform.isPower64 ''
+         build --cxxopt="-U__LONG_DOUBLE_IEEE128__"
+         build --host_cxxopt="-U__LONG_DOUBLE_IEEE128__"
+        '' + lib.optionalString cudaSupport ''
+          build --config=cuda
+          build --config=cuda_clang
+          build --repo_env LOCAL_CUDA_PATH="${cuda_build_deps_joined}"
+          build --repo_env LOCAL_CUDNN_PATH="${cudnnMerged}"
+          build --repo_env LOCAL_NCCL_PATH="${lib.getDev nccl}"
+          build --repo_env LOCAL_CUDA_COMPUTE_CAPABILITIES="${builtins.concatStringsSep "," cudaFlags.realArches}"
+        '' +
+        # Note that upstream conditions this on `wheel_cpu == "x86_64"`. We just
+        # rely on `effectiveStdenv.hostPlatform.avxSupport` instead. So far so
+        # good. See https://github.com/google/jax/blob/b9824d7de3cb30f1df738cc42e486db3e9d915ff/build/build.py#L322
+        # for upstream's version.
+        lib.optionalString (effectiveStdenv.hostPlatform.avxSupport && effectiveStdenv.hostPlatform.isUnix)
+          ''
+            build --config=avx_posix
+          '' + lib.optionalString mklSupport ''
+        build --config=mkl_open_source_only
+      ''
+      + ''
+        CFG
+      '';
+    installPhase = ''
+      cp -r . $out
+    '';
+
+    dontBuild = true;
   };
 
-  bazel-build = buildBazelPackage rec {
+  test-build = (import ./bazel-test.nix { pkgs = nixpkgs; });
+  bazel-build = (buildBazelPackage rec {
     name = "bazel-build-${pname}-${version}";
 
     # See https://github.com/google/jax/blob/main/.bazelversion for the latest.
     bazel = bazel_6;
 
-    src = fetchFromGitHub {
-      owner = "google";
-      repo = "jax";
-      # google/jax contains tags for jax and jaxlib. Only use jaxlib tags!
-      rev = "refs/tags/${pname}-v${version}";
-      hash = "sha256-qSHPwi3is6Ts7pz5s4KzQHBMbcjGp+vAOsejW3o36Ek=";
-    };
-
+    src = jaxlib-sources;
     nativeBuildInputs = [
+      python
       cython
       nixpkgs.flatbuffers
       git
@@ -246,7 +395,8 @@ let
       wheel
       build
       which
-    ] ++ lib.optionals effectiveStdenv.isDarwin [ cctools ];
+      backend_cc_joined
+    ];
 
     buildInputs =
       [
@@ -267,11 +417,6 @@ let
       ++ lib.optionals effectiveStdenv.isDarwin [ IOKit ]
       ++ lib.optionals (!effectiveStdenv.isDarwin) [ nsync ];
 
-    # We don't want to be quite so picky regarding bazel version
-    postPatch = ''
-      rm -f .bazelversion
-    '';
-
     bazelRunTarget = "//jaxlib/tools:build_wheel";
     runTargetFlags = [
       "--output_path=$out"
@@ -279,96 +424,19 @@ let
       # This has no impact whatsoever...
       "--jaxlib_git_hash='12345678'"
     ];
+    bazelRunFlags = [ "--verbose_failures" "--toolchain_resolution_debug=\"@com_google_absl//absl/time/internal/cctz:civil_time\""];
 
     removeRulesCC = false;
-
-    GCC_HOST_COMPILER_PREFIX = lib.optionalString cudaSupport "${backend_cc_joined}/bin";
-    GCC_HOST_COMPILER_PATH = lib.optionalString cudaSupport "${backend_cc_joined}/bin/gcc";
+    hardeningDisable = ["all"];
 
     # The version is automatically set to ".dev" if this variable is not set.
     # https://github.com/google/jax/commit/e01f2617b85c5bdffc5ffb60b3d8d8ca9519a1f3
-    JAXLIB_RELEASE = "1";
-
-    preConfigure =
-      # Dummy ldconfig to work around "Can't open cache file /nix/store/<hash>-glibc-2.38-44/etc/ld.so.cache" error
-      ''
-        mkdir dummy-ldconfig
-        echo "#!${effectiveStdenv.shell}" > dummy-ldconfig/ldconfig
-        chmod +x dummy-ldconfig/ldconfig
-        export PATH="$PWD/dummy-ldconfig:$PATH"
-      ''
-      +
-
-        # Construct .jax_configure.bazelrc. See https://github.com/google/jax/blob/b9824d7de3cb30f1df738cc42e486db3e9d915ff/build/build.py#L259-L345
-        # for more info. We assume
-        # * `cpu = None`
-        # * `enable_nccl = True`
-        # * `target_cpu_features = "release"`
-        # * `rocm_amdgpu_targets = None`
-        # * `enable_rocm = False`
-        # * `build_gpu_plugin = False`
-        # * `use_clang = False` (Should we use `effectiveStdenv.cc.isClang` instead?)
-        #
-        # Note: We should try just running https://github.com/google/jax/blob/ceb198582b62b9e6f6bdf20ab74839b0cf1db16e/build/build.py#L259-L266
-        # instead of duplicating the logic here. Perhaps we can leverage the
-        # `--configure_only` flag (https://github.com/google/jax/blob/ceb198582b62b9e6f6bdf20ab74839b0cf1db16e/build/build.py#L544-L548)?
-        ''
-          cat <<CFG > ./.jax_configure.bazelrc
-          build --strategy=Genrule=standalone
-          build --repo_env PYTHON_BIN_PATH="${python}/bin/python"
-          build --action_env=PYENV_ROOT
-          build --python_path="${python}/bin/python"
-          build --distinct_host_configuration=false
-          build --define PROTOBUF_INCLUDE_PATH="${nixpkgs.protobuf}/include"
-        ''
-      + lib.optionalString effectiveStdenv.hostPlatform.isPower64 ''
-         build --cxxopt="-U__LONG_DOUBLE_IEEE128__"
-         build --host_cxxopt="-U__LONG_DOUBLE_IEEE128__"
-        ''
-      + lib.optionalString cudaSupport ''
-        build --config=cuda
-        build --action_env CUDA_TOOLKIT_PATH="${cuda_build_deps_joined}"
-        build --action_env CUDNN_INSTALL_PATH="${cudnnMerged}"
-        build --action_env TF_CUDA_PATHS="${cuda_build_deps_joined},${cudnnMerged},${lib.getDev nccl}"
-        build --action_env TF_CUDA_VERSION="${lib.versions.majorMinor cudaVersion}"
-        build --action_env TF_CUDNN_VERSION="${lib.versions.major cudaPackages.cudnn.version}"
-        build:cuda --action_env TF_CUDA_COMPUTE_CAPABILITIES="${builtins.concatStringsSep "," cudaFlags.realArches}"
-      ''
-      +
-        # Note that upstream conditions this on `wheel_cpu == "x86_64"`. We just
-        # rely on `effectiveStdenv.hostPlatform.avxSupport` instead. So far so
-        # good. See https://github.com/google/jax/blob/b9824d7de3cb30f1df738cc42e486db3e9d915ff/build/build.py#L322
-        # for upstream's version.
-        lib.optionalString (effectiveStdenv.hostPlatform.avxSupport && effectiveStdenv.hostPlatform.isUnix)
-          ''
-            build --config=avx_posix
-          ''
-      + lib.optionalString mklSupport ''
-        build --config=mkl_open_source_only
-      ''
-      + ''
-        CFG
-      '';
-
-    # Make sure Bazel knows about our configuration flags during fetching so that the
-    # relevant dependencies can be downloaded.
-    bazelFlags =
-      [
-        "-c opt"
-        # See https://bazel.build/external/advanced#overriding-repositories for
-        # information on --override_repository flag.
-        "--override_repository=xla=${xla}"
-        "--override_repository=boringssl=${boringssl}"
-      ]
-      ++ lib.optionals effectiveStdenv.cc.isClang [
-        # bazel depends on the compiler frontend automatically selecting these flags based on file
-        # extension but our clang doesn't.
-        # https://github.com/NixOS/nixpkgs/issues/150655
-        "--cxxopt=-x"
-        "--cxxopt=c++"
-        "--host_cxxopt=-x"
-        "--host_cxxopt=c++"
-      ];
+    env = {
+      JAXLIB_RELEASE = "1";
+      HERMETIC_PYTHON_VERSION = python-version;
+      # GCC_HOST_COMPILER_PREFIX = lib.optionalString cudaSupport "${backend_cc_joined}/bin";
+      # GCC_HOST_COMPILER_PATH = lib.optionalString cudaSupport "${backend_cc_joined}/bin/cc";
+    };
 
     # We intentionally overfetch so we can share the fetch derivation across all the different configurations
     fetchAttrs = {
@@ -378,33 +446,17 @@ let
         bazelRunTarget
         "@mkl_dnn_v1//:mkl_dnn"
       ];
-      bazelFlags =
-        bazelFlags
-        ++ [
-          "--config=avx_posix"
-          "--config=mkl_open_source_only"
-        ]
-        ++ lib.optionals cudaSupport [
-          # ideally we'd add this unconditionally too, but it doesn't work on darwin
-          # we make this conditional on `cudaSupport` instead of the system, so that the hash for both
-          # the cuda and the non-cuda deps can be computed on linux, since a lot of contributors don't
-          # have access to darwin machines
-          "--config=cuda"
-        ];
-
-      sha256 =
-        (
-          if cudaSupport then
-            { 
-		x86_64-linux = "sha256-6eWmY6cZMcXVk2HBF03vpT120b/W/ylDzthl0Drd+g8=";
-		powerpc64le-linux = "sha256-vVVi3zZLp1K7yn3q+fvQNCmxWjGidvtP8HpV5DTRWGw=";
-	    }
-          else
-            {
-              x86_64-linux = "sha256-NzJJg6NlrPGMiR8Fn8u4+fu0m+AulfmN5Xqk63Um6sw=";
-              aarch64-linux = "sha256-Ro3qzrUxSR+3TH6ROoJTq+dLSufrDN/9oEo2MRkx7wM=";
-            }
-        ).${effectiveStdenv.system} or (throw "jaxlib: unsupported system: ${effectiveStdenv.system}");
+      bazelFlags = [
+        "--config=avx_posix"
+        "--config=mkl_open_source_only"
+      ];
+      sha256 = (if cudaSupport then { 
+            x86_64-linux = "sha256-BcyGPJJRjr5rsdxKypmknmphaduQt8tiqg1QsbKHjlo=";
+            powerpc64le-linux = "";
+	    } else {
+              x86_64-linux = "";
+              aarch64-linux = "";
+        }).${effectiveStdenv.system} or (throw "jaxlib: unsupported system: ${effectiveStdenv.system}");
 
         # Non-reproducible fetch https://github.com/NixOS/nixpkgs/issues/321920#issuecomment-2184940546
         preInstall = ''
@@ -424,20 +476,15 @@ let
         ]
       );
 
-      # Note: we cannot do most of this patching at `patch` phase as the deps
-      # are not available yet. Framework search paths aren't added by bintools
-      # hook. See https://github.com/NixOS/nixpkgs/pull/41914.
-      preBuild = lib.optionalString effectiveStdenv.isDarwin ''
-        export NIX_LDFLAGS+=" -F${IOKit}/Library/Frameworks"
-        substituteInPlace ../output/external/rules_cc/cc/private/toolchain/osx_cc_wrapper.sh.tpl \
-          --replace "/usr/bin/install_name_tool" "${cctools}/bin/install_name_tool"
-        substituteInPlace ../output/external/rules_cc/cc/private/toolchain/unix_cc_configure.bzl \
-          --replace "/usr/bin/libtool" "${cctools}/bin/libtool"
+      preBuild = ''
+        export NIX_CFLAGS_COMPILE=
+        export NIX_CFLAGS_LINK=
       '';
     };
 
     inherit meta;
-  };
+  });
+
   platformTag =
     if effectiveStdenv.hostPlatform.isLinux then
       "manylinux2014_${arch}"
@@ -505,7 +552,8 @@ buildPythonPackage {
 
   passthru = {
     # Note "bazel.*.tar.gz" can be accessed as `jaxlib.bazel-build.deps`
-    inherit bazel-build;
+   inherit bazel-build;
+   inherit test-build;
   };
 
   inherit meta;
