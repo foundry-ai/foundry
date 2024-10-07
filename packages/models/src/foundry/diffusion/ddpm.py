@@ -122,18 +122,6 @@ class DDPMSchedule:
             **kwargs
         )
 
-    def visualize(self):
-        from plotly import graph_objects as go
-        T = jnp.arange(self.num_steps + 1)
-        rev_variance = self.reverse_variance
-        return go.Figure([
-            go.Scatter(x=T, y=self.betas, mode="lines", name="beta"),
-            go.Scatter(x=T, y=self.alphas_cumprod, mode="lines", name="alpha_bar"),
-            go.Scatter(x=T, y=rev_variance, mode="lines", name="beta_rev"),
-        ], layout=dict(
-            margin=dict(l=20, r=20, t=20, b=20),
-        ))
-    
     @property
     def reverse_variance(self):
         alpha_bars = self.alphas_cumprod[1:]
@@ -142,7 +130,6 @@ class DDPMSchedule:
         variance = (1 - alpha_bars_prev) / (1 - alpha_bars) * betas
         variance = jnp.concatenate((jnp.zeros((1,)), variance), axis=0)
         return variance
-
 
     @property
     def num_steps(self) -> int:
