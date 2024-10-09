@@ -6,11 +6,12 @@ import foundry.util.serialize
 import foundry.random
 import foundry.train.reporting
 import foundry.train.wandb
+import foundry.datasets.env
 import wandb
 
 from foundry.data.sequence import Chunk
+from foundry.datasets.core import DatasetRegistry
 from foundry.core.dataclasses import dataclass
-from foundry.datasets.env import datasets
 from foundry.core.typing import Array
 from foundry.core import tree
 from foundry.random import PRNGSequence
@@ -47,7 +48,7 @@ class Config:
     eval_seed: int = 42
 
     # Dataset configuration
-    dataset : str = "robomimic/pickplace/can/ph"
+    dataset : str = "pusht/chi" # "robomimic/pickplace/can/ph"
     train_trajectories : int | None = None
     test_trajectories : int | None = None
     validation_trajectories : int | None = None

@@ -1,10 +1,10 @@
 import typing
-import jax
 import abc
 
-from foundry.core.dataclasses import dataclass, field
-from foundry.util.registry import Registry, from_module
-from typing import Optional, Sequence
+import foundry.core as F
+from foundry.core.dataclasses import dataclass
+from foundry.util.registry import Registry
+from typing import Optional
 
 State = typing.TypeVar("State")
 ReducedState = typing.TypeVar("ReducedState")
@@ -29,17 +29,17 @@ class Environment(typing.Generic[State, ReducedState, Action]):
     def reduce_state(self, full_state: State) -> ReducedState:
         return full_state
 
-    def sample_state(self, rng_key : jax.Array) -> State:
+    def sample_state(self, rng_key : F.Array) -> State:
         raise NotImplementedError()
 
-    def sample_action(self, rng_key : jax.Array) -> Action:
+    def sample_action(self, rng_key : F.Array) -> Action:
         raise NotImplementedError()
 
-    def reset(self, rng_key : jax.Array) -> State:
+    def reset(self, rng_key : F.Array) -> State:
         raise NotImplementedError()
 
     def step(self, state : State, action : Action,
-             rng_key : Optional[jax.Array] = None) -> State:
+             rng_key : Optional[F.Array] = None) -> State:
         raise NotImplementedError()
             
     def observe(self, state: State,
@@ -47,13 +47,13 @@ class Environment(typing.Generic[State, ReducedState, Action]):
         raise NotImplementedError()
 
     def reward(self, state: State,
-               action : Action, next_state : State) -> jax.Array:
+               action : Action, next_state : State) -> F.Array:
         raise NotImplementedError()
 
-    def cost(self, states: State, actions: Action) -> jax.Array:
+    def cost(self, states: State, actions: Action) -> F.Array:
         raise NotImplementedError()
 
-    def is_finished(self, state: State) -> jax.Array:
+    def is_finished(self, state: State) -> F.Array:
         raise NotImplementedError()
 
     def render(self, state : State,
@@ -73,17 +73,17 @@ class EnvWrapper(Environment[State, ReducedState, Action]):
     def reduce_state(self, full_state: State) -> ReducedState:
         return self.base.reduce_state(full_state)
 
-    def sample_state(self, rng_key : jax.Array) -> State:
+    def sample_state(self, rng_key : F.Array) -> State:
         return self.base.sample_state(rng_key)
 
-    def sample_action(self, rng_key : jax.Array) -> Action:
+    def sample_action(self, rng_key : F.Array) -> Action:
         return self.base.sample_action(rng_key)
 
-    def reset(self, rng_key : jax.Array) -> State:
+    def reset(self, rng_key : F.Array) -> State:
         return self.base.reset(rng_key)
 
     def step(self, state : State, action : Action,
-             rng_key : Optional[jax.Array] = None) -> State:
+             rng_key : Optional[F.Array] = None) -> State:
         return self.base.step(state, action, rng_key)
 
     def observe(self, state: State,
@@ -91,13 +91,13 @@ class EnvWrapper(Environment[State, ReducedState, Action]):
         return self.base.observe(state, config)
 
     def reward(self, state: State,
-               action : Action, next_state : State) -> jax.Array:
+               action : Action, next_state : State) -> F.Array:
         return self.base.reward(state, action, next_state)
 
-    def cost(self, states: State, actions: Action) -> jax.Array:
+    def cost(self, states: State, actions: Action) -> F.Array:
         return self.base.cost(states, actions)
 
-    def is_finished(self, state: State) -> jax.Array:
+    def is_finished(self, state: State) -> F.Array:
         return self.base.is_finished(state)
 
     def render(self, state : State,
@@ -108,7 +108,7 @@ class EnvWrapper(Environment[State, ReducedState, Action]):
         return getattr(self.base, name)
 
 @dataclass
-class ImageRender(RenderConfig[jax.Array]):
+class ImageRender(RenderConfig[F.Array]):
     width: int = 256
     height: int = 256
     camera: int | str | None = None

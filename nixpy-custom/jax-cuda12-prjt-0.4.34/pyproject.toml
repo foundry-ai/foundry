@@ -1,0 +1,14 @@
+[project]
+name = "jax-cuda12-prjt"
+version = "0.4.34"
+
+dependencies = [
+	"scipy>=1.9",
+	"scipy>=1.11.1; python_version>='3.12'",
+	"numpy>=1.22",
+	"ml_dtypes>=0.2.0",
+]
+
+[build-system]
+requires = ["setuptools", "wheel", "build", "cython", "pybind11"]
+build-backend = "setuptools.build_meta"

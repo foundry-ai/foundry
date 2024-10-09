@@ -158,8 +158,8 @@ class StdNormalizer:
 
     def map(self, fun):
         return StdNormalizer(
-            fun(self.mean), fun(self.var),
-            fun(self.std), self.count,
+            mean=fun(self.mean), var=fun(self.var),
+            std=fun(self.std), count=self.count,
         )
 
     def normalize(self, data):
@@ -220,8 +220,8 @@ class StdNormalizer:
             var = jnp.var(data_flat, axis=0)
             std = jnp.sqrt(var)
             return StdNormalizer(
-                unflatten(mean), unflatten(var),
-                unflatten(std), data_flat.shape[0]
+                mean=unflatten(mean), var=unflatten(var),
+                std=unflatten(std), count=data_flat.shape[0]
             )
         else:
             mean = jnp.mean(data_flat, axis=0)
@@ -229,8 +229,8 @@ class StdNormalizer:
             var = var*jnp.ones_like(data_flat[0])
             std = jnp.sqrt(var)
             return StdNormalizer(
-                unflatten(mean), unflatten(var), 
-                unflatten(std), data_flat.shape[0]
+                mean=unflatten(mean), var=unflatten(var), 
+                std=unflatten(std), count=data_flat.shape[0]
             )
 
     @staticmethod

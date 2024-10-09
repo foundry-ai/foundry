@@ -323,9 +323,6 @@ class RelKeypointObsEnv(EnvWrapper):
             rel_block_end=end - goal_end,
         )
 
-environments = EnvironmentRegistry[PushTEnv]()
-environments.register(PushTEnv)
-
 def _make_positional(**kwargs):
     env = PushTEnv(**kwargs)
     return ChainedTransform([
@@ -333,7 +330,6 @@ def _make_positional(**kwargs):
         MultiStepTransform(10),
         PositionalObsTransform()
     ]).apply(env)
-environments.register("positional", _make_positional)
 
 def _make_keypoint(**kwargs):
     env = PushTEnv(**kwargs)
@@ -342,7 +338,6 @@ def _make_keypoint(**kwargs):
         MultiStepTransform(10),
         KeypointObsTransform()
     ]).apply(env)
-environments.register("keypoint", _make_keypoint)
 
 def _make_rel_keypoint(**kwargs):
     env = PushTEnv(**kwargs)
@@ -351,4 +346,3 @@ def _make_rel_keypoint(**kwargs):
         MultiStepTransform(10),
         RelKeypointObsTransform()
     ]).apply(env)
-environments.register("rel_keypoint", _make_rel_keypoint)

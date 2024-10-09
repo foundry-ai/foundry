@@ -1,6 +1,7 @@
 import boto3.s3
 import foundry.core as F
 import foundry.numpy as jnp
+import foundry.datasets.env
 import foundry.util.serialize
 import tempfile
 import urllib.parse
@@ -10,6 +11,8 @@ from foundry.random import PRNGSequence
 from foundry.core import tree
 from foundry.core.dataclasses import dataclass
 from foundry.core.typing import Array
+from foundry.datasets.env import EnvDataset
+from foundry.datasets.core import DatasetRegistry
 from foundry.data import Data
 from foundry.env import Environment, ObserveConfig
 from foundry.policy import Policy
@@ -71,27 +74,28 @@ class DataConfig:
         return data
     
     def load(self, splits=set()) -> tuple[Environment, dict[str, Data[Sample]]]:
-        from foundry.datasets.env import datasets
+        datasets = DatasetRegistry[EnvDataset]()
+        foundry.datasets.env.register_all(datasets)
         dataset = datasets.create(self.dataset)
         env = dataset.create_env()
         loaded_splits = {}
         if "train" in splits:
             logger.info(f"Loaded training data from [blue]{self.dataset}[/blue]")
-            train_data = dataset.splits["train"]
+            train_data = dataset.split("train")
             if self.train_trajectories is not None:
                 train_data = train_data.slice(0, self.train_trajectories)
             train_data = self._process_data(env, train_data)
             loaded_splits["train"] = train_data
         if "test" in splits:
             logger.info(f"Loading test data from [blue]{self.dataset}[/blue]")
-            test_data = dataset.splits["test"]
+            test_data = dataset.split("test")
             if self.test_trajectories is not None:
                 test_data = test_data.slice(0, self.test_trajectories)
             test_data = self._process_data(env, test_data)
             loaded_splits["test"] = test_data
         if "validation" in splits:
             logger.info(f"Loading validation data from [blue]{self.dataset}[/blue]")
-            validation_data = dataset.splits["validation"]
+            validation_data = dataset.split("validation")
             if self.validation_trajectories is not None:
                 validation_data = validation_data.slice(0, self.validation_trajectories)
             # get the first state of the trajectory

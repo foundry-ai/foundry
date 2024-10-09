@@ -21,8 +21,8 @@ readme = "README.md"
 license = {text = "MIT"}
 
 [project.optional-dependencies]
-cuda12 = [
-    "jax[cuda12]>=0.4.28",
+cuda = [
+    "jax[cuda]>=0.4.34"
 ]
 
 [build-system]

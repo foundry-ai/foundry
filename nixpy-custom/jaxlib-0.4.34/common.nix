@@ -10,9 +10,10 @@ let lib = pkgs.lib;
     build = build-system.build;
     wheel = build-system.wheel;
 
+    baseStdenv = pkgs.gcc12Stdenv;
     effectiveStdenv = pkgs.overrideCC 
-      pkgs.stdenv pkgs.llvmPackages_18.clang;
-      stdenv = throw "Use effectiveStdenv instead";
+      baseStdenv pkgs.llvmPackages_18.clang;
+    stdenv = throw "Use effectiveStdenv instead";
 
     buildBazelPackage = pkgs.buildBazelPackage.override { 
       stdenv = effectiveStdenv; 
@@ -234,10 +235,6 @@ in rec {
         # ''
         #   build --config=cuda
         #   build --config=cuda_clang
-        #   build --repo_env LOCAL_CUDA_PATH="${cuda_build_deps_joined}"
-        #   build --repo_env LOCAL_CUDNN_PATH="${cudnnMerged}"
-        #   build --repo_env LOCAL_NCCL_PATH="${lib.getDev nccl}"
-        #   build --repo_env LOCAL_CUDA_COMPUTE_CAPABILITIES="${builtins.concatStringsSep "," cudaFlags.realArches}"
         # '' +
     installPhase = ''
       cp -r . $out
@@ -246,7 +243,7 @@ in rec {
     dontBuild = true;
   };
   jaxlib-wheel-build = buildBazelPackage rec {
-    name = "jaxlib-wheel-${pname}-${version}";
+    name = "jaxlib-wheel-${version}";
     bazel = pkgs.bazel_6;
     src = jaxlib-sources;
     nativeBuildInputs = [
@@ -313,7 +310,7 @@ in rec {
         "--config=mkl_open_source_only"
       ];
       sha256 = ({
-        x86_64-linux = "sha256-bkYbcpOknA5Ar7knUp0pWUeofv/wcjjwO5Z5gsuK+8E=";
+        x86_64-linux = "sha256-7OJRjdj6mfRr3S+JA0MIsKEOndmXSAIVZD9/GnvEGpU=";
         aarch64-linux = "";
       }).${effectiveStdenv.system} or (throw "jaxlib: unsupported system: ${effectiveStdenv.system}");
 
@@ -324,7 +321,6 @@ in rec {
         EOF
       '';
     };
-
     buildAttrs = {
       outputs = [ "out" ];
     };
@@ -332,4 +328,110 @@ in rec {
   jaxlib-wheel = let
     cp = "cp${builtins.replaceStrings [ "." ] [ "" ] python.pythonVersion}";
   in "${jaxlib-wheel-build}/jaxlib-${version}-${cp}-${cp}-${platformTag}.whl";
+
+  cuda-plugin-build = buildBazelPackage rec {
+    name = "jax-cuda-${version}";
+    bazel = pkgs.bazel_6;
+    src = jaxlib-sources;
+    nativeBuildInputs = [
+      pkgs.git
+      pkgs.which
+      python
+      cython
+      setuptools
+      wheel
+      build
+      backend_cc_joined
+    ];
+
+    buildInputs = [
+        pkgs.curl
+        pkgs.double-conversion
+        pkgs.openssl
+        numpy
+        pybind11
+        scipy
+    ];
+
+    preConfigure = ''
+      mkdir dummy-ldconfig
+      echo "#!${effectiveStdenv.shell}" > dummy-ldconfig/ldconfig
+      chmod +x dummy-ldconfig/ldconfig
+      export PATH="$PWD/dummy-ldconfig:$PATH"
+    '';
+
+    bazelRunTarget = "//jaxlib/tools:build_gpu_kernels_wheel";
+    runTargetFlags = [
+      "--output_path=$out"
+      "--cpu=${arch}"
+      # This has no impact whatsoever...
+      "--jaxlib_git_hash='12345678'"
+      "--enable-cuda=True"
+      "--platform_version=12"
+    ];
+    bazelRunFlags = [ 
+      "--config=cuda"
+      "--config=cuda_clang"
+      "--repo_env LOCAL_CUDA_PATH=${cuda_build_deps_joined}"
+      "--repo_env LOCAL_CUDNN_PATH=${cudnnMerged}"
+      "--repo_env LOCAL_NCCL_PATH=${lib.getDev pkgs.cudaPackages.nccl}"
+      "--repo_env LOCAL_CUDA_COMPUTE_CAPABILITIES=${builtins.concatStringsSep "," pkgs.cudaPackages.cudaFlags.realArches}"
+      "--verbose_failures" 
+      "--crosstool_top=//toolchain:cc_nix_toolchains"
+      "--copt=--cuda-path=${cuda_build_deps_joined}"
+    ];
+    removeRulesCC = false;
+    dontAddBazelOpts = true;
+    hardeningDisable = ["all"];
+
+    # The version is automatically set to ".dev" if this variable is not set.
+    # https://github.com/google/jax/commit/e01f2617b85c5bdffc5ffb60b3d8d8ca9519a1f3
+    env = {
+      JAXLIB_RELEASE = "1";
+      TF_SYSTEM_LIBS = lib.concatStringsSep "," tf_system_libs;
+      HERMETIC_PYTHON_VERSION = python-version;
+      GCC_HOST_COMPILER_PREFIX = "${backend_cc_joined}/bin";
+      GCC_HOST_COMPILER_PATH = "${backend_cc_joined}/bin/cc";
+    };
+
+    # We intentionally overfetch so we can share the fetch derivation across all the different configurations
+    fetchAttrs = {
+      # we have to force @mkl_dnn_v1 since it's not needed on darwin
+      bazelTargets = [
+        bazelRunTarget
+        "@mkl_dnn_v1//:mkl_dnn"
+      ];
+      bazelFlags = [
+        "--config=cuda"
+        "--config=cuda_clang"
+        "--repo_env LOCAL_CUDA_PATH=${cuda_build_deps_joined}"
+        "--repo_env LOCAL_CUDNN_PATH=${cudnnMerged}"
+        "--repo_env LOCAL_NCCL_PATH=${lib.getDev pkgs.cudaPackages.nccl}"
+        "--repo_env LOCAL_CUDA_COMPUTE_CAPABILITIES=${builtins.concatStringsSep "," pkgs.cudaPackages.cudaFlags.realArches}"
+        "--config=avx_posix"
+        "--config=mkl_open_source_only"
+      ];
+      sha256 = ({
+        x86_64-linux = "sha256-9c6DP542TwEVMSToiP1JEuqLKdj8SLi6WmGK5/bZTWs=";
+        aarch64-linux = "";
+      }).${effectiveStdenv.system} or (throw "jaxlib: unsupported system: ${effectiveStdenv.system}");
+
+      # Non-reproducible fetch https://github.com/NixOS/nixpkgs/issues/321920#issuecomment-2184940546
+      preInstall = ''
+        cat << \EOF > "$bazelOut/external/go_sdk/versions.json"
+        []
+        EOF
+      '';
+    };
+    buildAttrs = {
+      outputs = [ "out" ];
+    };
+
+  };
+  cuda-plugin-wheel = let
+    cp = "cp${builtins.replaceStrings [ "." ] [ "" ] python.pythonVersion}";
+  in "${cuda-plugin-build}/jax-cuda12-plugin-${version}-${cp}-${cp}-${platformTag}.whl";
+  cuda-prjt-wheel = let
+    cp = "cp${builtins.replaceStrings [ "." ] [ "" ] python.pythonVersion}";
+  in "${cuda-plugin-build}/jax-cuda12-prjt-${version}-${cp}-${cp}-${platformTag}.whl";
 }

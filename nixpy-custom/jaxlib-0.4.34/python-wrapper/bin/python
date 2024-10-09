@@ -1,3 +1,2 @@
 #!/usr/bin/env bash
-ls -la @PYTHON_ROOT@/bin
 exec @PYTHON_ROOT@/bin/python "$@"

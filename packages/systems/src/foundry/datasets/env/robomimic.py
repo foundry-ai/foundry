@@ -16,8 +16,8 @@ from foundry.core.dataclasses import dataclass, replace
 import foundry.util.serialize
 
 from . import EnvDataset
-from .. import DatasetRegistry
-from ..util import download, cache_path
+from foundry.datasets.core import DatasetRegistry
+from foundry.datasets.util import download, cache_path
 
 @dataclass
 class RobomimicDataset(EnvDataset[Step]):
@@ -195,18 +195,18 @@ def load_robomimic(*, name=None, dataset_type=None, quiet=False, **kwargs):
         env_name=env_name
     )
 
-datasets = DatasetRegistry[RobomimicDataset]()
-for dataset_type in ["ph", "mh", "mg"]:
-    for task in ["pickplace", "nutassembly"]:
-        if task == "pickplace":
-            for obj in ["can", "milk", "bread", "cereal"]:
-                name = obj
-                datasets.register(f"{task}/{obj}/{dataset_type}", 
-                    partial(load_robomimic,name=name, dataset_type=dataset_type)
-                )
-        elif task == "nutassembly":
-            for obj in ["square", "round"]:
-                name = obj
-                datasets.register(f"{task}/{obj}/{dataset_type}", 
-                    partial(load_robomimic,name=name, dataset_type=dataset_type)
-                )
+def register_all(registry: DatasetRegistry, prefix=None):
+    for dataset_type in ["ph", "mh", "mg"]:
+        for task in ["pickplace", "nutassembly"]:
+            if task == "pickplace":
+                for obj in ["can", "milk", "bread", "cereal"]:
+                    name = obj
+                    registry.register(f"robomimic/{task}/{obj}/{dataset_type}", 
+                        partial(load_robomimic,name=name, dataset_type=dataset_type)
+                    )
+            elif task == "nutassembly":
+                for obj in ["square", "round"]:
+                    name = obj
+                    registry.register(f"robomimic/{task}/{obj}/{dataset_type}", 
+                        partial(load_robomimic,name=name, dataset_type=dataset_type)
+                    )

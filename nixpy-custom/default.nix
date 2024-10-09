@@ -44,4 +44,6 @@
 
     jax_0_4_34 = import ./jax-0.4.34;
     jaxlib_0_4_34 = import ./jaxlib-0.4.34;
+    jax_cuda12_plugin_0_4_34 = import ./jax-cuda12-plugin-0.4.34;
+    jax_cuda12_prjt_0_4_34 = import ./jax-cuda12-prjt-0.4.34;
 }

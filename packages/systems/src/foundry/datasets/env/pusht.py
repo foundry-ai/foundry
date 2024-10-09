@@ -1,5 +1,5 @@
-from foundry.core.dataclasses import dataclass, replace
-from foundry.datasets import DatasetRegistry
+from foundry.core.dataclasses import dataclass
+from foundry.datasets.core import DatasetRegistry
 from foundry.datasets.env import EnvDataset
 
 from foundry.data import PyTreeData, idx_dtype
@@ -7,7 +7,7 @@ from foundry.data.sequence import (
     SequenceInfo, SequenceData, Step
 )
 
-from ..util import download, cache_path
+from foundry.datasets.util import download, cache_path
 
 import foundry.util.serialize
 import jax
@@ -16,6 +16,11 @@ import zarr
 
 @dataclass
 class PushTDataset(EnvDataset[Step]):
+    _splits : dict[str, SequenceData[Step, None]]
+
+    def split(self, name) -> SequenceData[Step, None]:
+        return self._splits[name]
+
     def create_env(self, **kwargs):
         from foundry.env.mujoco.pusht import (
             PushTEnv,
@@ -109,11 +114,8 @@ def load_chi_pusht(quiet=False, train_trajs=None, test_trajs=10):
     validation = data.slice(len(data) - 32, 16)
     test = data.slice(len(data) - 16, 16)
     return PushTDataset(
-        splits={"train": train, "validation": validation, "test": test},
-        normalizers={},
-        transforms={}
+        _splits={"train": train, "validation": validation, "test": test},
     )
 
-datasets = DatasetRegistry[PushTDataset]()
-datasets.register(load_chi_pusht)
-datasets.register("chi", load_chi_pusht)
+def register(registry: DatasetRegistry, prefix=None):
+    registry.register("pusht/chi", load_chi_pusht, prefix=prefix)

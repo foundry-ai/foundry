@@ -336,6 +336,3 @@ def orientation_error(desired, current):
     error = 0.5 * (jnp.cross(rc1, rd1) + jnp.cross(rc2, rd2) + jnp.cross(rc3, rd3))
 
     return error
-
-
-
