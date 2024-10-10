@@ -119,11 +119,11 @@ class DPConfig:
 
     epochs: int = 200
     batch_size: int = 256
-    learning_rate: float = 2e-4
+    learning_rate: float = 1e-4
     weight_decay: float = 1e-5
 
     diffusion_steps: int = 32
-    action_horizon: int = 8
+    action_horizon: int = 16
     
     save_dir: str | None = None
     from_checkpoint: bool = False
@@ -239,7 +239,7 @@ class DPConfig:
                     if step.iteration % 100 == 0:
                         train.console.log(step.iteration, metrics, 
                                           prefix="train.")
-                    if step.iteration % 1000 == 0:
+                    if step.iteration % 2000 == 0:
                         rewards, video = inputs.validate_render(val_rng, make_checkpoint().create_policy())
                         reward_metrics = {
                             "mean_reward": jnp.mean(rewards),

@@ -45,8 +45,8 @@ class MLPConfig:
             features=[self.net_width]*self.net_depth
         )
         vars = F.jit(model.init)(rng_key, observations, actions, jnp.zeros((), dtype=jnp.uint32))
-        def model_fn(vars, rng_key, observations, noised_actions, t):
-            return model.apply(vars, observations, noised_actions, t - 1)
+        def model_fn(vars, rng_key, observations, noised_actions):
+            return model.apply(vars, observations, noised_actions)
         return model_fn, vars
 
 @dataclass
@@ -81,10 +81,8 @@ class Checkpoint(Result):
         def chunk_policy(input: PolicyInput) -> PolicyOutput:
             obs = input.observation
             obs = self.obs_normalizer.normalize(obs)
-            model_fn = lambda rng_key, noised_actions, t: model(
-                self.vars, rng_key, obs, noised_actions, t - 1
-            )
-            action = self.schedule.sample(input.rng_key, model_fn, self.actions_structure) 
+            action_sample = jax.tree_util.tree_map(lambda x: jnp.zeros(x.shape, dtype=x.dtype), self.actions_structure)
+            action = model(self.vars, input.rng_key, obs, action_sample)
             action = self.action_normalizer.unnormalize(action)
             return PolicyOutput(action=action[:self.action_horizon], info=action)
         obs_horizon = tree.axis_size(self.observations_structure, 0)
@@ -105,7 +103,7 @@ class BCConfig:
     weight_decay: float = 1e-5
 
     diffusion_steps: int = 32
-    action_horizon: int = 8
+    action_horizon: int = 16
     
     save_dir: str | None = None
     from_checkpoint: bool = False
@@ -156,7 +154,7 @@ class BCConfig:
             sample_norm = normalizer.normalize(sample)
             obs = sample_norm.observations
             action = sample_norm.actions
-            pred_action = model(vars, rng_key, obs, sample)
+            pred_action = model(vars, rng_key, obs, action)
             loss = jnp.mean(jnp.square(pred_action - action))
             return train.LossOutput(
                 loss=loss,
@@ -172,7 +170,6 @@ class BCConfig:
                 actions_structure=actions_structure,
                 action_horizon=self.action_horizon,
                 model_config=self.model_config,
-                schedule=schedule,
                 obs_normalizer=normalizer.map(lambda x: x.observations),
                 action_normalizer=normalizer.map(lambda x: x.actions),
                 vars=vars
@@ -213,7 +210,7 @@ class BCConfig:
                     if step.iteration % 100 == 0:
                         train.console.log(step.iteration, metrics, 
                                           prefix="train.")
-                    if step.iteration % 1000 == 0:
+                    if step.iteration % 2000 == 0:
                         rewards, video = inputs.validate_render(val_rng, make_checkpoint().create_policy())
                         reward_metrics = {
                             "mean_reward": jnp.mean(rewards),
@@ -230,120 +227,6 @@ class BCConfig:
 
         # Return the final checkpoint
         return make_checkpoint()
-
-# def train_net_BC(
-#         config : BCConfig,  wandb_run, train_data, env, eval):
-    
-#     train_sample = train_data[0]
-#     action_sample = train_sample.actions
-#     normalizer = StdNormalizer.from_data(train_data)
-#     train_data_tree = train_data.as_pytree()
-
-#     # Get chunk lengths
-#     obs_length, action_length = (
-#         foundry.util.axis_size(train_data_tree.observations, 1),
-#         foundry.util.axis_size(train_data_tree.actions, 1)
-#     )
-
-#     rng = PRNGSequence(config.seed)
-    
-#     if config.model == "mlp":
-#         model = MLP(
-#             features=[config.net_width]*config.net_depth, 
-#             has_skip=config.has_skip
-#         )
-#     else:
-#         raise ValueError(f"Unknown model type: {config.model}")
-    
-#     vars = jax.jit(model.init)(next(rng), train_sample.observations, action_sample)
-    
-#     total_params = jax.tree_util.tree_reduce(lambda x, y: x + y.size, vars, 0)
-#     logger.info(f"Total parameters: [blue]{total_params}[/blue]")
-
-#     def loss_fn(vars, rng_key, sample: Sample, iteration):
-#         sample_norm = normalizer.normalize(sample)
-#         obs = sample_norm.observations
-#         action = sample_norm.actions
-#         pred_action = model.apply(vars, obs, action_sample)
-#         loss = jnp.mean(jnp.square(pred_action - action))
-        
-#         return train.LossOutput(
-#             loss=loss,
-#             metrics={
-#                 "loss": loss
-#             }
-#         )
-#     batched_loss_fn = train.batch_loss(loss_fn)
-
-#     opt_sched = optax.cosine_onecycle_schedule(config.iterations, 1e-4)
-#     optimizer = optax.adamw(opt_sched)
-#     opt_state = optimizer.init(vars["params"])
-
-#     # Create a directory to save checkpoints
-#     current_dir = os.path.dirname(os.path.realpath(__file__))
-#     ckpts_dir = os.path.join(current_dir, "checkpoints")
-#     if not os.path.exists(ckpts_dir):
-#         os.makedirs(ckpts_dir)
-
-#     train_data_batched = train_data.stream().batch(config.batch_size)
-
-#     with foundry.train.loop(train_data_batched, 
-#                 rng_key=next(rng),
-#                 iterations=config.iterations,
-#                 progress=True
-#             ) as loop:
-#         for epoch in loop.epochs():
-#             for step in epoch.steps():
-#                 # *note*: consumes opt_state, vars
-#                 opt_state, vars, metrics = train.step(
-#                     batched_loss_fn, optimizer, opt_state, vars, 
-#                     step.rng_key, step.batch,
-#                     # extra arguments for the loss function
-#                     iteration=step.iteration
-#                 )
-#                 if step.iteration % 100 == 0:
-#                     train.ipython.log(step.iteration, metrics)
-#                     train.wandb.log(step.iteration, metrics, run=wandb_run)
-#                 if step.iteration > 0 and step.iteration % 20000 == 0:
-#                     ckpt = {
-#                         "config": config,
-#                         "model": model,
-#                         "vars": vars,
-#                         "opt_state": opt_state,
-#                         "normalizer": normalizer
-#                     }
-#                     file_path = os.path.join(ckpts_dir, f"{wandb_run.id}_{step.iteration}.pkl")
-#                     with open(file_path, 'wb') as file:
-#                         pickle.dump(ckpt, file)
-#                     wandb_run.log_model(path=file_path, name=f"{wandb_run.id}_{step.iteration}")
-#         train.ipython.log(step.iteration, metrics)
-#         train.wandb.log(step.iteration, metrics, run=wandb_run)
-
-#     # save model
-#     ckpt = {
-#         "config": config,
-#         "model": model,
-#         "vars": vars,
-#         "opt_state": opt_state,
-#         "normalizer": normalizer
-#     }
-#     file_path = os.path.join(ckpts_dir, f"{wandb_run.id}_final.pkl")
-#     with open(file_path, 'wb') as file:
-#         pickle.dump(ckpt, file)
-    
-#     def chunk_policy(input: PolicyInput) -> PolicyOutput:
-#         obs = input.observation
-#         obs = normalizer.map(lambda x: x.observations).normalize(obs)
-#         action = model.apply(vars, obs, action_sample)
-#         action = normalizer.map(lambda x: x.actions).unnormalize(action)
-#         action = action[:config.action_horizon]
-#         return PolicyOutput(action=action, info=action)
-    
-#     policy = ChunkingTransform(
-#         obs_length, config.action_horizon
-#     ).apply(chunk_policy)
-
-#     return policy
     
 
 class MLP(nn.Module):

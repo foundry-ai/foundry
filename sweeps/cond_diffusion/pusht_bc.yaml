@@ -1,13 +1,13 @@
 program: ./projects/policy-eval/scripts/policy_eval
 name: PushT Diffusion Policy
 method: grid
-project: pusht_dp
+project: pusht_bc
 metric:
   goal: maximize
   name: validation_reward
 parameters:
   method: 
-    value: "diffusion_policy"
+    value: "bc"
   dataset:
     value: "pusht/chi"
   train_trajectories:
