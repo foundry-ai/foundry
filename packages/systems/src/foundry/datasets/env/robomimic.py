@@ -29,7 +29,7 @@ class RobomimicDataset(EnvDataset[Step]):
     def split(self, name):
         return self._splits.get(name, None)
 
-    def create_env(self):
+    def create_env(self, type="positional", **kwargs):
         from foundry.env.mujoco.robosuite import environments
         from foundry.env.mujoco.robosuite import (
             PositionalControlTransform,
@@ -37,13 +37,17 @@ class RobomimicDataset(EnvDataset[Step]):
             RelKeypointObsTransform
         )
         from foundry.env.transforms import ChainedTransform, MultiStepTransform
+        if type == "keypoint":
+            transform = KeypointObsTransform()
+        elif type == "rel_keypoint":
+            transform = RelKeypointObsTransform()
+        else:
+            transform = PositionalControlTransform()
         env = environments.create(self.env_name)
         env = ChainedTransform([
             PositionalControlTransform(),
             MultiStepTransform(20),
-            #PositionalObsTransform()
-            RelPosObsTransform()
-            #RelKeypointObsTransform()
+            transform
         ]).apply(env)
         return env
 

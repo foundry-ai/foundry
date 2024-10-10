@@ -48,7 +48,7 @@ class Config:
 
     # Dataset configuration
     dataset : str = "pusht/chi" # "robomimic/pickplace/can/ph"
-    env_type : str = "rel_keypoint"
+    env_type : str = "positional"
     train_trajectories : int | None = None
     test_trajectories : int | None = None
     validation_trajectories : int | None = None
