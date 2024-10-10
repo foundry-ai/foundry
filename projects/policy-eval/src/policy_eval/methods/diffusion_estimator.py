@@ -71,7 +71,7 @@ class Estimator(Result):
 @dataclass
 class EstimatorConfig:
     type: str = "nw"
-    kernel_bandwidth: float = 0.01
+    kernel_bandwidth: float = 0.005
     diffusion_steps: int = 50
     relative_actions: bool = False
     action_horizon: int = 16

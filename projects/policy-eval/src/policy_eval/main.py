@@ -52,7 +52,7 @@ class Config:
     test_trajectories : int | None = None
     validation_trajectories : int | None = None
     obs_length: int = 2
-    action_length: int = 8
+    action_length: int = 16
 
     # if evluate is set, contains a url
     # to the policy to evaluate
@@ -61,13 +61,13 @@ class Config:
 
     bucket_url : str | None = "s3://wandb-data"
 
-    render_trajectories : int = 4
+    render_trajectories : int = 16
 
 
-    timesteps: int = 200
+    timesteps: int = 400
 
-    render_width = 128
-    render_height = 128
+    render_width = 32
+    render_height = 32
 
     bc : BCConfig = BCConfig()
     estimator : EstimatorConfig = EstimatorConfig()
