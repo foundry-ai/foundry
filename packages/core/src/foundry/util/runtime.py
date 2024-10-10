@@ -96,9 +96,7 @@ def setup_gc():
 
 def setup():
     jupyter = rich.get_console().is_jupyter
-    cpu_cores = multiprocessing.cpu_count()
     os.environ["WANDB_SILENT"] = "true"
-    os.environ["XLA_FLAGS"] = f"--xla_force_host_platform_device_count={cpu_cores}"
     if jupyter:
         from foundry.util.ipython import setup_rich_notebook_hook
         setup_rich_notebook_hook()

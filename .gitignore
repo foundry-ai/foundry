@@ -6,6 +6,9 @@ checkpoints
 wandb
 requirements.lock
 
+*.png
+*.svg
+
 # aim files
 .aim
 
