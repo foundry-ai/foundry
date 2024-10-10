@@ -48,6 +48,7 @@ class Config:
 
     # Dataset configuration
     dataset : str = "pusht/chi" # "robomimic/pickplace/can/ph"
+    env_type : str = "rel_keypoint"
     train_trajectories : int | None = None
     test_trajectories : int | None = None
     validation_trajectories : int | None = None
@@ -87,6 +88,7 @@ class Config:
     def data_config(self) -> DataConfig:
         return DataConfig(
             dataset=self.dataset,
+            env_type=self.env_type,
             train_trajectories=self.train_trajectories,
             test_trajectories=self.test_trajectories,
             validation_trajectories=self.validation_trajectories,

@@ -21,20 +21,25 @@ class PushTDataset(EnvDataset[Step]):
     def split(self, name) -> SequenceData[Step, None]:
         return self._splits[name]
 
-    def create_env(self, **kwargs):
+    def create_env(self, type="positional", **kwargs):
         from foundry.env.mujoco.pusht import (
             PushTEnv,
             PositionalControlTransform,
             KeypointObsTransform,
+            RelKeypointObsTransform
         )
         from foundry.env.transforms import ChainedTransform, MultiStepTransform
+        if type == "keypoint":
+            transform = KeypointObsTransform()
+        elif type == "rel_keypoint":
+            transform = RelKeypointObsTransform()
+        else:
+            transform = PositionalControlTransform()
         env = PushTEnv()
         env = ChainedTransform([
             PositionalControlTransform(),
             MultiStepTransform(10),
-            #PositionalObsTransform()
-            KeypointObsTransform()
-            #RelKeypointObsTransform()
+            transform
         ]).apply(env)
         return env
 
