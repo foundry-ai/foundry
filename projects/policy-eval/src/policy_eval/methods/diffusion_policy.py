@@ -117,9 +117,9 @@ class DPConfig:
     mlp : MLPConfig = MLPConfig()
     unet : UNetConfig = UNetConfig()
 
-    epochs: int = 10
-    batch_size: int = 64
-    learning_rate: float = 3e-4
+    epochs: int = 200
+    batch_size: int = 256
+    learning_rate: float = 2e-4
     weight_decay: float = 1e-5
 
     diffusion_steps: int = 32

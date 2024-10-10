@@ -1,6 +1,8 @@
 from ..common import Sample, Inputs, Result, DataConfig
 from typing import Callable
 
+import foundry.core as F
+from foundry.core import tree
 from foundry.random import PRNGSequence
 from foundry.policy import Policy, PolicyInput, PolicyOutput
 from foundry.policy.transforms import ChunkingTransform
@@ -35,11 +37,11 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class MLPConfig:
-    net_width: int = 64
+    net_width: int = 4096
     net_depth: int = 3
 
     def create_model(self, rng_key, observations, actions):
-        model = DiffusionMLP(
+        model = MLP(
             features=[self.net_width]*self.net_depth
         )
         vars = F.jit(model.init)(rng_key, observations, actions, jnp.zeros((), dtype=jnp.uint32))
@@ -97,9 +99,9 @@ class BCConfig:
 
     mlp : MLPConfig = MLPConfig()
 
-    epochs: int = 10
-    batch_size: int = 64
-    learning_rate: float = 1e-4
+    epochs: int = 200
+    batch_size: int = 256
+    learning_rate: float = 2e-4
     weight_decay: float = 1e-5
 
     diffusion_steps: int = 32
@@ -150,11 +152,11 @@ class BCConfig:
         ema_state = F.jit(ema.init)(vars)
         ema_update = F.jit(ema.update)
 
-        def loss_fn(vars, rng_key, sample: Sample, iteration):
+        def loss_fn(vars, rng_key, sample: Sample):
             sample_norm = normalizer.normalize(sample)
             obs = sample_norm.observations
             action = sample_norm.actions
-            pred_action = model.apply(vars, obs, action_sample)
+            pred_action = model(vars, rng_key, obs, sample)
             loss = jnp.mean(jnp.square(pred_action - action))
             return train.LossOutput(
                 loss=loss,
@@ -362,8 +364,6 @@ class MLP(nn.Module):
         x = obs_embed
         for feat in self.features:
             x = activation(nn.Dense(feat)(x))
-            if self.has_skip:
-                x = jnp.concatenate((x, obs_flat), axis=-1)
         x = nn.Dense(action_sample_flat.shape[-1])(x)
         # x = jax.nn.tanh(x)
         x = action_sample_uf(x)
