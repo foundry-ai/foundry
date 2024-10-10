@@ -62,8 +62,10 @@ class Config:
 
     bucket_url : str | None = "s3://wandb-data"
 
-    render_trajectories : int = 4
+    render_trajectories : int = 16
 
+
+    timesteps: int = 400
     timesteps: int = 400
 
     render_width : int = 64

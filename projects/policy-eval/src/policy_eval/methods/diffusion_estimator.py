@@ -47,7 +47,7 @@ class Estimator(Result):
             tree.axis_size(train_data.observations, 1),
             tree.axis_size(train_data.actions, 1)
         )
-        if self.action_horizon < action_length:
+        if self.action_horizon > action_length:
             raise ValueError("Action length must be at least action horizon")
         actions_structure = tree.map(
             lambda x: jax.ShapeDtypeStruct(x.shape[1:], x.dtype),
