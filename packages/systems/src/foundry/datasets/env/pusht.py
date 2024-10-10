@@ -25,6 +25,7 @@ class PushTDataset(EnvDataset[Step]):
         from foundry.env.mujoco.pusht import (
             PushTEnv,
             PositionalControlTransform,
+            PositionalObsTransform,
             KeypointObsTransform,
             RelKeypointObsTransform
         )
@@ -34,7 +35,7 @@ class PushTDataset(EnvDataset[Step]):
         elif type == "rel_keypoint":
             transform = RelKeypointObsTransform()
         else:
-            transform = PositionalControlTransform()
+            transform = PositionalObsTransform()
         env = PushTEnv()
         env = ChainedTransform([
             PositionalControlTransform(),
