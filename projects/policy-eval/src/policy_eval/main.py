@@ -51,8 +51,8 @@ class Config:
     train_trajectories : int | None = None
     test_trajectories : int | None = None
     validation_trajectories : int | None = None
-    obs_length: int = 1
-    action_length: int = 16
+    obs_length: int = 2
+    action_length: int = 8
 
     # if evluate is set, contains a url
     # to the policy to evaluate
@@ -223,7 +223,8 @@ def run(config: Config):
         final_policy = final_result.create_policy()
 
         logger.info("Running validation for final policy...")
-        rewards, video = validate_render_fn(eval_key, final_policy)
+        rewards = validate_fn(eval_key, final_policy)
+        _, video = validate_render_fn(eval_key, final_policy)
         mean_reward = jnp.mean(rewards)
         std_reward = jnp.std(rewards)
         outputs = {

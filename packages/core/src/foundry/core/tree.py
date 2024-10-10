@@ -53,6 +53,7 @@ def axis_size(pytree, axes_tree, /) -> int:
 # Pytree raveling utilities
 
 from jax.flatten_util import ravel_pytree
+from jax.flatten_util import ravel_pytree as ravel
 
 def ravel_pytree_structure(pytree):
     leaves, treedef = jax.tree_util.tree_flatten(pytree)
@@ -70,6 +71,8 @@ def ravel_pytree_structure(pytree):
         nodes = unravel_to_list(x)
         return jax.tree_util.tree_unflatten(treedef, nodes)
     return jax.ShapeDtypeStruct((total_elems,), type), unravel_to_pytree
+
+ravel_structure = ravel_pytree_structure
 
 def _key_str(key):
     if isinstance(key, jax.tree_util.DictKey):

@@ -122,7 +122,7 @@ class DPConfig:
     learning_rate: float = 1e-4
     weight_decay: float = 1e-5
 
-    diffusion_steps: int = 50
+    diffusion_steps: int = 32
     action_horizon: int = 8
     
     save_dir: str | None = None
@@ -212,7 +212,7 @@ class DPConfig:
                     # print(step.batch.observations)
                     # print(step.batch.actions)
                     # *note*: consumes opt_state, vars
-                    train_rng, test_rng = jax.random.split(step.rng_key)
+                    train_rng, test_rng, val_rng = jax.random.split(step.rng_key, 3)
                     opt_state, vars, metrics = train.step(
                         batched_loss_fn, optimizer, opt_state, vars, 
                         train_rng, step.batch,
@@ -232,6 +232,16 @@ class DPConfig:
                     if step.iteration % 100 == 0:
                         train.console.log(step.iteration, metrics, 
                                           prefix="train.")
+                    if step.iteration % 1000 == 0:
+                        rewards, video = inputs.validate_render(val_rng, make_checkpoint().create_policy())
+                        reward_metrics = {
+                            "mean_reward": jnp.mean(rewards),
+                            "std_reward": jnp.std(rewards),
+                            "demonstrations": video
+                        }
+                        train.console.log(step.iteration, reward_metrics, prefix="eval.")
+                        train.wandb.log(step.iteration, reward_metrics,
+                                        run=inputs.wandb_run, prefix="eval/")
             # log the last iteration
             if step.iteration % 100 != 0:
                 train.console.log(step.iteration, metrics)
