@@ -131,7 +131,8 @@ class Result:
         path = Path(path)
         foundry.util.serialize.save_zarr(path, self, None)
     
-    def save_s3(self, s3_client, s3_url : str):
+    def save_s3(self, s3_url : str):
+        s3_client = boto3.client("s3")
         parsed = urllib.parse.urlparse(s3_url)
         assert parsed.scheme == "s3"
         bucket = parsed.netloc
@@ -148,13 +149,14 @@ class Result:
         return result
     
     @staticmethod
-    def load_s3(s3_client, s3_url : str):
+    def load_s3(s3_url : str):
+        s3_client = boto3.client("s3")
         parsed = urllib.parse.urlparse(s3_url)
         assert parsed.scheme == "s3"
         bucket = parsed.netloc
         key = parsed.path.lstrip("/")
         with tempfile.TemporaryDirectory() as tmpdirname:
-            path = Path(tmpdirname) / "result.zarr"
+            path = Path(tmpdirname) / "result.zarr.zip"
             s3_client.download_file(bucket, key, path)
             return Result.load(path)
 

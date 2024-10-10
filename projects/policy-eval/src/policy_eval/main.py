@@ -204,8 +204,6 @@ def run(config: Config):
     )
     method : MethodConfig = config.method_config
 
-    s3_client = boto3.client("s3")
-
     if config.evaluate:
         pass
     else:
@@ -244,8 +242,8 @@ def run(config: Config):
         })
         if inputs.bucket_url is not None:
             final_result_url = f"{inputs.bucket_url}/final_result.zarr"
-            final_result.save_s3(s3_client, final_result_url)
-            artifact = wandb.Artifact(f"final_result-{wandb_run.id}", type="policy")
+            final_result.save_s3(final_result_url)
+            artifact = wandb.Artifact(f"final_result", type="policy")
             artifact.add_reference(final_result_url)
             wandb_run.log_artifact(artifact)
 

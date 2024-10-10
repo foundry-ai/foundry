@@ -1,4 +1,4 @@
-from ..common import Sample, Inputs, MethodConfig, Result
+from ..common import Sample, Inputs, Result, DataConfig
 
 import foundry.core as F
 import foundry.random
@@ -31,8 +31,6 @@ from foundry.models.unet import UNet
 import jax
 import foundry.numpy as jnp
 import logging
-import pickle
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +68,7 @@ class UNetConfig:
 
 @dataclass
 class Checkpoint(Result):
+    data: DataConfig # dataset this model was trained on
     observations_structure: tuple[int]
     actions_structure: tuple[int]
     action_horizon: int
@@ -82,8 +81,17 @@ class Checkpoint(Result):
 
     vars: Vars
 
+    def create_denoiser(self):
+        model, _ = self.model_config.create_model(foundry.random.key(42), 
+            self.observations_structure,
+            self.actions_structure
+        )
+        return lambda obs, rng_key, noised_actions, t: model(
+            self.vars, rng_key, obs, noised_actions, t - 1
+        )
+
     def create_policy(self) -> Policy:
-        model, sample_vars = self.model_config.create_model(foundry.random.key(42), 
+        model, _ = self.model_config.create_model(foundry.random.key(42), 
             self.observations_structure,
             self.actions_structure
         )
@@ -132,8 +140,8 @@ class DPConfig:
     
     def run(self, inputs: Inputs):
         _, data = inputs.data.load({"train", "test"})
-        train_data = data["train"]
-        test_data = data["test"]
+        train_data = data["train"].cache()
+        test_data = data["test"].cache()
 
         schedule = DDPMSchedule.make_squaredcos_cap_v2(
             self.diffusion_steps,
@@ -178,6 +186,7 @@ class DPConfig:
         
         def make_checkpoint() -> Checkpoint:
             return Checkpoint(
+                data=inputs.data,
                 observations_structure=observations_structure,
                 actions_structure=actions_structure,
                 action_horizon=self.action_horizon,
@@ -209,20 +218,20 @@ class DPConfig:
                         train_rng, step.batch,
                     )
                     _, ema_state = ema_update(vars, ema_state)
-                    if step.iteration % 100 == 0:
-                        train.console.log(step.iteration, metrics, 
-                                          prefix="train.")
-                        train.wandb.log(step.iteration, metrics, run=inputs.wandb_run, 
-                                        prefix="train/")
-
-                    if step.iteration % 1000 == 0:
+                    train.wandb.log(step.iteration, metrics, 
+                                    run=inputs.wandb_run, prefix="train/")
+                    if step.iteration % 50 == 0:
                         test_stream, test_metrics = train.eval_stream(
                             batched_loss_fn, vars, 
                             test_rng, test_stream
                         )
-                        train.console.log(step.iteration, test_metrics, prefix="test.")
                         train.wandb.log(step.iteration, test_metrics, 
                                         run=inputs.wandb_run, prefix="test/")
+                        if step.iteration % 100 == 0:
+                            train.console.log(step.iteration, test_metrics, prefix="test.")
+                    if step.iteration % 100 == 0:
+                        train.console.log(step.iteration, metrics, 
+                                          prefix="train.")
             # log the last iteration
             if step.iteration % 100 != 0:
                 train.console.log(step.iteration, metrics)

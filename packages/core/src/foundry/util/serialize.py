@@ -14,6 +14,8 @@ from typing import Any, Type
 from pathlib import Path, PurePath
 
 def _fq_import(module, name):
+    if module == "builtins" and name == "NoneType":
+        return type(None)
     module = importlib.import_module(module)
     subpaths = name.split('.')
     value = module
@@ -26,23 +28,27 @@ import dataclasses as _dcls
 def _encode_json(aux):
     def aux_to_json(aux):
         if isinstance(aux, np.ndarray):
-            return {"type": "ndarray", 
+            return {"__tree_type__": "ndarray", 
                     "shape": aux.shape, "dtype": str(aux.dtype),
                     "data": aux.tolist()}
         if isinstance(aux, jax.ShapeDtypeStruct):
-            return {"type": "shape_dtype_struct",
+            return {"__tree_type__": "shape_dtype_struct",
                     "shape": aux.shape, "dtype": str(aux.dtype)}
         return aux
     return jax.tree.map(aux_to_json, aux)
 
 def _decode_json(aux):
     def json_to_aux(aux):
-        if aux.get("type", None) == "ndarray":
-            return np.array(aux["data"], dtype=aux["dtype"])
-        if aux.get("type", None) == "shape_dtype_struct":
-            return jax.ShapeDtypeStruct(aux["shape"], aux["dtype"])
+        if isinstance(aux, dict) and "__tree_type__" in aux:
+            tree_type = aux.get("__tree_type__")
+            if tree_type == "ndarray":
+                return np.array(aux["data"], dtype=aux["dtype"])
+            if tree_type == "shape_dtype_struct":
+                return jax.ShapeDtypeStruct(aux["shape"], aux["dtype"])
         return aux
-    return jax.tree.map(json_to_aux, aux)
+    return jax.tree.map(json_to_aux, aux,
+        is_leaf=lambda x: isinstance(x, dict) and
+            aux.get("__tree_type__", None) is not None)
 
 @_dcls.dataclass
 class TreeDef:
