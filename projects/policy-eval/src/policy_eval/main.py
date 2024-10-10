@@ -53,7 +53,7 @@ class Config:
     test_trajectories : int | None = None
     validation_trajectories : int | None = None
     obs_length: int = 2
-    action_length: int = 8
+    action_length: int = 16
 
     # if evluate is set, contains a url
     # to the policy to evaluate
@@ -64,11 +64,10 @@ class Config:
 
     render_trajectories : int = 4
 
+    timesteps: int = 400
 
-    timesteps: int = 200
-
-    render_width = 128
-    render_height = 128
+    render_width = 64
+    render_height = 64
 
     bc : BCConfig = BCConfig()
     estimator : EstimatorConfig = EstimatorConfig()
