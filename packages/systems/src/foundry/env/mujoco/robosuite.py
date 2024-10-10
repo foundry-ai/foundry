@@ -221,7 +221,7 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
                 ])
             )
         elif isinstance(config, EEfPose):
-            return jnp.concatenate([data.site_xpos[eef_id, :], data.site_xmat[eef_id, :], grip_qpos])
+            return jnp.concatenate([data.site_xpos[eef_id, :], mat_to_quat(data.site_xmat[eef_id, :].reshape(3,3)), grip_qpos])
         else:
             raise ValueError(f"Unsupported observation type {config}")
 
@@ -307,7 +307,7 @@ class NutAssembly(RobosuiteEnv[SimulatorState]):
                 ])
             )
         elif isinstance(config, EEfPose):
-            return jnp.concatenate([data.site_xpos[eef_id, :], data.site_xmat[eef_id, :], grip_qpos])
+            return jnp.concatenate([data.site_xpos[eef_id, :], mat_to_quat(data.site_xmat[eef_id, :].reshape(3,3)), grip_qpos])
         else:
             raise ValueError("Unsupported observation type")
 
@@ -411,8 +411,9 @@ class PositionalControlEnv(EnvWrapper):
         if action is not None:
             action = jnp.squeeze(action)
             action_pos = action[0:3]
-            action_ori_mat = action[3:12].reshape([3,3])
-            grip_action = action[12:14]
+            action_quat = action[3:7]
+            action_ori_mat = quat_to_mat(action_quat)
+            grip_action = action[7:9]
             #print(action_pos.shape, action_ori_mat.shape, grip_action.shape)
             data = self.simulator.system_data(state)
             robot = self._model_initializers[1][0]
@@ -479,8 +480,10 @@ class PositionalObsEnv(EnvWrapper):
         obs = self.base.observe(state, TaskObservation())
         return ManipulationTaskPosObs(
             eef_pos=obs.eef_pos,
+            #eef_quat = obs.eef_quat,
             eef_ori=mat_to_euler(obs.eef_ori_mat),
             object_pos=obs.object_pos,
+            #object_quat=obs.object_quat,
             object_ori=mat_to_euler(quat_to_mat(obs.object_quat)),
             grip_qpos=obs.grip_qpos
         )
@@ -498,6 +501,7 @@ class RelPosObsEnv(EnvWrapper):
             object_pos=obs.object_pos,
             eef_obj_rel_ori=mat_to_euler(quat_to_mat(obs.object_quat)) - mat_to_euler(obs.eef_ori_mat),
             #eef_ori=mat_to_euler(obs.eef_ori_mat),
+
             object_ori=mat_to_euler(quat_to_mat(obs.object_quat)),
             #eef_quat=mat_to_quat(obs.eef_ori_mat),
             #eef_ori_mat=obs.eef_ori_mat,
