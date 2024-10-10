@@ -197,7 +197,8 @@ def run(config: Config):
         config.render_width, config.render_height,
         None, validation_data
     )
-    num_render_trajectories = (config.render_trajectories 
+    num_render_trajectories = (
+        config.render_trajectories 
         if config.render_trajectories is not None else
         min(4, N_validation)
     )
@@ -227,16 +228,19 @@ def run(config: Config):
         final_policy = final_result.create_policy()
 
         logger.info("Running validation for final policy...")
-        rewards = validate_fn(eval_key, final_policy)
-        _, video = validate_render_fn(eval_key, final_policy)
+        rewards, video = validate_render_fn(eval_key, final_policy)
         mean_reward = jnp.mean(rewards)
         std_reward = jnp.std(rewards)
+        q = jnp.array([0, 10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 100])
+        quantiles = jnp.percentile(rewards, q) 
         outputs = {
-            "mean_reward": mean_reward,
-            "std_reward": std_reward,
+            "reward_mean": mean_reward,
+            "reward_std": std_reward,
+            "reward_quant": {
+                f"{q:03}": v for (q, v) in zip(q, quantiles)
+            },
             "final_validation_demonstrations": video
         }
-
         metrics, reportables = foundry.train.reporting.as_log_dict(outputs)
         for k, v in metrics.items():
             logger.info(f"{k}: {v}")
