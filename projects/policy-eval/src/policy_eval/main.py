@@ -66,9 +66,10 @@ class Config:
 
 
     timesteps: int = 400
+    timesteps: int = 400
 
-    render_width = 32
-    render_height = 32
+    render_width = 64
+    render_height = 64
 
     bc : BCConfig = BCConfig()
     estimator : EstimatorConfig = EstimatorConfig()
