@@ -36,6 +36,7 @@ class Sample:
 @dataclass
 class DataConfig:
     dataset: str
+    env_type: str # usually "positional", "keypoint", or "rel_keypoint"
     train_trajectories: int | None
     test_trajectories: int | None
     validation_trajectories: int | None
@@ -77,7 +78,7 @@ class DataConfig:
         datasets = DatasetRegistry[EnvDataset]()
         foundry.datasets.env.register_all(datasets)
         dataset = datasets.create(self.dataset)
-        env = dataset.create_env()
+        env = dataset.create_env(type=self.env_type)
         loaded_splits = {}
         if "train" in splits:
             logger.info(f"Loaded training data from [blue]{self.dataset}[/blue]")

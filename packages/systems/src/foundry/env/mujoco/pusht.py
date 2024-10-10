@@ -322,27 +322,3 @@ class RelKeypointObsEnv(EnvWrapper):
             rel_block_pos=obs.block_pos - self.goal_pos,
             rel_block_end=end - goal_end,
         )
-
-def _make_positional(**kwargs):
-    env = PushTEnv(**kwargs)
-    return ChainedTransform([
-        PositionalControlTransform(),
-        MultiStepTransform(10),
-        PositionalObsTransform()
-    ]).apply(env)
-
-def _make_keypoint(**kwargs):
-    env = PushTEnv(**kwargs)
-    return ChainedTransform([
-        PositionalControlTransform(),
-        MultiStepTransform(10),
-        KeypointObsTransform()
-    ]).apply(env)
-
-def _make_rel_keypoint(**kwargs):
-    env = PushTEnv(**kwargs)
-    return ChainedTransform([
-        PositionalControlTransform(),
-        MultiStepTransform(10),
-        RelKeypointObsTransform()
-    ]).apply(env)

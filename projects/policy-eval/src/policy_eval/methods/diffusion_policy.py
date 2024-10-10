@@ -119,7 +119,7 @@ class DPConfig:
 
     epochs: int = 10
     batch_size: int = 64
-    learning_rate: float = 1e-4
+    learning_rate: float = 3e-4
     weight_decay: float = 1e-5
 
     diffusion_steps: int = 32
@@ -168,7 +168,13 @@ class DPConfig:
         total_iterations = self.epochs * epoch_iterations
 
         # initialize optimizer, EMA
-        optimizer = optax.adamw(self.learning_rate, weight_decay=self.weight_decay)
+        opt_schedule = optax.warmup_cosine_decay_schedule(
+            self.learning_rate/10, self.learning_rate,
+            min(int(total_iterations*0.01), 500), total_iterations
+        )
+        optimizer = optax.adamw(opt_schedule,
+            weight_decay=self.weight_decay
+        )
         opt_state = F.jit(optimizer.init)(vars["params"])
         ema = optax.ema(0.9)
         ema_state = F.jit(ema.init)(vars)
@@ -194,7 +200,7 @@ class DPConfig:
                 schedule=schedule,
                 obs_normalizer=normalizer.map(lambda x: x.observations),
                 action_normalizer=normalizer.map(lambda x: x.actions),
-                vars=vars
+                vars=ema_state.ema
             )
 
         batched_loss_fn = train.batch_loss(loss_fn)
@@ -218,7 +224,8 @@ class DPConfig:
                         train_rng, step.batch,
                     )
                     _, ema_state = ema_update(vars, ema_state)
-                    train.wandb.log(step.iteration, metrics, 
+                    lr = opt_schedule(step.iteration).item()
+                    train.wandb.log(step.iteration, metrics, {"lr": lr},
                                     run=inputs.wandb_run, prefix="train/")
                     if step.iteration % 50 == 0:
                         test_stream, test_metrics = train.eval_stream(
