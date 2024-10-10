@@ -379,8 +379,8 @@ class ManipulationTaskPosObs:
 
 @dataclass
 class PositionalControlTransform(EnvTransform):
-    k_p : jax.Array = jnp.array([1500]*6) # (6,) -- [0:3] corresponds to position, [3:6] corresponds to orientation
-    k_d : jax.Array = jnp.array([240]*6) # (6,) -- [0:3] corresponds to position, [3:6] corresponds to orientation
+    k_p : jax.Array = field(default_factory=lambda:jnp.array([1500]*6)) # (6,) -- [0:3] corresponds to position, [3:6] corresponds to orientation
+    k_d : jax.Array = field(default_factory=lambda:jnp.array([240]*6)) # (6,) -- [0:3] corresponds to position, [3:6] corresponds to orientation
 
     def apply(self, env):
         return PositionalControlEnv(env, self.k_p, self.k_d)

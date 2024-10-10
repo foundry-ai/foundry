@@ -105,5 +105,3 @@ def setup():
     setup_logger(False)
     setup_jax_cache()
     setup_gc()
-    import wandb
-    wandb.require("core")

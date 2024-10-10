@@ -6,9 +6,9 @@ authors = [
     {name = "Daniel Pfrommer", email = "dan.pfrommer@gmail.com"},
 ]
 dependencies = [
-    "foundry-core",
-    "foundry-systems",
-    "foundry-models",
+    "foundry-core @ file:///${PROJECT_ROOT}/../../packages/core",
+    "foundry-systems @ file:///${PROJECT_ROOT}/../../packages/systems",
+    "foundry-models @ file:///${PROJECT_ROOT}/../../packages/models",
     "omegaconf >= 2.3",
     "wandb >= 0.17"
 ]

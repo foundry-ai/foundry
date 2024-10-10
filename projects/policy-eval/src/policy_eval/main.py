@@ -31,7 +31,6 @@ from .methods.nearest_neighbor import NearestConfig
 
 from .common import DataConfig, Inputs, MethodConfig
 
-from omegaconf import MISSING
 from functools import partial
 
 import functools

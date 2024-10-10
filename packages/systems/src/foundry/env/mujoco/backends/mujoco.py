@@ -125,13 +125,14 @@ class MujocoSimulator(Simulator[SystemData]):
 
         # the unbatched argument structure
         # and the arguments
-        args_structure = (tree.map(lambda _, y: y, step, self.step_structure),) + tuple(args_structure)
+        args_structure = (tree.map(lambda _, y: y, step, self.step_structure, is_leaf=lambda x: x is None),) + tuple(args_structure)
         args = (step,) + tuple(args)
 
         # the batch shapes of the arguments
         batch_shapes = tree.leaves(tree.map(
-            lambda x, y: jax.ShapeDtypeStruct(jnp.shape(x)[:-y.ndim] if y.ndim > 0 else jnp.shape(x), x.dtype),
-            args, args_structure
+            lambda x, y: None if x is None else jax.ShapeDtypeStruct(jnp.shape(x)[:-y.ndim] if y.ndim > 0 else jnp.shape(x), x.dtype),
+            args, args_structure,
+            is_leaf=lambda x: x is None
         ))
         batch_shapes = [s.shape for s in batch_shapes]
 
@@ -142,8 +143,9 @@ class MujocoSimulator(Simulator[SystemData]):
             batch_shape = max(batch_shapes, key=lambda x: len(x))
             N = math.prod(batch_shape)
             args = tree.map(
-                lambda x, y: jnp.broadcast_to(x, batch_shape + y.shape).reshape((N,) + y.shape), 
-                args, args_structure
+                lambda x, y: None if x is None else jnp.broadcast_to(x, batch_shape + y.shape).reshape((N,) + y.shape), 
+                args, args_structure,
+                is_leaf=lambda x: x is None
             )
             results = self.pool.map(run_job, (tree.map(lambda x: np.array(x[i]), args) for i in range(N)))
             results = tree.map(lambda *x: jnp.stack(x, axis=0), *results)

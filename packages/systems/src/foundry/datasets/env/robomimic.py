@@ -21,9 +21,13 @@ from foundry.datasets.util import download, cache_path
 
 @dataclass
 class RobomimicDataset(EnvDataset[Step]):
+    _splits: dict[str, SequenceData[Step, None]]
     task: str = None
     dataset_type: str = None
     env_name: str = None
+
+    def split(self, name):
+        return self._splits.get(name, None)
 
     def create_env(self):
         from foundry.env.mujoco.robosuite import environments
@@ -188,7 +192,7 @@ def load_robomimic(*, name=None, dataset_type=None, quiet=False, **kwargs):
     test = data.slice(len(data) - 16, 16)
     validation = data.slice(len(data) - 32, 16)
     return RobomimicDataset(
-        splits={
+        _splits={
             "train": train, "test": test, 
             "validation": validation
         },
