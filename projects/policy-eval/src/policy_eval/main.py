@@ -66,8 +66,8 @@ class Config:
 
     timesteps: int = 400
 
-    render_width = 64
-    render_height = 64
+    render_width : int = 64
+    render_height : int = 64
 
     bc : BCConfig = BCConfig()
     estimator : EstimatorConfig = EstimatorConfig()
@@ -146,7 +146,8 @@ def validate(env, T, render_width, render_height,
     video_rollouts = tree.map(
         lambda x: x[:num_videos], rollouts
     )
-    videos = F.vmap(render_fn)(video_rollouts)
+    import jax.lax
+    videos = jax.lax.map(render_fn, video_rollouts)
     # vmap over the frames axis
     videos = F.vmap(graphics.image_grid, in_axes=1, out_axes=0)(videos)
     return rewards, Video(videos, fps=10)
