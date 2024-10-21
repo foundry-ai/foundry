@@ -1,23 +1,25 @@
 """
-A simple functional API for creating and manipulating 2D geometries 
+A simple functional API for creating and manipulating 2D geometries
 and rasterizing them onto a canvas.
 """
 from foundry.core.dataclasses import dataclass, field
+from foundry.core.typing import Array, ArrayLike
 from functools import partial
 
+import foundry.core as F
 import foundry.numpy as jnp
 import jax
 import math
 
 from . import sanitize_color
 
-from typing import List
+from typing import Sequence, Self
 
 class Geometry:
     @property
-    def aabb(self): ...
+    def aabb(self) -> "Box": ...
 
-    def signed_distance(self, x): ...
+    def signed_distance(self, x) -> Array: ...
 
     def fill(self, color):
         color = sanitize_color(color)
@@ -37,10 +39,10 @@ class Box(Geometry):
     bottom_right: jnp.ndarray
 
     @property
-    def aabb(self):
+    def aabb(self) -> "Box":
         return self
-    
-    def signed_distance(self, x):
+
+    def signed_distance(self, x) -> Array:
         left = -(x[0] - self.top_left[0])
         right = x[0] - self.bottom_right[0]
         top = -(x[1] - self.top_left[1])
@@ -48,7 +50,7 @@ class Box(Geometry):
         hor = jnp.maximum(left, right)
         ver = jnp.maximum(top, bot)
         return jnp.maximum(hor, ver)
-    
+
     def intersects(self, other):
         return jnp.logical_not(
             jnp.logical_or(
@@ -78,7 +80,7 @@ class Polygon(Geometry):
     def signed_distance(self, x):
         edges = jnp.roll(self.vertices,1,axis=0) - self.vertices
         rot_edges = jnp.stack(
-            (-edges[:,1], edges[:,0]), 
+            (-edges[:,1], edges[:,0]),
             axis=-1
         )
         rot_edges = rot_edges / jnp.linalg.norm(rot_edges, axis=-1, keepdims=True)
@@ -93,8 +95,8 @@ import optax
 
 @dataclass
 class Circle(Geometry):
-    center: jnp.ndarray
-    radius: float
+    center: Array
+    radius: Array
 
     @property
     def aabb(self):
@@ -103,7 +105,7 @@ class Circle(Geometry):
             bottom_right=self.center + self.radius
         )
 
-    def signed_distance(self, x):
+    def signed_distance(self, x) -> Array:
         d = optax.safe_norm(x - self.center, 1e-3)
         return d - self.radius
 
@@ -137,7 +139,7 @@ def segment(a, b, thickness=1.):
 
 @dataclass
 class Union(Geometry):
-    geometries: List[Geometry]
+    geometries: Sequence[Geometry]
 
     @property
     def aabb(self):
@@ -226,9 +228,9 @@ class Renderable:
     def aabb(self):
         raise NotImplementedError()
 
-    def color_distance(self, x, pixel_metric_hessian):
+    def color_distance(self, x, pixel_metric_hessian) -> tuple[Array, Array]:
         raise NotImplementedError()
-    
+
     def rasterize(self, canvas, offset=None):
         coords_y = jnp.linspace(0, canvas.shape[0], num=canvas.shape[0])
         coords_x = jnp.linspace(0, canvas.shape[1], num=canvas.shape[1])
@@ -261,14 +263,14 @@ def paint(canvas, *renderables):
 @dataclass
 class Fill(Renderable):
     geometry: Geometry
-    color: jnp.ndarray # must have 4 channels
+    color: Array # must have 4 channels
 
     @property
     def aabb(self):
         return self.geometry.aabb
 
     @jax.jit
-    def color_distance(self, x, pixel_metric_hessian):
+    def color_distance(self, x, pixel_metric_hessian) -> tuple[Array, Array]:
         dist = self.geometry.signed_distance(x)
         return dist, self.color
 
@@ -278,12 +280,12 @@ def fill(geometry, color=jnp.array([0.,0.,0.,1.], dtype=jnp.float32)):
 
 @dataclass
 class Stack(Renderable):
-    renderables: List[Renderable]
+    renderables: Sequence[Renderable]
 
     @property
     def aabb(self):
         return self.geometry.aabb
-    
+
     def color_distance(self, x, pixel_metric_hessian):
         if len(self.renderables) == 0:
             return jnp.inf, jnp.zeros(4)
@@ -291,7 +293,7 @@ class Stack(Renderable):
         s_colors = []
         grads = []
         for g in self.renderables:
-            #(s_dist, s_color), grad = jax.value_and_grad(g.color_distance, 
+            #(s_dist, s_color), grad = jax.value_and_grad(g.color_distance,
             #                                has_aux=True, argnums=0)(x, pixel_metric_hessian)
             s_dist, s_color = g.color_distance(x, pixel_metric_hessian)
             dists.append(s_dist)
@@ -327,8 +329,8 @@ class BatchStack(Renderable):
             bottom_right=jnp.max(aabs.bottom_right, axis=0)
         )
 
-    @jax.jit
-    def color_distance(self, x, pixel_metric_hessian):
+    @F.jit
+    def color_distance(self, x, pixel_metric_hessian) -> tuple[Array, Array]:
         #func = lambda g: jax.value_and_grad(g.color_distance, has_aux=True, argnums=0)(x, pixel_metric_hessian)
         #(dists, colors), grads = jax.vmap(func)(self.renderables)
         dists, colors = jax.vmap(lambda g: g.color_distance(x, pixel_metric_hessian))(self.renderables)
@@ -348,15 +350,15 @@ def stack_batch(renderables):
 class TransformedRenderable(Renderable):
     renderable: Renderable
 
-    scale: jnp.ndarray
-    rotation: float
-    translation: jnp.ndarray
+    scale: ArrayLike
+    rotation: ArrayLike
+    translation: ArrayLike
 
     @property
     def aabb(self):
         raise NotImplementedError()
-    
-    @jax.jit
+
+    @F.jit
     def color_distance(self, x, pixel_metric_hessian):
         def _transform(x, pixel_metric_hessian):
             if self.scale is not None:

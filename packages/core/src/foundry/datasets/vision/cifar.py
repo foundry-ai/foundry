@@ -6,7 +6,7 @@ import pickle
 from foundry.data import PyTreeData, Data
 from foundry.data import normalizer as nu
 from foundry.core.dataclasses import dataclass
-from foundry.core import ShapeDtypeStruct
+from foundry.core import ShapeDtypeStruct, Array
 
 from . import ImageClassDataset, LabeledImage
 from ..util import download, extract, cache_path
@@ -28,8 +28,8 @@ def _read_batch(file):
 class CIFARDataset(ImageClassDataset):
     _splits : dict[str, PyTreeData[LabeledImage]]
     _classes : list[str]
-    _mean : jnp.ndarray
-    _std : jnp.ndarray
+    _mean : Array
+    _std : Array
 
     @property
     def classes(self) -> list[str]:
@@ -37,7 +37,7 @@ class CIFARDataset(ImageClassDataset):
 
     def split(self, name) -> Data[LabeledImage]:
         return self._splits[name]
-    
+
     def augmentations(self, name) -> Transform[LabeledImage, LabeledImage]:
         if name == "classifier":
             def classifier_augmentation(rng_key, sample : LabeledImage) -> LabeledImage:
@@ -54,7 +54,7 @@ class CIFARDataset(ImageClassDataset):
                 return LabeledImage(pixels, sample.label)
             return generator_augmentation
         return None
-    
+
     def normalizer(self, name) -> nu.Normalizer[LabeledImage]:
         if name == "hypercube":
             return nu.Compose(

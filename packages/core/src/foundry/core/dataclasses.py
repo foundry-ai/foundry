@@ -2,9 +2,11 @@ import dataclasses as dcls
 import functools
 import jax
 
+import typing
+
 from jax.tree_util import GetAttrKey
 
-from dataclasses import MISSING, fields, field, replace
+from dataclasses import MISSING, field, replace
 
 def fields(cls):
     return dcls.fields(cls)
@@ -29,6 +31,7 @@ def _register_dataclass(nodetype, fields):
         unflatten_func, flatten_func
     )
 
+@typing.dataclass_transform()
 def dataclass(cls=None, frozen=True, **kwargs):
     if cls is None:
         return functools.partial(dataclass, frozen=frozen, **kwargs)
