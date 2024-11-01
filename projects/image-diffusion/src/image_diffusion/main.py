@@ -26,6 +26,7 @@ import functools
 import boto3
 import urllib
 import tempfile
+import jax
 
 import logging
 logger = logging.getLogger("image_diffusion")
@@ -68,6 +69,7 @@ def run(config: Config):
     logger.setLevel(logging.DEBUG)
     logger.info(f"Running with config: {config}")
     rng = PRNGSequence(config.seed)
+    logger.info(f"Devices: {jax.devices()}")
 
     wandb_run = wandb.init(
         project="image-diffusion",
@@ -135,19 +137,19 @@ def run(config: Config):
             loss=loss, metrics={"loss": loss}
         )
 
-    @F.jit
-    def test_loss(vars, rng_key, sample):
-        sample = normalizer.normalize(sample)
-        label = sample.label if hasattr(sample, "label") else None
-        cond_diffuser = functools.partial(diffuser, vars, label)
-        Ts = range(1, config.timesteps + 1, config.timesteps // 10)
-        rngs = foundry.random.split(rng_key, len(Ts))
-        losses = F.vmap(schedule.loss, in_axes=(0, None, None, 0))(rngs, cond_diffuser, sample.pixels, jnp.array(Ts))
-        metrics = {f"loss_t_{t}": l for t, l in zip(Ts, losses)}
-        loss = jnp.mean(losses)
-        return foundry.train.LossOutput(
-            loss, metrics=metrics
-        )
+    # @F.jit
+    # def test_loss(vars, rng_key, sample):
+    #     sample = normalizer.normalize(sample)
+    #     label = sample.label if hasattr(sample, "label") else None
+    #     cond_diffuser = functools.partial(diffuser, vars, label)
+    #     Ts = range(1, config.timesteps + 1, config.timesteps // 10)
+    #     rngs = foundry.random.split(rng_key, len(Ts))
+    #     losses = F.vmap(schedule.loss, in_axes=(0, None, None, 0))(rngs, cond_diffuser, sample.pixels, jnp.array(Ts))
+    #     metrics = {f"loss_t_{t}": l for t, l in zip(Ts, losses)}
+    #     loss = jnp.mean(losses)
+    #     return foundry.train.LossOutput(
+    #         loss, metrics=metrics
+    #     )
 
     @F.jit
     def generate_samples(vars, rng_key) -> LabeledImage:
@@ -166,7 +168,7 @@ def run(config: Config):
         return foundry.graphics.image_grid(samples)
 
     batch_loss = foundry.train.batch_loss(loss)
-    batch_test_loss = foundry.train.batch_loss(test_loss)
+    batch_test_loss = foundry.train.batch_loss(loss)
 
     train_stream = train_data.stream().shuffle(next(rng)).batch(config.batch_size)
     test_stream = test_data.stream().batch(2*config.batch_size)
@@ -201,13 +203,13 @@ def run(config: Config):
                         step.iteration, test_metrics, 
                         run=wandb_run, prefix="test/"
                     )
+                    foundry.train.console.log(
+                        step.iteration, test_metrics, prefix="test."
+                    )
                     foundry.train.wandb.log(
                         step.iteration,
                         {"images": Image(image)},
                         run=wandb_run, prefix="generated/"
-                    )
-                    foundry.train.console.log(
-                        step.iteration, test_metrics, prefix="test."
                     )
     checkpoint = Checkpoint(
         config=ModelConfig(model=config.model),
