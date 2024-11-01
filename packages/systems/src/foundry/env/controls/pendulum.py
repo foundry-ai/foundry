@@ -11,7 +11,7 @@ import foundry.canvas as canvas
 from foundry.policy import PolicyInput
 from foundry.policy.mpc import MPC
 
-class State(NamedTuple):
+class PendulumState(NamedTuple):
     angle: jnp.ndarray
     vel: jnp.ndarray
 
@@ -19,7 +19,11 @@ class State(NamedTuple):
 class PendulumEnv(Environment):
     sub_steps : int = 1
     dt : float = 0.2
-    target_goal : State = State(angle=jnp.array([math.pi]), vel=jnp.array([0]))
+    target_goal : PendulumState = field(
+        default_factory=lambda: PendulumState(
+            angle=jnp.array([math.pi]), vel=jnp.array([0])
+        )
+    )
 
     def sample_action(self, rng_key):
         return jax.random.uniform(
@@ -34,18 +38,18 @@ class PendulumEnv(Environment):
         angle = jax.random.uniform(k1, shape=(1,), 
                     minval=-2, maxval=2*math.pi + 2)
         vel = jax.random.uniform(k2, shape=(1,), minval=-2, maxval=2)
-        return State(angle, vel)
+        return PendulumState(angle, vel)
 
     def reset(self, key):
         # pick random position between +/- radians from center
         angle = jax.random.uniform(key,shape=(1,), minval=-1,maxval=+1)
         vel = jnp.zeros((1,))
-        return State(angle, vel)
+        return PendulumState(angle, vel)
 
     def step(self, state, action, rng_key):
         angle = state.angle + self.dt*state.vel
         vel = 0.99*state.vel - self.dt*self.dt/2*jnp.sin(state.angle) + self.dt*action
-        state = State(angle, vel)
+        state = PendulumState(angle, vel)
         return state
     
     # def observe(self, state):
@@ -80,8 +84,7 @@ class PendulumEnv(Environment):
         # reward of 1 == perfect
         return jnp.exp(10*total)/10
 
-    def render(self, state, *, width=256, height=256, mode="image",
-                        state_trajectory=None, **kwargs):
+    def render(self, state):
         if mode == "image":
             image = jnp.ones((width, height, 3))
             pos = jnp.stack((jnp.sin(state.angle), jnp.cos(state.angle)))

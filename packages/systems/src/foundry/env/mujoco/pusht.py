@@ -322,3 +322,6 @@ class RelKeypointObsEnv(EnvWrapper):
             rel_block_pos=obs.block_pos - self.goal_pos,
             rel_block_end=end - goal_end,
         )
+
+def register_all(registry, prefix=None):
+    registry.register("pusht", PushTEnv, prefix=prefix)

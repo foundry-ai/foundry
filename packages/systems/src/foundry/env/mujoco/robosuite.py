@@ -526,49 +526,39 @@ class RelKeypointObsEnv(EnvWrapper):
             grip_qpos=obs.grip_qpos
         )
 
-environments = EnvironmentRegistry[RobosuiteEnv]()
 
-# Pick and place environments
-environments.register("pickplace", partial(PickAndPlace, 
-    num_objects=4, objects=("can","milk", "bread", "cereal"), robots=("panda",)
-))
-environments.register("pickplace/random", partial(PickAndPlace, 
-    num_objects=1, objects=("can","milk", "bread", "cereal"), robots=("panda",)
-))
-environments.register("pickplace/can", partial(PickAndPlace, 
-    num_objects=1, objects=("can",), robots=("panda",)
-))
-environments.register("pickplace/milk", partial(PickAndPlace, 
-    num_objects=1, objects=("milk",), robots=("panda",)
-))
-environments.register("pickplace/bread", partial(PickAndPlace, 
-    num_objects=1, objects=("bread",), robots=("panda",)
-))
-environments.register("pickplace/cereal", partial(PickAndPlace, 
-    num_objects=1, objects=("cereal",), robots=("panda",)
-))
-
-# Nut assembly environments
-environments.register("nutassembly", partial(NutAssembly,
-    robots=("panda",)
-))
-environments.register("nutassembly/random", partial(NutAssembly,
-    num_objects=1, robots=("panda",)
-))
-environments.register("nutassembly/square", partial(NutAssembly,
-    num_objects=1, objects=("square",), robots=("panda",)
-))
-environments.register("nutassembly/round", partial(NutAssembly,
-    num_objects=1, objects=("round",), robots=("panda",)
-))
-
-# def _make_positional(**kwargs):
-#     env = RobosuiteEnv(**kwargs)
-#     return ChainedTransform([
-#         PositionalControlTransform(),
-#         PositionalObsTransform
-#     ]).apply(env)
-# environments.register("positional", _make_positional)
+def register_all(registry, prefix=None):
+    # Pick and place environments
+    registry.register("pickplace", partial(PickAndPlace, 
+        num_objects=4, objects=("can","milk", "bread", "cereal"), robots=("panda",)
+    ), prefix=prefix)
+    registry.register("pickplace/random", partial(PickAndPlace, 
+        num_objects=1, objects=("can","milk", "bread", "cereal"), robots=("panda",)
+    ), prefix=prefix)
+    registry.register("pickplace/can", partial(PickAndPlace, 
+        num_objects=1, objects=("can",), robots=("panda",)
+    ), prefix=prefix)
+    registry.register("pickplace/milk", partial(PickAndPlace, 
+        num_objects=1, objects=("milk",), robots=("panda",)
+    ), prefix=prefix)
+    registry.register("pickplace/bread", partial(PickAndPlace, 
+        num_objects=1, objects=("bread",), robots=("panda",)
+    ), prefix=prefix)
+    registry.register("pickplace/cereal", partial(PickAndPlace, 
+        num_objects=1, objects=("cereal",), robots=("panda",)
+    ), prefix=prefix)
+    registry.register("nutassembly", partial(NutAssembly,
+        robots=("panda",)
+    ), prefix=prefix)
+    registry.register("nutassembly/random", partial(NutAssembly,
+        num_objects=1, robots=("panda",)
+    ), prefix=prefix)
+    registry.register("nutassembly/square", partial(NutAssembly,
+        num_objects=1, objects=("square",), robots=("panda",)
+    ), prefix=prefix)
+    registry.register("nutassembly/round", partial(NutAssembly,
+        num_objects=1, objects=("round",), robots=("panda",)
+    ), prefix=prefix)
 
 # Convert robosuite object/robot 
 # initializers to jax-friendly format

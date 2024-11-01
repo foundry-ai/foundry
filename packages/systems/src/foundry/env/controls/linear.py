@@ -5,6 +5,7 @@ import jax.random
 from typing import NamedTuple
 from functools import partial
 import scipy
+import jax
 
 class LinearSystem(Environment):
     def __init__(self, A, B, Q=None, R=None,
@@ -16,8 +17,12 @@ class LinearSystem(Environment):
 
         self.Q = Q if Q is not None else jnp.eye(A.shape[0])
         self.R = R if R is not None else jnp.eye(B.shape[1])
-        self.P = jnp.array(scipy.linalg.solve_discrete_are(self.A, self.B, self.Q, self.R,
-                                              e=None, s=None, balanced=True), dtype=jnp.float32)
+        self.P = jax.pure_callback(
+            lambda A, B, Q, R: jnp.array(scipy.linalg.solve_discrete_are(A, B, Q, R,
+                                              e=None, s=None, balanced=True), dtype=A.dtype),
+            jax.ShapeDtypeStruct(A.shape, A.dytpe),
+            self.A, self.B, self.Q, self.R
+        )
         self.x_min = x_min
         self.x_max = x_max
         self.u_min = u_min
