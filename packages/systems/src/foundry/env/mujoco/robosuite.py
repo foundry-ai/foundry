@@ -8,7 +8,7 @@ import foundry.core as F
 
 from foundry.core.dataclasses import dataclass, field, replace
 from foundry.core.tree import static_property
-from foundry.env import (
+from foundry.env.core import (
     EnvWrapper, RenderConfig, ObserveConfig,
     ImageRender, ImageActionsRender,
     Environment, EnvironmentRegistry

@@ -1,7 +1,7 @@
 import foundry.core as F
 import foundry.random
 
-from foundry.env import (
+from foundry.env.core import (
     EnvWrapper, EnvironmentRegistry,
     RenderConfig, ImageRender, ImageActionsRender,
     ObserveConfig

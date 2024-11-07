@@ -14,7 +14,7 @@ from foundry.core.typing import Array
 from foundry.datasets.env import EnvDataset
 from foundry.datasets.core import DatasetRegistry
 from foundry.data import Data
-from foundry.env import Environment, ObserveConfig
+from foundry.env.core import Environment, ObserveConfig
 from foundry.policy import Policy
 from foundry.train.reporting import Video
 
