@@ -1,28 +1,89 @@
-from foundry.datasets import DatasetRegistry
-import foundry.data as du
-from foundry.data import normalizer as nu
-from foundry.data.transform import (
-    random_horizontal_flip, random_subcrop, random_cutout
-)
-
+from foundry.core import Array, ShapeDtypeStruct
+from foundry.core.dataclasses import dataclass
+from foundry.datasets.core import DatasetRegistry
+from foundry.data import Data, PyTreeData
 from ..util import cache_path, download
-
 from . import ImageClassDataset, LabeledImage
 
-import gzip
+from functools import partial
 
-import jax
+import foundry.data.normalizer as normalizers
 import foundry.numpy as jnp
+
+import gzip
+import jax
 import struct
 import array
-import wandb
-import numpy as np
 
-def _standard_augmentations(rng_key, x):
-    x = random_subcrop(rng_key, x, (28, 28), 4)
-    return x
+@dataclass
+class MnistDataset(ImageClassDataset):
+    _splits : dict[str, Data[LabeledImage]]
+    _classes : list[str]
+    _mean: Array
+    _std: Array
+    _var: Array
 
-def _load_mnist(quiet=False, **kwargs):
+    @property
+    def classes(self) -> list[str]:
+        return self._classes
+    
+    def split(self, name) -> Data[LabeledImage]:
+        return self._splits[name]
+    
+    def augmentation(self, name):
+        import foundry.data.transform as transforms
+        if name == "classifier":
+            def classifier_augmentation(rng_key, sample : LabeledImage) -> LabeledImage:
+                pixels = sample.pixels
+                pixels = transforms.random_horizontal_flip(rng_key, pixels)
+                pixels = transforms.random_subcrop(rng_key, pixels, (32, 32))
+                pixels = transforms.random_cutout(rng_key, pixels, (8, 8))
+                return LabeledImage(pixels, sample.label)
+            return classifier_augmentation
+        elif name == "generator":
+            def generator_augmentation(rng_key, sample : LabeledImage) -> LabeledImage:
+                pixels = sample.pixels
+                pixels = transforms.random_horizontal_flip(rng_key, pixels)
+                return LabeledImage(pixels, sample.label)
+            return generator_augmentation
+
+    def normalizer(self, name) -> normalizers.Normalizer[LabeledImage]:
+        if name == "hypercube":
+            return normalizers.Compose(
+                LabeledImage(
+                    pixels=normalizers.ImageNormalizer(ShapeDtypeStruct((28,28,3), jnp.uint8)),
+                    label=normalizers.Identity(ShapeDtypeStruct((), jnp.uint8))
+                )
+            )
+        elif name == "standard_dev":
+            return normalizers.Compose(LabeledImage(
+                    pixels=normalizers.Chain([
+                        normalizers.ImageNormalizer(ShapeDtypeStruct((32,32,3), jnp.uint8)),
+                        normalizers.StdNormalizer(
+                            mean=self._mean,
+                            std=self._std,
+                            var=jnp.square(self._std)
+                        )
+                    ]),
+                    label=normalizers.Identity(ShapeDtypeStruct((), jnp.uint8))
+                ))
+        elif name == "pixel_standard_dev":
+            return normalizers.Compose(LabeledImage(
+                    pixels=normalizers.Chain([
+                        normalizers.ImageNormalizer(ShapeDtypeStruct((32,32,3), jnp.uint8)),
+                        normalizers.StdNormalizer(
+                            mean=jnp.mean(self._mean),
+                            std=jnp.sqrt(jnp.sum(jnp.square(self._std))),
+                            var=jnp.sum(jnp.square(self._std))
+                        )
+                    ]),
+                    label=normalizers.Identity(ShapeDtypeStruct((), jnp.uint8))
+                ))
+        return None
+
+
+def _load_mnist(quiet=False, classes=None, **kwargs):
+    classes = jnp.array(classes) if classes is not None else None
     with jax.default_device(jax.devices("cpu")[0]):
         data_path = cache_path("mnist")
         """Download and parse the raw MNIST dataset."""
@@ -31,15 +92,13 @@ def _load_mnist(quiet=False, **kwargs):
             with gzip.open(filename, "rb") as fh:
                 _ = struct.unpack(">II", fh.read(8))
                 return jnp.array(array.array("B", fh.read()), dtype=jnp.uint8)
-
         def parse_images(filename):
             with gzip.open(filename, "rb") as fh:
-                _, num_data, rows, cols = struct.unpack(">IIII", fh.read(16))
+                _, normalizersm_data, rows, cols = struct.unpack(">IIII", fh.read(16))
                 img = jnp.array(array.array("B", fh.read()),
-                        dtype=jnp.uint8).reshape(num_data, rows, cols)
+                        dtype=jnp.uint8).reshape(normalizersm_data, rows, cols)
                 # Add channel dimension
                 return jnp.expand_dims(img, -1)
-
         for job_name, filename, md5 in [
                     ("MNIST Train Images", "train-images-idx3-ubyte.gz", "f68b3c2dcbeaaa9fbdd348bbdeb94873"),
                     ("MNIST Train Labels", "train-labels-idx1-ubyte.gz", "d53e105ee54ea40749a09fcbcd1e9432"),
@@ -49,53 +108,42 @@ def _load_mnist(quiet=False, **kwargs):
             download(data_path/filename, url=base_url + filename, 
                     job_name=job_name, md5=md5,
                     quiet=quiet)
-        
-        train_images = parse_images(data_path / "train-images-idx3-ubyte.gz")
-        train_labels = parse_labels(data_path / "train-labels-idx1-ubyte.gz")
-        train_data = LabeledImage(train_images, train_labels)
-        test_images = parse_images(data_path / "t10k-images-idx3-ubyte.gz")
-        test_labels = parse_labels(data_path / "t10k-labels-idx1-ubyte.gz")
-        test_data = LabeledImage(test_images, test_labels)
-
-        train_normalized = du.PyTreeData(LabeledImage((train_images.astype(jnp.float32) / 128.0) - 1, None))
-        return ImageClassDataset(
-            splits={
-                "train": du.PyTreeData(train_data),
-                "test": du.PyTreeData(test_data)
-            },
-            normalizers={
-                "pixel_standard_dev": lambda: (nu.Compose(
-                    (nu.Chain([
-                        nu.ImageNormalizer(jax.ShapeDtypeStruct((28, 28, 1), jnp.uint8)),
-                        nu.StdNormalizer.from_data(train_normalized, component_wise=True)
-                    ]), 
-                     nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))
-                )),
-                "standard_dev": lambda: (nu.Compose(
-                    (nu.Chain([
-                        nu.ImageNormalizer(jax.ShapeDtypeStruct((28, 28, 1), jnp.uint8)),
-                        nu.StdNormalizer.from_data(train_normalized, component_wise=False)
-                    ]), 
-                     nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))
-                )),
-                "pca": lambda dims=None: (nu.Compose(
-                    (nu.Chain([
-                        nu.ImageNormalizer(jax.ShapeDtypeStruct((28, 28, 1), jnp.uint8)),
-                        # transform to gaussian
-                        nu.PCANormalizer.from_data(train_normalized, dims=dims)
-                    ]), 
-                    nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))
-                )),
-                "hypercube": lambda: (nu.Compose(
-                    (nu.ImageNormalizer(jax.ShapeDtypeStruct((28, 28, 1), jnp.uint8)), 
-                     nu.DummyNormalizer(jax.ShapeDtypeStruct((), jnp.uint8)))
-                ))
-            },
-            transforms={
-                "standard_augmentations": lambda: _standard_augmentations
-            },
-            classes=[str(i) for i in range(10)]
+        train_data = LabeledImage(
+            parse_images(data_path / "train-images-idx3-ubyte.gz"),
+            parse_labels(data_path / "train-labels-idx1-ubyte.gz")
+        )
+        test_data = LabeledImage(
+            parse_images(data_path / "t10k-images-idx3-ubyte.gz"),
+            parse_labels(data_path / "t10k-labels-idx1-ubyte.gz")
         )
 
-datasets = DatasetRegistry[ImageClassDataset]()
-datasets.register(_load_mnist)
+        def filter(data : LabeledImage):
+            if classes is None:
+                return data
+            else:
+                mask = jax.vmap(lambda s: jnp.any(s.label == classes))(data)
+                filtered = LabeledImage(data.pixels[mask], data.label[mask])
+                # reindex the labels using the classes array
+                new_labels = jax.vmap(lambda l: jnp.argmax(classes == l))(filtered.label)
+                return LabeledImage(filtered.pixels, new_labels)
+
+        train_data = filter(train_data)
+        test_data = filter(test_data)
+
+        train_norm_images = (train_data.pixels.astype(jnp.float32) / 128.0) - 1
+
+        return MnistDataset(
+            _splits={
+                "train": PyTreeData(train_data),
+                "test": PyTreeData(test_data)
+            },
+            _classes=[str(i) for i in range(10)] if classes is None else [str(i) for i in classes],
+            _mean=jnp.mean(train_norm_images, axis=(0,)),
+            _std=jnp.std(train_norm_images, axis=(0,)),
+            _var=jnp.var(train_norm_images, axis=(0,))
+        )
+
+    
+def register(registry : DatasetRegistry, prefix=None):
+    registry.register("mnist", _load_mnist, prefix=prefix)
+    registry.register("mnist/binary/0_9", partial(_load_mnist, classes=[0,9]), prefix=prefix)

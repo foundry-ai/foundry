@@ -53,9 +53,11 @@ dev = [
     "pytest>=8.2.2",
 ]
 
-[tool.pdm.scripts.image_diffusion]
-cmd = "./projects/image-diffusion/scripts/image_diffusion"
-env = { LD_LIBRARY_PATH = "/run/opengl-driver/lib/" }
+[tool.pdm.resolution]
+excludes = ["pytinyrenderer", "evdev"]
+
+[tool.pdm.scripts]
+image_diffusion = "./projects/image-diffusion/scripts/image_diffusion"
 
 [tool.nixpy]
 python-version = "3.10"

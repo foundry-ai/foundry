@@ -286,26 +286,35 @@ class UNet(nn.Module):
 
     @nn.compact
     def __call__(self, x, *, cond=None, cond_embed=None, train=False):
-        embed = cond_embed
         if cond is not None:
-            assert self.num_classes is not None
-            assert cond.shape == x.shape[:-1-self.dims]
-            cond_embed = nn.Embed(self.num_classes, self.embed_dim)(cond)
-            if embed is not None:
-                embed = jnp.concatenate([embed, cond_embed], axis=-1)
+            if cond.ndim <= 1:
+                assert self.num_classes is not None
+                embed = nn.Embed(self.num_classes, self.embed_dim)
+                if cond.ndim == 0: 
+                    label_embed = embed(cond)
+                else:
+                    assert cond.shape == (self.num_classes,)
+                    # attend over the embedding
+                    # with the specified query vector
+                    label_embed = embed.attend(cond)
+                cond_embed = (
+                    label_embed if cond_embed is None
+                    else jnp.concatenate([cond_embed, label_embed], axis=-1)
+                )
+            elif cond.shape[:-1] == x.shape[:-1]:
+                x = jnp.concatenate([x, cond], axis=-1)
             else:
-                embed = cond_embed
-
+                raise ValueError(f"Invalid cond shape: {cond.shape}")
         input_blocks, middle_block, output_blocks, out = self._setup(x)
         h = x.astype(self.dtype)
         hs = []
         spatial_shapes = []
         for module in input_blocks:
-            h = module(h, cond_embed=embed, train=train)
+            h = module(h, cond_embed=cond_embed, train=train)
             spatial_shapes.append(h.shape[-1-self.dims:-1])
             hs.append(h)
         spatial_shapes.pop() # remove the last spatial shape
-        h = middle_block(h, cond_embed=embed, train=train)
+        h = middle_block(h, cond_embed=cond_embed, train=train)
         for module in output_blocks:
             res = hs.pop()
             h = jnp.concatenate((h, res), axis=-1)
@@ -313,7 +322,7 @@ class UNet(nn.Module):
             h = module(
                 h, 
                 spatial_shape=spatial_shape,
-                cond_embed=embed, 
+                cond_embed=cond_embed, 
                 train=train
             )
         h = h.astype(x.dtype)

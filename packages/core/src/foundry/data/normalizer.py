@@ -129,15 +129,15 @@ class LinearNormalizer(Generic[T], Normalizer[T]):
         return LinearNormalizer(min, max)
 
 @dataclass
-class DummyNormalizer(Generic[T], Normalizer[T]):
+class Identity(Generic[T], Normalizer[T]):
     sample: T
 
     @property
     def structure(self) -> T:
         return self.sample
     
-    def map(self, fun : Callable[[T], V]) -> "DummyNormalizer[V]":
-        return DummyNormalizer(fun(self.sample))
+    def map(self, fun : Callable[[T], V]) -> "Identity[V]":
+        return Identity(fun(self.sample))
 
     def normalize(self, data : T) -> T:
         return data

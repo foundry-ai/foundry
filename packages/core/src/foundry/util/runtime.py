@@ -97,6 +97,7 @@ def setup_gc():
 def setup():
     jupyter = rich.get_console().is_jupyter
     os.environ["WANDB_SILENT"] = "true"
+    # The driver path, for non-nix python environments
     if jupyter:
         from foundry.util.ipython import setup_rich_notebook_hook
         setup_rich_notebook_hook()

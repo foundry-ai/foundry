@@ -10,7 +10,8 @@ dependencies = [
     "foundry-systems @ file:///${PROJECT_ROOT}/../../packages/systems",
     "foundry-models @ file:///${PROJECT_ROOT}/../../packages/models",
     "omegaconf >= 2.3",
-    "wandb >= 0.17"
+    "wandb >= 0.17",
+    "scikit-learn>=1.5.2"
 ]
 requires-python = ">=3.10"
 license = {text = "MIT"}

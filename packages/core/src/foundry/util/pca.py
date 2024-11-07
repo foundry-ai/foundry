@@ -1,8 +1,10 @@
 import jax.flatten_util
-from foundry import dataclasses, partial
-
-import foundry.util
+import foundry.core as F
 import foundry.numpy as jnp
+import foundry.core.tree as tree
+
+from foundry.core import dataclasses, partial
+
 import jax
 
 
@@ -12,9 +14,14 @@ class PCAState:
     mean: jax.Array
     explained_variance: jax.Array
 
+    def transform(self, x):
+        x_flat, uf = tree.ravel_pytree(x)
+        x_flat = self.components @ (x_flat - self.mean)
+        return uf(x_flat)
+
 # From https://github.com/alonfnt/pcax/blob/main/pcax/pca.py
 # used under the MIT license
-@partial(jax.jit, static_argnames=("n_components", "n_iter"))
+@F.jit
 def randomized_pca(x, n_components, rng, n_iter=5):
     x = jax.vmap(lambda x: jax.flatten_util.ravel_pytree(x)[0])(x)
     unflatten = jax.flatten_util.ravel_pytree(

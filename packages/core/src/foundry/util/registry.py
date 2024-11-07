@@ -11,7 +11,11 @@ class Registry(Generic[T]):
         self._registry : dict[str, Builder[T]] = {}
     
     def extend(self, registry, prefix=None):
-        for path, builder in registry.items():
+        if hasattr(registry, "entries"):
+            items = registry.entries()
+        else:
+            items = registry.items()
+        for path, builder in items:
             if prefix is not None:
                 path = f"{prefix}/{path}"
             self.register(path, builder)
@@ -27,16 +31,13 @@ class Registry(Generic[T]):
         if path not in self._registry:
             raise ValueError(f"{path} not found!")
         return self._registry[path](**kwargs)
+    
+    def keys(self) -> Iterable[str]:
+        return list(self._registry.keys())
+
+    def entries(self) -> Iterable[tuple[str, Builder[T]]]:
+        return self._registry.items()
 
     def __call__(self, path: str, /, **kwargs) -> T:
         return self.create(path, **kwargs)
-    
-    def keys(self) -> Iterable[str]:
-        return self._registry.keys()
-
-    def values(self) -> Iterable[Builder[T]]:
-        return self._registry.values()
-    
-    def items(self) -> Iterable[tuple[str, Builder[T]]]:
-        return self._registry.items()
     
