@@ -26,6 +26,9 @@ license = {text = "MIT"}
 cuda = [
     "jax[cuda]>=0.4.34"
 ]
+metal = [
+    "jax-metal>=0.1.1",
+]
 
 [build-system]
 requires = ["pdm-backend"]
