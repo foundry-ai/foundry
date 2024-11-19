@@ -289,14 +289,17 @@ class UNet(nn.Module):
         if cond is not None:
             if cond.ndim <= 1:
                 assert self.num_classes is not None
-                embed = nn.Embed(self.num_classes, self.embed_dim)
                 if cond.ndim == 0: 
+                    embed = nn.Embed(self.num_classes, self.embed_dim)
                     label_embed = embed(cond)
                 else:
-                    assert cond.shape == (self.num_classes,)
                     # attend over the embedding
                     # with the specified query vector
-                    label_embed = embed.attend(cond)
+                    label_embed = nn.Sequential([
+                        nn.Dense(self.embed_dim),
+                        activations.silu,
+                        nn.Dense(self.embed_dim)
+                    ])(cond)
                 cond_embed = (
                     label_embed if cond_embed is None
                     else jnp.concatenate([cond_embed, label_embed], axis=-1)

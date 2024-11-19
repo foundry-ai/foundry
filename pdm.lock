@@ -5,7 +5,7 @@
 groups = ["default", "cuda", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:3a3b6bbfeac2c7628f3d5cc520b21b38531b885822e83bd08758038cf8fa773c"
+content_hash = "sha256:4e25a9cc4898392984afa388625fc91fd44b5e982f368db45040f2c7a92b3f24"
 
 [[metadata.targets]]
 requires_python = "==3.12"
@@ -2424,6 +2424,17 @@ files = [
 ]
 
 [[package]]
+name = "pcax"
+version = "0.1.0"
+requires_python = ">=3.9"
+summary = "Minimal Principal Component Analysis (PCA) implementation using JAX."
+groups = ["default"]
+files = [
+    {file = "pcax-0.1.0-py3-none-any.whl", hash = "sha256:8d1d1fa4d68314196d28d9b4489c9f71999ad059a7bae4a301f485ccf05a2c13"},
+    {file = "pcax-0.1.0.tar.gz", hash = "sha256:0831e31bf62554876080f33e1ad9c18f9ae500ef09ed70f5759a6326a8812327"},
+]
+
+[[package]]
 name = "pexpect"
 version = "4.9.0"
 summary = "Pexpect allows easy control of interactive console applications."
@@ -3748,6 +3759,17 @@ dependencies = [
 files = [
     {file = "trimesh-4.5.2-py3-none-any.whl", hash = "sha256:2e50f3a7fd135c3045da887a1b9f91230528f3ce11d2ec1ba44750d82d6b4f73"},
     {file = "trimesh-4.5.2.tar.gz", hash = "sha256:165b12f2898c3e8dec99a2ed05ec5c83eafa2fc8150ba8c30f8b3a62f693433f"},
+]
+
+[[package]]
+name = "tsnex"
+version = "0.0.1"
+requires_python = ">=3.9"
+summary = "Minimal t-distributed stochastic neighbor embedding (t-SNE) implementation in JAX."
+groups = ["default"]
+files = [
+    {file = "tsnex-0.0.1-py3-none-any.whl", hash = "sha256:02c5a42c4cebbc9732c870a4ad65274c39f98b3a0924f4607abaf557d2754c11"},
+    {file = "tsnex-0.0.1.tar.gz", hash = "sha256:72459c46f67af9706a139fe0d95f3f9320100c4a9b91b8d83ee1d6b0a7399572"},
 ]
 
 [[package]]

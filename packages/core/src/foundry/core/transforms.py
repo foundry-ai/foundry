@@ -7,7 +7,11 @@ import weakref
 import jax._src.traceback_util
 jax._src.traceback_util.register_exclusion(__file__)
 
-def vmap(func, /, in_axes=0, out_axes=0, *, axis_name=None):
+from typing import TypeVar
+
+F = TypeVar("F")
+
+def vmap(func : F, /, in_axes=0, out_axes=0, *, axis_name=None) -> F:
     func = _make_filtered(func)
     func = jax.vmap(func, 
         in_axes=in_axes, 

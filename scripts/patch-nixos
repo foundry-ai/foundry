@@ -1,3 +1,5 @@
 #!/usr/bin/env bash
 
 patchelf --add-rpath /run/opengl-driver/lib/ ./.venv/lib/python3.12/site-packages/jax_plugins/xla_cuda12/xla_cuda_plugin.so
+
+sed -i "/_MUJOCO_GL = os.environ.get('MUJOCO_GL', '').lower().strip()/c\_MUJOCO_GL = os.environ.get('MUJOCO_GL', 'egl').lower().strip()" ./.venv/lib/python3.12/site-packages/mujoco/gl_context.py
