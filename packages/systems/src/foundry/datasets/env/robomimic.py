@@ -2,7 +2,7 @@ import h5py
 import json
 import foundry.numpy as jnp
 import jax
-import foundry.util
+
 
 from functools import partial
 
@@ -13,7 +13,7 @@ from foundry.data.sequence import (
 from foundry.env.mujoco import SystemState
 from foundry.core.dataclasses import dataclass, replace
 
-import foundry.util.serialize
+from foundry.util.serialize import load_zarr, save_zarr
 
 from . import EnvDataset
 from foundry.datasets.core import DatasetRegistry
@@ -30,20 +30,24 @@ class RobomimicDataset(EnvDataset[Step]):
         return self._splits.get(name, None)
 
     def create_env(self, type="positional", **kwargs):
-        from foundry.env.mujoco.robosuite import environments
         from foundry.env.mujoco.robosuite import (
-            PositionalControlTransform,
+            PositionalControlTransform, 
             PositionalObsTransform, RelPosObsTransform,
             RelKeypointObsTransform
         )
         from foundry.env.transforms import ChainedTransform, MultiStepTransform
         if type == "keypoint":
-            transform = KeypointObsTransform()
+            pass
+            #transform = KeypointObsTransform()
         elif type == "rel_keypoint":
             transform = RelKeypointObsTransform()
         else:
             transform = PositionalControlTransform()
-        env = environments.create(self.env_name)
+        from foundry.env.core import EnvironmentRegistry
+        import foundry.env.mujoco.robosuite
+        registry = EnvironmentRegistry[EnvDataset]()
+        foundry.env.mujoco.robosuite.register_all(registry)
+        env = registry.create(self.env_name)
         env = ChainedTransform([
             PositionalControlTransform(),
             MultiStepTransform(20),
@@ -98,21 +102,24 @@ def load_robomimic_dataset(name, dataset_type, max_trajectories=None, quiet=Fals
             quiet=quiet
         )
         env_name, data = _load_robomimic_hdf5(hdf5_path, max_trajectories)
-        foundry.util.serialize.save_zarr(reduced_zarr_path, 
+        save_zarr(reduced_zarr_path, 
             tree=data, meta=env_name
         )
         hdf5_path.unlink()
     if full_state and not full_zarr_path.exists():
-        data, env_name = foundry.util.serialize.load_zarr(reduced_zarr_path)
-        from foundry.env.mujoco.robosuite import environments
-        env = environments.create(env_name)
+        data, env_name = load_zarr(reduced_zarr_path)
+        from foundry.env.core import EnvironmentRegistry
+        import foundry.env.mujoco.robosuite
+        registry = EnvironmentRegistry[EnvDataset]()
+        foundry.env.mujoco.robosuite.register_all(registry)
+        env = registry.create(env_name)
         data = data.map_elements(lambda x: replace(x, 
             state=env.full_state(x.reduced_state)
         )).cache()
-        foundry.util.serialize.save_zarr(full_zarr_path, 
+        save_zarr(full_zarr_path, 
             tree=data, meta=env_name
         )
-    data, env_name = foundry.util.serialize.load_zarr(full_zarr_path if full_state else reduced_zarr_path)
+    data, env_name = load_zarr(full_zarr_path if full_state else reduced_zarr_path)
     return env_name, data
 
 ENV_MAP = {
@@ -141,8 +148,11 @@ def _load_robomimic_hdf5(hdf5_path, max_trajectories=None):
         env_meta = json.loads(data.attrs["env_args"])
         # Create the environment in order
         # to determine the dimensions of the qpos, qvel components
-        from foundry.env.mujoco.robosuite import environments
-        env = environments.create(ENV_MAP[env_meta["env_name"]])
+        from foundry.env.core import EnvironmentRegistry
+        import foundry.env.mujoco.robosuite
+        registry = EnvironmentRegistry[EnvDataset]()
+        foundry.env.mujoco.robosuite.register_all(registry)
+        env = registry.create(ENV_MAP[env_meta["env_name"]])
         reduced_state = env.reduce_state(env.sample_state(jax.random.key(42)))
         nq, = reduced_state.qpos.shape
         nqv, = reduced_state.qvel.shape

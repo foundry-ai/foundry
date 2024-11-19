@@ -26,7 +26,7 @@ from foundry.env.mujoco.core import (
 from functools import partial
 from typing import Sequence, Callable, Iterable, Any
 
-# handles the XML generation, rendering
+# handles tfhe XML generation, rendering
 
 ROBOT_NAME_MAP = {"panda": "Panda"}
 
