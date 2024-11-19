@@ -196,14 +196,17 @@ def loop(data : StreamBuilder[Sample], *, iterations, rng_key=None, progress=Tru
         with progress_ctx, compile_logger:
             yield loop
 
+
 @dataclass
 class LossOutput:
     loss: ArrayLike = 0.
     metrics: Metrics = None
     var_updates: Vars = None
 
+LossFn = Callable[[Vars, jax.Array, Sample], LossOutput]
+
 @partial(jax.jit, static_argnums=(0,))
-def batched_loss(loss_fn, vars, rng_key, batch, **kwargs):
+def batched_loss(loss_fn : LossFn, vars, rng_key, batch, **kwargs) -> LossFn:
     loss = lambda rng, sample: loss_fn(vars, rng, sample, **kwargs)
     vmap_loss = jax.vmap(loss,
         in_axes=0,
@@ -232,7 +235,7 @@ def batch_loss(loss_fn):
 
 @partial(jax.profiler.annotate_function, name="step")
 @partial(jax.jit, static_argnums=(0,1), static_argnames=("return_grad", "return_grad_norm"), donate_argnums=(2,3))
-def step(batch_loss_fn : Callable[[Vars, jax.Array, Sample], LossOutput], 
+def step(batch_loss_fn : LossFn, 
         optimizer : optax.GradientTransformationExtraArgs, 
         opt_state : OptState, 
         vars : Vars, 

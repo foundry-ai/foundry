@@ -92,8 +92,10 @@ def binary_search_beta(N, distances_sqr, perp_target, tol=1e-5, max_iter=200):
 
 @dataclass
 class TsneModel:
+    betas: jax.Array
     embedding: jax.Array
     loss_history: jax.Array
+    learning_rate: jax.Array
 
 @F.jit
 def randomized_tsne(X : T, *,
@@ -104,12 +106,14 @@ def randomized_tsne(X : T, *,
         learning_rate: float | str = "auto",
         # default optimizer is sgd with momentum
         optimizer: callable = lambda lr, n_iter: optax.sgd(
-            optax.cosine_decay_schedule(lr, n_iter), momentum=0.1
+            lr,
+            momentum=0.9
         ),
-        n_iter: int = 1000,
+        n_iter: int = 1024,
         metric_sqr_fn: callable = euclidean_distance_sqr,
         early_exaggeration: float = 12.0,
-        allow_subsampling: bool = True
+        allow_subsampling: bool = True,
+        subsample_size: int = 512 
     ):
     init_rng, neighbor_rng, train_rng = jax.random.split(rng_key, 3)
     X = F.vmap(lambda x: tree.ravel_pytree(x)[0])(X)
@@ -127,15 +131,15 @@ def randomized_tsne(X : T, *,
     # if allow_subsampling is True, we don't
     # attach "springs" between all pairs of points,
     # only a subset of the most important neighbors
-    if allow_subsampling and X.shape[0] > 2048:
+    if allow_subsampling and X.shape[0] > subsample_size:
         def sample_neighbor(input):
             i, rng_key = input
             neighbors = jax.random.choice(
-                rng_key, X.shape[0], (2049,)
+                rng_key, X.shape[0], (subsample_size + 1,),
+                replace=False
             )
-            neighbors = jnp.arange(2049)
             neighbors = jnp.where(neighbors == i, neighbors[-1], neighbors)
-            neighbors = neighbors[:2048]
+            neighbors = neighbors[:subsample_size]
             return neighbors
         neighbors = jax.lax.map(
             sample_neighbor,
@@ -171,7 +175,7 @@ def randomized_tsne(X : T, *,
     # return
 
     if learning_rate == "auto":
-        learning_rate = X.shape[0] / 4
+        learning_rate = max(X.shape[0] / early_exaggeration / 4, 50)
 
     optimizer = optimizer(learning_rate, n_iter)
     opt_state = optimizer.init(Y)
@@ -200,7 +204,7 @@ def randomized_tsne(X : T, *,
         D = kl_divergence(log_P, log_Q)
         return D
 
-    n_exaggeration = n_iter // 4
+    n_exaggeration = n_iter // 2
     log_exaggeration_schedule = lambda i: jax.lax.cond(
         i < n_exaggeration, 
         lambda: jnp.log(early_exaggeration),
@@ -224,6 +228,8 @@ def randomized_tsne(X : T, *,
         xs=None, length=n_iter
     )
     return TsneModel(
+        learning_rate=learning_rate,
         embedding=Y,
+        betas=betas,
         loss_history=loss_history
     )

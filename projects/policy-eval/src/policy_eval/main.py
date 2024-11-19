@@ -62,14 +62,12 @@ class Config:
 
     bucket_url : str | None = "s3://wandb-data"
 
-    render_trajectories : int = 16
-
+    render_trajectories : int | None = None
 
     timesteps: int = 400
-    timesteps: int = 400
 
-    render_width : int = 64
-    render_height : int = 64
+    render_width : int = 128
+    render_height : int = 128
 
     bc : BCConfig = BCConfig()
     estimator : EstimatorConfig = EstimatorConfig()
@@ -202,6 +200,7 @@ def run(config: Config):
         if config.render_trajectories is not None else
         min(4, N_validation)
     )
+    logger.info(f"Rendering {num_render_trajectories} trajectories")
     validate_render_fn = functools.partial(
         validate, env, config.timesteps,
         config.render_width, config.render_height,

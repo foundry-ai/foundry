@@ -140,6 +140,7 @@ class DPConfig:
     
     def run(self, inputs: Inputs):
         _, data = inputs.data.load({"train", "test"})
+        logger.info("Materializing all data...")
         train_data = data["train"].cache()
         test_data = data["test"].cache()
 
@@ -152,6 +153,8 @@ class DPConfig:
                                           train_sample.observations)
         actions_structure = tree.map(lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype), 
                                           train_sample.actions)
+        logger.info(f"Observation: {observations_structure}")
+        logger.info(f"Action: {actions_structure}")
 
         model, vars = self.model_config.create_model(
             next(inputs.rng),
