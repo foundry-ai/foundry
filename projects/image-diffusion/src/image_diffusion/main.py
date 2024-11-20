@@ -264,6 +264,10 @@ def run(config: Config):
         iterations, config.lr, pct_start=0.05
     )
     optimizer = optax.adamw(lr_schedule, weight_decay=config.weight_decay)
+    optimizer = optax.chain(
+        optax.clip_by_global_norm(1.0),
+        optimizer,
+    )
     # opt_state = optimizer.init(vars["params"])
     # lr_schedule = optax.cosine_onecycle_schedule(iterations, 1e-2, pct_start=0.05)
     # optimizer = optax.sgd(lr_schedule)
@@ -319,11 +323,19 @@ def run(config: Config):
                         step.iteration, metrics, {"lr": lr_schedule(step.iteration)},
                         prefix="train."
                     )
-        eval_key, sample_key = foundry.random.split(test_key)
-        test_stream, test_metrics = foundry.train.eval_stream(
-            batch_test_loss, vars, eval_key, test_stream
-        )
-
+                if step.iteration % 1000 == 0:
+                    eval_key, sample_key = foundry.random.split(test_key)
+                    test_stream, test_metrics = foundry.train.eval_stream(
+                        batch_test_loss, vars, eval_key, test_stream,
+                        batches=1
+                    )
+                    foundry.train.wandb.log(
+                        step.iteration, test_metrics,
+                        run=wandb_run, prefix="test/"
+                    )
+                    foundry.train.console.log(
+                        step.iteration, test_metrics, prefix="test."
+                    )
         # generate samples and log as a wandb table
         if not gen_stream.has_next():
             gen_stream = gen_stream.reset()
@@ -343,13 +355,6 @@ def run(config: Config):
             data=[[*l, wandb.Image(np.array(i))] for l, i in zip(gen_labels, gen_samples)]
         )
         wandb_run.log({"samples": gen_table}, step=step.iteration)
-        foundry.train.wandb.log(
-            step.iteration, test_metrics,
-            run=wandb_run, prefix="test/"
-        )
-        foundry.train.console.log(
-            step.iteration, test_metrics, prefix="test."
-        )
     checkpoint = Checkpoint(
         dataset=config.dataset,
         config=model_config,
@@ -364,5 +369,6 @@ def run(config: Config):
         dataset_sanitized = config.dataset.replace("/", "-")
         artifact = wandb.Artifact(f"{dataset_sanitized}-ddpm", type="model")
         artifact.add_reference(final_result_url)
-        logger.info(f"Artifact: {artifact.name}")
         wandb_run.log_artifact(artifact)
+        artifact.wait()
+        logger.info(f"Artifact: {artifact.source_qualified_name}")
