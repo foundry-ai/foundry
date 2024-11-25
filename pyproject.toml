@@ -14,9 +14,6 @@ dependencies = [
     "language-model @ file:///${PROJECT_ROOT}/projects/language-model",
     "image-diffusion @ file:///${PROJECT_ROOT}/projects/image-diffusion",
     "cond-diffusion-toy @ file:///${PROJECT_ROOT}/projects/cond-diffusion-toy",
-    "pytest>=8.2.2",
-    "tsnex>=0.0.1",
-    "pcax>=0.1.0",
 ]
 requires-python = "==3.12"
 readme = "README.md"
@@ -44,7 +41,6 @@ dev = [
     "-e language-model @ file:///${PROJECT_ROOT}/projects/language-model",
     "-e image-diffusion @ file:///${PROJECT_ROOT}/projects/image-diffusion",
     "-e cond-diffusion-toy @ file:///${PROJECT_ROOT}/projects/cond-diffusion-toy",
-	
     # Docmentation utilities
     "sphinx>=7.2.6",
     "sphinx-design>=0.5.0",
@@ -54,8 +50,9 @@ dev = [
     "sphinx-autodoc-typehints>=2.0.0",
     "furo>=2024.1.29",
     "sphinx-toolbox>=3.5.0",
-
+    # Tests
     "pytest>=8.2.2",
+    "matplotlib>=3.9.2",
 ]
 
 [tool.pdm.resolution]
@@ -63,6 +60,7 @@ excludes = ["pytinyrenderer", "evdev"]
 
 [tool.pdm.scripts]
 image_diffusion = "./projects/image-diffusion/scripts/image_diffusion"
+language_model = "./projects/language-model/scripts/language_model"
 
 [tool.nixpy]
 python-version = "3.10"
