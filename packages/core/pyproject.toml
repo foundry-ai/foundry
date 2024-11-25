@@ -7,18 +7,21 @@ authors = [
 ]
 dependencies = [
     "jax>=0.4.28",
-    "rich>=13.7.0",
     "flax>=0.8.1",
     "optax>=0.1.9",
-    "pandas>=2.2.0",
     "chex>=0.1.85",
+    "rich>=13.7.0",
     "numpy>=1.26.4,<2",
-    "ffmpegio>=0.9.0",
     "einops>=0.7.0",
-    "matplotlib>=3.8.2",
-    "seaborn>=0.13.2",
+    # For built-in NLP databases
+    "tokenizers>=0.20.3",
+    # For serialization...
+    "ffmpegio>=0.9.0",
+    "boto3>=1.35.11",
+    "zarr>=2.18.1",
+    # For logging...
+    "wandb>=0.18",
     "plotly>=5.18.0",
-    "nbformat>=5.9.2",
     # For google drive parsing
     "beautifulsoup4>=4.12.3",
     "trajax @ https://github.com/google/trajax/archive/c94a637c5a397b3d4100153f25b4b165507b5b20.tar.gz",
@@ -41,6 +44,7 @@ ipython = [
     "jupyterlab>=4.1.2",
     "ipywebrtc>=0.6.0",
     "ipyevents>=2.0.2",
+    "nbformat>=5.9.2",
 ]
 
 [tool.pdm]

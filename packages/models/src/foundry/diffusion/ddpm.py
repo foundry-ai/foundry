@@ -326,6 +326,8 @@ class DDPMSchedule:
                     model : Callable[[jax.Array, Sample, jax.Array], Sample], 
                     sample_structure: Sample, 
                     *, num_steps : Optional[int] = None,
+                    start_time : Optional[int] = None,
+                    start_sample : Optional[Sample] = None,
                     final_time : Optional[int] = None, trajectory : bool = False):
         """ Runs the reverse process, given a denoiser model, for a number of steps. """
         if final_time is None:
@@ -334,8 +336,11 @@ class DDPMSchedule:
             num_steps = self.num_steps - final_time
         step_ratio = (self.num_steps - final_time) / num_steps
         # sample initial noise
-        flat_structure, unflatten = tree.ravel_pytree_structure(sample_structure)
-        random_sample = unflatten(jax.random.normal(rng_key, flat_structure.shape, flat_structure.dtype))
+        if start_sample is not None:
+            random_sample = start_sample
+        else:
+            flat_structure, unflatten = tree.ravel_pytree_structure(sample_structure)
+            random_sample = unflatten(jax.random.normal(rng_key, flat_structure.shape, flat_structure.dtype))
 
         if trajectory:
             # if we want to return the trajectory, do a scan.
@@ -378,7 +383,8 @@ class DDPMSchedule:
                 else:
                     return do_step(carry, curr_T, prev_T)
             carry = (rng_key, random_sample)
-            carry = jax.lax.fori_loop(0, self.num_steps if not static_loop else num_steps, loop_step, carry)
+            start_time = start_time if start_time is not None else num_steps
+            carry = jax.lax.fori_loop(num_steps - start_time, self.num_steps if not static_loop else num_steps, loop_step, carry)
             _, sample = carry
             return sample
 

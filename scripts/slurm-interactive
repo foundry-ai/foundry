@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-
-cd $SCRIPT_DIR/..
-
-exec srun -N 1 --gres=gpu:4 --mem=1TB -c 64 --time 6:00:00 --pty nix develop

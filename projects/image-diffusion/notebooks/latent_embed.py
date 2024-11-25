@@ -11,6 +11,9 @@ import jax
 import optax
 import foundry.train.console
 
+import logging
+logger = logging.getLogger(__name__)
+
 from foundry.data import PyTreeData
 from typing import Sequence
 
@@ -51,7 +54,7 @@ class Autoencoder(nn.Module):
         self.decoder = Decoder(self.image_shape)
     
     def encode(self, x):
-        return self.encoder(x)
+        return self.encoder(x)[0]
 
     def decode(self, z):
         return self.decoder(z)
@@ -70,47 +73,43 @@ def kl_gaussian(mean: jax.Array, var: jax.Array) -> jax.Array:
     )
 
 
-def train_embedding(train_data, mode="vae"):
-    latent = None
+def train_embedding(train_data, mode="vae",
+                    iterations=4096):
+    latents = None
     if mode == "tsne":
         from sklearn.manifold import TSNE
-        tsne = TSNE(n_iter=300)
-        print("Learning embedding...")
-        tsne_results = tsne.fit_transform(train_data)
-        print("Embedding done!")
-    train_data = PyTreeData((train_data,latent))
+        tsne = TSNE(max_iter=500, perplexity=30)
+        logger.info("Learning T-SNE embedding...")
+        latents = tsne.fit_transform(train_data.reshape((train_data.shape[0], -1)))
+        latents = npx.array(latents)
+        latents = latents / npx.std(latents, axis=0)
+        logger.info("Embedding done!")
+    train_data = PyTreeData((train_data,latents))
     ae = Autoencoder()
     ae_vars = ae.init(foundry.random.key(42), npx.zeros((28, 28, 1), npx.float32), foundry.random.key(42))
     @F.jit
     def loss(vars, rng_key,  sample):
-        x, z = sample
-        if mode == "vae":
-            z, stddev, x_hat = ae.apply(vars, x, rng_key)
-            log_likelihood = -npx.sum(npx.square(x - x_hat))
-            kl = kl_gaussian(z, npx.square(stddev))
-            elbo = log_likelihood - kl
-            loss = -elbo
-            return foundry.train.LossOutput(
-                loss=loss,
-                metrics=dict(
-                    log_likelihood=log_likelihood,
-                    kl=kl,
-                    loss=loss,
-                ),
-            )
+        x, z_guidance = sample
+        z, stddev, x_hat = ae.apply(vars, x, rng_key)
+        log_likelihood = -npx.sum(npx.square(x - x_hat))
+        kl = kl_gaussian(z, npx.square(stddev))
+        elbo = log_likelihood - kl
+        if latents is not None:
+            guidance_loss = 10*npx.sum(npx.square(z - z_guidance))
         else:
-            x_hat = ae.apply(vars, z, method=Autoencoder.decode)
-            loss = npx.sum(npx.square(x - x_hat))
-            return foundry.train.LossOutput(
+            guidance_loss = 0.
+        loss = -elbo + guidance_loss
+        return foundry.train.LossOutput(
+            loss=loss,
+            metrics=dict(
+                log_likelihood=log_likelihood,
+                kl=kl,
+                guidance=guidance_loss,
                 loss=loss,
-                metrics=dict(
-                    loss=loss,
-                ),
-            )
+            ),
+        )
     batch_loss = foundry.train.batch_loss(loss)
-
-    iterations = 1024*32
-    opt = optax.adam(optax.cosine_decay_schedule(3e-4, iterations))
+    opt = optax.adamw(optax.cosine_decay_schedule(1e-3, iterations))
     ae_opt_state = opt.init(ae_vars["params"])
 
     with foundry.train.loop(
@@ -123,7 +122,7 @@ def train_embedding(train_data, mode="vae"):
                 ae_opt_state, ae_vars, metrics = foundry.train.step(
                     batch_loss, opt, ae_opt_state, ae_vars, step.rng_key, step.batch
                 )
-                if step.iteration % 1024 == 0:
+                if step.iteration % 1000 == 0:
                     foundry.train.console.log(step.iteration, metrics)
     
     @F.jit
@@ -132,4 +131,7 @@ def train_embedding(train_data, mode="vae"):
     @F.jit
     def decode(z):
         return ae.apply(ae_vars, z, method=Autoencoder.decode)
-    return encode, decode
+    
+    # re-encode the data using the trained model
+    latents = jax.vmap(encode)(train_data.as_pytree()[0])
+    return latents, encode, decode

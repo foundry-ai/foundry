@@ -160,12 +160,6 @@ def nw_local_poly(rng_key, data, schedule, degree, cond_kernel, noised_value_ker
     
     return estimator
 
-def nw_diffuser(cond, estimator):
-    @jax.jit
-    def diffuser(_, noised_value, t):
-        return estimator(cond, noised_value, t)
-    return diffuser
-
 def comb(n, k):
     '''
     Returns n choose k.

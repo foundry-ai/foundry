@@ -81,7 +81,7 @@ class DataConfig:
         env = dataset.create_env(type=self.env_type)
         loaded_splits = {}
         if "train" in splits:
-            logger.info(f"Loaded training data from [blue]{self.dataset}[/blue]")
+            logger.info(f"Loading training data from [blue]{self.dataset}[/blue]")
             train_data = dataset.split("train")
             if self.train_trajectories is not None:
                 train_data = train_data.slice(0, self.train_trajectories)

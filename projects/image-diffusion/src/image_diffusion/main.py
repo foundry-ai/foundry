@@ -58,9 +58,9 @@ class Config:
 
     num_visualize: int = 8
 
-    timesteps: int = 100
+    timesteps: int = 32
 
-    condition_type: str = "class" # one of "class" "image" or "none"
+    condition_type: str = "class" # one of "class," "tsne," "image" or "none"
     prediction_type: str = "epsilon"
 
 @dataclass
@@ -85,6 +85,8 @@ class ModelConfig:
             cond_sample = jnp.zeros((), dtype=jnp.uint32)
         elif self.condition_type == "image":
             cond_sample = jnp.zeros(self.image_shape, jnp.float32)
+        elif self.condition_type == "tsne":
+            cond_sample = jnp.zeros((2,), jnp.float32)
         vars = F.jit(model.init)(
             rng, pixels_sample,  jnp.zeros((), dtype=jnp.uint32), 
             cond=cond_sample
@@ -100,80 +102,115 @@ class Sample:
 @dataclass
 class Checkpoint:
     dataset: str
+    normalizer: str
     config: ModelConfig
     schedule: DDPMSchedule
-    normalizer: Normalizer
     vars: dict
     opt_state: dict
-    
+
     def create_data(self):
         datasets = Registry()
         foundry.datasets.vision.register_all(datasets)
         dataset : Dataset[LabeledImage] = datasets.create(self.dataset)
+        norm, train_data, test_data = preprocess_dataset(self.config.condition_type, self.normalizer, dataset)
+        return norm, train_data, test_data
 
-        train_data, test_data = dataset.split("train"), dataset.split("test")
+def preprocess_dataset(condition_type: str, normalizer: str, dataset: Dataset[LabeledImage]) -> tuple[Data[Sample], Data[Sample]]:
+    train_data, test_data = dataset.split("train"), dataset.split("test")
+    normalizer = dataset.normalizer(normalizer)
+    image_normalizer = normalizer.map(lambda x: x.pixels)
+    orig_label_normalizer = normalizer.map(lambda x: x.label)
+    if condition_type == "tsne":
+        train_data = train_data.as_pytree()
+        test_data = test_data.as_pytree()
 
-        train_data = preprocess_data(self.config.condition_type, train_data)
-        test_data = preprocess_data(self.config.condition_type, test_data)
-        return train_data, test_data
+        # Fit a TSNE-embedding to the dataset
+        import foundry.util.tsne as tsne
+        cond = jnp.concatenate([train_data.pixels, test_data.pixels], axis=0)
+        cond = jax.vmap(image_normalizer.normalize)(cond)
+        logger.info("Learning T-SNE embedding...")
+        cond = tsne.randomized_tsne(
+            cond,
+            n_components=2,
+            perplexity=40,
+            n_iter=4000,
+            learning_rate=800,
+            rng_key=foundry.random.key(42)
+        ).embedding
+        logger.info("Fit T-SNE embedding")
+        cond = cond/jnp.std(cond, axis=0)
 
-def create_normalizer(normalizer: str, condition_type: str, dataset: Dataset[LabeledImage]) -> Normalizer[LabeledImage]:
-    image_normalizer = dataset.normalizer(normalizer).map(lambda x: x.pixels)
-    orig_label_normalizer = dataset.normalizer(normalizer).map(lambda x: x.label)
-    label_normalizer = orig_label_normalizer
-    if condition_type == "image":
-        label_normalizer = image_normalizer
-    return normalizers.Compose(
-        Sample(
-            data=image_normalizer,
-            cond=label_normalizer,
-            label=orig_label_normalizer
+        train_cond = cond[:train_data.pixels.shape[0]]
+        test_cond = cond[train_data.pixels.shape[0]:]
+
+        normalizer = normalizers.Compose(
+            Sample(
+                data=image_normalizer,
+                cond=normalizers.Identity(jnp.zeros((2,))),
+                label=orig_label_normalizer
+            )
         )
-    )
-
-def preprocess_data(condition_type: str, data : Data) -> Data[Sample]:
-    if condition_type == "none":
-        return data.map(
-            lambda x: Sample(x.pixels, None, None)
+        return normalizer, PyTreeData(
+            Sample(train_data.pixels, train_cond, train_data.label),
+        ), PyTreeData(
+            Sample(test_data.pixels, test_cond, test_data.label),
         )
-    elif condition_type == "class":
-        assert hasattr(data.structure, "label")
-        return data.map(
-            lambda x: Sample(x.pixels, x.label, None)
-        )
-    elif condition_type == "image":
-        # make index pairs for matching classes
-        labels = data.map(lambda x: x.label).as_pytree()
-        images = data.map(lambda x: x.pixels).as_pytree()
-        classes = jnp.max(labels) + 1
-
-        class_indices = [
-            jnp.argwhere(labels == i)[...,0] for i in range(classes)
-        ]
-        per_class_max = min([len(x) for x in class_indices])
-        class_indices = [x[:per_class_max] for x in class_indices]
-        # a list of the pixel images for each class, balanced 
-        class_images = [images[i] for i in class_indices]
-        assert len(class_images) % 2 == 0
-        # Contains a tuple of the image pairs
-        class_pairs = tree.map(
-            lambda *class_pairs: jnp.concatenate(class_pairs, axis=0),
-            # pair each class with the next class, (wrapping around)
-            *zip(class_images[::2], class_images[1::2]),
-            *zip(class_images[1::2], class_images[2::2] + [class_images[0]])
-        )
-        class_labels = [jnp.full((per_class_max,), label) for label in itertools.chain(
-            range(0, len(class_images), 2),
-            range(1, len(class_images), 2),
-        )]
-        class_labels = jnp.concatenate(class_labels, axis=0)
-        return PyTreeData(Sample(
-            cond=class_pairs[0],
-            data=class_pairs[1],
-            label=class_labels,
-        ))
     else:
-        raise ValueError(f"Invalid condition type: {condition_type}")
+        def preprocess_data(data : Data[LabeledImage]) -> Data[Sample]:
+            if condition_type == "none":
+                return data.map(
+                    lambda x: Sample(x.pixels, None, None)
+                )
+            elif condition_type == "class":
+                assert hasattr(data.structure, "label")
+                return data.map(
+                    lambda x: Sample(x.pixels, x.label, x.label)
+                )
+            elif condition_type == "tsne":
+                return data
+            elif condition_type == "image_other":
+                # make index pairs for matching classes
+                labels = data.map(lambda x: x.label).as_pytree()
+                images = data.map(lambda x: x.pixels).as_pytree()
+                classes = jnp.max(labels) + 1
+
+                class_indices = [
+                    jnp.argwhere(labels == i)[...,0] for i in range(classes)
+                ]
+                per_class_max = min([len(x) for x in class_indices])
+                class_indices = [x[:per_class_max] for x in class_indices]
+                # a list of the pixel images for each class, balanced 
+                class_images = [images[i] for i in class_indices]
+                assert len(class_images) % 2 == 0
+                class_pairs = tree.map(
+                    lambda *class_pairs: jnp.concatenate(class_pairs, axis=0),
+                    # pair each class with the next class, (wrapping around)
+                    *zip(class_images[::2], class_images[1::2]),
+                    *zip(class_images[1::2], class_images[2::2] + [class_images[0]])
+                )
+                class_labels = [jnp.full((per_class_max,), label) for label in itertools.chain(
+                    range(0, len(class_images), 2),
+                    range(1, len(class_images), 2),
+                )]
+                class_labels = jnp.concatenate(class_labels, axis=0)
+                return PyTreeData(Sample(
+                    cond=class_pairs[0],
+                    data=class_pairs[1],
+                    label=class_labels,
+                ))
+        label_normalizer = (
+            orig_label_normalizer 
+            if condition_type != "image" else 
+            image_normalizer
+        )
+        normalizer = normalizers.Compose(
+            Sample(
+                data=image_normalizer,
+                cond=label_normalizer,
+                label=orig_label_normalizer
+            )
+        )
+        return normalizer, preprocess_data(train_data), preprocess_data(test_data)
 
 def run(config: Config):
     logger.setLevel(logging.DEBUG)
@@ -191,13 +228,7 @@ def run(config: Config):
     foundry.datasets.vision.register_all(datasets)
     dataset : Dataset[LabeledImage] = datasets.create(config.dataset)
 
-    train_data, test_data = dataset.split("train"), dataset.split("test")
-
-    train_data = preprocess_data(config.condition_type, train_data)
-    test_data = preprocess_data(config.condition_type, test_data)
-    normalizer = create_normalizer(config.normalizer, config.condition_type, dataset)
-
-    augment = dataset.augmentation("generator") or (lambda _r, x: x)
+    normalizer, train_data, test_data = preprocess_dataset(config.condition_type, config.normalizer, dataset)
     sample = normalizer.normalize(train_data[0])
 
     classes = len(dataset.classes) if hasattr(dataset, "classes") else None
@@ -233,6 +264,10 @@ def run(config: Config):
         iterations, config.lr, pct_start=0.05
     )
     optimizer = optax.adamw(lr_schedule, weight_decay=config.weight_decay)
+    optimizer = optax.chain(
+        optax.clip_by_global_norm(1.0),
+        optimizer,
+    )
     # opt_state = optimizer.init(vars["params"])
     # lr_schedule = optax.cosine_onecycle_schedule(iterations, 1e-2, pct_start=0.05)
     # optimizer = optax.sgd(lr_schedule)
@@ -256,7 +291,8 @@ def run(config: Config):
             pixels = schedule.sample(rng_key, denoiser, sample.data)
             pixels = normalizer.map(lambda x: x.data).unnormalize(pixels)
             return cond_unnormalized, pixels
-        rngs = foundry.random.split(rng_key, config.num_visualize)
+        N = tree.axis_size(labels, 0)
+        rngs = foundry.random.split(rng_key, N)
         return F.vmap(do_sample)(labels, rngs)
 
     batch_loss = foundry.train.batch_loss(loss)
@@ -264,7 +300,7 @@ def run(config: Config):
 
     train_stream = train_data.stream().shuffle(next(rng)).batch(config.batch_size)
     test_stream = test_data.stream().batch(2*config.batch_size)
-    gen_stream = test_data.stream().shuffle(next(rng)).batch(config.num_visualize)
+    gen_stream = test_data.stream().shuffle(next(rng)).batch(2048)
     with foundry.train.loop(train_stream, 
             iterations=iterations, rng_key=next(rng)) as loop, \
             test_stream.build() as test_stream, \
@@ -287,28 +323,12 @@ def run(config: Config):
                         step.iteration, metrics, {"lr": lr_schedule(step.iteration)},
                         prefix="train."
                     )
-                if step.iteration % 500 == 0:
+                if step.iteration % 1000 == 0:
                     eval_key, sample_key = foundry.random.split(test_key)
                     test_stream, test_metrics = foundry.train.eval_stream(
-                        batch_test_loss, vars, eval_key, test_stream
+                        batch_test_loss, vars, eval_key, test_stream,
+                        batches=1
                     )
-
-                    # generate samples and log as a wandb table
-                    if not gen_stream.has_next():
-                        gen_stream = gen_stream.reset()
-                    gen_stream, gen_batch = gen_stream.next()
-                    gen_labels, gen_samples = generate_samples(vars, gen_batch.cond, sample_key)
-                    gen_labels = (
-                        [wandb.Image(np.array(x)) for x in gen_labels]
-                        if config.condition_type == "image" else
-                        [dataset.classes[i] for i in gen_labels]
-                    )
-                    gen_table = wandb.Table(
-                        columns=["Label", "Sample"], 
-                        data=[[l, wandb.Image(np.array(i))] for l, i in zip(gen_labels, gen_samples)]
-                    )
-                    wandb_run.log({"samples": gen_table}, step=step.iteration)
-
                     foundry.train.wandb.log(
                         step.iteration, test_metrics,
                         run=wandb_run, prefix="test/"
@@ -316,10 +336,29 @@ def run(config: Config):
                     foundry.train.console.log(
                         step.iteration, test_metrics, prefix="test."
                     )
+        # generate samples and log as a wandb table
+        if not gen_stream.has_next():
+            gen_stream = gen_stream.reset()
+        gen_stream, gen_batch = gen_stream.next()
+        gen_labels, gen_samples = generate_samples(vars, gen_batch.cond, sample_key)
+        if config.condition_type == "image":
+            label_columns = ["Label"]
+            gen_labels = [[wandb.Image(np.array(x))] for x in gen_labels]
+        elif config.condition_type == "tsne":
+            label_columns = ["Label X", "Label Y"]
+            gen_labels = [[i[0], i[1]] for i in gen_labels]
+        else:
+            label_columns = ["Label"]
+            gen_labels = [[dataset.classes[i]] for i in gen_labels]
+        gen_table = wandb.Table(
+            columns=label_columns + ["Sample"], 
+            data=[[*l, wandb.Image(np.array(i))] for l, i in zip(gen_labels, gen_samples)]
+        )
+        wandb_run.log({"samples": gen_table}, step=step.iteration)
     checkpoint = Checkpoint(
         dataset=config.dataset,
         config=model_config,
-        normalizer=normalizer,
+        normalizer=config.normalizer,
         schedule=schedule,
         vars=vars,
         opt_state=opt_state
@@ -331,3 +370,5 @@ def run(config: Config):
         artifact = wandb.Artifact(f"{dataset_sanitized}-ddpm", type="model")
         artifact.add_reference(final_result_url)
         wandb_run.log_artifact(artifact)
+        artifact.wait()
+        logger.info(f"Artifact: {artifact.source_qualified_name}")
