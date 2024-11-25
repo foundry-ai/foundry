@@ -66,7 +66,6 @@ class Config:
 
 
     timesteps: int = 400
-    timesteps: int = 400
 
     render_width : int = 64
     render_height : int = 64

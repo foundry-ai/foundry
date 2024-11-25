@@ -42,7 +42,7 @@ class RobomimicDataset(EnvDataset[Step]):
         elif type == "rel_keypoint":
             transform = RelKeypointObsTransform()
         else:
-            transform = PositionalControlTransform()
+            transform = PositionalObsTransform()
         from foundry.env.core import EnvironmentRegistry
         import foundry.env.mujoco.robosuite
         registry = EnvironmentRegistry[EnvDataset]()

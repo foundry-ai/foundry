@@ -266,14 +266,13 @@ class MujocoSimulator(Simulator[SystemData]):
                 mujoco.mjv_initGeom(scene.geoms[scene.ngeom-1],
                                     mujoco.mjtGeom.mjGEOM_CAPSULE, np.zeros(3),
                                     np.zeros(3), np.zeros(9), rgba)
-                mujoco.mjv_makeConnector(scene.geoms[scene.ngeom-1],
+                mujoco.mjv_connector(scene.geoms[scene.ngeom-1],
                            mujoco.mjtGeom.mjGEOM_CAPSULE, 0.01,
-                           pos1[0], pos1[1], pos1[2],
-                           pos2[0], pos2[1], pos2[2])
+                           pos1, pos2)
             T = trajectory.shape[0]
             colors = np.array((np.arange(T)/T, np.zeros(T), np.ones(T), np.ones(T)), dtype=np.float32).T
             for i in range(trajectory.shape[0]-1):
-                addSphere(renderer.scene, trajectory[i], trajectory[i+1], colors[i])
+                addSphere(renderer.scene, trajectory[i, :3].astype(np.float64), trajectory[i+1, :3].astype(np.float64), colors[i])
         renderer.render(out=arr)
         return jnp.array(arr)
 
