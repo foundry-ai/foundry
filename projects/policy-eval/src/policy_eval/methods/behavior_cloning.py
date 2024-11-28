@@ -14,7 +14,7 @@ from foundry.data.normalizer import Normalizer, LinearNormalizer, StdNormalizer
 from foundry.train import Vars
 
 from foundry import train
-from foundry.env import Environment
+from foundry.env.core import Environment
 
 import foundry.train.console
 

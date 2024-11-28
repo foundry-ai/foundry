@@ -6,7 +6,7 @@ from foundry.random import PRNGSequence
 from foundry.policy import PolicyInput, PolicyOutput
 from foundry.policy.transforms import ChunkingTransform
 
-from foundry.env import Environment
+from foundry.env.core import Environment
 
 from foundry.core.dataclasses import dataclass
 from foundry.diffusion import nonparametric

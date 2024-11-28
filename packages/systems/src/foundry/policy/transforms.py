@@ -1,5 +1,5 @@
 from foundry.policy import Policy, PolicyInput, PolicyOutput
-from foundry.env import (
+from foundry.env.core import (
     EnvWrapper, RenderConfig, ImageRender, 
     Render
 )

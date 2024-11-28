@@ -29,7 +29,7 @@ class Environment(typing.Generic[State, ReducedState, Action]):
     def reduce_state(self, full_state: State) -> ReducedState:
         return full_state
     
-    def transform(self, name, **kwargs) -> Environment:
+    def transform(self, name, **kwargs) -> "Environment":
         raise NotImplementedError()
 
     def sample_state(self, rng_key : F.Array) -> State:

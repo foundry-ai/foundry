@@ -15,7 +15,7 @@ from foundry.core.dataclasses import dataclass
 from foundry.core.typing import Array
 from foundry.core import tree
 from foundry.random import PRNGSequence
-from foundry.env import (
+from foundry.env.core import (
     Environment, ObserveConfig,
     ImageActionsRender
 )

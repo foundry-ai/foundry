@@ -1,6 +1,6 @@
 import foundry.core.transforms as F
 
-from foundry.env import (
+from foundry.env.core import (
     Environment, RenderConfig,
     HtmlRender, ImageRender
 )

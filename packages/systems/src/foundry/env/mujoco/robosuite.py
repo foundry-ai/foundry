@@ -8,7 +8,7 @@ import foundry.core as F
 
 from foundry.core.dataclasses import dataclass, field, replace
 from foundry.core.tree import static_property
-from foundry.env import (
+from foundry.env.core import (
     EnvWrapper, RenderConfig, ObserveConfig,
     ImageRender, ImageActionsRender,
     Environment, EnvironmentRegistry
@@ -26,7 +26,7 @@ from foundry.env.mujoco.core import (
 from functools import partial
 from typing import Sequence, Callable, Iterable, Any
 
-# handles the XML generation, rendering
+# handles tfhe XML generation, rendering
 
 ROBOT_NAME_MAP = {"panda": "Panda"}
 
@@ -210,7 +210,7 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
             return TaskObservation(
                 eef_pos=data.site_xpos[eef_id, :],
                 eef_vel=jnp.dot(jacp, system_state.qvel),
-                eef_ori_mat=data.site_xmat[eef_id, :].reshape([3, 3]),
+                eef_ori_mat=data.site_xmat[eef_id, :].reshape((3, 3)),
                 eef_ori_vel=jnp.dot(jacr, system_state.qvel),
                 grip_qpos=grip_qpos,
                 object_pos=jnp.stack([
@@ -221,7 +221,7 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
                 ])
             )
         elif isinstance(config, EEfPose):
-            return jnp.concatenate([data.site_xpos[eef_id, :], mat_to_quat(data.site_xmat[eef_id, :].reshape(3,3)), grip_qpos])
+            return jnp.concatenate([data.site_xpos[eef_id, :], data.site_xmat[eef_id, :], grip_qpos])
         else:
             raise ValueError(f"Unsupported observation type {config}")
 
@@ -296,7 +296,7 @@ class NutAssembly(RobosuiteEnv[SimulatorState]):
             return TaskObservation(
                 eef_pos=data.site_xpos[eef_id, :],
                 eef_vel=jnp.dot(jacp, system_state.qvel),
-                eef_ori_mat=data.site_xmat[eef_id, :].reshape([3, 3]),
+                eef_ori_mat=data.site_xmat[eef_id, :].reshape((3, 3)),
                 eef_ori_vel=jnp.dot(jacr, system_state.qvel),
                 grip_qpos=grip_qpos,
                 object_pos=jnp.stack([
@@ -307,7 +307,7 @@ class NutAssembly(RobosuiteEnv[SimulatorState]):
                 ])
             )
         elif isinstance(config, EEfPose):
-            return jnp.concatenate([data.site_xpos[eef_id, :], mat_to_quat(data.site_xmat[eef_id, :].reshape(3,3)), grip_qpos])
+            return jnp.concatenate([data.site_xpos[eef_id, :], mat_to_quat(data.site_xmat[eef_id, :].reshape((3,3))), grip_qpos])
         else:
             raise ValueError("Unsupported observation type")
 
@@ -411,9 +411,12 @@ class PositionalControlEnv(EnvWrapper):
         if action is not None:
             action = jnp.squeeze(action)
             action_pos = action[0:3]
-            action_quat = action[3:7]
-            action_ori_mat = quat_to_mat(action_quat)
-            grip_action = action[7:9]
+            # action_quat = action[3:7] 
+            # action_quat = action_quat / jnp.linalg.norm(action_quat)
+            # action_ori_mat = quat_to_mat(action_quat)
+            # grip_action = action[7:9]
+            action_ori_mat = action[3:12].reshape((3,3))
+            grip_action = action[12:]
             #print(action_pos.shape, action_ori_mat.shape, grip_action.shape)
             data = self.simulator.system_data(state)
             robot = self._model_initializers[1][0]
@@ -441,6 +444,7 @@ class PositionalControlEnv(EnvWrapper):
 
             eef_ori_mat = obs.eef_ori_mat
             ori_error = orientation_error(action_ori_mat, eef_ori_mat)
+            #jax.debug.print("{s}", s=ori_error)
             vel_ori_error = -obs.eef_ori_vel
 
             F_r = self.k_p[:3] * pos_error + self.k_d[:3] * vel_pos_error
