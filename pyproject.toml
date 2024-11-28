@@ -21,7 +21,7 @@ license = {text = "MIT"}
 
 [project.optional-dependencies]
 cuda = [
-    "jax[cuda]>=0.4.34"
+    "jax[cuda]>=0.4.32"
 ]
 metal = [
     "jax-metal>=0.1.1",
@@ -41,6 +41,7 @@ dev = [
     "-e language-model @ file:///${PROJECT_ROOT}/projects/language-model",
     "-e image-diffusion @ file:///${PROJECT_ROOT}/projects/image-diffusion",
     "-e cond-diffusion-toy @ file:///${PROJECT_ROOT}/projects/cond-diffusion-toy",
+    "jax==0.4.35",
     # Docmentation utilities
     "sphinx>=7.2.6",
     "sphinx-design>=0.5.0",
@@ -60,6 +61,7 @@ excludes = ["pytinyrenderer", "evdev"]
 
 [tool.pdm.scripts]
 image_diffusion = "./projects/image-diffusion/scripts/image_diffusion"
+image_diffusion_eval = "./projects/image-diffusion/scripts/image_diffusion_eval"
 language_model = "./projects/language-model/scripts/language_model"
 
 [tool.nixpy]

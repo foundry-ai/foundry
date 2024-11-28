@@ -42,7 +42,7 @@ logger = logging.getLogger("image_diffusion")
 @dataclass
 class Config:
     seed: int = 42
-    batch_size: int = 128
+    batch_size: int = 64
     model: str = "diffusion/unet/small"
 
     dataset: str = "cifar10"
@@ -53,10 +53,8 @@ class Config:
     epochs: int | None = None
     iterations: int | None = None
 
-    lr: float = 3e-4
-    weight_decay: float = 1e-4
-
-    num_visualize: int = 8
+    lr: float = 1e-4
+    weight_decay: float = 1e-5
 
     timesteps: int = 32
 
@@ -265,7 +263,7 @@ def run(config: Config):
     )
     optimizer = optax.adamw(lr_schedule, weight_decay=config.weight_decay)
     optimizer = optax.chain(
-        optax.clip_by_global_norm(1.0),
+        optax.clip_by_global_norm(2.0),
         optimizer,
     )
     # opt_state = optimizer.init(vars["params"])
@@ -306,6 +304,27 @@ def run(config: Config):
             test_stream.build() as test_stream, \
             gen_stream.build() as gen_stream:
         for epoch in loop.epochs():
+            # Log the checkpoint
+            if epoch.num % 10 == 0 and config.bucket_url is not None:
+                checkpoint = Checkpoint(
+                    dataset=config.dataset,
+                    config=model_config,
+                    normalizer=config.normalizer,
+                    schedule=schedule,
+                    vars=vars,
+                    opt_state=opt_state
+                )
+                final_result_url = f"{config.bucket_url}/{wandb_run.id}/checkpoint_{epoch.num:04}.zarr.zip"
+                foundry.util.serialize.save(final_result_url, checkpoint)
+                dataset_sanitized = config.dataset.replace("/", "-")
+                artifact = wandb.Artifact(f"{dataset_sanitized}-ddpm-{epoch.num:04}", type="model", metadata={"epochs": epoch.num})
+                artifact.add_reference(final_result_url, "checkpoint.zarr.zip")
+                wandb_run.log_artifact(artifact)
+                artifact.wait()
+                logger.info(f"Logged checkpoint: {artifact.source_qualified_name}")
+                del checkpoint
+                del artifact
+
             for step in epoch.steps():
                 train_key, test_key = foundry.random.split(step.rng_key)
                 opt_state, vars, grad_norm, metrics = foundry.train.step(
@@ -364,10 +383,10 @@ def run(config: Config):
         opt_state=opt_state
     )
     if config.bucket_url is not None:
-        final_result_url = f"{config.bucket_url}/{wandb_run.id}/checkpoint.zarr.zip"
+        final_result_url = f"{config.bucket_url}/{wandb_run.id}/checkpoint-final.zarr.zip"
         foundry.util.serialize.save(final_result_url, checkpoint)
         dataset_sanitized = config.dataset.replace("/", "-")
-        artifact = wandb.Artifact(f"{dataset_sanitized}-ddpm", type="model")
+        artifact = wandb.Artifact(f"{dataset_sanitized}-ddpm-final", type="model", metadata={"epochs": config.epochs})
         artifact.add_reference(final_result_url)
         wandb_run.log_artifact(artifact)
         artifact.wait()

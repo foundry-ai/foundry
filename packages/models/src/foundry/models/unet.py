@@ -277,10 +277,8 @@ class UNet(nn.Module):
             output_blocks.append(SharedSequential(layers))
         out_channels = self.out_channels or x.shape[-1]
         out = nn.Sequential([
-            Normalization(self.dims),
             activations.silu,
-            nn.Conv(out_channels, self.dims*self.kernel_size, 
-                    kernel_init=initializers.zeros_init())
+            nn.Conv(out_channels, self.dims*self.kernel_size) 
         ])
         return input_blocks, middle_block, output_blocks, out
 
@@ -331,7 +329,8 @@ class UNet(nn.Module):
         h = h.astype(x.dtype)
         # define the output block, so we can
         # use the input number of channels
-        return out(h)
+        output = out(h)
+        return output
 
 
 class DiffusionUNet(UNet):
