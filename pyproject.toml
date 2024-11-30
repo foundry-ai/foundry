@@ -54,6 +54,7 @@ dev = [
     # Tests
     "pytest>=8.2.2",
     "matplotlib>=3.9.2",
+    "pandas>=2.2.3",
 ]
 
 [tool.pdm.resolution]
