@@ -6,8 +6,9 @@ from foundry.random import PRNGSequence
 from .reporting import *
 
 from typing import (
-    Any, TypeVar, Callable, Generic, Iterator
+    Any, TypeVar, Callable, Generic
 )
+from collections.abc import Iterator
 from jax.typing import ArrayLike
 from functools import partial
 from contextlib import contextmanager, nullcontext
@@ -162,7 +163,8 @@ class MofNColumn(ProgressColumn):
         )
 
 @contextmanager
-def loop(data : StreamBuilder[Sample], *, iterations, rng_key=None, progress=True,
+def loop(data : StreamBuilder[Sample], *, iterations, rng_key=None, 
+         progress=True, epoch_bar=False,
          log_compiles=False, trace=False) -> Iterator[Loop[Sample]]:
     with data.build() as stream:
         if progress:
@@ -191,6 +193,7 @@ def loop(data : StreamBuilder[Sample], *, iterations, rng_key=None, progress=Tru
             stream,
             iterations,
             progress=progress,
+            epoch_bar=epoch_bar,
             trace_dir=trace_dir
         )
         with progress_ctx, compile_logger:

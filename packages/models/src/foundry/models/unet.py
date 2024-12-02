@@ -277,6 +277,7 @@ class UNet(nn.Module):
             output_blocks.append(SharedSequential(layers))
         out_channels = self.out_channels or x.shape[-1]
         out = nn.Sequential([
+            Normalization(self.dims),
             activations.silu,
             nn.Conv(out_channels, self.dims*self.kernel_size) 
         ])

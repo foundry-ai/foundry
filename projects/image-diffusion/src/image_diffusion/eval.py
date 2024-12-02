@@ -55,6 +55,7 @@ class EvaluationOutputs:
 
     # variables for the alpha-prediction network
     alpha_vars: Any = None
+    keypoints: Any = None
 
 @dataclass
 class GenerationData:
@@ -64,7 +65,7 @@ class GenerationData:
     out_keypoints: jax.Array
     out_model: jax.Array
 
-GENERATE_SAMPLES = 512
+GENERATE_SAMPLES = 128
 BATCH_SIZE = 32
 BATCHES = 32
 
@@ -178,7 +179,8 @@ def evaluate_checkpoint(rng_key, inputs: EvaluationInputs):
         outputs.ts,
         outputs.nw_error,
         lin_errors,
-        vars
+        vars,
+        inputs.keypoints
     )
 
 def run(config):
@@ -208,13 +210,10 @@ def run(config):
     path = Path(artifacts[0].download()) / "checkpoint.zarr.zip"
     checkpoint = foundry.util.serialize.load_zarr(path)
 
-    # normalizer, train_data, _ = checkpoint.create_data()
-    # keypoints = jax.vmap(normalizer.normalize)(
-    #     tree.map(lambda x: x[:32], train_data.as_pytree())
-    # ).cond
-    keypoints = foundry.random.normal(
-        next(rng), (32,2)
-    )
+    normalizer, train_data, _ = checkpoint.create_data()
+    keypoints = jax.vmap(normalizer.normalize)(
+        tree.map(lambda x: x[:16], train_data.as_pytree())
+    ).cond
 
     model = checkpoint.config.create()
     schedule = checkpoint.schedule
