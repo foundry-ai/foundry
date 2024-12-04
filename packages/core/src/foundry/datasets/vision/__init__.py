@@ -26,9 +26,10 @@ def register_all(registry: DatasetRegistry, prefix=None):
     # from . import celeb_a
     from . import ffhq
     # from . import imagenette
-    # from . import mnist
+    from . import mnist
     cifar.register(registry, prefix=prefix)
     ffhq.register(registry, prefix=prefix)
+    mnist.register(registry, prefix=prefix)
     # celeb_a.register(registry, prefix=prefix)
     # imagenette.register(registry, prefix=prefix)
     # mnist.register(registry, prefix=prefix)

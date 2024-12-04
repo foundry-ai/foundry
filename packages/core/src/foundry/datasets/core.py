@@ -14,13 +14,13 @@ T = TypeVar('T')
 
 @dataclass
 class Dataset(Generic[T]):
-    def split(self, name : str) -> Data[T]:
+    def split(self, name : str) -> Data[T] | None:
         return None
 
-    def augmentation(self, name : str, **kwargs) -> Transform:
+    def augmentation(self, name : str, **kwargs) -> Transform | None:
         return None
 
-    def normalizer(self, name : str, **kwargs) -> Normalizer:
+    def normalizer(self, name : str, **kwargs) -> Normalizer[T] | None:
         return None
 
 DatasetRegistry = Registry

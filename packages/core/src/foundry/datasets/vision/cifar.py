@@ -38,7 +38,7 @@ class CIFARDataset(ImageClassDataset):
     def split(self, name) -> Data[LabeledImage]:
         return self._splits[name]
 
-    def augmentations(self, name) -> Transform[LabeledImage, LabeledImage]:
+    def augmentation(self, name) -> Transform[LabeledImage, LabeledImage]:
         if name == "classifier":
             def classifier_augmentation(rng_key, sample : LabeledImage) -> LabeledImage:
                 pixels = sample.pixels
@@ -60,7 +60,7 @@ class CIFARDataset(ImageClassDataset):
             return nu.Compose(
                 LabeledImage(
                     pixels=nu.ImageNormalizer(ShapeDtypeStruct((32,32,3), jnp.uint8)),
-                    label=nu.DummyNormalizer(ShapeDtypeStruct((), jnp.uint8))
+                    label=nu.Identity(ShapeDtypeStruct((), jnp.uint8))
                 )
             )
         elif name == "standard_dev":
@@ -73,7 +73,7 @@ class CIFARDataset(ImageClassDataset):
                             var=jnp.square(self._std)
                         )
                     ]),
-                    label=nu.DummyNormalizer(ShapeDtypeStruct((), jnp.uint8))
+                    label=nu.Identity(ShapeDtypeStruct((), jnp.uint8))
                 ))
         elif name == "pixel_standard_dev":
             return nu.Compose(LabeledImage(
@@ -85,7 +85,7 @@ class CIFARDataset(ImageClassDataset):
                             var=jnp.sum(jnp.square(self._std))
                         )
                     ]),
-                    label=nu.DummyNormalizer(ShapeDtypeStruct((), jnp.uint8))
+                    label=nu.Identity(ShapeDtypeStruct((), jnp.uint8))
                 ))
         return None
 

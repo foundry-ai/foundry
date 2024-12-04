@@ -8,7 +8,7 @@ import foundry.core as F
 
 from foundry.core.dataclasses import dataclass, field, replace
 from foundry.core.tree import static_property
-from foundry.env import (
+from foundry.env.core import (
     EnvWrapper, RenderConfig, ObserveConfig,
     ImageRender, ImageActionsRender,
     Environment, EnvironmentRegistry
@@ -26,7 +26,7 @@ from foundry.env.mujoco.core import (
 from functools import partial
 from typing import Sequence, Callable, Iterable, Any
 
-# handles the XML generation, rendering
+# handles tfhe XML generation, rendering
 
 ROBOT_NAME_MAP = {"panda": "Panda"}
 
@@ -210,7 +210,7 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
             return TaskObservation(
                 eef_pos=data.site_xpos[eef_id, :],
                 eef_vel=jnp.dot(jacp, system_state.qvel),
-                eef_ori_mat=data.site_xmat[eef_id, :].reshape([3, 3]),
+                eef_ori_mat=data.site_xmat[eef_id, :].reshape((3, 3)),
                 eef_ori_vel=jnp.dot(jacr, system_state.qvel),
                 grip_qpos=grip_qpos,
                 object_pos=jnp.stack([
@@ -221,7 +221,7 @@ class PickAndPlace(RobosuiteEnv[SimulatorState]):
                 ])
             )
         elif isinstance(config, EEfPose):
-            return jnp.concatenate([data.site_xpos[eef_id, :], mat_to_quat(data.site_xmat[eef_id, :].reshape(3,3)), grip_qpos])
+            return jnp.concatenate([data.site_xpos[eef_id, :], data.site_xmat[eef_id, :], grip_qpos])
         else:
             raise ValueError(f"Unsupported observation type {config}")
 
@@ -296,7 +296,7 @@ class NutAssembly(RobosuiteEnv[SimulatorState]):
             return TaskObservation(
                 eef_pos=data.site_xpos[eef_id, :],
                 eef_vel=jnp.dot(jacp, system_state.qvel),
-                eef_ori_mat=data.site_xmat[eef_id, :].reshape([3, 3]),
+                eef_ori_mat=data.site_xmat[eef_id, :].reshape((3, 3)),
                 eef_ori_vel=jnp.dot(jacr, system_state.qvel),
                 grip_qpos=grip_qpos,
                 object_pos=jnp.stack([
@@ -307,7 +307,7 @@ class NutAssembly(RobosuiteEnv[SimulatorState]):
                 ])
             )
         elif isinstance(config, EEfPose):
-            return jnp.concatenate([data.site_xpos[eef_id, :], mat_to_quat(data.site_xmat[eef_id, :].reshape(3,3)), grip_qpos])
+            return jnp.concatenate([data.site_xpos[eef_id, :], mat_to_quat(data.site_xmat[eef_id, :].reshape((3,3))), grip_qpos])
         else:
             raise ValueError("Unsupported observation type")
 
@@ -411,9 +411,12 @@ class PositionalControlEnv(EnvWrapper):
         if action is not None:
             action = jnp.squeeze(action)
             action_pos = action[0:3]
-            action_quat = action[3:7]
-            action_ori_mat = quat_to_mat(action_quat)
-            grip_action = action[7:9]
+            # action_quat = action[3:7] 
+            # action_quat = action_quat / jnp.linalg.norm(action_quat)
+            # action_ori_mat = quat_to_mat(action_quat)
+            # grip_action = action[7:9]
+            action_ori_mat = action[3:12].reshape((3,3))
+            grip_action = action[12:]
             #print(action_pos.shape, action_ori_mat.shape, grip_action.shape)
             data = self.simulator.system_data(state)
             robot = self._model_initializers[1][0]
@@ -441,6 +444,7 @@ class PositionalControlEnv(EnvWrapper):
 
             eef_ori_mat = obs.eef_ori_mat
             ori_error = orientation_error(action_ori_mat, eef_ori_mat)
+            #jax.debug.print("{s}", s=ori_error)
             vel_ori_error = -obs.eef_ori_vel
 
             F_r = self.k_p[:3] * pos_error + self.k_d[:3] * vel_pos_error
@@ -526,49 +530,39 @@ class RelKeypointObsEnv(EnvWrapper):
             grip_qpos=obs.grip_qpos
         )
 
-environments = EnvironmentRegistry[RobosuiteEnv]()
 
-# Pick and place environments
-environments.register("pickplace", partial(PickAndPlace, 
-    num_objects=4, objects=("can","milk", "bread", "cereal"), robots=("panda",)
-))
-environments.register("pickplace/random", partial(PickAndPlace, 
-    num_objects=1, objects=("can","milk", "bread", "cereal"), robots=("panda",)
-))
-environments.register("pickplace/can", partial(PickAndPlace, 
-    num_objects=1, objects=("can",), robots=("panda",)
-))
-environments.register("pickplace/milk", partial(PickAndPlace, 
-    num_objects=1, objects=("milk",), robots=("panda",)
-))
-environments.register("pickplace/bread", partial(PickAndPlace, 
-    num_objects=1, objects=("bread",), robots=("panda",)
-))
-environments.register("pickplace/cereal", partial(PickAndPlace, 
-    num_objects=1, objects=("cereal",), robots=("panda",)
-))
-
-# Nut assembly environments
-environments.register("nutassembly", partial(NutAssembly,
-    robots=("panda",)
-))
-environments.register("nutassembly/random", partial(NutAssembly,
-    num_objects=1, robots=("panda",)
-))
-environments.register("nutassembly/square", partial(NutAssembly,
-    num_objects=1, objects=("square",), robots=("panda",)
-))
-environments.register("nutassembly/round", partial(NutAssembly,
-    num_objects=1, objects=("round",), robots=("panda",)
-))
-
-# def _make_positional(**kwargs):
-#     env = RobosuiteEnv(**kwargs)
-#     return ChainedTransform([
-#         PositionalControlTransform(),
-#         PositionalObsTransform
-#     ]).apply(env)
-# environments.register("positional", _make_positional)
+def register_all(registry, prefix=None):
+    # Pick and place environments
+    registry.register("pickplace", partial(PickAndPlace, 
+        num_objects=4, objects=("can","milk", "bread", "cereal"), robots=("panda",)
+    ), prefix=prefix)
+    registry.register("pickplace/random", partial(PickAndPlace, 
+        num_objects=1, objects=("can","milk", "bread", "cereal"), robots=("panda",)
+    ), prefix=prefix)
+    registry.register("pickplace/can", partial(PickAndPlace, 
+        num_objects=1, objects=("can",), robots=("panda",)
+    ), prefix=prefix)
+    registry.register("pickplace/milk", partial(PickAndPlace, 
+        num_objects=1, objects=("milk",), robots=("panda",)
+    ), prefix=prefix)
+    registry.register("pickplace/bread", partial(PickAndPlace, 
+        num_objects=1, objects=("bread",), robots=("panda",)
+    ), prefix=prefix)
+    registry.register("pickplace/cereal", partial(PickAndPlace, 
+        num_objects=1, objects=("cereal",), robots=("panda",)
+    ), prefix=prefix)
+    registry.register("nutassembly", partial(NutAssembly,
+        robots=("panda",)
+    ), prefix=prefix)
+    registry.register("nutassembly/random", partial(NutAssembly,
+        num_objects=1, robots=("panda",)
+    ), prefix=prefix)
+    registry.register("nutassembly/square", partial(NutAssembly,
+        num_objects=1, objects=("square",), robots=("panda",)
+    ), prefix=prefix)
+    registry.register("nutassembly/round", partial(NutAssembly,
+        num_objects=1, objects=("round",), robots=("panda",)
+    ), prefix=prefix)
 
 # Convert robosuite object/robot 
 # initializers to jax-friendly format

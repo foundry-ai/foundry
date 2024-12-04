@@ -25,7 +25,7 @@ if __name__=="__main__":
     yamls = [OmegaConf.load(path) for path in yaml_paths]
     configs.extend(yamls)
 
-    from image_diffusion.main import Config, run
+    from toy_diffusion.main import Config, train
 
     conf = OmegaConf.structured(Config)
     def recursive_read_write(conf):
@@ -44,4 +44,4 @@ if __name__=="__main__":
     conf = OmegaConf.unsafe_merge(conf, *configs)
     # convert to a dataclass, resolving interpolations
     conf = OmegaConf.to_object(conf)
-    run(conf)
+    train(conf)

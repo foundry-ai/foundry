@@ -10,7 +10,13 @@ dependencies = [
     "foundry-systems @ file:///${PROJECT_ROOT}/../../packages/systems",
     "foundry-models @ file:///${PROJECT_ROOT}/../../packages/models",
     "omegaconf >= 2.3",
-    "wandb >= 0.17"
+    "wandb >= 0.17",
+
+    # For converting stable diffusion to
+    # a compatible format.
+    "diffusers>=0.31.0",
+    "transformers>=4.46.3",
+    "torch>=2.5.1",
 ]
 requires-python = ">=3.10"
 license = {text = "MIT"}

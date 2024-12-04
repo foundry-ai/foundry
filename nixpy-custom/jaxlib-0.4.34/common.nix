@@ -15,7 +15,7 @@ let lib = pkgs.lib;
       baseStdenv pkgs.llvmPackages_18.clang;
     stdenv = throw "Use effectiveStdenv instead";
 
-    buildBazelPackage = pkgs.buildBazelPackage.override { 
+    buildBazelPackage = pkgs.buildBaelPackage.override { 
       stdenv = effectiveStdenv; 
     };
     symlinkJoin = pkgs.symlinkJoin;

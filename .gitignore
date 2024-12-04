@@ -1,6 +1,7 @@
 result
 log
 checkpoints
+artifacts
 
 # wandb files
 wandb

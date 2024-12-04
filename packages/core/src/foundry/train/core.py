@@ -6,8 +6,9 @@ from foundry.random import PRNGSequence
 from .reporting import *
 
 from typing import (
-    Any, TypeVar, Callable, Generic, Iterator
+    Any, TypeVar, Callable, Generic
 )
+from collections.abc import Iterator
 from jax.typing import ArrayLike
 from functools import partial
 from contextlib import contextmanager, nullcontext
@@ -162,7 +163,8 @@ class MofNColumn(ProgressColumn):
         )
 
 @contextmanager
-def loop(data : StreamBuilder[Sample], *, iterations, rng_key=None, progress=True,
+def loop(data : StreamBuilder[Sample], *, iterations, rng_key=None, 
+         progress=True, epoch_bar=False,
          log_compiles=False, trace=False) -> Iterator[Loop[Sample]]:
     with data.build() as stream:
         if progress:
@@ -191,10 +193,12 @@ def loop(data : StreamBuilder[Sample], *, iterations, rng_key=None, progress=Tru
             stream,
             iterations,
             progress=progress,
+            epoch_bar=epoch_bar,
             trace_dir=trace_dir
         )
         with progress_ctx, compile_logger:
             yield loop
+
 
 @dataclass
 class LossOutput:
@@ -202,8 +206,10 @@ class LossOutput:
     metrics: Metrics = None
     var_updates: Vars = None
 
+LossFn = Callable[[Vars, jax.Array, Sample], LossOutput]
+
 @partial(jax.jit, static_argnums=(0,))
-def batched_loss(loss_fn, vars, rng_key, batch, **kwargs):
+def batched_loss(loss_fn : LossFn, vars, rng_key, batch, **kwargs) -> LossFn:
     loss = lambda rng, sample: loss_fn(vars, rng, sample, **kwargs)
     vmap_loss = jax.vmap(loss,
         in_axes=0,
@@ -232,7 +238,7 @@ def batch_loss(loss_fn):
 
 @partial(jax.profiler.annotate_function, name="step")
 @partial(jax.jit, static_argnums=(0,1), static_argnames=("return_grad", "return_grad_norm"), donate_argnums=(2,3))
-def step(batch_loss_fn : Callable[[Vars, jax.Array, Sample], LossOutput], 
+def step(batch_loss_fn : LossFn, 
         optimizer : optax.GradientTransformationExtraArgs, 
         opt_state : OptState, 
         vars : Vars, 

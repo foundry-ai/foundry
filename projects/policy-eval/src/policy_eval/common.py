@@ -14,7 +14,7 @@ from foundry.core.typing import Array
 from foundry.datasets.env import EnvDataset
 from foundry.datasets.core import DatasetRegistry
 from foundry.data import Data
-from foundry.env import Environment, ObserveConfig
+from foundry.env.core import Environment, ObserveConfig
 from foundry.policy import Policy
 from foundry.train.reporting import Video
 
@@ -81,7 +81,7 @@ class DataConfig:
         env = dataset.create_env(type=self.env_type)
         loaded_splits = {}
         if "train" in splits:
-            logger.info(f"Loaded training data from [blue]{self.dataset}[/blue]")
+            logger.info(f"Loading training data from [blue]{self.dataset}[/blue]")
             train_data = dataset.split("train")
             if self.train_trajectories is not None:
                 train_data = train_data.slice(0, self.train_trajectories)

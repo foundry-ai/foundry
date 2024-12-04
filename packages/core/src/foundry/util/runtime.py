@@ -13,7 +13,6 @@ import functools
 import typing
 
 from typing import Literal, Sequence, Callable, Type
-from dataclasses import MISSING, replace, fields
 from rich.text import Text
 from rich.logging import RichHandler
 from pathlib import Path
@@ -95,8 +94,14 @@ def setup_gc():
     SETUP_GC = True
 
 def setup():
+    # Enable 64 bit dtypes by default,
+    # but make the default dtype 32 bits
+    os.environ["JAX_ENABLE_X86"] = "True"
+    os.environ["JAX_DEFAULT_DTYPE_BITS"] = "32"
+
     jupyter = rich.get_console().is_jupyter
     os.environ["WANDB_SILENT"] = "true"
+    # The driver path, for non-nix python environments
     if jupyter:
         from foundry.util.ipython import setup_rich_notebook_hook
         setup_rich_notebook_hook()

@@ -4,7 +4,7 @@ import jax
 import foundry.core as F
 
 from foundry.core.dataclasses import dataclass, field
-from foundry.env import EnvWrapper
+from foundry.env.core import EnvWrapper
 
 class EnvTransform(abc.ABC):
     @abc.abstractmethod

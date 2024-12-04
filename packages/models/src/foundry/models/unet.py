@@ -279,33 +279,44 @@ class UNet(nn.Module):
         out = nn.Sequential([
             Normalization(self.dims),
             activations.silu,
-            nn.Conv(out_channels, self.dims*self.kernel_size, 
-                    kernel_init=initializers.zeros_init())
+            nn.Conv(out_channels, self.dims*self.kernel_size) 
         ])
         return input_blocks, middle_block, output_blocks, out
 
     @nn.compact
     def __call__(self, x, *, cond=None, cond_embed=None, train=False):
-        embed = cond_embed
         if cond is not None:
-            assert self.num_classes is not None
-            assert cond.shape == x.shape[:-1-self.dims]
-            cond_embed = nn.Embed(self.num_classes, self.embed_dim)(cond)
-            if embed is not None:
-                embed = jnp.concatenate([embed, cond_embed], axis=-1)
+            if cond.ndim <= 1:
+                assert self.num_classes is not None
+                if cond.ndim == 0: 
+                    embed = nn.Embed(self.num_classes, self.embed_dim)
+                    label_embed = embed(cond)
+                else:
+                    # attend over the embedding
+                    # with the specified query vector
+                    label_embed = nn.Sequential([
+                        nn.Dense(self.embed_dim),
+                        activations.silu,
+                        nn.Dense(self.embed_dim)
+                    ])(cond)
+                cond_embed = (
+                    label_embed if cond_embed is None
+                    else jnp.concatenate([cond_embed, label_embed], axis=-1)
+                )
+            elif cond.shape[:-1] == x.shape[:-1]:
+                x = jnp.concatenate([x, cond], axis=-1)
             else:
-                embed = cond_embed
-
+                raise ValueError(f"Invalid cond shape: {cond.shape}")
         input_blocks, middle_block, output_blocks, out = self._setup(x)
         h = x.astype(self.dtype)
         hs = []
         spatial_shapes = []
         for module in input_blocks:
-            h = module(h, cond_embed=embed, train=train)
+            h = module(h, cond_embed=cond_embed, train=train)
             spatial_shapes.append(h.shape[-1-self.dims:-1])
             hs.append(h)
         spatial_shapes.pop() # remove the last spatial shape
-        h = middle_block(h, cond_embed=embed, train=train)
+        h = middle_block(h, cond_embed=cond_embed, train=train)
         for module in output_blocks:
             res = hs.pop()
             h = jnp.concatenate((h, res), axis=-1)
@@ -313,13 +324,14 @@ class UNet(nn.Module):
             h = module(
                 h, 
                 spatial_shape=spatial_shape,
-                cond_embed=embed, 
+                cond_embed=cond_embed, 
                 train=train
             )
         h = h.astype(x.dtype)
         # define the output block, so we can
         # use the input number of channels
-        return out(h)
+        output = out(h)
+        return output
 
 
 class DiffusionUNet(UNet):
