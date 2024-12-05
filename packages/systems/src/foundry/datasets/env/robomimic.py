@@ -39,6 +39,8 @@ class RobomimicDataset(EnvDataset[Step]):
         if type == "keypoint":
             pass
             #transform = KeypointObsTransform()
+        elif type == "rel_pos":
+            transform = RelPosObsTransform()
         elif type == "rel_keypoint":
             transform = RelKeypointObsTransform()
         else:
