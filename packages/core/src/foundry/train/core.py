@@ -44,7 +44,8 @@ class Loop(Generic[Sample]):
             data: DataStream[Sample],
             max_iterations: int,
             trace_dir: str | None,
-            progress: Progress):
+            progress: Progress,
+            show_epochs: bool):
         self.rng_key = rng_key
         self.data = data
         try: epoch_iterations = len(data)
@@ -55,7 +56,7 @@ class Loop(Generic[Sample]):
         self.max_iterations = max_iterations
         self.progress = progress
         self.trace_dir = trace_dir
-        self.show_epochs = self.epoch_iterations is not None and self.max_iterations > self.epoch_iterations
+        self.show_epochs = (self.epoch_iterations is not None and self.max_iterations > self.epoch_iterations) and show_epochs
 
         if self.progress is not None:
             self.iteration_task = progress.add_task("Iteration", total=max_iterations)
@@ -164,7 +165,7 @@ class MofNColumn(ProgressColumn):
 
 @contextmanager
 def loop(data : StreamBuilder[Sample], *, iterations, rng_key=None, 
-         progress=True, epoch_bar=False,
+         progress=True, show_epochs=True,
          log_compiles=False, trace=False) -> Iterator[Loop[Sample]]:
     with data.build() as stream:
         if progress:
@@ -193,7 +194,7 @@ def loop(data : StreamBuilder[Sample], *, iterations, rng_key=None,
             stream,
             iterations,
             progress=progress,
-            epoch_bar=epoch_bar,
+            show_epochs=show_epochs,
             trace_dir=trace_dir
         )
         with progress_ctx, compile_logger:

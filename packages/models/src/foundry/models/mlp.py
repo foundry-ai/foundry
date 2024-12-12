@@ -26,7 +26,7 @@ class MLPClassifier(nn.Module):
 
 class DiffusionMLP(nn.Module):
     features: Sequence[int] = (64, 64, 64)
-    activation: str = "relu"
+    activation: str = "gelu"
     time_embed_dim: int = 32
 
     @nn.compact
@@ -43,19 +43,21 @@ class DiffusionMLP(nn.Module):
         # concatenated embedding
         if cond is not None:
             cond_flat, _ = jax.flatten_util.ravel_pytree(cond)
+            cond_flat = 2*(cond_flat - 0.5)
+            cond_flat = - cond_flat
             cond_embed = nn.Sequential([
                 nn.Dense(self.time_embed_dim),
                 h,
                 nn.Dense(self.time_embed_dim)
             ])(cond_flat)
-            embed = embed + cond_embed
+            embed = npx.concatenate([embed, cond_embed], axis=-1)
 
         x, x_uf = jax.flatten_util.ravel_pytree(x)
         out_features = x.shape[-1]
         for feat in self.features:
-            # shift, scale = npx.split(nn.Dense(2*feat)(embed), 2, -1)
+            shift, scale = npx.split(nn.Dense(2*feat)(embed), 2, -1)
             x = h(nn.Dense(feat)(x))
-            # x = x * (1 + scale) + shift
+            x = x * (1 + scale) + shift
         x = nn.Dense(out_features)(x)
         x = x_uf(x)
         return x
@@ -76,3 +78,7 @@ def register(registry: Registry, prefix=None):
     registry.register("diffusion/mlp/large", DiffusionMLPLarge, prefix=prefix)
     registry.register("diffusion/mlp/medium", DiffusionMLPMedium, prefix=prefix)
     registry.register("diffusion/mlp/small", DiffusionMLPSmall, prefix=prefix)
+
+    registry.register("diffusion/mlp/large/relu", partial(DiffusionMLPLarge, activation="relu"), prefix=prefix)
+    registry.register("diffusion/mlp/medium/relu", partial(DiffusionMLPMedium, activation="relu"), prefix=prefix)
+    registry.register("diffusion/mlp/small/relu", partial(DiffusionMLPSmall, activation="relu"), prefix=prefix)

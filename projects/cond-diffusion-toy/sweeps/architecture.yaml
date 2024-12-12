@@ -1,0 +1,18 @@
+program: ./projects/cond-diffusion-toy/scripts/toy_diffusion
+name: Image Diffusion
+method: grid
+project: image_diffusion
+parameters:
+  seed:
+    values: [42, 43, 44]
+  model:
+    values:
+     - diffusion/mlp/small
+     - diffusion/mlp/medium
+     - diffusion/mlp/large
+     - diffusion/mlp/small/relu
+     - diffusion/mlp/medium/relu
+     - diffusion/mlp/large/relu
+command:
+  - ${program}
+  - ${args}
