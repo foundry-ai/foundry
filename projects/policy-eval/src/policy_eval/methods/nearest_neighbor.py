@@ -63,4 +63,7 @@ class NearestConfig:
     action_horizon: int = 8
 
     def run(self, inputs: Inputs):
-        return Nearest(data=inputs.data, action_horizon=self.action_horizon)
+        return Nearest(
+            data=inputs.data,
+            action_horizon=min(self.action_horizon, inputs.data.action_length)
+        )

@@ -83,21 +83,23 @@ def setup_jax_cache():
 SETUP_GC = False
 
 def setup_gc():
-    global SETUP_GC
-    if SETUP_GC:
-        return
-    import gc
-    from jax._src.lib import _xla_gc_callback
-    # pop the xla gc callback
-    if gc.callbacks[-1] is _xla_gc_callback:
-        gc.callbacks.pop()
-    SETUP_GC = True
+    pass
+    # global SETUP_GC
+    # if SETUP_GC:
+    #     return
+    # import gc
+    # from jax._src.lib import _xla_gc_callback
+    # # pop the xla gc callback
+    # if gc.callbacks[-1] is _xla_gc_callback:
+    #     gc.callbacks.pop()
+    # SETUP_GC = True
 
 def setup():
     # Enable 64 bit dtypes by default,
     # but make the default dtype 32 bits
     os.environ["JAX_ENABLE_X86"] = "True"
     os.environ["JAX_DEFAULT_DTYPE_BITS"] = "32"
+    os.environ["MUJOCO_GL"] = "egl"
 
     jupyter = rich.get_console().is_jupyter
     os.environ["WANDB_SILENT"] = "true"

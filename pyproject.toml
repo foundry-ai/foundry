@@ -63,9 +63,13 @@ excludes = ["pytinyrenderer", "evdev"]
 [tool.pdm.scripts]
 image_diffusion = "./projects/image-diffusion/scripts/image_diffusion"
 image_diffusion_eval = "./projects/image-diffusion/scripts/image_diffusion_eval"
+
 language_model = "./projects/language-model/scripts/language_model"
+
 toy_diffusion = "./projects/cond-diffusion-toy/scripts/toy_diffusion"
 toy_perplexity = "./projects/cond-diffusion-toy/scripts/toy_perplexity"
+
+policy_eval = "./projects/policy-eval/scripts/policy_eval"
 
 [tool.nixpy]
 python-version = "3.10"

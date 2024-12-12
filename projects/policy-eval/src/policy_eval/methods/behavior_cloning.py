@@ -101,13 +101,7 @@ class BCConfig:
     batch_size: int = 256
     learning_rate: float = 2e-4
     weight_decay: float = 1e-5
-
-    diffusion_steps: int = 32
     action_horizon: int = 16
-    
-    save_dir: str | None = None
-    from_checkpoint: bool = False
-    checkpoint_filename: str | None = None
 
     @property
     def model_config(self) -> MLPConfig:
@@ -126,9 +120,9 @@ class BCConfig:
         train_sample = train_data[0]
         observations_structure = tree.map(lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype), 
                                           train_sample.observations)
+        action_horizon = min(self.action_horizon, inputs.data.action_length)
         actions_structure = tree.map(lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype), 
                                           train_sample.actions)
-
         model, vars = self.model_config.create_model(
             next(inputs.rng),
             observations_structure,
@@ -168,7 +162,7 @@ class BCConfig:
                 data=inputs.data,
                 observations_structure=observations_structure,
                 actions_structure=actions_structure,
-                action_horizon=self.action_horizon,
+                action_horizon=action_horizon,
                 model_config=self.model_config,
                 obs_normalizer=normalizer.map(lambda x: x.observations),
                 action_normalizer=normalizer.map(lambda x: x.actions),
@@ -211,6 +205,7 @@ class BCConfig:
                         train.console.log(step.iteration, metrics, 
                                           prefix="train.")
                     if step.iteration % 2000 == 0:
+                        logger.info("Evaluating policy...")
                         rewards, video = inputs.validate_render(val_rng, make_checkpoint().create_policy())
                         reward_metrics = {
                             "mean_reward": jnp.mean(rewards),

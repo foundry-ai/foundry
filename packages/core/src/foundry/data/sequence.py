@@ -5,6 +5,7 @@ from typing import Any, Generic, TypeVar
 
 import jax.tree_util
 import foundry.numpy as jnp
+import foundry.core.tree as tree
 import numpy as np
 
 T = TypeVar('T')
@@ -136,6 +137,25 @@ class SequenceData(Generic[T,I]):
             length=jnp.array(len(elements), dtype=idx_dtype)
         )
         sequences = PyTreeData(jax.tree.map(lambda x: x[None,...], info))
+        return SequenceData(
+            elements=elements,
+            sequences=sequences
+        )
+    
+    @staticmethod
+    def from_pytree(elements: T) -> "SequenceData[T,None]":
+        N = tree.axis_size(elements, 0)
+        T = tree.axis_size(elements, 1)
+        info = SequenceInfo(
+            info=None,
+            start_idx=T*jnp.arange(N, dtype=idx_dtype),
+            end_idx=T*(jnp.arange(N, dtype=idx_dtype) + 1),
+            length=jnp.full((N,), T, dtype=idx_dtype)
+        )
+        sequences = PyTreeData(info)
+        elements = PyTreeData(
+            tree.map(lambda x: x.reshape((x.shape[0]*x.shape[1],) + x.shape[2:]), elements)
+        )
         return SequenceData(
             elements=elements,
             sequences=sequences

@@ -119,37 +119,22 @@ class MujocoSimulator(Simulator[SystemData]):
             data.qacc_warmstart[:] = step.qacc_warmstart
         return func(data, *args)
 
-    def _job_callback(self, func, args_structure, step: MujocoStep, *args):
+    def _job_callback(self, func, *args):
         def run_job(args):
             return self._run_job(func, *args)
+        batch_shape = args[0].time.shape
+        batch_dims = len(batch_shape)
+        N = math.prod(batch_shape)
 
-        # the unbatched argument structure
-        # and the arguments
-        args_structure = (tree.map(lambda _, y: y, step, self.step_structure, is_leaf=lambda x: x is None),) + tuple(args_structure)
-        args = (step,) + tuple(args)
-
-        # the batch shapes of the arguments
-        batch_shapes = tree.leaves(tree.map(
-            lambda x, y: None if x is None else jax.ShapeDtypeStruct(jnp.shape(x)[:-y.ndim] if y.ndim > 0 else jnp.shape(x), x.dtype),
-            args, args_structure,
-            is_leaf=lambda x: x is None
-        ))
-        batch_shapes = [s.shape for s in batch_shapes]
-
-        if all([s == () for s in batch_shapes]):
-            return self.pool.submit(run_job, args).result()
-        else:
-            # get the longest batch shape
-            batch_shape = max(batch_shapes, key=lambda x: len(x))
-            N = math.prod(batch_shape)
-            args = tree.map(
-                lambda x, y: None if x is None else jnp.broadcast_to(x, batch_shape + y.shape).reshape((N,) + y.shape), 
-                args, args_structure,
-                is_leaf=lambda x: x is None
-            )
-            results = self.pool.map(run_job, (tree.map(lambda x: np.array(x[i]), args) for i in range(N)))
-            results = tree.map(lambda *x: jnp.stack(x, axis=0), *results)
-            results = tree.map(lambda x: jnp.reshape(x, batch_shape + x.shape[1:]), results)
+        # reshape the args
+        args = tree.map(
+            lambda x: np.array(x).reshape((N,) + x.shape[batch_dims:]),  args
+        )
+        results = self.pool.map(run_job, (tree.map(lambda x: x[i], args) for i in range(N)))
+        # stack everything
+        results = tree.map(lambda *x: np.stack(x, axis=0), *results)
+        # reshape to non-batch
+        results = tree.map(lambda x: x.reshape(batch_shape + x.shape[1:]), results)
         return results
 
     def _forward_job(self, data : mujoco.MjData) -> MujocoState:
@@ -167,8 +152,8 @@ class MujocoSimulator(Simulator[SystemData]):
             state.qvel, state.act, None, None
         )
         return jax.pure_callback(
-            partial(self._job_callback, self._forward_job, ()), 
-            self.state_structure, step, vectorized=True
+            partial(self._job_callback, self._forward_job), 
+            self.state_structure, step, vmap_method="broadcast_all"
         )
 
     def _step_job(self, data : mujoco.MjData) -> MujocoState:
@@ -188,8 +173,8 @@ class MujocoSimulator(Simulator[SystemData]):
             state.data.act, action, state.qacc_warmstart
         )
         return jax.pure_callback(
-            partial(self._job_callback, self._step_job, ()),
-            self.state_structure, step, vectorized=False
+            partial(self._job_callback, self._step_job),
+            self.state_structure, step, vmap_method="broadcast_all"
         )
 
     def reduce_state(self, state: MujocoState) -> SystemState:
@@ -211,8 +196,8 @@ class MujocoSimulator(Simulator[SystemData]):
         structure = jnp.zeros((self.model.nv, self.model.nv), dtype=jnp.float32)
         step = MujocoStep(state.time, state.qpos, state.qvel, state.act, None, None)
         M = jax.pure_callback(
-            partial(self._job_callback, self._fullM_job, ()),
-            structure, step, vectorized=True
+            partial(self._job_callback, self._fullM_job),
+            structure, step, vmap_method="broadcast_all"
         )
         return M
 
@@ -231,8 +216,8 @@ class MujocoSimulator(Simulator[SystemData]):
                      jax.ShapeDtypeStruct((3, self.model.nv), self.dtype))
         step = MujocoStep(state.time, state.qpos, state.qvel, state.act, None, None)
         jacp, jacr = jax.pure_callback(
-            partial(self._job_callback, self._jac_job, (jax.ShapeDtypeStruct((), jnp.int32),) ), 
-            structure, step, id, vectorized=True
+            partial(self._job_callback, self._jac_job),
+            structure, step, id, vmap_method="broadcast_all"
         )
         return jacp, jacr
 
@@ -287,9 +272,9 @@ class MujocoSimulator(Simulator[SystemData]):
         )
         trajectory_structure = jax.ShapeDtypeStruct(trajectory.shape, jnp.float32) if trajectory is not None else None
         buffer = jax.pure_callback(
-            partial(self._job_callback, render_job, (trajectory_structure,)),
+            partial(self._job_callback, render_job),
             jax.ShapeDtypeStruct((self.buffer_height, self.buffer_width, 3), jnp.uint8),
-            step, trajectory, vectorized=True
+            step, trajectory, vmap_method="broadcast_all"
         )
         buffer = buffer.astype(jnp.float32) / 255.0
         buffer = jax.image.resize(buffer, (height, width,3), method="linear")

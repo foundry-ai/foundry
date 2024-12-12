@@ -118,16 +118,12 @@ class DPConfig:
     unet : UNetConfig = UNetConfig()
 
     epochs: int = 200
-    batch_size: int = 256
+    batch_size: int = 128
     learning_rate: float = 1e-4
     weight_decay: float = 1e-5
 
     diffusion_steps: int = 32
     action_horizon: int = 16
-    
-    save_dir: str | None = None
-    from_checkpoint: bool = False
-    checkpoint_filename: str | None = None
 
     @property
     def model_config(self) -> MLPConfig | UNetConfig:
@@ -143,6 +139,8 @@ class DPConfig:
         logger.info("Materializing all data...")
         train_data = data["train"].cache()
         test_data = data["test"].cache()
+
+        action_horizon = min(self.action_horizon, inputs.data.action_length)
 
         schedule = DDPMSchedule.make_squaredcos_cap_v2(
             self.diffusion_steps,
@@ -181,7 +179,8 @@ class DPConfig:
         opt_state = F.jit(optimizer.init)(vars["params"])
         ema = optax.ema(0.9)
         ema_state = F.jit(ema.init)(vars)
-        ema_update = F.jit(ema.update)
+        # donate the ema_state argument
+        ema_update = F.jit(ema.update, donate_argnums=(1,))
 
         def loss_fn(vars, rng_key, sample: Sample):
             sample_norm = normalizer.normalize(sample)
@@ -198,7 +197,7 @@ class DPConfig:
                 data=inputs.data,
                 observations_structure=observations_structure,
                 actions_structure=actions_structure,
-                action_horizon=self.action_horizon,
+                action_horizon=action_horizon,
                 model_config=self.model_config,
                 schedule=schedule,
                 obs_normalizer=normalizer.map(lambda x: x.observations),
@@ -243,6 +242,8 @@ class DPConfig:
                         train.console.log(step.iteration, metrics, 
                                           prefix="train.")
                     if step.iteration % 2000 == 0:
+                        logger.info("Evaluating policy...")
+                        # jax.profiler.save_device_memory_profile(f"memory_{step.iteration}.prof")
                         rewards, video = inputs.validate_render(val_rng, make_checkpoint().create_policy())
                         reward_metrics = {
                             "mean_reward": jnp.mean(rewards),

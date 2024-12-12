@@ -22,6 +22,8 @@ from typing import Any, Callable
 from pathlib import Path
 from wandb.sdk.wandb_run import Run # type: ignore
 
+from .lower_bounds import stable
+
 import boto3
 import logging
 
@@ -76,7 +78,10 @@ class DataConfig:
     
     def load(self, splits=set()) -> tuple[Environment, dict[str, Data[Sample]]]:
         datasets = DatasetRegistry[EnvDataset]()
+
         foundry.datasets.env.register_all(datasets)
+        stable.register_datasets(datasets)
+
         dataset = datasets.create(self.dataset)
         env = dataset.create_env(type=self.env_type)
         loaded_splits = {}
