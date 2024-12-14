@@ -79,13 +79,13 @@ class EmbedEnvironment(Environment):
 
     @staticmethod
     def create_model():
-        return PerturbationModel([16, 16, 16])
+        return PerturbationModel([16, 16])
 
     def sample_state(self, rng_key):
-        return npx.zeros((2 + d,))
+        return npx.zeros((2 + self.d,))
 
     def sample_action(self, rng_key):
-        return npx.zeros((2 + d,))
+        return npx.zeros((2 + self.d,))
     
     def reset(self, rng_key):
         Z_rng, z_sphere_rng, z_d_rng, w_rng = foundry.random.split(rng_key, 4)

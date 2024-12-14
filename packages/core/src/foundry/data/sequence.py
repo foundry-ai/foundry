@@ -90,6 +90,19 @@ class SequenceData(Generic[T,I]):
             lambda x: self.elements.slice(x, length).as_pytree()
         )(start_idx)
         return PyTreeData(elements)
+    
+    # convert to pytree if all sequences are the same length
+    def as_pytree(self) -> tuple[I, T]:
+        infos = self.sequences.as_pytree()
+        assert jnp.all(infos.length == infos.length[0])
+        N = infos.length.shape[0]
+        T = infos.length[0]
+        elements = self.elements.as_pytree()
+        elements = jax.tree.map(
+            lambda x: jnp.reshape(x, (N, T) + x.shape[1:]),
+            elements
+        )
+        return elements, infos
 
     # Will pad the left or right with either a given value,
     # or replicate the last/first element.
@@ -143,11 +156,11 @@ class SequenceData(Generic[T,I]):
         )
     
     @staticmethod
-    def from_pytree(elements: T) -> "SequenceData[T,None]":
+    def from_pytree(elements: T, infos: I = None) -> "SequenceData[T,I]":
         N = tree.axis_size(elements, 0)
         T = tree.axis_size(elements, 1)
         info = SequenceInfo(
-            info=None,
+            info=infos,
             start_idx=T*jnp.arange(N, dtype=idx_dtype),
             end_idx=T*(jnp.arange(N, dtype=idx_dtype) + 1),
             length=jnp.full((N,), T, dtype=idx_dtype)
