@@ -1,6 +1,8 @@
 result
 log
 checkpoints
+artifacts
+*.prof
 
 # wandb files
 wandb

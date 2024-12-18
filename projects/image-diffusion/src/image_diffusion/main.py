@@ -53,10 +53,10 @@ class Config:
     epochs: int | None = None
     iterations: int | None = None
 
-    lr: float = 3e-4
-    weight_decay: float = 1e-4
+    checkpoint_interval : int | None = 1000
 
-    num_visualize: int = 8
+    lr: float = 1e-4
+    weight_decay: float = 1e-4
 
     timesteps: int = 32
 
@@ -261,13 +261,9 @@ def run(config: Config):
     )
 
     lr_schedule = optax.cosine_onecycle_schedule(
-        iterations, config.lr, pct_start=0.05
+        iterations, config.lr, pct_start=0.02
     )
     optimizer = optax.adamw(lr_schedule, weight_decay=config.weight_decay)
-    optimizer = optax.chain(
-        optax.clip_by_global_norm(1.0),
-        optimizer,
-    )
     # opt_state = optimizer.init(vars["params"])
     # lr_schedule = optax.cosine_onecycle_schedule(iterations, 1e-2, pct_start=0.05)
     # optimizer = optax.sgd(lr_schedule)
@@ -300,12 +296,16 @@ def run(config: Config):
 
     train_stream = train_data.stream().shuffle(next(rng)).batch(config.batch_size)
     test_stream = test_data.stream().batch(2*config.batch_size)
-    gen_stream = test_data.stream().shuffle(next(rng)).batch(2048)
+    gen_a_stream = test_data.stream().shuffle(next(rng)).batch(64)
+    gen_b_stream = test_data.stream().shuffle(next(rng)).batch(2048)
     with foundry.train.loop(train_stream, 
             iterations=iterations, rng_key=next(rng)) as loop, \
             test_stream.build() as test_stream, \
-            gen_stream.build() as gen_stream:
+            gen_a_stream.build() as gen_a_stream, \
+            gen_b_stream.build() as gen_b_stream:
         for epoch in loop.epochs():
+            # Log the checkpoint
+
             for step in epoch.steps():
                 train_key, test_key = foundry.random.split(step.rng_key)
                 opt_state, vars, grad_norm, metrics = foundry.train.step(
@@ -336,10 +336,43 @@ def run(config: Config):
                     foundry.train.console.log(
                         step.iteration, test_metrics, prefix="test."
                     )
+                if config.checkpoint_interval and \
+                        step.iteration % config.checkpoint_interval == 0 and \
+                        config.bucket_url is not None:
+                    checkpoint = Checkpoint(
+                        dataset=config.dataset,
+                        config=model_config,
+                        normalizer=config.normalizer,
+                        schedule=schedule,
+                        vars=vars,
+                        opt_state=opt_state
+                    )
+                    final_result_url = f"{config.bucket_url}/{wandb_run.id}/checkpoint_{epoch.num:04}.zarr.zip"
+                    foundry.util.serialize.save(final_result_url, checkpoint)
+                    dataset_sanitized = config.dataset.replace("/", "-")
+                    artifact = wandb.Artifact(f"{dataset_sanitized}-ddpm-{step.iteration:06}", type="model", metadata={"step": step.iteration})
+                    artifact.add_reference(final_result_url, "checkpoint.zarr.zip")
+                    wandb_run.log_artifact(artifact)
+                    artifact.wait()
+                    logger.info(f"Logged checkpoint: {artifact.source_qualified_name}")
+                    del checkpoint
+                    del artifact
+
+                    # Log generated images
+                    if not gen_a_stream.has_next():
+                        gen_a_stream = gen_a_stream.reset()
+                    gen_a_stream, gen_batch = gen_a_stream.next()
+                    _, gen_samples = generate_samples(vars, gen_batch.cond, sample_key)
+                    gen_samples = Image(foundry.graphics.image_grid(gen_samples))
+                    foundry.train.wandb.log(
+                        step.iteration, {"samples": gen_samples},
+                        run=wandb_run, prefix="generated/"
+                    )
+
         # generate samples and log as a wandb table
-        if not gen_stream.has_next():
-            gen_stream = gen_stream.reset()
-        gen_stream, gen_batch = gen_stream.next()
+        if not gen_b_stream.has_next():
+            gen_b_stream = gen_b_stream.reset()
+        gen_b_stream, gen_batch = gen_b_stream.next()
         gen_labels, gen_samples = generate_samples(vars, gen_batch.cond, sample_key)
         if config.condition_type == "image":
             label_columns = ["Label"]
@@ -364,11 +397,11 @@ def run(config: Config):
         opt_state=opt_state
     )
     if config.bucket_url is not None:
-        final_result_url = f"{config.bucket_url}/{wandb_run.id}/checkpoint.zarr.zip"
+        final_result_url = f"{config.bucket_url}/{wandb_run.id}/checkpoint-final.zarr.zip"
         foundry.util.serialize.save(final_result_url, checkpoint)
         dataset_sanitized = config.dataset.replace("/", "-")
-        artifact = wandb.Artifact(f"{dataset_sanitized}-ddpm", type="model")
-        artifact.add_reference(final_result_url)
+        artifact = wandb.Artifact(f"{dataset_sanitized}-ddpm-final", type="model", metadata={"step": step.iteration})
+        artifact.add_reference(final_result_url, "checkpoint.zarr.zip")
         wandb_run.log_artifact(artifact)
         artifact.wait()
         logger.info(f"Artifact: {artifact.source_qualified_name}")

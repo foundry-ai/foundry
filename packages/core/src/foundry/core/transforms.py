@@ -3,6 +3,7 @@ import jax.numpy as jnp
 import jax.tree_util
 import functools
 import weakref
+import inspect
 
 import jax._src.traceback_util
 jax._src.traceback_util.register_exclusion(__file__)
@@ -22,10 +23,10 @@ def vmap(func : F, /, in_axes=0, out_axes=0, *, axis_name=None) -> F:
 
 # A filtered jit, which makes anything
 # that is not a jax Array type a static argument.
-def jit(func=None, *, 
+def jit(func : F = None, *, 
             allow_static=True, allow_arraylike=False,
             donate_argnums=None, donate_argnames=None
-        ):
+        ) -> F:
     if func is None:
         return functools.partial(jit,
             allow_static=allow_static,
@@ -101,6 +102,14 @@ def _make_filtered(func):
     def wrapper(*args, **kwargs):
         args, kwargs = _unwrap_tree((args, kwargs))
         return _wrap_tree(func(*args, **kwargs))
+    # for debugging purposes...
+    origin = func
+    while isinstance(origin, functools.partial):
+        origin = origin.func
+    if inspect.ismethod(origin) or inspect.isfunction(origin):
+        wrapper.__name__ = origin.__name__
+        wrapper.__doc__ = origin.__doc__
+
     if func not in _FILTERED_FUNCS:
         _FILTERED_FUNCS[func] = wrapper
     return _FILTERED_FUNCS[func]
@@ -112,6 +121,14 @@ def _make_filtering(func):
     def wrapper(*args, **kwargs):
         args, kwargs = _wrap_tree((args, kwargs))
         return _unwrap_tree(func(*args, **kwargs))
+    # for debugging purposes...
+    origin = func
+    while isinstance(origin, functools.partial):
+        origin = origin.func
+    if inspect.ismethod(origin) or inspect.isfunction(origin):
+        wrapper.__name__ = origin.__name__
+        wrapper.__doc__ = origin.__doc__
+
     if func not in _FILTERING_FUNCS:
         _FILTERING_FUNCS[func] = wrapper
     return _FILTERING_FUNCS[func]

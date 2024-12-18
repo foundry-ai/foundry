@@ -325,16 +325,18 @@ class DDPMSchedule:
     def sample(self, rng_key : jax.Array, 
                     model : Callable[[jax.Array, Sample, jax.Array], Sample], 
                     sample_structure: Sample, 
-                    *, num_steps : Optional[int] = None,
+                    *, 
                     start_time : Optional[int] = None,
+                    final_time : Optional[int] = None, 
+                    # Note: this is not the number of steps to take (which is determined by start_time - final_time)
+                    num_steps : Optional[int] = None,
                     start_sample : Optional[Sample] = None,
-                    final_time : Optional[int] = None, trajectory : bool = False):
+                    trajectory : bool = False):
         """ Runs the reverse process, given a denoiser model, for a number of steps. """
-        if final_time is None:
-            final_time = 0
-        if num_steps is None:
-            num_steps = self.num_steps - final_time
-        step_ratio = (self.num_steps - final_time) / num_steps
+        if start_time is None: start_time = self.num_steps
+        if final_time is None: final_time = 0
+        if num_steps is None: num_steps = start_time - final_time
+        step_ratio = (start_time - final_time) / num_steps
         # sample initial noise
         if start_sample is not None:
             random_sample = start_sample
@@ -342,17 +344,21 @@ class DDPMSchedule:
             flat_structure, unflatten = tree.ravel_pytree_structure(sample_structure)
             random_sample = unflatten(jax.random.normal(rng_key, flat_structure.shape, flat_structure.dtype))
 
+        def do_step(carry, curr_T, prev_T):
+            rng_key, x_t = carry
+            m_rng, s_rng, n_rng = jax.random.split(rng_key, 3)
+            model_output = model(m_rng, x_t, curr_T)
+            x_prev = self.reverse_step(s_rng, x_t, curr_T, curr_T - prev_T, model_output)
+            return (n_rng, x_prev)
+
         if trajectory:
-            # if we want to return the trajectory, do a scan.
-            # num_steps must be a static integer then
-            timesteps = (jnp.arange(0, num_steps + 1) * step_ratio).round()[::-1].astype(jnp.int32)
+            # If we want to return the trajectory, do a scan. In that case, num_steps must be statically known
+            timesteps = (jnp.arange(0, num_steps + 1) * step_ratio + final_time).round()[::-1].astype(jnp.int32)
             curr_timesteps, prev_timesteps = timesteps[:-1], timesteps[1:]
             def step(carry, timesteps):
                 rng_key, x_t = carry
                 curr_T, prev_T = timesteps
-                m_rng, s_rng, n_rng = jax.random.split(rng_key, 3)
-                model_output = model(m_rng, x_t, curr_T)
-                x_prev = self.reverse_step(s_rng, x_t, curr_T, curr_T - prev_T, model_output)
+                n_rng, x_prev = do_step(carry, curr_T, prev_T)
                 return (n_rng, x_prev), x_prev
             carry, out = jax.lax.scan(step, (rng_key, random_sample), (curr_timesteps, prev_timesteps))
             _, sample = carry
@@ -365,26 +371,13 @@ class DDPMSchedule:
             traj = jax.tree_map(lambda x: x[::-1, ...], out)
             return sample, traj
         else:
-            static_loop = isinstance(num_steps, int)
-
-            def do_step(carry, curr_T, prev_T):
-                rng_key, x_t = carry
-                m_rng, s_rng, n_rng = jax.random.split(rng_key, 3)
-                model_output = model(m_rng, x_t, curr_T)
-                x_prev = self.reverse_step(s_rng, x_t, curr_T, curr_T - prev_T, model_output)
-                return (n_rng, x_prev)
-
             def loop_step(i, carry):
-                curr_T = jnp.round((num_steps - i)*step_ratio).astype(jnp.int32)
-                prev_T = jnp.round((num_steps - i - 1)*step_ratio).astype(jnp.int32)
-                if not static_loop:
-                    return jax.lax.cond(i < num_steps, 
-                        do_step, lambda x,_a,_b: x, carry, curr_T, prev_T)
-                else:
-                    return do_step(carry, curr_T, prev_T)
+                curr_T = jnp.round((start_time - i)*step_ratio).astype(jnp.int32)
+                prev_T = jnp.round((start_time - i - 1)*step_ratio).astype(jnp.int32)
+                return do_step(carry, curr_T, prev_T)
             carry = (rng_key, random_sample)
             start_time = start_time if start_time is not None else num_steps
-            carry = jax.lax.fori_loop(num_steps - start_time, self.num_steps if not static_loop else num_steps, loop_step, carry)
+            carry = jax.lax.fori_loop(0, num_steps, loop_step, carry)
             _, sample = carry
             return sample
 

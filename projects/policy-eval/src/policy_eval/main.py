@@ -252,10 +252,10 @@ def run(config: Config):
             for (k,v) in reportables.items()
         })
         if inputs.bucket_url is not None:
-            final_result_url = f"{inputs.bucket_url}/final_result.zarr"
+            final_result_url = f"{inputs.bucket_url}/final_result.zarr.zip"
             final_result.save_s3(final_result_url)
             artifact = wandb.Artifact(f"final_result", type="policy")
-            artifact.add_reference(final_result_url)
+            artifact.add_reference(final_result_url, "checkpoint.zarr.zip")
             wandb_run.log_artifact(artifact)
 
         wandb_run.finish()

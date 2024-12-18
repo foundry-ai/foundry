@@ -397,6 +397,8 @@ def batch(*objs):
 
 # colors
 class colors:
+    Black = (0., 0., 0.)
+    White = (1., 1., 1.)
     Red = (1., 0., 0.)
     Green = (0., 1., 0.)
     Blue = (0., 0., 1.)

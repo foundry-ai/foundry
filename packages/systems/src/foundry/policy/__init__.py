@@ -1,5 +1,6 @@
 import jax
 import foundry.numpy as jnp
+import foundry.core as F
 from typing import Generic, TypeVar, Protocol, Callable, Optional
 from foundry.core.dataclasses import dataclass
 from functools import partial
@@ -54,7 +55,7 @@ class Policy(Protocol[Observation, Action, State, PolicyState, Info]):
 # foundry.jit can handle function arguments
 # and intelligently makes them static and allows
 # for vectorizing over functins.
-@partial(jax.jit, static_argnames=("model", "policy", "observe", "length", "last_action"))
+@F.jit
 def rollout(model : Model, state0 : State,
             # policy is optional. If policy is not supplied
             # it is assumed that model is for an autonomous system
