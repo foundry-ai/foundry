@@ -28,6 +28,7 @@ from .methods.behavior_cloning import BCConfig
 from .methods.diffusion_estimator import EstimatorConfig
 from .methods.diffusion_policy import DPConfig
 from .methods.nearest_neighbor import NearestConfig
+from .methods.pretrained import PretrainedConfig
 
 from .common import DataConfig, Inputs, MethodConfig
 
@@ -73,6 +74,7 @@ class Config:
     estimator : EstimatorConfig = EstimatorConfig()
     dp: DPConfig = DPConfig()
     nearest: NearestConfig = NearestConfig()
+    pretrained: PretrainedConfig = PretrainedConfig()
 
     @property
     def method_config(self) -> MethodConfig:
@@ -81,6 +83,7 @@ class Config:
             case "estimator": return self.estimator
             case "diffusion_policy": return self.dp
             case "nearest": return self.nearest
+            case "pretrained": return self.pretrained
             case _: raise ValueError(f"Unknown method: {self.method}")
     
     @property
