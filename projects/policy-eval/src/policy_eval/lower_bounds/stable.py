@@ -88,18 +88,22 @@ class EmbedEnvironment(Environment):
         return npx.zeros((2 + self.d,))
     
     def reset(self, rng_key):
-        Z_rng, z_sphere_rng, z_d_rng, w_rng = foundry.random.split(rng_key, 4)
+        Z_rng, z_sphere_rng, z_d_rng, w_rng, w_d_rng = foundry.random.split(rng_key, 5)
         Z = foundry.random.bernoulli(Z_rng)
 
+        # generate uniform over sphere z
         z = foundry.random.normal(z_sphere_rng, (self.d,))
         z = z / npx.linalg.norm(z)
         z = z * foundry.random.uniform(z_d_rng)
 
-        z = npx.concatenate((npx.array([3, 0]), z), axis=0)
+        z = npx.concatenate((npx.zeros((2,)), z), axis=0)
+        z = z.at[2].add(3)
 
-        w = foundry.random.normal(w_rng, (self.d,))
+        w = foundry.random.normal(w_rng, (self.d + 1,))
         w = w / npx.linalg.norm(w)
-        w = npx.concatenate((npx.zeros((2,)), w))
+        w = w * foundry.random.uniform(w_d_rng)
+
+        w = npx.concatenate((npx.zeros((1,)), w))
         return (1 - Z) * z + Z * w
 
     def step(self, state, input, rng_key):
@@ -113,7 +117,9 @@ class EmbedEnvironment(Environment):
         )
         state_lower = state_lower.at[0].add(perturbation)
         state = npx.concatenate((state_lower, npx.zeros((self.d,))), axis=0)
-        return state + input
+        next_state = state + input
+        next_state = npx.clip(next_state, -1_000_000_000, 1_000_000_000)
+        return next_state
     
     def observe(self, state, config=None):
         return state
@@ -224,11 +230,13 @@ def register_envs(registry : Registry, prefix=None):
 def register_datasets(registry: Registry, prefix=None):
     registry.register(
         "lower_bound/stable/1",
-        partial(create_data, rng_key=foundry.random.key(42), d=16, T=128, N=128, N_test=64, pair_first=True),
+        partial(create_data, rng_key=foundry.random.key(42), 
+                d=16, T=32, N=256, N_test=64, pair_first=True),
         prefix=prefix
     )
     registry.register(
         "lower_bound/stable/2",
-        partial(create_data, rng_key=foundry.random.key(42), d=16, T=128, N=128, N_test=64, pair_first=False),
+        partial(create_data, rng_key=foundry.random.key(42),
+                d=16, T=32, N=256, N_test=64, pair_first=False),
         prefix=prefix
     )

@@ -115,7 +115,10 @@ def policy_rollout(env, T, x0, rng_key, policy):
         pre_states, actions, post_states
     )
     # max over time for the rewards
-    reward = jnp.max(rewards, axis=0)
+    if True:
+        reward = jnp.mean(rewards, axis=0)
+    else:
+        reward = jnp.max(rewards, axis=0)
     return rollout, reward
 
 @F.jit

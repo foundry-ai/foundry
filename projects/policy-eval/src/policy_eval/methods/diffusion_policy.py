@@ -9,8 +9,6 @@ from foundry.random import PRNGSequence
 from foundry.policy import Policy, PolicyInput, PolicyOutput
 from foundry.policy.transforms import ChunkingTransform
 
-from omegaconf import MISSING
-
 from foundry.core.dataclasses import dataclass
 from foundry.data.normalizer import Normalizer, LinearNormalizer, StdNormalizer
 from foundry.train import Vars
@@ -117,7 +115,8 @@ class DPConfig:
     mlp : MLPConfig = MLPConfig()
     unet : UNetConfig = UNetConfig()
 
-    epochs: int = 200
+    epochs: int | None = None
+    iterations : int | None = None
     batch_size: int = 128
     learning_rate: float = 1e-4
     weight_decay: float = 1e-5
@@ -166,7 +165,12 @@ class DPConfig:
         normalizer = StdNormalizer.from_data(train_data)
 
         epoch_iterations = len(train_data) // self.batch_size
-        total_iterations = self.epochs * epoch_iterations
+        if self.epochs is not None:
+            total_iterations = self.epochs * epoch_iterations
+        elif self.iterations is not None:
+            total_iterations = self.iterations
+        else:
+            raise ValueError("Must specify either epochs or iterations")
 
         # initialize optimizer, EMA
         opt_schedule = optax.warmup_cosine_decay_schedule(
@@ -298,7 +302,7 @@ class DiffusionUNet(UNet):
 
 class DiffusionMLP(nn.Module):
     features: Sequence[int]
-    activation: str = "relu"
+    activation: str = "gelu"
     time_embed_dim: int = 256
 
     @nn.compact

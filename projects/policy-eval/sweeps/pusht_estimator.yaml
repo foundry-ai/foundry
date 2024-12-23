@@ -1,7 +1,7 @@
 program: ./projects/policy-eval/scripts/policy_eval
 name: PushT Diffusion Policy
 method: grid
-project: pusht_estimator
+project: lower_bound
 parameters:
   method: 
     value: "estimator"

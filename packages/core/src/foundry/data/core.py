@@ -158,7 +158,7 @@ class PyTreeData(Data[T]):
 
     def slice(self, off : ArrayLike, length : ArrayLike) -> T:
         # the length must be a scalar
-        length = np.array(length).item()
+        length = np.array(min(len(self), length)).item()
         return PyTreeData(jax.tree.map(
             lambda x: jax.lax.dynamic_slice(x,
                     jnp.broadcast_to(jnp.array(off, dtype=idx_dtype), (x.ndim,)),

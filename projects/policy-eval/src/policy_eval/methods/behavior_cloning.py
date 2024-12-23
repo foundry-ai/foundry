@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class MLPConfig:
-    net_width: int = 4096
+    net_width: int = 16
     net_depth: int = 3
 
     def create_model(self, rng_key, observations, actions):
@@ -97,8 +97,9 @@ class BCConfig:
 
     mlp : MLPConfig = MLPConfig()
 
-    epochs: int = 200
-    batch_size: int = 256
+    epochs: int | None = None
+    iterations: int | None = None
+    batch_size: int = 128
     learning_rate: float = 2e-4
     weight_decay: float = 1e-5
     action_horizon: int = 16
@@ -135,7 +136,12 @@ class BCConfig:
         normalizer = StdNormalizer.from_data(train_data)
 
         epoch_iterations = len(train_data) // self.batch_size
-        total_iterations = self.epochs * epoch_iterations
+        if self.epochs is not None:
+            total_iterations = self.epochs * epoch_iterations
+        elif self.iterations is not None:
+            total_iterations = self.iterations
+        else:
+            raise ValueError("Must specify either epochs or iterations")
 
         # initialize optimizer, EMA
         optimizer = optax.adamw(self.learning_rate, weight_decay=self.weight_decay)
@@ -226,18 +232,18 @@ class BCConfig:
 
 class MLP(nn.Module):
     features: Sequence[int]
-    activation: str = "relu"
-    obs_embed_dim: int = 256
+    activation: str = "gelu"
 
     @nn.compact
     def __call__(self, obs, action_sample, train=False):
         activation = getattr(activations, self.activation)
         obs_flat, _ = jax.flatten_util.ravel_pytree(obs)
         action_sample_flat, action_sample_uf = jax.flatten_util.ravel_pytree(action_sample)
+        obs_embed_dim = max(self.features)
         obs_embed = nn.Sequential([
-            nn.Dense(self.obs_embed_dim),
+            nn.Dense(obs_embed_dim),
             activation,
-            nn.Dense(self.obs_embed_dim),
+            nn.Dense(obs_embed_dim),
         ])(obs_flat)
         x = obs_embed
         for feat in self.features:
