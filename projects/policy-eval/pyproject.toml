@@ -11,7 +11,8 @@ dependencies = [
     "foundry-models @ file:///${PROJECT_ROOT}/../../packages/models",
     "omegaconf >= 2.3",
     "boto3 >= 1.35",
-    "wandb >= 0.17"
+    "wandb >= 0.17",
+    "dill >= 0.3.9"
 ]
 requires-python = ">=3.10"
 license = {text = "MIT"}

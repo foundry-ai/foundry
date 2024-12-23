@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Nearest(Result):
     data: DataConfig
-    action_horizon: int = 8
+    action_horizon: int = 16
     
     def create_policy(self) -> Policy:
         env, splits = self.data.load({"train"})
@@ -60,7 +60,7 @@ class Nearest(Result):
 
 @dataclass
 class NearestConfig:
-    action_horizon: int = 8
+    action_horizon: int = 16
 
     def run(self, inputs: Inputs):
         return Nearest(
