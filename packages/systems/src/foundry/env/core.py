@@ -53,6 +53,9 @@ class Environment(typing.Generic[State, ReducedState, Action]):
                action : Action, next_state : State) -> F.Array:
         raise NotImplementedError()
 
+    def total_reward(self, states: State, actions : Action) -> F.Array:
+        raise NotImplementedError()
+
     def cost(self, states: State, actions: Action) -> F.Array:
         raise NotImplementedError()
 

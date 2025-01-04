@@ -3,6 +3,7 @@ import foundry.random
 import foundry.core as F
 import foundry.policy
 
+from foundry.core import tree
 from foundry.graphics import canvas
 from foundry.env.core import Environment, ImageRender
 from foundry.data.sequence import SequenceData, Step
@@ -19,7 +20,7 @@ import jax
 from typing import Any, Sequence
 from functools import partial
 
-def make_challenging_pair(mu=1/4):
+def make_challenging_pair(mu=1/32):
     c_mu = 3/2*mu
     A_1 = npx.array([
         [1+mu, c_mu],
@@ -47,12 +48,12 @@ class PerturbationModel(nn.Module):
         x, _ = jax.flatten_util.ravel_pytree(x)
         Dense = partial(nn.Dense, kernel_init = nn.initializers.lecun_normal(),
                          bias_init = nn.initializers.uniform())
-        h = lambda x: x*jax.nn.softmax(x)
+        h = lambda x: jax.nn.tanh(x)
         for i, f in enumerate(self.features):
             x = Dense(f)(x)
             x = h(x)
         x = Dense(1)(x)
-        return x.squeeze()
+        return x.squeeze()/200
 
 @F.jit
 def default_bump(x):
@@ -72,9 +73,9 @@ class EmbedEnvironment(Environment):
     vars: Any
     d: int
 
-    tau: Array = 0.5
+    tau: Array = 0.001
     bump: callable = default_bump
-    delta: float = 0.5
+    delta: float = 0.3
     omega: float = 1
 
     @staticmethod
@@ -113,11 +114,13 @@ class EmbedEnvironment(Environment):
         state_lower = self.A @ state[:2]
         perturbation = (
             - self.tau * restrict * g_out
-            + self.omega * self.tau**2 * restrict * (g_out - input[0]*self.bump(input)/self.tau)
+            + self.omega * self.tau**2 * restrict * g_out - self.tau * input[0]*self.bump(input)
         )
         state_lower = state_lower.at[0].add(perturbation)
         state = npx.concatenate((state_lower, npx.zeros((self.d,))), axis=0)
-        next_state = state + input
+        next_state = state.at[:2].add(input[:2])
+
+        # To prevent NaN explosion...
         next_state = npx.clip(next_state, -1_000_000_000, 1_000_000_000)
         return next_state
     
@@ -125,8 +128,19 @@ class EmbedEnvironment(Environment):
         return state
     
     def reward(self, state, action, next_state):
-        return -npx.linalg.norm(next_state)
-    
+        return -npx.abs(next_state[0])
+
+    def total_reward(self, states, actions):
+        pre_states, actions, post_states = (
+            tree.map(lambda x: x[:-1], states),
+            tree.map(lambda x: x[:-1], actions),
+            tree.map(lambda x: x[1:], states)
+        )
+        rewards = F.vmap(self.reward)(
+            pre_states, actions, post_states
+        )
+        return npx.min(rewards)
+
     @F.jit
     def render(self, state, config):
         if isinstance(config, ImageRender):
@@ -143,8 +157,8 @@ class EmbedEnvironment(Environment):
 @dataclass
 class EmbedExpert(Policy):
     K: Array
-    tau: Array
     vars: Any
+    tau: Array
     bump: callable = default_bump
 
     def __call__(self, input : PolicyInput) -> PolicyOutput:
@@ -192,8 +206,8 @@ class ExpertDataset(EnvDataset):
         return EmbedEnvironment(self._A, self._K, self._vars, self._d)
 
 def create_data(rng_key, d, N, N_test, T, pair_first):
-    env = create_environment(rng_key, d, pair_first=True)
-    expert = EmbedExpert(env.K, env.tau, env.vars, env.bump)
+    env = create_environment(rng_key, d, pair_first=pair_first)
+    expert = EmbedExpert(env.K, env.vars, env.tau, env.bump)
     def rollout(rng_key):
         x0_rng, p_rng = foundry.random.split(rng_key)
         x0 = env.reset(x0_rng)
@@ -218,12 +232,12 @@ def create_data(rng_key, d, N, N_test, T, pair_first):
 def register_envs(registry : Registry, prefix=None):
     registry.register(
         "lower_bound/stable/1", 
-        partial(create_environment, rng_key=foundry.random.key(42), d=16, pair_first=True),
+        partial(create_environment, rng_key=foundry.random.key(42), d=2, pair_first=True),
         prefix=prefix
     )
     registry.register(
         "lower_bound/stable/2", 
-        partial(create_environment, rng_key=foundry.random.key(42), d=16, pair_first=False),
+        partial(create_environment, rng_key=foundry.random.key(42), d=2, pair_first=False),
         prefix=prefix
     )
 
@@ -231,12 +245,12 @@ def register_datasets(registry: Registry, prefix=None):
     registry.register(
         "lower_bound/stable/1",
         partial(create_data, rng_key=foundry.random.key(42), 
-                d=16, T=32, N=256, N_test=64, pair_first=True),
+                d=4, T=32, N=2048, N_test=64, pair_first=True),
         prefix=prefix
     )
     registry.register(
         "lower_bound/stable/2",
         partial(create_data, rng_key=foundry.random.key(42),
-                d=16, T=32, N=256, N_test=64, pair_first=False),
+                d=4, T=32, N=2048, N_test=64, pair_first=False),
         prefix=prefix
     )

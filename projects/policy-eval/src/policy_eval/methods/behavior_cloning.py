@@ -39,10 +39,12 @@ logger = logging.getLogger(__name__)
 class MLPConfig:
     net_width: int = 16
     net_depth: int = 3
+    activation: str = "gelu"
 
     def create_model(self, rng_key, observations, actions):
         model = MLP(
-            features=[self.net_width]*self.net_depth
+            features=[self.net_width]*self.net_depth,
+            activation=self.activation
         )
         vars = F.jit(model.init)(rng_key, observations, actions, jnp.zeros((), dtype=jnp.uint32))
         def model_fn(vars, rng_key, observations, noised_actions):
@@ -99,6 +101,8 @@ class BCConfig:
 
     epochs: int | None = None
     iterations: int | None = None
+    test_interval: int = 50
+    eval_interval: int = 2000
     batch_size: int = 128
     learning_rate: float = 2e-4
     weight_decay: float = 1e-5
@@ -198,7 +202,7 @@ class BCConfig:
                     _, ema_state = ema_update(vars, ema_state)
                     train.wandb.log(step.iteration, metrics, 
                                     run=inputs.wandb_run, prefix="train/")
-                    if step.iteration % 50 == 0:
+                    if step.iteration % self.test_interval == 0:
                         test_stream, test_metrics = train.eval_stream(
                             batched_loss_fn, vars, 
                             test_rng, test_stream
@@ -210,7 +214,7 @@ class BCConfig:
                     if step.iteration % 100 == 0:
                         train.console.log(step.iteration, metrics, 
                                           prefix="train.")
-                    if step.iteration % 2000 == 0:
+                    if step.iteration % self.eval_interval == 0:
                         logger.info("Evaluating policy...")
                         rewards, video = inputs.validate_render(val_rng, make_checkpoint().create_policy())
                         reward_metrics = {

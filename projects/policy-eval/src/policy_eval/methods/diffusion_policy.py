@@ -36,10 +36,12 @@ logger = logging.getLogger(__name__)
 class MLPConfig:
     net_width: int = 64
     net_depth: int = 3
+    activation: str = "gelu"
 
     def create_model(self, rng_key, observations, actions):
         model = DiffusionMLP(
-            features=[self.net_width]*self.net_depth
+            features=[self.net_width]*self.net_depth,
+            activation=self.activation
         )
         vars = F.jit(model.init)(rng_key, observations, actions, jnp.zeros((), dtype=jnp.uint32))
         def model_fn(vars, rng_key, observations, noised_actions, t):
@@ -73,6 +75,7 @@ class Checkpoint(Result):
 
     model_config: MLPConfig | UNetConfig
     schedule: DDPMSchedule
+    replica_noise: float | None
 
     obs_normalizer: Normalizer
     action_normalizer: Normalizer
@@ -95,12 +98,17 @@ class Checkpoint(Result):
         )
         # TODO: assert that the vars are the same type/shape
         def chunk_policy(input: PolicyInput) -> PolicyOutput:
+            s_rng, n_rng = foundry.random.split(input.rng_key)
             obs = input.observation
             obs = self.obs_normalizer.normalize(obs)
+            if self.replica_noise is not None and self.replica_noise > 0:
+                obs_flat, uf = tree.ravel_pytree(obs)
+                obs_flat = obs_flat + self.replica_noise * foundry.random.normal(n_rng, obs_flat.shape)
+                obs = uf(obs_flat)
             model_fn = lambda rng_key, noised_actions, t: model(
                 self.vars, rng_key, obs, noised_actions, t - 1
             )
-            action = self.schedule.sample(input.rng_key, model_fn, self.actions_structure) 
+            action = self.schedule.sample(s_rng, model_fn, self.actions_structure) 
             action = self.action_normalizer.unnormalize(action)
             return PolicyOutput(action=action[:self.action_horizon], info=action)
         obs_horizon = tree.axis_size(self.observations_structure, 0)
@@ -120,6 +128,7 @@ class DPConfig:
     batch_size: int = 128
     learning_rate: float = 1e-4
     weight_decay: float = 1e-5
+    replica_noise: float | None = 1e-1
 
     diffusion_steps: int = 32
     action_horizon: int = 16
@@ -189,8 +198,13 @@ class DPConfig:
         def loss_fn(vars, rng_key, sample: Sample):
             sample_norm = normalizer.normalize(sample)
             obs = sample_norm.observations
+            s_rng, n_rng = foundry.random.split(rng_key)
+            if self.replica_noise is not None and self.replica_noise > 0:
+                obs_flat, uf = tree.ravel_pytree(obs)
+                obs_flat = obs_flat + self.replica_noise * foundry.random.normal(n_rng, obs_flat.shape)
+                obs = uf(obs_flat)
             actions = sample_norm.actions
-            denoiser = lambda rng_key, noised_actions, t: model(vars, rng_key, obs, noised_actions, t)
+            denoiser = lambda rng_key, noised_actions, t: model(vars, s_rng, obs, noised_actions, t)
             loss = schedule.loss(rng_key, denoiser, actions)
             return train.LossOutput(
                 loss=loss, metrics={"loss": loss}
@@ -204,6 +218,7 @@ class DPConfig:
                 action_horizon=action_horizon,
                 model_config=self.model_config,
                 schedule=schedule,
+                replica_noise=self.replica_noise,
                 obs_normalizer=normalizer.map(lambda x: x.observations),
                 action_normalizer=normalizer.map(lambda x: x.actions),
                 vars=ema_state.ema

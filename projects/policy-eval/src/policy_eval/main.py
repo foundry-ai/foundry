@@ -109,19 +109,7 @@ def policy_rollout(env, T, x0, rng_key, policy):
         length=T,
         last_action=True
     )
-    pre_states, actions, post_states = (
-        tree.map(lambda x: x[:-1], rollout.states),
-        tree.map(lambda x: x[:-1], rollout.actions),
-        tree.map(lambda x: x[1:], rollout.states)
-    )
-    rewards = F.vmap(env.reward)(
-        pre_states, actions, post_states
-    )
-    # max over time for the rewards
-    if True:
-        reward = jnp.mean(rewards, axis=0)
-    else:
-        reward = jnp.max(rewards, axis=0)
+    reward = env.total_reward(rollout.states, rollout.actions)
     return rollout, reward
 
 @F.jit

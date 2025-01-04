@@ -5,46 +5,66 @@ project: lower_bound
 parameters:
   method: 
     values: 
-     - "diffusion_policy"
      - "bc"
+     - "diffusion_policy"
   dataset:
     value: "lower_bound/stable/1"
   train_trajectories:
     values:
-     - 50
-     - 100
-     - 200
+    #  - 256
+    #  - 1024
+     - 2048
   timesteps:
     values:
-     - 3
-     - 5
-     - 10
-     - 15
+     - 2
+     - 4
+     - 8
+     - 12
+     - 16
      - 20
-     - 25
-     - 30
-     - 50
+     - 24
+     - 28
+     - 32
   action_length:
-    value: 1
+    values: 
+     - 1
+    #  - 2
+    #  - 4
+    #  - 8
+    #  - 16
   obs_length:
     value: 1
-  
-  # use the same model for both bc and dp
-
-  bc.model:
-    value: "mlp"
-  dp.model:
-    value: "mlp"
 
   bc.iterations:
     value: 10_000
   dp.iterations:
     value: 10_000
 
+  # use the same model for both bc and dp
+  bc.model:
+    value: "mlp"
+  dp.model:
+    value: "mlp"
+  bc.mlp.activation:
+    value: "tanh"
+  dp.mlp.activation:
+    value: "tanh"
   bc.mlp.net_width:
     value: 16
   dp.mlp.net_width:
     value: 16
+  dp.replica_noise:
+    values:
+     - 0.0
+     - 0.1
+  seed:
+    values:
+     - 42
+     - 43
+     - 44
+     - 45
+     - 46
+     - 47
 
 command:
   - ${program}

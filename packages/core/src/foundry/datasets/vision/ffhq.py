@@ -57,7 +57,6 @@ class FFHQDataset(ImageDataset):
         elif name == "standard_dev":
             data = F.vmap(norm.normalize)(self.split("train").as_pytree())
             normalizer = nu.StdNormalizer.from_data(PyTreeData(data))
-            print(normalizer.mean, normalizer.std)
             norm = nu.Chain([norm,
                 nu.StdNormalizer(
                     mean=jnp.array([0.5, 0.5, 0.5]),

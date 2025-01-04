@@ -1,4 +1,5 @@
 import foundry.core.transforms as F
+from foundry.core import tree
 
 from foundry.env.core import (
     Environment, RenderConfig,
@@ -116,6 +117,17 @@ class MujocoEnvironment(Environment[SimulatorState, SystemState, Action], Generi
     def step(self, state: SimulatorState, action: Action, 
                     rng_key: jax.Array) -> SimulatorState:
         return self.simulator.step(state, action, rng_key)
+    
+    def total_reward(self, states: SimulatorState, actions: Action) -> jax.Array:
+        pre_states, actions, post_states = (
+            tree.map(lambda x: x[:-1], states),
+            tree.map(lambda x: x[:-1], actions),
+            tree.map(lambda x: x[1:], states)
+        )
+        rewards = F.vmap(self.reward)(
+            pre_states, actions, post_states
+        )
+        return jnp.max(rewards)
 
     @F.jit
     def render(self, state: SimulatorState, config: RenderConfig | None = None) -> jax.Array:
