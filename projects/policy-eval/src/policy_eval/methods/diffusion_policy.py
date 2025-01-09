@@ -128,7 +128,7 @@ class DPConfig:
     batch_size: int = 128
     learning_rate: float = 1e-4
     weight_decay: float = 1e-5
-    replica_noise: float | None = 1e-1
+    replica_noise: float | None = None
 
     diffusion_steps: int = 32
     action_horizon: int = 16
