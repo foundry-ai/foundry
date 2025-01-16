@@ -28,10 +28,10 @@ parameters:
   action_length:
     values: 
      - 1
-    #  - 2
-    #  - 4
-    #  - 8
-    #  - 16
+     - 2
+     - 4
+     - 8
+     - 16
   obs_length:
     value: 1
 
@@ -53,10 +53,10 @@ parameters:
     value: 16
   dp.mlp.net_width:
     value: 16
-  dp.replica_noise:
-    values:
-     - 0.0
-     - 1
+  # dp.replica_noise:
+  #   values:
+  #    - 0.0
+  #    - 0.1
   seed:
     values:
      - 42

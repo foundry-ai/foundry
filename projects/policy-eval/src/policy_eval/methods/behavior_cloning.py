@@ -103,10 +103,12 @@ class BCConfig:
     iterations: int | None = None
     test_interval: int = 50
     eval_interval: int = 2000
-    batch_size: int = 128
-    learning_rate: float = 2e-4
-    weight_decay: float = 1e-5
+    batch_size: int = 512
+    learning_rate: float = 1e-3
+    weight_decay: float = 1e-3
     action_horizon: int = 16
+
+    log_video: bool = True
 
     @property
     def model_config(self) -> MLPConfig:
@@ -148,7 +150,13 @@ class BCConfig:
             raise ValueError("Must specify either epochs or iterations")
 
         # initialize optimizer, EMA
-        optimizer = optax.adamw(self.learning_rate, weight_decay=self.weight_decay)
+        opt_schedule = optax.warmup_cosine_decay_schedule(
+            self.learning_rate/10, self.learning_rate,
+            min(int(total_iterations*0.01), 500), total_iterations
+        )
+        optimizer = optax.adamw(opt_schedule,
+            weight_decay=self.weight_decay
+        )
         opt_state = F.jit(optimizer.init)(vars["params"])
         ema = optax.ema(0.9)
         ema_state = F.jit(ema.init)(vars)
@@ -216,12 +224,19 @@ class BCConfig:
                                           prefix="train.")
                     if step.iteration % self.eval_interval == 0:
                         logger.info("Evaluating policy...")
-                        rewards, video = inputs.validate_render(val_rng, make_checkpoint().create_policy())
-                        reward_metrics = {
-                            "mean_reward": jnp.mean(rewards),
-                            "std_reward": jnp.std(rewards),
-                            "demonstrations": video
-                        }
+                        if self.log_video:
+                            rewards, video = inputs.validate_render(val_rng, make_checkpoint().create_policy())
+                            reward_metrics = {
+                                "mean_reward": jnp.mean(rewards),
+                                "std_reward": jnp.std(rewards),
+                                "demonstrations": video
+                            }
+                        else:
+                            rewards = inputs.validate(val_rng, make_checkpoint().create_policy())
+                            reward_metrics = {
+                                "mean_reward": jnp.mean(rewards),
+                                "std_reward": jnp.std(rewards),
+                            }
                         train.console.log(step.iteration, reward_metrics, prefix="eval.")
                         train.wandb.log(step.iteration, reward_metrics,
                                         run=inputs.wandb_run, prefix="eval/")

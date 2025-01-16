@@ -20,7 +20,7 @@ import jax
 from typing import Any, Sequence
 from functools import partial
 
-def make_challenging_pair(mu=1/32):
+def make_challenging_pair(mu=1/8):
     c_mu = 3/2*mu
     A_1 = npx.array([
         [1+mu, c_mu],

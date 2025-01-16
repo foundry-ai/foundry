@@ -195,8 +195,16 @@ class IndexedDataStream(DataStream[T]):
 
     @staticmethod
     def create(data, max_offset, batch_shape,
-               shuffle_key=None, resample=False):
+               shuffle_key=None, resample=False, ):
         indices_per_batch = math.prod(batch_shape)
+        if indices_per_batch > max_offset: 
+            # reduce batch_shape to fit at least one batch
+            batch_rem = math.prod(batch_shape[1:])
+            leading_axis = max_offset // batch_rem
+            if leading_axis > 0:
+                batch_shape = (leading_axis,) + tuple(batch_shape[1:])
+                indices_per_batch = math.prod(batch_shape)
+
         batches = max_offset // indices_per_batch
         max_offset = batches * indices_per_batch
         if shuffle_key is not None and not resample:

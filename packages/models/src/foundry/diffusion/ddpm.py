@@ -276,7 +276,7 @@ class DDPMSchedule:
         noise_sqr = jnp.sum(noise**2, axis=-1)
         # p(x_t | x_0) prop exp(-1/2(x - mu)^2/sigma^2)
         log_likelihood = -0.5*noise_sqr / jnp.maximum(one_minus_alphas_prod, 1e-5)
-        likelihood = jax.nn.softmax(log_likelihood, where=data_mask, initial=jnp.min(log_likelihood))
+        likelihood = jax.nn.softmax(log_likelihood, where=data_mask)
         likelihood = likelihood*data_mask if data_mask is not None else likelihood
         # # p(x_0 | x_t) = p(x_t | x_0) p(x_0) / p(x_t)
         # # where p(x_0) is uniform, so we effectively just to normalize the log likelihood

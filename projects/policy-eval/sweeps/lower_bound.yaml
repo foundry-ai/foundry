@@ -13,25 +13,23 @@ parameters:
     values:
     #  - 256
     #  - 1024
-     - 2048
+     - 8192
   timesteps:
     values:
      - 2
      - 4
      - 8
      - 12
-     - 16
      - 20
-     - 24
-     - 28
+     - 26
      - 32
   action_length:
     values: 
      - 1
     #  - 2
-    #  - 4
-    #  - 8
-    #  - 16
+     - 4
+     - 8
+     - 16
   obs_length:
     value: 1
 
@@ -64,7 +62,6 @@ parameters:
      - 44
      - 45
      - 46
-     - 47
 
 command:
   - ${program}
