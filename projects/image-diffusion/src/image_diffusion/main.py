@@ -31,6 +31,7 @@ import optax
 import wandb
 import functools
 
+import os
 import boto3
 import urllib
 import tempfile
@@ -56,12 +57,14 @@ class Config:
     checkpoint_interval : int | None = 1000
 
     lr: float = 1e-4
-    weight_decay: float = 1e-4
+    weight_decay: float = 1e-5
 
     timesteps: int = 32
 
     condition_type: str = "class" # one of "class," "tsne," "image" or "none"
     prediction_type: str = "epsilon"
+
+    target_clip: float | None = None
 
 @dataclass
 class ModelConfig:
@@ -87,6 +90,9 @@ class ModelConfig:
             cond_sample = jnp.zeros(self.image_shape, jnp.float32)
         elif self.condition_type == "tsne":
             cond_sample = jnp.zeros((2,), jnp.float32)
+        elif self.condition_type == "none":
+            cond_sample = None
+
         vars = F.jit(model.init)(
             rng, pixels_sample,  jnp.zeros((), dtype=jnp.uint32), 
             cond=cond_sample
@@ -112,12 +118,12 @@ class Checkpoint:
         datasets = Registry()
         foundry.datasets.vision.register_all(datasets)
         dataset : Dataset[LabeledImage] = datasets.create(self.dataset)
-        norm, train_data, test_data = preprocess_dataset(self.config.condition_type, self.normalizer, dataset)
+        norm, train_data, test_data = preprocess_dataset(self.dataset, self.config.condition_type, self.normalizer, dataset)
         return norm, train_data, test_data
 
-def preprocess_dataset(condition_type: str, normalizer: str, dataset: Dataset[LabeledImage]) -> tuple[Data[Sample], Data[Sample]]:
+def preprocess_dataset(dataset_name: str, condition_type: str, normalizer_name: str, dataset: Dataset[LabeledImage]) -> tuple[Data[Sample], Data[Sample]]:
     train_data, test_data = dataset.split("train"), dataset.split("test")
-    normalizer = dataset.normalizer(normalizer)
+    normalizer = dataset.normalizer(normalizer_name)
     image_normalizer = normalizer.map(lambda x: x.pixels)
     orig_label_normalizer = normalizer.map(lambda x: x.label)
     if condition_type == "tsne":
@@ -128,16 +134,36 @@ def preprocess_dataset(condition_type: str, normalizer: str, dataset: Dataset[La
         import foundry.util.tsne as tsne
         cond = jnp.concatenate([train_data.pixels, test_data.pixels], axis=0)
         cond = jax.vmap(image_normalizer.normalize)(cond)
-        logger.info("Learning T-SNE embedding...")
-        cond = tsne.randomized_tsne(
-            cond,
-            n_components=2,
-            perplexity=40,
-            n_iter=4000,
-            learning_rate=800,
-            rng_key=foundry.random.key(42)
-        ).embedding
-        logger.info("Fit T-SNE embedding")
+        if False:
+            logger.info("Learning T-SNE embedding...")
+            cond = tsne.randomized_tsne(
+                cond,
+                n_components=2,
+                perplexity=40,
+                n_iter=4000,
+                learning_rate=800,
+                rng_key=foundry.random.key(42)
+            ).embedding
+        else:
+            path = Path(os.environ["HOME"]) / ".foundry_dataset_cache" / "tsne"
+            path.mkdir(parents=True, exist_ok=True)
+            path = path / f"{dataset_name}_{normalizer_name}.npy"
+            if path.exists():
+                cond = jnp.load(path)
+            else:
+                logger.info("Learning T-SNE embedding...")
+                from sklearn.manifold import TSNE
+                tsne = TSNE(
+                    max_iter=500, 
+                    perplexity=40, 
+                    random_state=42
+                )
+                cond = tsne.fit_transform(cond.reshape((cond.shape[0], -1)))
+                cond = jnp.array(cond)
+                logger.info("Fit T-SNE embedding")
+                jnp.save(path, cond)
+
+        cond = cond - jnp.mean(cond, axis=0)
         cond = cond/jnp.std(cond, axis=0)
 
         train_cond = cond[:train_data.pixels.shape[0]]
@@ -228,7 +254,7 @@ def run(config: Config):
     foundry.datasets.vision.register_all(datasets)
     dataset : Dataset[LabeledImage] = datasets.create(config.dataset)
 
-    normalizer, train_data, test_data = preprocess_dataset(config.condition_type, config.normalizer, dataset)
+    normalizer, train_data, test_data = preprocess_dataset(config.dataset, config.condition_type, config.normalizer, dataset)
     sample = normalizer.normalize(train_data[0])
 
     classes = len(dataset.classes) if hasattr(dataset, "classes") else None
@@ -260,13 +286,19 @@ def run(config: Config):
         clip_sample_range=2.
     )
 
-    lr_schedule = optax.cosine_onecycle_schedule(
-        iterations, config.lr, pct_start=0.02
+    lr_schedule = optax.cosine_decay_schedule(
+        config.lr, iterations
     )
+    # warmup_steps = int(iterations*0.2)
+    # lr_schedule = optax.warmup_cosine_decay_schedule(
+    #     config.lr/100, config.lr, warmup_steps, iterations
+    # )
     optimizer = optax.adamw(lr_schedule, weight_decay=config.weight_decay)
-    # opt_state = optimizer.init(vars["params"])
-    # lr_schedule = optax.cosine_onecycle_schedule(iterations, 1e-2, pct_start=0.05)
     # optimizer = optax.sgd(lr_schedule)
+    optimizer = optax.chain(
+        optimizer,
+        optax.clip_by_global_norm(1),
+    )
     opt_state = optimizer.init(vars["params"])
 
     @F.jit
@@ -274,7 +306,9 @@ def run(config: Config):
         s_rng, a_rng = foundry.random.split(rng_key)
         sample = normalizer.normalize(sample)
         cond_diffuser = functools.partial(diffuser, vars, sample.cond)
-        loss = schedule.loss(s_rng, cond_diffuser, sample.data)
+        loss = schedule.loss(
+            s_rng, cond_diffuser, sample.data,
+        )
         return foundry.train.LossOutput(
             loss=loss, metrics={"loss": loss}
         )
@@ -287,7 +321,10 @@ def run(config: Config):
             pixels = schedule.sample(rng_key, denoiser, sample.data)
             pixels = normalizer.map(lambda x: x.data).unnormalize(pixels)
             return cond_unnormalized, pixels
-        N = tree.axis_size(labels, 0)
+        if labels is not None:
+            N = tree.axis_size(labels, 0)
+        else:
+            N = 64
         rngs = foundry.random.split(rng_key, N)
         return F.vmap(do_sample)(labels, rngs)
 

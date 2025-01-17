@@ -28,6 +28,8 @@ class DiffusionMLP(nn.Module):
     features: Sequence[int] = (64, 64, 64)
     activation: str = "gelu"
     time_embed_dim: int = 32
+    num_classes: int | None = None
+    out_channels: int | None = None
 
     @nn.compact
     def __call__(self, x, t, cond=None, train=False):

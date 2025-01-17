@@ -385,6 +385,7 @@ class DDPMSchedule:
              model : Callable[[jax.Array, Sample, jax.Array], Sample],
              sample : Sample, t : Optional[jax.Array] = None, *,
              target_model : Callable[[jax.Array, Sample, jax.Array], Sample] | None = None,
+             target_clip : float | None = None,
              model_has_state_updates=False):
         """
         Computes the loss for the DDPM model.
@@ -403,8 +404,9 @@ class DDPMSchedule:
 
         pred_flat = jax.flatten_util.ravel_pytree(pred)[0]
         target_flat = jax.flatten_util.ravel_pytree(target)[0]
+        if target_clip is not None and target_clip > 0:
+            target_flat = target_flat.clip(-target_clip, target_clip)
         loss = jnp.mean((pred_flat - target_flat)**2)
-
         if model_has_state_updates:
             return loss, state
         else:

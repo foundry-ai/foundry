@@ -279,7 +279,12 @@ class UNet(nn.Module):
         out = nn.Sequential([
             Normalization(self.dims),
             activations.silu,
-            nn.Conv(out_channels, self.dims*self.kernel_size) 
+            nn.Conv(
+                out_channels, self.dims*self.kernel_size,
+                # last layer initialized to zeros...
+                kernel_init=initializers.zeros_init(),
+                bias_init=initializers.zeros_init()
+            ) 
         ])
         return input_blocks, middle_block, output_blocks, out
 
@@ -336,6 +341,7 @@ class UNet(nn.Module):
 
 class DiffusionUNet(UNet):
     time_embed_dim: int = 32
+    output_range: float | None = 3
 
     @nn.compact
     def __call__(self, x, timestep=None, *, time_embed=None,
@@ -351,11 +357,16 @@ class DiffusionUNet(UNet):
             cond_embed = jnp.concatenate([time_embed, cond_embed], axis=-1)
         else:
             cond_embed = time_embed
-        return super().__call__(x, cond=cond,
+        output = super().__call__(x, cond=cond,
                 cond_embed=cond_embed, train=train)
+        # if self.output_range is not None:
+        #     output = self.output_range * jax.nn.tanh(output)
+        return output
 
 from foundry.util.registry import Registry
+from functools import partial
 
 def register(registry: Registry, prefix=None):
     registry.register("classifier/unet/small", UNet, prefix=prefix)
     registry.register("diffusion/unet/small", DiffusionUNet, prefix=prefix)
+    registry.register("diffusion/unet/medium", partial(DiffusionUNet), prefix=prefix)
