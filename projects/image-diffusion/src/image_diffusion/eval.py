@@ -14,6 +14,7 @@ import foundry.core as F
 
 from pathlib import Path
 from rich.progress import track
+from functools import partial
 
 import foundry.util.serialize
 import foundry.random
@@ -46,6 +47,9 @@ class Config:
     step_interval: int = 10_000
     only_final: bool = False
 
+    use_fwd_process: bool = True
+    denoised_error: bool = False
+
 @dataclass
 class EvaluationInputs:
     vars: Any
@@ -59,6 +63,9 @@ class EvaluationInputs:
     batch_size: int
     batches: int
     t_pct: float
+
+    denoised_error: bool
+    use_fwd_process: bool
 
 @dataclass
 class EvaluationOutputs:
@@ -93,14 +100,19 @@ def evaluate_cond(inputs: EvaluationInputs, cond : Any, rng_key : jax.Array):
     eval_per_cond = inputs.eval_per_cond
 
     def sample(rng_key):
-        r_rng, s_rng = foundry.random.split(rng_key)
+        r_rng, s_rng, f_rng = foundry.random.split(rng_key, 3)
         denoiser = lambda rng_key, x, t: inputs.model_apply(inputs.vars, x, t-1, cond=cond)
-        sample, trajectory = schedule.sample(
-            rng_key, denoiser, npx.zeros(inputs.sample_shape),
-            trajectory=True
-        )
         t = int(schedule.num_steps * inputs.t_pct) # foundry.random.randint(s_rng, (), minval=1, maxval=trajectory.shape[0])
-        return sample, trajectory[t], t
+        if inputs.use_fwd_process:
+            sample = schedule.sample(s_rng, denoiser, npx.zeros(inputs.sample_shape))
+            noised, _, _ = schedule.add_noise(f_rng, sample, t)
+            return sample, noised, t
+        else:
+            sample, trajectory = schedule.sample(
+                rng_key, denoiser, npx.zeros(inputs.sample_shape),
+                trajectory=True
+            )
+            return sample, trajectory[t], t
 
     rng_keys = foundry.random.split(rng_key, samples_per_cond)
     samples, reverse_samples, ts = jax.lax.map(
@@ -119,13 +131,19 @@ def evaluate_cond(inputs: EvaluationInputs, cond : Any, rng_key : jax.Array):
         )
         keypoints_out = jax.lax.map(model, inputs.keypoints)
         model_out = model(cond)
-        nw_out = schedule.output_from_denoised(
-            reverse_sample, t,
-            schedule.compute_denoised(
-                reverse_sample, t, samples
-            )
+        nw_denoised = schedule.compute_denoised(
+            reverse_sample, t, samples
         )
-        nw_err = npx.linalg.norm(nw_out - model_out)
+        model_denoised = schedule.denoised_from_output(
+            reverse_sample, t, model_out
+        )
+        nw_out = schedule.output_from_denoised(
+            reverse_sample, t, nw_denoised
+        )
+        if inputs.denoised_error:
+            nw_err = npx.linalg.norm(nw_denoised - model_denoised)
+        else:
+            nw_err = npx.linalg.norm(nw_out - model_out)
         return nw_err, GenerationData(
             cond, reverse_sample, t, keypoints_out, model_out
         )
@@ -143,8 +161,14 @@ def evaluate_checkpoint(rng_key, inputs: EvaluationInputs):
         output = F.vmap(evaluate_cond, in_axes=(None, 0, 0))(
             inputs, cond, rng_keys,
         )
+        cpu = jax.devices("cpu")[0]
+        output = tree.map(lambda x: jax.device_put(x, cpu), output)
         outputs.append(output)
-    outputs, gen_data = tree.map(lambda *x: npx.concatenate(x, 0), *outputs)
+
+    @partial(jax.jit)
+    def concatenate(outputs):
+        return tree.map(lambda *x: npx.concatenate(x, 0), *outputs)
+    outputs, gen_data = concatenate(outputs)
     # train a network on the generated data to predict the alphas
     model = KeypointModel(
         tree.axis_size(inputs.keypoints, 0)
@@ -189,7 +213,17 @@ def evaluate_checkpoint(rng_key, inputs: EvaluationInputs):
         alphas = model.apply(vars, sample.cond, sample.t)
         interpolated = alphas[:, None, None, None] * sample.out_keypoints
         interpolated = npx.sum(interpolated, axis=0)
-        return npx.linalg.norm(interpolated - sample.out_model)
+
+        model_denoised = inputs.schedule.denoised_from_output(
+            sample.reverse_sample, sample.t, sample.out_model
+        )
+        interpolated_denoised = inputs.schedule.denoised_from_output(
+            sample.reverse_sample, sample.t, interpolated
+        )
+        if inputs.denoised_error:
+            return npx.linalg.norm(interpolated_denoised - model_denoised)
+        else:
+            return npx.linalg.norm(interpolated - sample.out_model)
 
     lin_errors = jax.lax.map(loss_fn, gen_data, batch_size=64)
     lin_errors = npx.reshape(lin_errors, outputs.nw_error.shape)
@@ -259,7 +293,9 @@ def run(config : Config):
             eval_per_cond=config.eval_per_cond,
             batch_size=config.batch_size,
             batches=config.batches,
-            t_pct=config.t_pct
+            t_pct=config.t_pct,
+            denoised_error=config.denoised_error,
+            use_fwd_process=config.use_fwd_process
         ))
         output = replace(
             output,

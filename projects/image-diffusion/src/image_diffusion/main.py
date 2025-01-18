@@ -134,7 +134,7 @@ def preprocess_dataset(dataset_name: str, condition_type: str, normalizer_name: 
         import foundry.util.tsne as tsne
         cond = jnp.concatenate([train_data.pixels, test_data.pixels], axis=0)
         cond = jax.vmap(image_normalizer.normalize)(cond)
-        if False:
+        if True:
             logger.info("Learning T-SNE embedding...")
             cond = tsne.randomized_tsne(
                 cond,
