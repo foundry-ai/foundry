@@ -130,7 +130,7 @@ class EmbedEnvironment(Environment):
     def reward(self, state, action, next_state):
         return -npx.abs(next_state[0])
 
-    def total_reward(self, states, actions):
+    def combined_reward(self, states, actions):
         pre_states, actions, post_states = (
             tree.map(lambda x: x[:-1], states),
             tree.map(lambda x: x[:-1], actions),

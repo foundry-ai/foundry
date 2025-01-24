@@ -54,6 +54,7 @@ class Config:
     epochs: int | None = None
     iterations: int | None = None
 
+    test_interval: int = 1000
     checkpoint_interval : int | None = 1000
 
     lr: float = 1e-4
@@ -360,7 +361,7 @@ def run(config: Config):
                         step.iteration, metrics, {"lr": lr_schedule(step.iteration)},
                         prefix="train."
                     )
-                if step.iteration % 1000 == 0:
+                if step.iteration % config.test_interval == 0:
                     eval_key, sample_key = foundry.random.split(test_key)
                     test_stream, test_metrics = foundry.train.eval_stream(
                         batch_test_loss, vars, eval_key, test_stream,

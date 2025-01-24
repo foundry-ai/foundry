@@ -1,5 +1,8 @@
 import foundry.core as F
+import foundry.numpy as npx
 import foundry.random
+
+from foundry.core import tree
 
 from foundry.env.core import (
     EnvWrapper, EnvironmentRegistry,
@@ -167,6 +170,16 @@ class PushTEnv(MujocoEnvironment[SimulatorState]):
             goal_points, points
         )
         return jnp.minimum(overlap, self.success_threshold) / self.success_threshold
+
+    @F.jit
+    def combined_reward(self, states: SimulatorState, actions: Action):
+        prev_states = tree.map(lambda x: x[:-1], states)
+        next_states = tree.map(lambda x: x[1:], states)
+        if tree.axis_size(states, 0) == tree.axis_size(actions, 0):
+            actions = tree.map(lambda x: x[:-1], actions)
+        rewards = F.vmap(self.reward)(prev_states, actions, next_states)
+        # use the max reward over the trajectory
+        return npx.max(rewards)
 
     @F.jit
     def render(self, state : SimulatorState, config : RenderConfig | None = None): 

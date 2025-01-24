@@ -109,7 +109,7 @@ def policy_rollout(env, T, x0, rng_key, policy):
         length=T,
         last_action=True
     )
-    reward = env.total_reward(rollout.states, rollout.actions)
+    reward = env.combined_reward(rollout.states, rollout.actions)
     return rollout, reward
 
 @F.jit

@@ -46,6 +46,7 @@ class Config:
 
     step_interval: int = 10_000
     only_final: bool = False
+    keypoints: int = 16
 
     use_fwd_process: bool = True
     denoised_error: bool = False
@@ -271,7 +272,7 @@ def run(config : Config):
 
     normalizer, train_data, _ = checkpoint.create_data()
     keypoints = jax.vmap(normalizer.normalize)(
-        tree.map(lambda x: x[:16], train_data.as_pytree())
+        tree.map(lambda x: x[:config.keypoints], train_data.as_pytree())
     ).cond
 
     model = checkpoint.config.create()
