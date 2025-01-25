@@ -71,6 +71,7 @@ MLPSmallClassifier = partial(MLPClassifier, features=[64, 32, 32])
 DiffusionMLPLarge = partial(DiffusionMLP, features=[256, 128, 256])
 DiffusionMLPMedium = partial(DiffusionMLP, features=[128, 64, 128])
 DiffusionMLPSmall = partial(DiffusionMLP, features=[64, 32, 64])
+DiffusionMLPMicro = partial(DiffusionMLP, features=[16, 16, 16])
 
 def register(registry: Registry, prefix=None):
     registry.register("classifier/mlp/large", MLPLargeClassifier, prefix=prefix)
@@ -80,6 +81,7 @@ def register(registry: Registry, prefix=None):
     registry.register("diffusion/mlp/large", DiffusionMLPLarge, prefix=prefix)
     registry.register("diffusion/mlp/medium", DiffusionMLPMedium, prefix=prefix)
     registry.register("diffusion/mlp/small", DiffusionMLPSmall, prefix=prefix)
+    registry.register("diffusion/mlp/micro", DiffusionMLPMicro, prefix=prefix)
 
     registry.register("diffusion/mlp/large/relu", partial(DiffusionMLPLarge, activation="relu"), prefix=prefix)
     registry.register("diffusion/mlp/medium/relu", partial(DiffusionMLPMedium, activation="relu"), prefix=prefix)

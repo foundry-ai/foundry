@@ -14,52 +14,58 @@ def log_gaussian_kernel(x):
     x, _ = jax.flatten_util.ravel_pytree(x)
     return jnp.sum(-jnp.square(x))/2 - jnp.log(jnp.sqrt(2*jnp.pi))
 
-def nadaraya_watson(data, kernel, h):
+def nadaraya_watson(data, kernel):
     xs, ys = data
-
     # Flatten the ys
     y0 = jax.tree_map(lambda x: x[0], ys)
     vf = jax.vmap(lambda x: jax.flatten_util.ravel_pytree(x)[0])
     ys = vf(ys)
     _, y_uf = jax.flatten_util.ravel_pytree(y0)
-
     def estimator(x):
-        kernel_smoothing = lambda x, xi: kernel(jax.tree_map(lambda x,xi: (x-xi)/h, x,xi))
-        log_smoothed = jax.vmap(kernel_smoothing, in_axes=[None, 0])(x, xs)
-        smoothed = jax.nn.softmax(log_smoothed)
+        x_diff = jax.vmap(lambda xi: jax.tree_map(lambda x,xi: (x-xi), x, xi))(xs)
+        log_kernels = jax.vmap(kernel)(x_diff)
+        smoothed = jax.nn.softmax(log_kernels)
         y_est = jnp.sum(smoothed[:,None]*ys, axis=0)
         return y_uf(y_est)
     return estimator
 
-def closest_diffuser(cond, data):
+def closest_diffuser(cond, data, schedule):
     x, y = data
     x = jax.vmap(lambda x: jax.flatten_util.ravel_pytree(x)[0])(x)
     cond = jax.flatten_util.ravel_pytree(cond)[0]
     dists = jnp.sum(jnp.square(x-cond[None,...]), axis=-1)
     i = jnp.argmin(dists)
     closest = jax.tree_map(lambda x: x[i], y)
-
     @jax.jit
     def closest_diffuser(_, noised_value, t):
-        return closest
+        return schedule.output_from_denoised(noised_value, t, closest)
     return closest_diffuser
 
-def nw_cond_diffuser(cond, data, schedule, kernel, h):
+def nw_cond_diffuser(cond, data, schedule, kernel, h, transform=None, inv_transform=None):
     @jax.jit
     def diffuser(_, noised_value, t):
+        orig_noised_value = noised_value
         sqrt_alphas_prod = jnp.sqrt(schedule.alphas_cumprod[t])
-        one_minus_alphas_prod = 1 - schedule.alphas_cumprod[t]
-        def comb_kernel(sample):
-            x, y_hat_diff = sample
-            x = jax.tree.map(lambda x: x/h, x)
-            y_diff = jax.tree.map(lambda x: x/one_minus_alphas_prod, y_hat_diff)
-            return kernel(x) + log_gaussian_kernel(y_diff)
+        sqrt_one_minus_alphas_prod = jnp.sqrt(1 - schedule.alphas_cumprod[t])
+        def log_comb_kernel(sample_diff):
+            x_diff, y_hat_diff = sample_diff
+            x_diff = jax.tree.map(lambda x: x/h, x_diff)
+            y_diff = jax.tree.map(lambda y: y/sqrt_one_minus_alphas_prod, y_hat_diff)
+            x_ker = kernel(x_diff)
+            y_ker = log_gaussian_kernel(y_diff)
+            return x_ker + y_ker
         x, y = data
+        if transform is not None:
+            # transform the data and noised_value to the transformed space
+            y = jax.vmap(transform)(x,y)
+            noised_value = transform(cond, noised_value)
         y_hat = jax.tree_map(lambda x: x*sqrt_alphas_prod, y)
         estimator_data = (x, y_hat), y
-        estimator = nadaraya_watson(estimator_data, comb_kernel, h)
+        estimator = nadaraya_watson(estimator_data, log_comb_kernel)
         est = estimator((cond, noised_value))
-        output = schedule.output_from_denoised(noised_value, t, est)
+        if transform is not None:
+            est = inv_transform(cond, est)
+        output = schedule.output_from_denoised(orig_noised_value, t, est)
         return output
     return diffuser
 
@@ -153,9 +159,6 @@ def nw_local_poly(rng_key, data, schedule, degree, cond_kernel, noised_value_ker
         coeffs, _, _, _ = jnp.linalg.lstsq(M, b)
 
         y_est = jnp.dot(poly_z, coeffs)
-        # jax.debug.print('{s}', s=jax.vmap(cond_K, in_axes=(None, 0))(cond, xs))
-        # jax.debug.print('{s}', s=jax.vmap(noised_value_K, in_axes=(None, 0))(noised_value, yts))
-        
         return noised_value_uf(y_est)
     
     return estimator

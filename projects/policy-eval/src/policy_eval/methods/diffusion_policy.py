@@ -210,7 +210,7 @@ class DPConfig:
                 loss=loss, metrics={"loss": loss}
             )
         
-        def make_checkpoint() -> Checkpoint:
+        def make_checkpoint(vars) -> Checkpoint:
             return Checkpoint(
                 data=inputs.data,
                 observations_structure=observations_structure,
@@ -221,18 +221,24 @@ class DPConfig:
                 replica_noise=self.replica_noise,
                 obs_normalizer=normalizer.map(lambda x: x.observations),
                 action_normalizer=normalizer.map(lambda x: x.actions),
-                vars=ema_state.ema
+                vars=vars
             )
 
         batched_loss_fn = train.batch_loss(loss_fn)
 
         train_stream = train_data.stream().batch(self.batch_size)
         test_stream = test_data.stream().batch(self.batch_size)
+
+        validate_render = F.jit(
+            lambda rng_key, vars: inputs.validate_render(
+                val_rng, make_checkpoint(ema_state.ema).create_policy()
+            )
+        )
         with train.loop(
                 data=train_stream,
                 rng_key=next(inputs.rng),
                 iterations=total_iterations,
-                progress=True
+                progress=False
             ) as loop, test_stream.build() as test_stream:
             for epoch in loop.epochs():
                 for step in epoch.steps():
@@ -263,7 +269,7 @@ class DPConfig:
                     if step.iteration % 2000 == 0:
                         logger.info("Evaluating policy...")
                         # jax.profiler.save_device_memory_profile(f"memory_{step.iteration}.prof")
-                        rewards, video = inputs.validate_render(val_rng, make_checkpoint().create_policy())
+                        rewards, video = validate_render(val_rng, ema_state.ema)
                         reward_metrics = {
                             "mean_reward": jnp.mean(rewards),
                             "std_reward": jnp.std(rewards),
@@ -278,7 +284,7 @@ class DPConfig:
                 train.wandb.log(step.iteration, metrics, run=inputs.wandb_run)
 
         # Return the final checkpoint
-        return make_checkpoint()
+        return make_checkpoint(ema_state.ema)
 
 class DiffusionUNet(UNet):
     activation: str = "relu"

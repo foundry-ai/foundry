@@ -2,6 +2,8 @@ from foundry import core as F
 from foundry import numpy as jnp
 from foundry import graphics
 
+import jax
+
 import foundry.util.serialize
 import foundry.random
 import foundry.train.reporting

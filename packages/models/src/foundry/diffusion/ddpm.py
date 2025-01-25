@@ -243,6 +243,22 @@ class DDPMSchedule:
         if self.clip_sample_range is not None:
             pred_sample = jnp.clip(pred_sample, -self.clip_sample_range, self.clip_sample_range)
         return unflatten(pred_sample)
+    
+    @F.jit
+    def epsilon_from_output(self, noised_sample : Sample, t : jax.Array, model_output : Sample) -> Sample:
+        """ Returns the noise epsilon = x_t - E[x_0 | x_t] as computed by the model_output. """
+        if self.prediction_type == "epsilon":
+            return model_output
+        elif self.prediction_type == "sample":
+            chex.assert_trees_all_equal_shapes_and_dtypes(noised_sample, model_output)
+            sample_flat, unflatten = jax.flatten_util.ravel_pytree(noised_sample)
+            model_output_flat, _ = jax.flatten_util.ravel_pytree(model_output)
+            alpha_prod_t = self.alphas_cumprod[t]
+            one_minus_alpha_prod_t = 1 - alpha_prod_t
+            return unflatten(
+                (sample_flat - jnp.sqrt(alpha_prod_t) * model_output_flat) / 
+                        jnp.maximum(1e-6, jnp.sqrt(one_minus_alpha_prod_t))
+            )
 
     @F.jit
     def output_from_denoised(self, noised_sample : Sample, t : jax.Array, denoised_sample : Sample) -> Sample:
@@ -291,7 +307,8 @@ class DDPMSchedule:
     # This does a reverse process step
     @F.jit
     def reverse_step(self, rng_key : jax.Array, sample : Sample,
-                     timestep : jax.Array, delta_steps: jax.Array, model_output : Sample) -> Sample:
+                     timestep : jax.Array, delta_steps: jax.Array, model_output : Sample,
+                     eta : jax.Array = 1.0) -> Sample:
         """ Does a reverse step of the DDPM given a particular model output. Given x_t returns x_{t-delta_steps}. """
         chex.assert_trees_all_equal_shapes_and_dtypes(sample, model_output)
         sample_flat, unflatten = jax.flatten_util.ravel_pytree(sample)
@@ -299,24 +316,24 @@ class DDPMSchedule:
 
         t = timestep
         prev_t = timestep - delta_steps
-        alpha_t = self.alphas[t]
+
         beta_t = self.betas[t]
         alpha_prod_t = self.alphas_cumprod[t]
         alpha_prod_t_prev = self.alphas_cumprod[prev_t]
 
-        beta_prod_t = 1 - alpha_prod_t
-        beta_prod_t_prev = 1 - alpha_prod_t_prev
-
         pred_sample = self.denoised_from_output(sample_flat, t, model_output_flat)
+        pred_epsilon = self.epsilon_from_output(sample_flat, t, model_output_flat)
 
-        pred_original_sample_coeff = jnp.sqrt(alpha_prod_t_prev) * beta_t / beta_prod_t
-        current_sample_coeff = jnp.sqrt(alpha_t) * beta_prod_t_prev / beta_prod_t
-        pred_prev_sample = pred_original_sample_coeff * pred_sample + current_sample_coeff * sample_flat
+        variance = (eta**2) * (1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * beta_t
 
-        variance = (1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * beta_t
-        # variance = current_beta_t
-        # we always take the log of variance, so clamp it to ensure it's not 0
-        # variance = jnp.clip(variance, a_min=1e-20)
+        # original DDPM equatins
+        # pred_original_sample_coeff = jnp.sqrt(alpha_prod_t_prev) * beta_t / beta_prod_t
+        # current_sample_coeff = jnp.sqrt(alpha_t) * beta_prod_t_prev / beta_prod_t
+
+        orig_sample_coeff = jnp.sqrt(alpha_prod_t_prev)
+        noise_coeff = jnp.sqrt(1 - alpha_prod_t_prev - variance)
+        pred_prev_sample = orig_sample_coeff * pred_sample + noise_coeff * pred_epsilon
+
         sigma = jnp.sqrt(variance)
         noise = sigma*jax.random.normal(rng_key, pred_prev_sample.shape, pred_prev_sample.dtype)
         return unflatten(pred_prev_sample + noise)
@@ -326,6 +343,7 @@ class DDPMSchedule:
                     model : Callable[[jax.Array, Sample, jax.Array], Sample], 
                     sample_structure: Sample, 
                     *, 
+                    eta : float = 1.0,
                     start_time : Optional[int] = None,
                     final_time : Optional[int] = None, 
                     # Note: this is not the number of steps to take (which is determined by start_time - final_time)
@@ -348,7 +366,7 @@ class DDPMSchedule:
             rng_key, x_t = carry
             m_rng, s_rng, n_rng = jax.random.split(rng_key, 3)
             model_output = model(m_rng, x_t, curr_T)
-            x_prev = self.reverse_step(s_rng, x_t, curr_T, curr_T - prev_T, model_output)
+            x_prev = self.reverse_step(s_rng, x_t, curr_T, curr_T - prev_T, model_output, eta=eta)
             return (n_rng, x_prev)
 
         if trajectory:
