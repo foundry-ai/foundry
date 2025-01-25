@@ -15,6 +15,7 @@ dependencies = [
     "image-diffusion @ file:///${PROJECT_ROOT}/projects/image-diffusion",
     "cond-diffusion-toy @ file:///${PROJECT_ROOT}/projects/cond-diffusion-toy",
     "scikit-learn>=1.6.1",
+    "ott-jax>=0.5.0",
 ]
 requires-python = "==3.12"
 readme = "README.md"

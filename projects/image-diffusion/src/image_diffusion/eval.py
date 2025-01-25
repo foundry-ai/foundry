@@ -28,6 +28,11 @@ import wandb
 import tempfile
 import logging
 
+from ott.geometry import pointcloud
+from ott.problems.linear import linear_problem
+from ott.solvers.linear import sinkhorn
+
+
 logger = logging.getLogger("eval")
 
 
@@ -72,6 +77,8 @@ class EvaluationInputs:
 class EvaluationOutputs:
     cond: jax.Array
 
+    ott_cost: jax.Array
+
     # These have an extra batch array
     # per-cond
     ts: jax.Array
@@ -100,18 +107,18 @@ def evaluate_cond(inputs: EvaluationInputs, cond : Any, rng_key : jax.Array):
     samples_per_cond = max(inputs.samples_per_cond, inputs.eval_per_cond)
     eval_per_cond = inputs.eval_per_cond
 
-    def sample(rng_key):
+    def sample(rng_key, eta=1.):
         r_rng, s_rng, f_rng = foundry.random.split(rng_key, 3)
         denoiser = lambda rng_key, x, t: inputs.model_apply(inputs.vars, x, t-1, cond=cond)
         t = int(schedule.num_steps * inputs.t_pct) # foundry.random.randint(s_rng, (), minval=1, maxval=trajectory.shape[0])
         if inputs.use_fwd_process:
-            sample = schedule.sample(s_rng, denoiser, npx.zeros(inputs.sample_shape))
+            sample = schedule.sample(s_rng, denoiser, npx.zeros(inputs.sample_shape), eta=eta)
             noised, _, _ = schedule.add_noise(f_rng, sample, t)
             return sample, noised, t
         else:
             sample, trajectory = schedule.sample(
                 rng_key, denoiser, npx.zeros(inputs.sample_shape),
-                trajectory=True
+                trajectory=True, eta=eta
             )
             return sample, trajectory[t], t
 
@@ -120,6 +127,19 @@ def evaluate_cond(inputs: EvaluationInputs, cond : Any, rng_key : jax.Array):
         sample, rng_keys, 
         batch_size=8
     )
+    ddim_samples, _, _ = jax.lax.map(
+        partial(sample, eta=0.), rng_keys, 
+        batch_size=8
+    )
+    geom = pointcloud.PointCloud(
+            ddim_samples.reshape(ddim_samples.shape[0], -1), 
+            samples.reshape(samples.shape[0], -1)
+    )
+    prob = linear_problem.LinearProblem(geom)
+    solver = sinkhorn.Sinkhorn()
+    out = solver(prob)
+    ott_cost = out.primal_cost
+
     samples = samples[eval_per_cond:]
     reverse_samples = reverse_samples[:eval_per_cond]
     ts = ts[:eval_per_cond]
@@ -150,7 +170,7 @@ def evaluate_cond(inputs: EvaluationInputs, cond : Any, rng_key : jax.Array):
         )
     nw_errs, gen_data = jax.lax.map(eval, (reverse_samples, ts))
     return EvaluationOutputs(
-        cond, ts, nw_errs
+        cond, ott_cost, ts, nw_errs
     ), gen_data
 
 def evaluate_checkpoint(rng_key, inputs: EvaluationInputs):
