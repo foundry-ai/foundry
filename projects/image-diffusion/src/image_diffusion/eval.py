@@ -251,6 +251,7 @@ def evaluate_checkpoint(rng_key, inputs: EvaluationInputs):
 
     return EvaluationOutputs(
         outputs.cond,
+        outputs.ott_cost,
         outputs.ts,
         outputs.nw_error,
         lin_errors,
