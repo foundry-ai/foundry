@@ -1,0 +1,24 @@
+program: ./projects/policy-eval/scripts/policy_eval
+name: PushT Diffusion Policy
+method: grid
+project: diffusion-policy
+parameters:
+  dataset:
+    value: "pusht/chi"
+  dp.iterations:
+    value: 200000
+  dp.diffusion_steps:
+    value: 128
+  dp.log_ot_distance:
+    value: True
+  seed:
+    values:
+     - 42
+     - 43
+     - 44
+     - 45
+     - 46
+
+command:
+  - ${program}
+  - ${args}
