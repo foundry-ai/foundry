@@ -8,6 +8,7 @@ artifacts
 wandb
 requirements.lock
 
+*.pdf
 *.png
 *.svg
 

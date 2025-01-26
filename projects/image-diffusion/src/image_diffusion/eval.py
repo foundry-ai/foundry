@@ -189,6 +189,7 @@ def evaluate_checkpoint(rng_key, inputs: EvaluationInputs):
     @partial(jax.jit)
     def concatenate(outputs):
         return tree.map(lambda *x: npx.concatenate(x, 0), *outputs)
+
     outputs, gen_data = concatenate(outputs)
     # train a network on the generated data to predict the alphas
     model = KeypointModel(

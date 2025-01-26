@@ -146,14 +146,14 @@ class Identity(Generic[T], Normalizer[T]):
         return data
 
 @dataclass(kw_only=True)
-class StdNormalizer:
-    mean: Any = None
-    var: Any = None
-    std: Any = None
+class StdNormalizer(Generic[T], Normalizer[T]):
+    mean: T = None
+    var: T = None
+    std: T = None
     count: int = 0
 
     @property
-    def structure(self):
+    def structure(self) -> T:
         return self.mean
 
     def map(self, fun):
@@ -162,7 +162,7 @@ class StdNormalizer:
             std=fun(self.std), count=self.count,
         )
 
-    def normalize(self, data):
+    def normalize(self, data : T) -> T:
         if self.mean is not None:
             return tree.map(
                 lambda d, m, s: (d - m) / (s + 1e-6),
@@ -174,7 +174,7 @@ class StdNormalizer:
                 data, self.std 
             )
 
-    def unnormalize(self, data):
+    def unnormalize(self, data : T) -> T:
         if self.mean is not None:
             return tree.map(
                 lambda d, m, s: d * (s + 1e-6) + m,
@@ -186,7 +186,7 @@ class StdNormalizer:
                 data, self.std 
             )
     
-    def update(self, batch):
+    def update(self, batch : T):
         # get the batch dimension size
         n = jax.tree_util.tree_flatten(batch)[0][0].shape[0]
         batch_mean = tree.map(lambda x: jnp.mean(x, axis=0), batch)
