@@ -42,7 +42,8 @@ def flatten_to_dict(pytree, *, join='.', prefix=None,
 
 from jax._src.api_util import flatten_axes as _flatten_axes
 
-def axis_size(pytree, axes_tree, /) -> int:
+def axis_size(pytree, axes_tree = None, /) -> int:
+    if axes_tree is None: axes_tree = 0
     args_flat, in_tree  = jax.tree_util.tree_flatten(pytree)
     in_axes_flat = _flatten_axes("axis_size in_axes", in_tree, axes_tree, kws=False)
     axis_sizes_ = [x.shape[i] for x, i in zip(args_flat, in_axes_flat)]

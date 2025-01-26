@@ -26,9 +26,14 @@ from typing import Sequence
 from foundry.models.embed import SinusoidalPosEmbed
 from foundry.models.unet import UNet
 
+import chex
 import jax
 import foundry.numpy as jnp
 import logging
+
+from ott.geometry import pointcloud
+from ott.problems.linear import linear_problem
+from ott.solvers.linear import sinkhorn
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +138,10 @@ class DPConfig:
     diffusion_steps: int = 32
     action_horizon: int = 16
 
+    log_video: bool = False
+    log_ot_distance: bool = False
+    ot_batch_size: int = 2048
+
     @property
     def model_config(self) -> MLPConfig | UNetConfig:
         if self.model == "mlp":
@@ -204,11 +213,31 @@ class DPConfig:
                 obs_flat = obs_flat + self.replica_noise * foundry.random.normal(n_rng, obs_flat.shape)
                 obs = uf(obs_flat)
             actions = sample_norm.actions
-            denoiser = lambda rng_key, noised_actions, t: model(vars, s_rng, obs, noised_actions, t)
+            denoiser = lambda rng_key, noised_actions, t: model(vars, rng_key, obs, noised_actions, t)
             loss = schedule.loss(rng_key, denoiser, actions)
             return train.LossOutput(
                 loss=loss, metrics={"loss": loss}
             )
+
+        @F.jit
+        def compute_ot_distance(vars, rng_key, sample_batch: Sample):
+            sample_batch = F.vmap(normalizer.normalize)(sample_batch)
+            obs = sample_batch.observations
+            rngs = foundry.random.split(rng_key, tree.axis_size(obs))
+            def sample(rng_key, obs):
+                denoiser = lambda rng_key, noised_actions, t: model(vars, rng_key, obs, noised_actions, t)
+                actions = schedule.sample(rng_key, denoiser, actions_structure)
+                return actions
+            actions_batch = F.vmap(sample)(rngs, obs)
+            def ott_cost(a, b):
+                a = jax.vmap(lambda x: tree.ravel_pytree(x)[0])(a)
+                b = jax.vmap(lambda x: tree.ravel_pytree(x)[0])(b)
+                geom = pointcloud.PointCloud(a, b)
+                prob = linear_problem.LinearProblem(geom)
+                solver = sinkhorn.Sinkhorn()
+                out = solver(prob)
+                return out.primal_cost
+            return ott_cost((obs, actions_batch), (obs, sample_batch.actions))
         
         def make_checkpoint(vars) -> Checkpoint:
             return Checkpoint(
@@ -228,9 +257,16 @@ class DPConfig:
 
         train_stream = train_data.stream().batch(self.batch_size)
         test_stream = test_data.stream().batch(self.batch_size)
+        if self.log_ot_distance:
+            ot_stream = test_data.stream().batch(self.ot_batch_size)
 
         validate_render = F.jit(
             lambda rng_key, vars: inputs.validate_render(
+                val_rng, make_checkpoint(ema_state.ema).create_policy()
+            )
+        )
+        validate = F.jit(
+            lambda rng_key, vars: inputs.validate(
                 val_rng, make_checkpoint(ema_state.ema).create_policy()
             )
         )
@@ -239,7 +275,7 @@ class DPConfig:
                 rng_key=next(inputs.rng),
                 iterations=total_iterations,
                 progress=False
-            ) as loop, test_stream.build() as test_stream:
+            ) as loop, test_stream.build() as test_stream, ot_stream.build() as ot_stream:
             for epoch in loop.epochs():
                 for step in epoch.steps():
                     # print(step.batch.observations)
@@ -254,7 +290,17 @@ class DPConfig:
                     lr = opt_schedule(step.iteration).item()
                     train.wandb.log(step.iteration, metrics, {"lr": lr},
                                     run=inputs.wandb_run, prefix="train/")
+                    
                     if step.iteration % 50 == 0:
+                        if self.log_ot_distance and step.iteration % 1000 == 0:
+                            test_rng, ot_rng = jax.random.split(test_rng)
+                            logger.info("Computing sample OT distance...")
+                            ot_stream, ot_batch = ot_stream.next()
+                            ot_cost = compute_ot_distance(vars, ot_rng, ot_batch)
+                            ot_metrics = {"ot_distance": ot_cost}
+                            train.console.log(step.iteration, ot_metrics, prefix="test.")
+                            train.wandb.log(step.iteration, ot_metrics, run=inputs.wandb_run, prefix="test/")
+
                         test_stream, test_metrics = train.eval_stream(
                             batched_loss_fn, vars, 
                             test_rng, test_stream
@@ -269,7 +315,11 @@ class DPConfig:
                     if step.iteration % 2000 == 0:
                         logger.info("Evaluating policy...")
                         # jax.profiler.save_device_memory_profile(f"memory_{step.iteration}.prof")
-                        rewards, video = validate_render(val_rng, ema_state.ema)
+                        if self.log_video:
+                            rewards, video = validate_render(val_rng, ema_state.ema)
+                        else:
+                            rewards = validate(val_rng, ema_state.ema)
+                            video = None
                         reward_metrics = {
                             "mean_reward": jnp.mean(rewards),
                             "std_reward": jnp.std(rewards),
