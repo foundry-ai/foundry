@@ -243,15 +243,7 @@ class DPConfig:
                 solver = sinkhorn.Sinkhorn(max_iterations=20_000)
                 out = solver(prob)
                 return out.primal_cost
-<<<<<<< HEAD
-            scaled_obs = tree.map(lambda x: 20*x, obs)
-            return ott_cost((scaled_obs, actions_batch), (scaled_obs, sample_batch.actions))
-=======
-            # sampled_obs = tree.map(lambda x: x*10, sampled_obs)
-            # obs = tree.map(lambda x: x, obs)
-            # return ott_cost(sampled_actions, actions)
             return ott_cost((sampled_obs, sampled_actions), (obs, actions))
->>>>>>> 4a70964e4ff399acc4ff45f05b0ac638d6877830
         
         def make_checkpoint(vars) -> Checkpoint:
             return Checkpoint(
