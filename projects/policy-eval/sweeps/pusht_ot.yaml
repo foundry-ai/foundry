@@ -6,7 +6,7 @@ parameters:
   dataset:
     value: "pusht/chi"
   dp.iterations:
-    value: 200000
+    value: 100000
   dp.diffusion_steps:
     value: 128
   dp.log_ot_distance:
