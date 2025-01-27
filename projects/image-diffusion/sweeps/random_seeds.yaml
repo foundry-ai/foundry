@@ -8,9 +8,15 @@ parameters:
   condition_type:
     value: "tsne"
   epochs:
-    values: [50, 100, 200]
+    value: 1000
+  batch_size:
+    value: 1024
+  test_interval:
+    value: 100
+  log_ot_distance:
+    value: True
   seed:
-    values: [42, 43, 44]
+    values: [42, 43, 44, 45, 46]
 command:
   - ${program}
   - ${args}
