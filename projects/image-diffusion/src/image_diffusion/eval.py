@@ -133,10 +133,11 @@ def evaluate_cond(inputs: EvaluationInputs, cond : Any, rng_key : jax.Array):
     )
     geom = pointcloud.PointCloud(
             ddim_samples.reshape(ddim_samples.shape[0], -1), 
-            samples.reshape(samples.shape[0], -1)
+            samples.reshape(samples.shape[0], -1),
+            epsilon=0.001
     )
     prob = linear_problem.LinearProblem(geom)
-    solver = sinkhorn.Sinkhorn()
+    solver = sinkhorn.Sinkhorn(max_iterations=40_000)
     out = solver(prob)
     ott_cost = out.primal_cost
 
