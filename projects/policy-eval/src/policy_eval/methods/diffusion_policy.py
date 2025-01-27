@@ -139,7 +139,9 @@ class DPConfig:
     action_horizon: int = 16
 
     log_video: bool = False
+
     log_ot_distance: bool = False
+    log_ot_interval: int = 500
     ot_batch_size: int = 2048
 
     @property
@@ -223,21 +225,28 @@ class DPConfig:
         def compute_ot_distance(vars, rng_key, sample_batch: Sample):
             sample_batch = F.vmap(normalizer.normalize)(sample_batch)
             obs = sample_batch.observations
+            actions = sample_batch.actions
+
             rngs = foundry.random.split(rng_key, tree.axis_size(obs))
             def sample(rng_key, obs):
                 denoiser = lambda rng_key, noised_actions, t: model(vars, rng_key, obs, noised_actions, t)
-                actions = schedule.sample(rng_key, denoiser, actions_structure)
-                return actions
-            actions_batch = F.vmap(sample)(rngs, obs)
+                sampler = lambda rng_key: (obs, schedule.sample(rng_key, denoiser, actions_structure))
+                return F.vmap(sampler)(foundry.random.split(rng_key, 8))
+            sampled_obs, sampled_actions = F.vmap(sample)(rngs, obs)
+            sampled_obs, sampled_actions = tree.map(lambda x: jnp.reshape(x, (-1, *x.shape[2:])), (sampled_obs, sampled_actions))
+
             def ott_cost(a, b):
-                a = jax.vmap(lambda x: tree.ravel_pytree(x)[0])(a)
-                b = jax.vmap(lambda x: tree.ravel_pytree(x)[0])(b)
-                geom = pointcloud.PointCloud(a, b)
+                a_flat = jax.vmap(lambda x: tree.ravel_pytree(x)[0])(a)
+                b_flat = jax.vmap(lambda x: tree.ravel_pytree(x)[0])(b)
+                geom = pointcloud.PointCloud(a_flat, b_flat, epsilon=0.005)
                 prob = linear_problem.LinearProblem(geom)
-                solver = sinkhorn.Sinkhorn()
+                solver = sinkhorn.Sinkhorn(max_iterations=20_000)
                 out = solver(prob)
                 return out.primal_cost
-            return ott_cost((obs, actions_batch), (obs, sample_batch.actions))
+            # sampled_obs = tree.map(lambda x: x*10, sampled_obs)
+            # obs = tree.map(lambda x: x, obs)
+            # return ott_cost(sampled_actions, actions)
+            return ott_cost((sampled_obs, sampled_actions), (obs, actions))
         
         def make_checkpoint(vars) -> Checkpoint:
             return Checkpoint(
@@ -278,8 +287,6 @@ class DPConfig:
             ) as loop, test_stream.build() as test_stream, ot_stream.build() as ot_stream:
             for epoch in loop.epochs():
                 for step in epoch.steps():
-                    # print(step.batch.observations)
-                    # print(step.batch.actions)
                     # *note*: consumes opt_state, vars
                     train_rng, test_rng, val_rng = jax.random.split(step.rng_key, 3)
                     opt_state, vars, metrics = train.step(
@@ -290,17 +297,19 @@ class DPConfig:
                     lr = opt_schedule(step.iteration).item()
                     train.wandb.log(step.iteration, metrics, {"lr": lr},
                                     run=inputs.wandb_run, prefix="train/")
-                    
-                    if step.iteration % 50 == 0:
-                        if self.log_ot_distance and step.iteration % 1000 == 0:
-                            test_rng, ot_rng = jax.random.split(test_rng)
-                            logger.info("Computing sample OT distance...")
-                            ot_stream, ot_batch = ot_stream.next()
-                            ot_cost = compute_ot_distance(vars, ot_rng, ot_batch)
-                            ot_metrics = {"ot_distance": ot_cost}
-                            train.console.log(step.iteration, ot_metrics, prefix="test.")
-                            train.wandb.log(step.iteration, ot_metrics, run=inputs.wandb_run, prefix="test/")
 
+                    if self.log_ot_distance and step.iteration % self.log_ot_interval == 0:
+                        test_rng, ot_rng = jax.random.split(test_rng)
+                        logger.info("Computing sample OT distance...")
+                        if not ot_stream.has_next():
+                            ot_stream = ot_stream.reset()
+                        ot_stream, ot_batch = ot_stream.next()
+                        ot_cost = compute_ot_distance(vars, ot_rng, ot_batch)
+                        ot_metrics = {"ot_distance": ot_cost}
+                        train.console.log(step.iteration, ot_metrics, prefix="test.")
+                        train.wandb.log(step.iteration, ot_metrics, run=inputs.wandb_run, prefix="test/")
+
+                    if step.iteration % 50 == 0:
                         test_stream, test_metrics = train.eval_stream(
                             batched_loss_fn, vars, 
                             test_rng, test_stream
