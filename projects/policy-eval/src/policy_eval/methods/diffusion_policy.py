@@ -235,7 +235,7 @@ class DPConfig:
             def sample(rng_key, obs, eta=1.0):
                 denoiser = lambda rng_key, noised_actions, t: model(vars, rng_key, obs, noised_actions, t)
                 sampler = lambda rng_key: (obs, schedule.sample(rng_key, denoiser, actions_structure, eta=eta))
-                return F.vmap(sampler)(foundry.random.split(rng_key, 2))
+                return F.vmap(sampler)(foundry.random.split(rng_key, 8))
             sampled_obs, sampled_actions = F.vmap(sample)(ddpm_rngs, obs)
             sampled_obs, sampled_actions = tree.map(lambda x: jnp.reshape(x, (-1, *x.shape[2:])), (sampled_obs, sampled_actions))
             sampled_ddim_obs, sampled_ddim_actions = F.vmap(partial(sample, eta=0.0))(ddim_rngs, obs)
