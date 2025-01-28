@@ -16,7 +16,7 @@ parameters:
   log_ot_distance:
     value: True
   seed:
-    values: [42, 43, 44, 45, 46]
+    values: [42, 43, 44, 45, 46, 47]
 command:
   - ${program}
   - ${args}
