@@ -26,6 +26,8 @@ from typing import Sequence
 from foundry.models.embed import SinusoidalPosEmbed
 from foundry.models.unet import UNet
 
+from functools import partial
+
 import chex
 import jax
 import foundry.numpy as jnp
@@ -227,13 +229,20 @@ class DPConfig:
             obs = sample_batch.observations
             actions = sample_batch.actions
 
-            rngs = foundry.random.split(rng_key, tree.axis_size(obs))
-            def sample(rng_key, obs):
+            ddpm_rng, ddim_rng = foundry.random.split(rng_key, 2)
+            ddpm_rngs = foundry.random.split(ddpm_rng, tree.axis_size(obs))
+            ddim_rngs = foundry.random.split(ddim_rng, tree.axis_size(obs))
+            def sample(rng_key, obs, eta=1.0):
                 denoiser = lambda rng_key, noised_actions, t: model(vars, rng_key, obs, noised_actions, t)
-                sampler = lambda rng_key: (obs, schedule.sample(rng_key, denoiser, actions_structure))
-                return F.vmap(sampler)(foundry.random.split(rng_key, 8))
-            sampled_obs, sampled_actions = F.vmap(sample)(rngs, obs)
+                sampler = lambda rng_key: (obs, schedule.sample(rng_key, denoiser, actions_structure, eta=eta))
+                return F.vmap(sampler)(foundry.random.split(rng_key, 2))
+            sampled_obs, sampled_actions = F.vmap(sample)(ddpm_rngs, obs)
             sampled_obs, sampled_actions = tree.map(lambda x: jnp.reshape(x, (-1, *x.shape[2:])), (sampled_obs, sampled_actions))
+            sampled_ddim_obs, sampled_ddim_actions = F.vmap(partial(sample, eta=0.0))(ddim_rngs, obs)
+            sampled_ddim_obs, sampled_ddim_actions = tree.map(
+                lambda x: jnp.reshape(x, (-1, *x.shape[2:])), 
+                (sampled_ddim_obs, sampled_ddim_actions)
+            )
 
             def ott_cost(a, b):
                 a_flat = jax.vmap(lambda x: tree.ravel_pytree(x)[0])(a)
@@ -243,7 +252,9 @@ class DPConfig:
                 solver = sinkhorn.Sinkhorn(max_iterations=20_000)
                 out = solver(prob)
                 return out.primal_cost
-            return ott_cost((sampled_obs, sampled_actions), (obs, actions))
+            return { "ddpm_gt": ott_cost((sampled_obs, sampled_actions), (obs, actions)),
+                     "ddim_gt": ott_cost((sampled_ddim_obs, sampled_ddim_actions), (obs, actions)),
+                     "ddpm_ddim": ott_cost((sampled_ddim_obs, sampled_ddim_actions), (sampled_obs, sampled_actions)) }
         
         def make_checkpoint(vars) -> Checkpoint:
             return Checkpoint(

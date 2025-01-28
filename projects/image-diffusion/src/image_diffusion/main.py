@@ -343,17 +343,25 @@ def run(config: Config):
         cond = sample_batch.cond
         data = sample_batch.data
 
-        rngs = foundry.random.split(rng_key, tree.axis_size(cond))
-        def sample(rng_key, cond):
+        ddpm_rng, ddim_rng = foundry.random.split(rng_key, 2)
+        ddpm_rngs = foundry.random.split(ddpm_rng, tree.axis_size(cond))
+        ddim_rngs = foundry.random.split(ddim_rng, tree.axis_size(cond))
+        def sample(rng_key, cond, eta=1.0):
             denoiser = functools.partial(diffuser, vars, cond)
             sampler = lambda rng_key: (cond, schedule.sample(
-                        rng_key, denoiser, sample_batch.data[0]))
-            return F.vmap(sampler)(foundry.random.split(rng_key, 8))
+                        rng_key, denoiser, sample_batch.data[0], eta=eta))
+            return F.vmap(sampler)(foundry.random.split(rng_key, 2))
 
-        sampled_cond, sampled_data = F.vmap(sample)(rngs, cond)
+        sampled_cond, sampled_data = F.vmap(sample)(ddpm_rngs, cond)
         sampled_cond, sampled_data = tree.map(
                 lambda x: jnp.reshape(x, (-1, *x.shape[2:])), 
-                (sampled_cond, sampled_data))
+                (sampled_cond, sampled_data)
+        )
+        sampled_ddim_cond, sampled_ddim_data = F.vmap(sample)(ddim_rngs, cond)
+        sampled_ddim_cond, sampled_ddim_data = tree.map(
+                lambda x: jnp.reshape(x, (-1, *x.shape[2:])), 
+                (sampled_ddim_cond, sampled_ddim_data)
+        )
 
         def ott_cost(a, b):
             a_flat = jax.vmap(lambda x: tree.ravel_pytree(x)[0])(a)
@@ -364,7 +372,9 @@ def run(config: Config):
             out = solver(prob)
             return out.primal_cost
 
-        return ott_cost((sampled_cond, sampled_data), (cond, data))
+        return { "ddpm_gt": ott_cost((sampled_cond, sampled_data), (cond, data)),
+                    "ddim_gt": ott_cost((sampled_ddim_cond, sampled_ddim_data), (cond, data)),
+                    "ddpm_ddim": ott_cost((sampled_ddim_cond, sampled_ddim_data), (sampled_cond, sampled_data)) }
 
     batch_loss = foundry.train.batch_loss(loss)
     batch_test_loss = foundry.train.batch_loss(loss)
