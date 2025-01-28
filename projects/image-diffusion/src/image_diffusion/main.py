@@ -350,7 +350,7 @@ def run(config: Config):
             denoiser = functools.partial(diffuser, vars, cond)
             sampler = lambda rng_key: (cond, schedule.sample(
                         rng_key, denoiser, sample_batch.data[0], eta=eta))
-            return F.vmap(sampler)(foundry.random.split(rng_key, 8))
+            return F.vmap(sampler)(foundry.random.split(rng_key, 3))
 
         sampled_cond, sampled_data = F.vmap(sample)(ddpm_rngs, cond)
         sampled_cond, sampled_data = tree.map(
