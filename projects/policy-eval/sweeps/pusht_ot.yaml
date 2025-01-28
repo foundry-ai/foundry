@@ -18,6 +18,7 @@ parameters:
      - 44
      - 45
      - 46
+     - 47
 
 command:
   - ${program}
