@@ -137,10 +137,10 @@ class DPConfig:
     weight_decay: float = 1e-5
     replica_noise: float | None = None
 
-    diffusion_steps: int = 32
+    diffusion_steps: int = 64
     action_horizon: int = 16
 
-    log_video: bool = False
+    log_video: bool = True
 
     log_ot_distance: bool = False
     log_ot_interval: int = 500
@@ -274,17 +274,16 @@ class DPConfig:
 
         train_stream = train_data.stream().batch(self.batch_size)
         test_stream = test_data.stream().batch(self.batch_size)
-        if self.log_ot_distance:
-            ot_stream = test_data.stream().batch(self.ot_batch_size)
+        ot_stream = test_data.stream().batch(self.ot_batch_size)
 
         validate_render = F.jit(
             lambda rng_key, vars: inputs.validate_render(
-                val_rng, make_checkpoint(ema_state.ema).create_policy()
+                val_rng, make_checkpoint(vars).create_policy()
             )
         )
         validate = F.jit(
             lambda rng_key, vars: inputs.validate(
-                val_rng, make_checkpoint(ema_state.ema).create_policy()
+                val_rng, make_checkpoint(vars).create_policy()
             )
         )
         with train.loop(

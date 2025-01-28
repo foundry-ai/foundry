@@ -39,7 +39,7 @@ class PushTDataset(EnvDataset[Step]):
         env = PushTEnv()
         env = ChainedTransform([
             PositionalControlTransform(),
-            MultiStepTransform(10),
+            MultiStepTransform(20),
             transform
         ]).apply(env)
         return env
