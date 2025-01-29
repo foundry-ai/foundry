@@ -197,7 +197,8 @@ class DPConfig:
         # initialize optimizer, EMA
         opt_schedule = optax.warmup_cosine_decay_schedule(
             self.learning_rate/10, self.learning_rate,
-            min(int(total_iterations*0.01), 500), total_iterations
+            min(int(total_iterations*0.01), 500), total_iterations,
+            end_value=self.learning_rate/10
         )
         optimizer = optax.adamw(opt_schedule,
             weight_decay=self.weight_decay
