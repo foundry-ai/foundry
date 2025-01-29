@@ -59,10 +59,12 @@ class MLPConfig:
 class UNetConfig:
     base_channels: int = 128
     num_downsample: int = 4
+    embed_dim: int = 128
 
     def create_model(self, rng_key, observations_structure, actions_structure):
         model = DiffusionUNet(
             dims=1,
+            embed_dim=self.embed_dim,
             base_channels=self.base_channels,
             channel_mult=tuple([2**i for i in range(self.num_downsample)]),
         )
