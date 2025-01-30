@@ -78,6 +78,7 @@ class EvaluationOutputs:
     cond: jax.Array
 
     ott_cost: jax.Array
+    variance: jax.Array
 
     # These have an extra batch array
     # per-cond
@@ -136,6 +137,11 @@ def evaluate_cond(inputs: EvaluationInputs, cond : Any, rng_key : jax.Array):
             samples.reshape(samples.shape[0], -1),
             epsilon=0.001
     )
+
+    flat_samples = samples.reshape(samples.shape[0], -1)
+    flat_samples = flat_samples - npx.mean(flat_samples, axis=0, keepdims=True)
+    variance = npx.mean(npx.sum(npx.square(flat_samples), axis=-1))
+
     prob = linear_problem.LinearProblem(geom)
     solver = sinkhorn.Sinkhorn(max_iterations=40_000)
     out = solver(prob)
@@ -171,7 +177,7 @@ def evaluate_cond(inputs: EvaluationInputs, cond : Any, rng_key : jax.Array):
         )
     nw_errs, gen_data = jax.lax.map(eval, (reverse_samples, ts))
     return EvaluationOutputs(
-        cond, ott_cost, ts, nw_errs
+        cond, ott_cost, variance, ts, nw_errs
     ), gen_data
 
 def evaluate_checkpoint(rng_key, inputs: EvaluationInputs):
@@ -254,6 +260,7 @@ def evaluate_checkpoint(rng_key, inputs: EvaluationInputs):
     return EvaluationOutputs(
         outputs.cond,
         outputs.ott_cost,
+        outputs.variance,
         outputs.ts,
         outputs.nw_error,
         lin_errors,
