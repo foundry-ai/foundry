@@ -132,9 +132,12 @@ class PyTreeData(Data[T]):
             self.tree = tree
         else:
             with jax.ensure_compile_time_eval():
-                ns = jnp.array([jnp.shape(x)[0] for x in jax.tree_leaves(tree)], dtype=idx_dtype)
-                n = ns[0]
-                assert jnp.all(ns == n)
+                ns = jnp.array([(jnp.shape(x) + (1,))[0] for x in jax.tree_leaves(tree)], dtype=idx_dtype)
+                if len(ns) > 0:
+                    n = ns[0]
+                    assert jnp.all(ns == n)
+                else:
+                    n = 0
             self.n = n
             self.tree = tree
 
