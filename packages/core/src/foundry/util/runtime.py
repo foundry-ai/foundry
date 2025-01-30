@@ -97,8 +97,8 @@ def setup_gc():
 def setup():
     # Enable 64 bit dtypes by default,
     # but make the default dtype 32 bits
-    os.environ["JAX_ENABLE_X86"] = "True"
-    os.environ["JAX_DEFAULT_DTYPE_BITS"] = "32"
+    # os.environ["JAX_ENABLE_X86"] = "True"
+    # os.environ["JAX_DEFAULT_DTYPE_BITS"] = "32"
     os.environ["MUJOCO_GL"] = "egl"
 
     jupyter = rich.get_console().is_jupyter

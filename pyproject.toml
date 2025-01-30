@@ -44,7 +44,8 @@ dev = [
     "-e image-diffusion @ file:///${PROJECT_ROOT}/projects/image-diffusion",
     "-e cond-diffusion-toy @ file:///${PROJECT_ROOT}/projects/cond-diffusion-toy",
     # pin a jax version
-    "jax==0.4.38",
+    "jax==0.5.0",
+    "zarr==2.18.4",
     "wandb<0.19.1",
     # Docmentation utilities
     "sphinx>=7.2.6",
